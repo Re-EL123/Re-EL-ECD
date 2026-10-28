@@ -107,7 +107,7 @@ async function seedDevelopment({ force = false } = {}) {
   if (force) {
     const tables = ['payment_webhook_events', 'payment_allocations', 'payments', 'invoice_items', 'invoices',
       'invoice_counters', 'expenses', 'suppliers', 'expense_categories', 'inventory_transactions', 'inventory_items',
-      'incident_actions', 'incident_participants', 'incidents', 'task_comments', 'tasks', 'report_jobs', 'jobs',
+      'incident_actions', 'incident_participants', 'incidents', 'task_checklist_items', 'task_comments', 'tasks', 'report_jobs', 'jobs',
       'automation_rules', 'notification_deliveries', 'notifications', 'messages', 'conversation_participants',
       'conversations', 'announcements', 'consent_records', 'form_submissions', 'form_versions', 'form_definitions',
       'staff_training_records', 'leave_requests', 'timesheets', 'staff_attendance_events', 'staff_shifts',

@@ -72,7 +72,7 @@ session cookie to `SameSite=None; Secure`.
 
 ## 3. Data model
 
-Ten migrations create the schema:
+Eleven migrations create the schema:
 
 | Migration | Domain |
 | --- | --- |
@@ -86,6 +86,7 @@ Ten migrations create the schema:
 | `008_safety_platform` | Incidents and actions, plans, subscriptions, feature flags, support cases |
 | `009_reports_audit` | Report jobs, audit events, automation rules, notifications |
 | `010_tenant_indexes` | Composite indexes on the hot tenant paths |
+| `011_task_checklists` | Operational checklist items on tasks |
 
 Every tenant table carries `organisation_id` (and `branch_id` where branch-level
 work happens). Foreign keys cascade on organisation deletion. Composite indexes
@@ -206,7 +207,7 @@ Domain modules and their responsibilities:
 | `communications` | Announcements, conversations, messages, notifications |
 | `finance` | Invoices, payments, allocations, expenses, suppliers, inventory |
 | `safety` | Incidents, participants, corrective actions, compliance registers |
-| `operations` | Tasks, website publishing, report jobs, automation rules |
+| `operations` | Tasks and checklists, website publishing, report jobs, automation rules |
 | `parent` | Guardian-scoped children, progress, attendance, forms, fees, messages |
 | `platform` | Tenant directory, subscriptions, feature flags, health, support |
 | `notifications` | Notification list and read state |
@@ -281,6 +282,7 @@ A future scheduler can consume these tables without changing the API surface.
 | Unit | `packages/testing/permissions.test.js` | Permission catalogue, wildcard expansion, role scopes, password hashing, validator, error codes |
 | Integration | `apps/api/tests/auth.test.js` | Sessions, CSRF, RBAC denial, tenant isolation, platform boundary, parent own-scope, logout, public site |
 | Integration | `apps/api/tests/modules.test.js` | Learner CRUD, attendance, observation → report, invoicing and payments, incidents, tasks, forms, invitations, staff self-attendance, platform settings, reports and audit |
+| Static | `packages/testing/ui.test.js` | Asset versioning, script order, Alpine bindings, view registration and route wiring |
 
 Integration tests boot the real pipeline on an ephemeral port against the
 embedded PostgreSQL database and seed the demonstration dataset — there are no

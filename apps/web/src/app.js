@@ -547,6 +547,16 @@
         return this.apiAction(method, path, body, options);
       },
 
+      async toggleChecklist(taskId, itemId, completed) {
+        try {
+          await Reel.api('PATCH', '/tasks/' + taskId + '/checklist/' + itemId, { completed: !completed });
+          await this.navigate(true);
+          this.openNamedModal('taskView', taskId);
+        } catch (error) {
+          this.toast(error.message || 'The checklist item could not be updated.', 'error');
+        }
+      },
+
       confirmAction(title, message, endpoint, options) {
         const opts = options || {};
         this.openConfirm(title, message, {

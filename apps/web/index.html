@@ -9,30 +9,30 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/styles.css?v=20261035">
+  <link rel="stylesheet" href="assets/styles.css?v=20261037">
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
-  <script src="config.js?v=20261035"></script>
-  <script src="src/utils.js?v=20261035" defer></script>
-  <script src="src/views/public.js?v=20261035" defer></script>
-  <script src="src/views/platform.js?v=20261035" defer></script>
-  <script src="src/views/overview.js?v=20261035" defer></script>
-  <script src="src/views/learners.js?v=20261035" defer></script>
-  <script src="src/views/admissions.js?v=20261035" defer></script>
-  <script src="src/views/curriculum.js?v=20261035" defer></script>
-  <script src="src/views/assessments.js?v=20261035" defer></script>
-  <script src="src/views/attendance.js?v=20261035" defer></script>
-  <script src="src/views/staff.js?v=20261035" defer></script>
-  <script src="src/views/forms.js?v=20261035" defer></script>
-  <script src="src/views/communications.js?v=20261035" defer></script>
-  <script src="src/views/finance.js?v=20261035" defer></script>
-  <script src="src/views/safety.js?v=20261035" defer></script>
-  <script src="src/views/operations.js?v=20261035" defer></script>
-  <script src="src/views/settings.js?v=20261035" defer></script>
-  <script src="src/views/parent.js?v=20261035" defer></script>
-  <script src="src/app.js?v=20261035" defer></script>
+  <script src="config.js?v=20261037"></script>
+  <script src="src/utils.js?v=20261037" defer></script>
+  <script src="src/views/public.js?v=20261037" defer></script>
+  <script src="src/views/platform.js?v=20261037" defer></script>
+  <script src="src/views/overview.js?v=20261037" defer></script>
+  <script src="src/views/learners.js?v=20261037" defer></script>
+  <script src="src/views/admissions.js?v=20261037" defer></script>
+  <script src="src/views/curriculum.js?v=20261037" defer></script>
+  <script src="src/views/assessments.js?v=20261037" defer></script>
+  <script src="src/views/attendance.js?v=20261037" defer></script>
+  <script src="src/views/staff.js?v=20261037" defer></script>
+  <script src="src/views/forms.js?v=20261037" defer></script>
+  <script src="src/views/communications.js?v=20261037" defer></script>
+  <script src="src/views/finance.js?v=20261037" defer></script>
+  <script src="src/views/safety.js?v=20261037" defer></script>
+  <script src="src/views/operations.js?v=20261037" defer></script>
+  <script src="src/views/settings.js?v=20261037" defer></script>
+  <script src="src/views/parent.js?v=20261037" defer></script>
+  <script src="src/app.js?v=20261037" defer></script>
   <script src="https://unpkg.com/alpinejs@3.14.9/dist/cdn.min.js" defer></script>
 </head>
 <body x-data="reelApp()" x-init="boot()" @keydown.window.escape="closeOverlays()" @keydown.window.k="if (($event.metaKey || $event.ctrlKey) && !$event.shiftKey) { $event.preventDefault(); openCommand(); }">
@@ -192,10 +192,10 @@
               <div class="field" :class="field.span === 2 ? 'span-2' : ''">
                 <label :for="'modal-' + field.name" x-text="field.label"></label>
                 <template x-if="field.type === 'textarea'">
-                  <textarea class="textarea" :id="'modal-' + field.name" :name="field.name" :required="field.required" :placeholder="field.placeholder || ''" x-model="modal.data[field.name]"></textarea>
+                  <textarea class="textarea" :id="'modal-' + field.name" :name="field.name" :required="field.required === true" :placeholder="field.placeholder || ''" x-model="modal.data[field.name]"></textarea>
                 </template>
                 <template x-if="field.type === 'select'">
-                  <select class="select" :id="'modal-' + field.name" :name="field.name" :required="field.required" x-model="modal.data[field.name]">
+                  <select class="select" :id="'modal-' + field.name" :name="field.name" :required="field.required === true" x-model="modal.data[field.name]">
                     <option value="">Select…</option>
                     <template x-for="option in (field.options || [])" :key="option.value !== undefined ? option.value : option">
                       <option :value="option.value !== undefined ? option.value : option" x-text="option.label !== undefined ? option.label : option"></option>
@@ -206,7 +206,7 @@
                   <label class="check"><input type="checkbox" :id="'modal-' + field.name" x-model="modal.data[field.name]"><span x-text="field.help || 'Enabled'"></span></label>
                 </template>
                 <template x-if="!field.type || !['textarea','select','checkbox'].includes(field.type)">
-                  <input class="input" :id="'modal-' + field.name" :name="field.name" :type="field.type || 'text'" :required="field.required" :placeholder="field.placeholder || ''" :min="field.min" :max="field.max" :step="field.step" x-model="modal.data[field.name]">
+                  <input class="input" :id="'modal-' + field.name" :name="field.name" :type="field.type || 'text'" :required="field.required === true" :placeholder="field.placeholder || ''" :min="field.min" :max="field.max" :step="field.step" x-model="modal.data[field.name]">
                 </template>
                 <div class="hint" x-show="field.help && field.type !== 'checkbox'" x-text="field.help"></div>
               </div>
@@ -214,7 +214,7 @@
           </div>
           <div class="form-actions">
             <button type="button" class="btn btn-secondary" @click="closeModal()">Cancel</button>
-            <button type="submit" class="btn btn-primary" :disabled="modal && modal.saving">
+            <button type="submit" class="btn btn-primary" :disabled="Boolean(modal && modal.saving)">
               <span class="spinner" x-show="modal && modal.saving" style="width:14px;height:14px"></span>
               <span x-text="modal ? (modal.submitLabel || 'Save') : 'Save'"></span>
             </button>
@@ -226,7 +226,7 @@
       </div>
       <div class="modal-foot" x-show="modal && modal.type === 'confirm'">
         <button class="btn btn-secondary" @click="closeModal()">Cancel</button>
-        <button class="btn" :class="modal && modal.danger ? 'btn-danger' : 'btn-primary'" @click="confirmModal()" :disabled="modal && modal.saving">
+        <button class="btn" :class="modal && modal.danger ? 'btn-danger' : 'btn-primary'" @click="confirmModal()" :disabled="Boolean(modal && modal.saving)">
           <span class="spinner" x-show="modal && modal.saving" style="width:14px;height:14px"></span>
           <span x-text="modal ? modal.submitLabel : 'Confirm'"></span>
         </button>

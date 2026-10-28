@@ -3,7 +3,8 @@
 A complete, multi-tenant early-childhood-development operating platform for
 South African daycare centres: admissions, learners, classrooms, curriculum,
 developmental assessment, attendance, staff and shifts, leave, forms and
-consent, communications, finance, safety, tasks, reporting, a parent portal,
+consent, communications, finance, safety, tasks and operational checklists,
+reporting, a parent portal,
 public daycare websites, and a platform command centre.
 
 ## Stack
@@ -118,14 +119,16 @@ variables, backup guidance and release checklist.
 
 ## Testing
 
-`npm test` runs:
+`npm test` runs 39 tests:
 
 - permission catalogue, wildcard expansion, role scope and password unit tests;
 - API integration tests against the real router and database covering
   authentication, CSRF, RBAC denial, tenant isolation, parent own-scope access,
   learner CRUD, attendance, observation/assessment reporting, invoicing and
   payments, incidents and corrective actions, tasks, forms and invitations;
-- report catalogue, CSV export and audit-trail checks.
+- report catalogue, CSV export and audit-trail checks;
+- static checks on the no-build frontend: asset versioning, script order,
+  Alpine bindings, view registration and route wiring.
 
 CI runs lint, migration checks, API-surface checks and the full test suite on
 Node 20, 22 and 24.

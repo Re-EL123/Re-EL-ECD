@@ -57,11 +57,35 @@
           { label: 'Status', render: (t) => R.badge(t.status) },
           { label: 'Priority', render: (t) => '<span class="badge ' + R.priorityTone(t.priority) + '">' + R.esc(t.priority) + '</span>' },
           { label: 'Assignee', render: (t) => R.esc(t.assignee_name || 'Unassigned') },
+          { label: 'Checklist', render: (t) => Number(t.checklist_total)
+            ? '<span class="badge ' + (Number(t.checklist_done) === Number(t.checklist_total) ? 'badge-success' : 'badge-muted') + '">' + R.number(t.checklist_done) + '/' + R.number(t.checklist_total) + '</span>'
+            : '<span class="muted small">—</span>' },
           { label: 'Due', render: (t) => '<span class="' + (t.due_at && new Date(t.due_at) < new Date() && !['done', 'cancelled'].includes(t.status) ? 'badge badge-danger' : '') + '">' + R.date(t.due_at) + '</span>' },
           { label: '', align: 'right', render: (t) => '<div class="btn-group">' +
             (['open', 'in_progress', 'blocked'].includes(t.status) ? '<button class="btn btn-sm btn-secondary" @click="act(\'PATCH\',\'/tasks/' + R.attr(t.id) + '\',{status:\'done\'},{successMessage:\'Task completed\'})">Done</button>' : '') +
             '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'editTask\',\'' + R.attr(t.id) + '\')">Edit</button></div>' }
         ], emptyTitle: 'No tasks', emptyMessage: 'Create a task so nothing is forgotten.', emptyAction: '<button class="btn btn-primary" @click="openNamedModal(\'task\')">New task</button>' });
+    },
+
+    renderChecklist(task) {
+      const items = task.checklist || [];
+      const done = items.filter((i) => i.completed_at).length;
+      const body = items.length
+        ? '<div class="stack">' + items.map((item) => (
+          '<div class="row" style="align-items:flex-start;gap:10px">' +
+          '<button class="btn btn-ghost btn-icon btn-sm" aria-label="' + (item.completed_at ? 'Reopen item' : 'Complete item') + '" ' +
+          '@click="toggleChecklist(\'' + R.attr(task.id) + '\',\'' + R.attr(item.id) + '\',' + (item.completed_at ? 'true' : 'false') + ')">' +
+          R.icon(item.completed_at ? 'check-circle-2' : 'circle') + '</button>' +
+          '<div style="flex:1"><span class="' + (item.completed_at ? 'muted' : '') + '"' + (item.completed_at ? ' style="text-decoration:line-through"' : '') + '>' + R.esc(item.label) + '</span>' +
+          (item.completed_at ? '<span class="cell-sub">Completed ' + R.relative(item.completed_at) + (item.completed_by_name ? ' by ' + R.esc(item.completed_by_name) : '') + '</span>' : '') +
+          '</div></div>'
+        )).join('') + '</div>'
+        : '<p class="muted small">No checklist on this task.</p>';
+      return '<div class="section"></div><div class="row" style="justify-content:space-between;align-items:center">' +
+        '<h3>Checklist</h3>' +
+        (items.length ? '<span class="badge ' + (done === items.length ? 'badge-success' : 'badge-muted') + '">' + done + '/' + items.length + '</span>' : '') +
+        '</div>' + body +
+        '<div class="row" style="margin-top:12px"><button class="btn btn-secondary btn-sm" @click="closeModal(); openNamedModal(\'taskChecklist\',\'' + R.attr(task.id) + '\')">' + R.icon('list-plus') + ' Add items</button></div>';
     },
 
     async openModal(ctx, name, id) {
@@ -77,8 +101,14 @@
             { name: 'priority', label: 'Priority', type: 'select', options: PRIORITIES.map((p) => ({ value: p, label: R.titleCase(p) })), value: 'medium' },
             { name: 'dueAt', label: 'Due date', type: 'date' },
             ...(assigneeOptions.length ? [{ name: 'assignedTo', label: 'Assign to', type: 'select', options: assigneeOptions }] : []),
-            ...(R.branchOptions(ctx).length ? [{ name: 'branchId', label: 'Branch', type: 'select', options: R.branchOptions(ctx) }] : [])
-          ]
+            ...(R.branchOptions(ctx).length ? [{ name: 'branchId', label: 'Branch', type: 'select', options: R.branchOptions(ctx) }] : []),
+            { name: 'checklist', label: 'Checklist', type: 'textarea', span: 2, help: 'One item per line. Useful for cleaning rounds, kitchen preparation or trip preparation.' }
+          ],
+          transform(data) {
+            return Object.assign({}, data, {
+              checklist: String(data.checklist || '').split('\n').map((line) => line.trim()).filter(Boolean)
+            });
+          }
         });
       } else if (name === 'editTask' && id) {
         const task = (page.rows || []).find((t) => t.id === id) || {};
@@ -108,6 +138,7 @@
             R.detailItem('Due', R.date(t.due_at)) +
             R.detailItem('Completed', t.completed_at ? R.dateTime(t.completed_at) : 'Not yet') +
             '</div>' +
+            this.renderChecklist(t) +
             '<div class="section"></div><h3>Comments</h3>' +
             (comments.length ? '<div class="stack">' + comments.map((c) => '<div class="detail-item"><div class="d-label">' + R.esc(c.author_name || 'Unknown') + ' · ' + R.relative(c.created_at) + '</div><div style="white-space:pre-wrap">' + R.esc(c.body) + '</div></div>').join('') + '</div>' : '<p class="muted small">No comments yet.</p>') +
             '<div class="row" style="margin-top:12px"><button class="btn btn-secondary btn-sm" @click="closeModal(); openNamedModal(\'taskComment\',\'' + R.attr(t.id) + '\')">' + R.icon('message-plus') + ' Add comment</button>' +
@@ -117,6 +148,14 @@
         } catch (error) {
           ctx.toast(error.message || 'The task could not be opened.', 'error');
         }
+      } else if (name === 'taskChecklist' && id) {
+        ctx.openModal({
+          title: 'Add checklist items', endpoint: '/tasks/' + id + '/checklist', submitLabel: 'Add items',
+          fields: [{ name: 'items', label: 'Items', type: 'textarea', required: true, span: 2, help: 'One item per line.' }],
+          transform(data) {
+            return { items: String(data.items || '').split('\n').map((line) => line.trim()).filter(Boolean) };
+          }
+        });
       } else if (name === 'taskComment' && id) {
         ctx.openModal({
           title: 'Add comment', endpoint: '/tasks/' + id + '/comments', submitLabel: 'Post comment',

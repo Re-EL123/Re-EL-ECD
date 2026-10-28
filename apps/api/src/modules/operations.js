@@ -18,6 +18,23 @@ const REPORT_CATALOGUE = [
   { key: 'admissions_funnel', name: 'Admissions funnel', description: 'Enquiries and applications by stage.', permission: 'admissions.read.daycare' }
 ];
 
+function checklistLabels(values) {
+  const list = Array.isArray(values) ? values : [];
+  const out = [];
+  for (const value of list) {
+    const text = String(value === undefined || value === null ? '' : value).trim().slice(0, 300);
+    if (text) out.push(text);
+  }
+  return out;
+}
+
+async function taskFor(ctx, id) {
+  const task = await ctx.db.one('SELECT * FROM tasks WHERE id = $1 AND organisation_id = $2', [id, ctx.organisationId]);
+  if (!task) throw new AppError('NOT_FOUND');
+  if (!has(ctx, 'tasks.read.daycare') && task.assigned_to !== ctx.user.id) throw new AppError('FORBIDDEN');
+  return task;
+}
+
 function register(router) {
   // --- Tasks --------------------------------------------------------------
 
@@ -32,7 +49,9 @@ function register(router) {
       extra = ` AND t.assigned_to = $${params.length}`;
     }
     return ctx.db.many(
-      `SELECT t.*, u.display_name AS assignee_name, c.display_name AS creator_name
+      `SELECT t.*, u.display_name AS assignee_name, c.display_name AS creator_name,
+        (SELECT COUNT(*)::int FROM task_checklist_items ci WHERE ci.task_id = t.id) AS checklist_total,
+        (SELECT COUNT(*)::int FROM task_checklist_items ci WHERE ci.task_id = t.id AND ci.completed_at IS NOT NULL) AS checklist_done
        FROM tasks t
        LEFT JOIN users u ON u.id = t.assigned_to
        LEFT JOIN users c ON c.id = t.created_by
@@ -52,7 +71,8 @@ function register(router) {
       priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'], optional: true },
       dueAt: { type: 'string', date: true, optional: true },
       relatedResourceType: { type: 'string', max: 60, optional: true },
-      relatedResourceId: { type: 'string', uuid: true, optional: true }
+      relatedResourceId: { type: 'string', uuid: true, optional: true },
+      checklist: { type: 'array', max: 60, optional: true }
     });
     const scopeAll = has(ctx, 'tasks.manage.daycare');
     const assignedTo = body.assignedTo || ctx.user.id;
@@ -64,14 +84,25 @@ function register(router) {
       );
       if (!member) fail('VALIDATION', [{ field: 'assignedTo', message: 'The assignee must be an active organisation member.' }]);
     }
-    const task = await ctx.db.one(
-      `INSERT INTO tasks (organisation_id, branch_id, title, description, assigned_to, priority, due_at, source,
-        related_resource_type, related_resource_id, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'manual',$8,$9,$10) RETURNING *`,
-      [ctx.organisationId, body.branchId || null, body.title, body.description || null, assignedTo,
-        body.priority || 'medium', body.dueAt || null, body.relatedResourceType || null,
-        body.relatedResourceId || null, ctx.user.id]
-    );
+    const items = checklistLabels(body.checklist);
+    const task = await ctx.db.withTransaction(async (client) => {
+      const created = (await client.query(
+        `INSERT INTO tasks (organisation_id, branch_id, title, description, assigned_to, priority, due_at, source,
+          related_resource_type, related_resource_id, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'manual',$8,$9,$10) RETURNING *`,
+        [ctx.organisationId, body.branchId || null, body.title, body.description || null, assignedTo,
+          body.priority || 'medium', body.dueAt || null, body.relatedResourceType || null,
+          body.relatedResourceId || null, ctx.user.id]
+      )).rows[0];
+      for (const [index, label] of items.entries()) {
+        await client.query(
+          `INSERT INTO task_checklist_items (organisation_id, task_id, label, sort_order)
+           VALUES ($1,$2,$3,$4)`,
+          [ctx.organisationId, created.id, label, index]
+        );
+      }
+      return created;
+    });
     if (assignedTo !== ctx.user.id) {
       await createNotification(ctx.db, ctx, {
         recipientUserIds: [assignedTo], type: 'task_assigned', title: 'Task assigned',
@@ -121,7 +152,12 @@ function register(router) {
        JOIN users u ON u.id = tc.author_user_id WHERE tc.task_id = $1 ORDER BY tc.created_at`, [task.id]
     );
     const assignee = task.assigned_to ? await ctx.db.one('SELECT id, display_name, email FROM users WHERE id = $1', [task.assigned_to]) : null;
-    return { ...task, comments, assignee };
+    const checklist = await ctx.db.many(
+      `SELECT ci.*, u.display_name AS completed_by_name FROM task_checklist_items ci
+       LEFT JOIN users u ON u.id = ci.completed_by
+       WHERE ci.task_id = $1 ORDER BY ci.sort_order, ci.created_at`, [task.id]
+    );
+    return { ...task, comments, assignee, checklist };
   }, { permission: ['tasks.read.own', 'tasks.read.daycare'], permissionMode: 'any' });
 
   router.post('/tasks/:id/comments', async (ctx) => {
@@ -136,6 +172,69 @@ function register(router) {
     );
     return comment;
   }, { permission: ['tasks.read.own', 'tasks.read.daycare'], permissionMode: 'any' });
+
+  router.post('/tasks/:id/checklist', async (ctx) => {
+    const body = validate(ctx.body, { items: { type: 'array', max: 60 } });
+    const task = await taskFor(ctx, ctx.params.id);
+    const items = checklistLabels(body.items);
+    if (!items.length) fail('VALIDATION', [{ field: 'items', message: 'Add at least one checklist item.' }]);
+    const existing = await ctx.db.one(
+      'SELECT COALESCE(MAX(sort_order), -1)::int AS last FROM task_checklist_items WHERE task_id = $1', [task.id]
+    );
+    let order = Number(existing.last) + 1;
+    const created = [];
+    for (const label of items) {
+      created.push(await ctx.db.one(
+        `INSERT INTO task_checklist_items (organisation_id, task_id, label, sort_order)
+         VALUES ($1,$2,$3,$4) RETURNING *`,
+        [ctx.organisationId, task.id, label, order++]
+      ));
+    }
+    await recordAudit(ctx.db, ctx, {
+      action: 'task.checklist_added', resourceType: 'task', resourceId: task.id,
+      metadata: { items: created.length }
+    });
+    ctx.status = 201;
+    return created;
+  }, { permission: ['tasks.read.own', 'tasks.manage.daycare'], permissionMode: 'any' });
+
+  router.patch('/tasks/:id/checklist/:itemId', async (ctx) => {
+    const body = validate(ctx.body, { completed: { type: 'boolean' } });
+    const task = await taskFor(ctx, ctx.params.id);
+    const item = await ctx.db.one(
+      'SELECT * FROM task_checklist_items WHERE id = $1 AND task_id = $2 AND organisation_id = $3',
+      [ctx.params.itemId, task.id, ctx.organisationId]
+    );
+    if (!item) throw new AppError('NOT_FOUND');
+    const updated = await ctx.db.one(
+      `UPDATE task_checklist_items
+       SET completed_at = CASE WHEN $1::boolean THEN now() ELSE NULL END,
+           completed_by = CASE WHEN $1::boolean THEN $2::uuid ELSE NULL END
+       WHERE id = $3::uuid RETURNING *`,
+      [body.completed, body.completed ? ctx.user.id : null, item.id]
+    );
+    await recordAudit(ctx.db, ctx, {
+      action: body.completed ? 'task.checklist_completed' : 'task.checklist_reopened',
+      resourceType: 'task_checklist_item', resourceId: item.id, metadata: { taskId: task.id }
+    });
+    return updated;
+  }, { permission: ['tasks.read.own', 'tasks.manage.daycare'], permissionMode: 'any' });
+
+  router.delete('/tasks/:id/checklist/:itemId', async (ctx) => {
+    const task = await taskFor(ctx, ctx.params.id);
+    const item = await ctx.db.one(
+      'SELECT * FROM task_checklist_items WHERE id = $1 AND task_id = $2 AND organisation_id = $3',
+      [ctx.params.itemId, task.id, ctx.organisationId]
+    );
+    if (!item) throw new AppError('NOT_FOUND');
+    if (!has(ctx, 'tasks.manage.daycare') && task.assigned_to !== ctx.user.id) throw new AppError('FORBIDDEN');
+    await ctx.db.query('DELETE FROM task_checklist_items WHERE id = $1', [item.id]);
+    await recordAudit(ctx.db, ctx, {
+      action: 'task.checklist_removed', resourceType: 'task_checklist_item', resourceId: item.id,
+      metadata: { taskId: task.id }
+    });
+    return { deleted: true };
+  }, { permission: ['tasks.read.own', 'tasks.manage.daycare'], permissionMode: 'any' });
 
   router.get('/tasks/overview/counts', async (ctx) => {
     const scopeAll = has(ctx, 'tasks.read.daycare');
