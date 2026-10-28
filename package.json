@@ -3,23 +3,34 @@
   "private": true,
   "version": "1.0.0",
   "description": "Re-EL ECD - Multi-tenant SaaS platform for Early Childhood Development centres",
+  "license": "UNLICENSED",
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run dev:web & npm run dev:api",
-    "dev:web": "cd apps/web && npx serve .",
-    "dev:api": "cd apps/api && vercel dev",
-    "build": "npm run build:web",
-    "build:web": "echo 'Static build'",
-    "test": "echo 'Tests'",
-    "lint": "echo 'Lint'",
+    "dev": "node scripts/dev.js",
+    "dev:web": "node scripts/serve-web.js",
+    "dev:api": "node apps/api/server.js",
+    "test": "node --test apps/api/tests/*.test.js packages/testing/*.test.js",
+    "test:api": "node --test apps/api/tests/*.test.js",
+    "test:unit": "node --test packages/testing/*.test.js",
     "migrate": "node scripts/migrate.js",
-    "seed": "node scripts/seed-development.js"
+    "seed": "node scripts/seed-development.js",
+    "validate:env": "node scripts/validate-env.js",
+    "check:migrations": "node scripts/check-migrations.js",
+    "check:functions": "node scripts/check-functions.js",
+    "lint": "node scripts/lint.js",
+    "seed:catalog": "node scripts/seed-catalog.js",
+    "docs:api": "node scripts/generate-api-docs.js",
+    "check": "node scripts/lint.js && node scripts/check-migrations.js && node scripts/check-functions.js"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
   },
   "devDependencies": {
-    "serve": "^14.2.1"
+    "@electric-sql/pglite": "^0.3.16",
+    "serve": "^14.2.4"
   },
   "engines": {
     "node": ">=18"

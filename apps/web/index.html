@@ -1,433 +1,273 @@
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Re-EL ECD - Early Childhood Development Platform</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="packages/ui/styles/tokens.css">
-    <link rel="stylesheet" href="packages/ui/components/button.css">
-    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Re-EL ECD — a complete early childhood development management platform for daycare centres, principals, teachers, families and platform administrators.">
+  <meta name="theme-color" content="#3A7D44">
+  <title>Re-EL ECD</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/styles.css?v=20261035">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
+  <script src="config.js?v=20261035"></script>
+  <script src="src/utils.js?v=20261035" defer></script>
+  <script src="src/views/public.js?v=20261035" defer></script>
+  <script src="src/views/platform.js?v=20261035" defer></script>
+  <script src="src/views/overview.js?v=20261035" defer></script>
+  <script src="src/views/learners.js?v=20261035" defer></script>
+  <script src="src/views/admissions.js?v=20261035" defer></script>
+  <script src="src/views/curriculum.js?v=20261035" defer></script>
+  <script src="src/views/assessments.js?v=20261035" defer></script>
+  <script src="src/views/attendance.js?v=20261035" defer></script>
+  <script src="src/views/staff.js?v=20261035" defer></script>
+  <script src="src/views/forms.js?v=20261035" defer></script>
+  <script src="src/views/communications.js?v=20261035" defer></script>
+  <script src="src/views/finance.js?v=20261035" defer></script>
+  <script src="src/views/safety.js?v=20261035" defer></script>
+  <script src="src/views/operations.js?v=20261035" defer></script>
+  <script src="src/views/settings.js?v=20261035" defer></script>
+  <script src="src/views/parent.js?v=20261035" defer></script>
+  <script src="src/app.js?v=20261035" defer></script>
+  <script src="https://unpkg.com/alpinejs@3.14.9/dist/cdn.min.js" defer></script>
 </head>
-<body>
-    <div x-data="app()" x-init="init()">
-        <!-- Login Screen -->
-        <div x-show="!authenticated" class="auth-screen">
-            <div class="auth-container glass-panel">
-                <div class="auth-header">
-                    <h1>Re-EL ECD</h1>
-                    <p>Early Childhood Development Platform</p>
-                </div>
-                <form @submit.prevent="login()">
-                    <div class="form-group">
-                        <label>Email</label>
-                        <input type="email" x-model="loginForm.email" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Password</label>
-                        <input type="password" x-model="loginForm.password" required>
-                    </div>
-                    <button type="submit" class="btn btn-primary" style="width: 100%;">Sign In</button>
-                </form>
-            </div>
+<body x-data="reelApp()" x-init="boot()" @keydown.window.escape="closeOverlays()" @keydown.window.k="if (($event.metaKey || $event.ctrlKey) && !$event.shiftKey) { $event.preventDefault(); openCommand(); }">
+
+  <a href="#view-root" class="sr-only">Skip to main content</a>
+
+  <!-- Boot / session restore -->
+  <div x-show="mode === 'loading'" class="loading-block" style="min-height:100vh">
+    <span class="spinner spinner-lg"></span>
+    <span>Loading Re-EL ECD…</span>
+  </div>
+
+  <!-- Public daycare website and public forms -->
+  <div x-show="mode === 'public'" x-cloak>
+    <div id="public-root"></div>
+  </div>
+
+  <!-- Authentication -->
+  <div x-show="mode === 'login'" x-cloak>
+    <div id="auth-root"></div>
+  </div>
+
+  <!-- Authenticated application shell -->
+  <div x-show="mode === 'app'" x-cloak class="shell">
+    <div class="sidebar-scrim" x-show="sidebarOpen" @click="sidebarOpen = false"></div>
+    <aside class="sidebar" :class="{ open: sidebarOpen }" aria-label="Primary navigation">
+      <div class="sidebar-brand">
+        <div class="brand-mark">R</div>
+        <div>
+          <div class="brand-name">Re-EL ECD</div>
+          <div class="brand-sub" x-text="area === 'platform' ? 'Platform console' : (area === 'parent' ? 'Family portal' : 'Daycare workspace')"></div>
+        </div>
+      </div>
+      <div class="sidebar-scroll">
+        <template x-for="group in navGroups" :key="group.label">
+          <div class="nav-group">
+            <div class="nav-label" x-text="group.label"></div>
+            <template x-for="item in group.items" :key="item.path">
+              <a class="nav-item" :class="{ active: isActive(item.path) }" :href="'#' + item.path" @click="sidebarOpen = false">
+                <i :data-lucide="item.icon"></i>
+                <span x-text="item.label"></span>
+                <span class="nav-badge" x-show="item.badge && item.badge() > 0" x-text="item.badge ? item.badge() : ''"></span>
+              </a>
+            </template>
+          </div>
+        </template>
+        <div class="nav-group" x-show="canSwitchOrganisation">
+          <div class="nav-label">Organisation</div>
+          <select class="select" :value="activeOrganisationId" @change="switchOrganisation($event.target.value)" aria-label="Active organisation">
+            <template x-for="membership in (session ? session.memberships : [])" :key="membership.organisation.id">
+              <option :value="membership.organisation.id" x-text="membership.organisation.name"></option>
+            </template>
+          </select>
+        </div>
+      </div>
+      <div class="sidebar-footer">
+        <div class="row" style="gap:8px">
+          <div class="avatar" x-text="session ? initials(session.user.displayName) : ''"></div>
+          <div style="min-width:0">
+            <div class="strong" style="font-size:0.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" x-text="session ? session.user.displayName : ''"></div>
+            <div class="muted" style="font-size:0.72rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" x-text="roleLabel()"></div>
+          </div>
+          <button class="btn btn-ghost btn-icon btn-sm row-end" @click="signOut()" title="Sign out" aria-label="Sign out"><i data-lucide="log-out"></i></button>
+        </div>
+      </div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <button class="btn btn-ghost btn-icon" @click="sidebarOpen = !sidebarOpen" aria-label="Toggle navigation" style="display:none" :style="window.innerWidth < 960 ? 'display:inline-flex' : ''">
+          <i data-lucide="menu"></i>
+        </button>
+        <div class="topbar-title" x-text="pageTitle"></div>
+        <div class="topbar-spacer"></div>
+        <button class="btn btn-secondary btn-sm" @click="openCommand()" title="Search (Ctrl/Cmd + K)" aria-label="Search">
+          <i data-lucide="search"></i>
+          <span style="display:inline">Search</span>
+          <span class="muted mono" style="font-size:0.68rem">⌘K</span>
+        </button>
+        <button class="btn btn-primary btn-sm" @click="quickOpen = !quickOpen" aria-haspopup="true" :aria-expanded="quickOpen">
+          <i data-lucide="plus"></i>
+          <span>Quick add</span>
+        </button>
+        <button class="btn btn-ghost btn-icon" @click="toggleTheme()" :title="theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'" aria-label="Toggle theme">
+          <i :data-lucide="theme === 'dark' ? 'sun' : 'moon'"></i>
+        </button>
+        <a class="btn btn-ghost btn-icon" href="#/app/communications" title="Notifications" aria-label="Notifications" style="position:relative">
+          <i data-lucide="bell"></i>
+          <span class="badge badge-danger" style="position:absolute;top:-2px;right:-2px;font-size:0.6rem;padding:0 5px" x-show="unread > 0" x-text="unread"></span>
+        </a>
+      </header>
+
+      <div class="content">
+        <div class="alert alert-danger" x-show="error && !loading" style="margin-bottom:16px">
+          <i data-lucide="alert-triangle"></i>
+          <div style="flex:1">
+            <strong x-text="errorTitle || 'Something went wrong'"></strong>
+            <div x-text="error"></div>
+          </div>
+          <button class="btn btn-sm btn-secondary" @click="reload()">Try again</button>
         </div>
 
-        <!-- App Shell -->
-        <div x-show="authenticated" class="app-shell">
-            <aside class="sidebar">
-                <div class="sidebar-header">
-                    <h2>Re-EL ECD</h2>
-                </div>
-                <nav class="sidebar-nav">
-                    <a href="#/app/overview" class="nav-item" :class="{active: currentRoute === '/app/overview'}">
-                        <i data-lucide="layout-dashboard"></i>
-                        <span>Overview</span>
-                    </a>
-                    <a href="#/app/learners" class="nav-item" :class="{active: currentRoute === '/app/learners'}">
-                        <i data-lucide="users"></i>
-                        <span>Learners</span>
-                    </a>
-                    <a href="#/app/attendance" class="nav-item" :class="{active: currentRoute === '/app/attendance'}">
-                        <i data-lucide="calendar-check"></i>
-                        <span>Attendance</span>
-                    </a>
-                    <a href="#/app/curriculum" class="nav-item" :class="{active: currentRoute === '/app/curriculum'}">
-                        <i data-lucide="book-open"></i>
-                        <span>Curriculum</span>
-                    </a>
-                    <a href="#/app/staff" class="nav-item" :class="{active: currentRoute === '/app/staff'}">
-                        <i data-lucide="user-check"></i>
-                        <span>Staff</span>
-                    </a>
-                    <a href="#/app/finance" class="nav-item" :class="{active: currentRoute === '/app/finance'}">
-                        <i data-lucide="dollar-sign"></i>
-                        <span>Finance</span>
-                    </a>
-                    <a href="#/app/parents" class="nav-item" :class="{active: currentRoute === '/app/parents'}">
-                        <i data-lucide="heart"></i>
-                        <span>Parents</span>
-                    </a>
-                    <a href="#/app/settings" class="nav-item" :class="{active: currentRoute === '/app/settings'}">
-                        <i data-lucide="settings"></i>
-                        <span>Settings</span>
-                    </a>
-                </nav>
-            </aside>
-
-            <main class="main-content">
-                <header class="app-header">
-                    <div class="header-left">
-                        <h1 x-text="getPageTitle()"></h1>
-                    </div>
-                    <div class="header-right">
-                        <button class="icon-btn" @click="toggleTheme()">
-                            <i data-lucide="moon"></i>
-                        </button>
-                        <div class="user-menu">
-                            <span x-text="user.name"></span>
-                            <button @click="logout()" class="btn btn-ghost">Logout</button>
-                        </div>
-                    </div>
-                </header>
-
-                <div class="content-area">
-                    <!-- Overview -->
-                    <div x-show="currentRoute === '/app/overview'">
-                        <div class="dashboard-grid">
-                            <div class="surface-card kpi-card">
-                                <div class="kpi-icon" style="background: var(--ecd-mint);">
-                                    <i data-lucide="users" style="color: var(--ecd-green);"></i>
-                                </div>
-                                <div>
-                                    <div class="kpi-value">45</div>
-                                    <div class="kpi-label">Total Learners</div>
-                                </div>
-                            </div>
-                            <div class="surface-card kpi-card">
-                                <div class="kpi-icon" style="background: var(--ecd-peach);">
-                                    <i data-lucide="user-check" style="color: var(--ecd-coral);"></i>
-                                </div>
-                                <div>
-                                    <div class="kpi-value">12</div>
-                                    <div class="kpi-label">Staff Members</div>
-                                </div>
-                            </div>
-                            <div class="surface-card kpi-card">
-                                <div class="kpi-icon" style="background: var(--ecd-lavender); color: white;">
-                                    <i data-lucide="calendar-check"></i>
-                                </div>
-                                <div>
-                                    <div class="kpi-value">92%</div>
-                                    <div class="kpi-label">Attendance Today</div>
-                                </div>
-                            </div>
-                            <div class="surface-card kpi-card">
-                                <div class="kpi-icon" style="background: var(--ecd-yellow);">
-                                    <i data-lucide="dollar-sign" style="color: var(--ecd-forest);"></i>
-                                </div>
-                                <div>
-                                    <div class="kpi-value">R 24,580</div>
-                                    <div class="kpi-label">Fees Outstanding</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Learners -->
-                    <div x-show="currentRoute === '/app/learners'">
-                        <div class="surface-card" style="padding: var(--space-6);">
-                            <div style="display: flex; justify-content: space-between; margin-bottom: var(--space-6);">
-                                <h2>Learner Directory</h2>
-                                <button class="btn btn-primary">Add Learner</button>
-                            </div>
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Name</th>
-                                        <th>Age</th>
-                                        <th>Classroom</th>
-                                        <th>Status</th>
-                                        <th>Parent/Guardian</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td>Amelia Johnson</td>
-                                        <td>4 years</td>
-                                        <td>Butterflies</td>
-                                        <td><span class="badge badge-success">Enrolled</span></td>
-                                        <td>Sarah Johnson</td>
-                                    </tr>
-                                    <tr>
-                                        <td>Noah Smith</td>
-                                        <td>3 years</td>
-                                        <td>Bunnies</td>
-                                        <td><span class="badge badge-success">Enrolled</span></td>
-                                        <td>Michael Smith</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <!-- Attendance -->
-                    <div x-show="currentRoute === '/app/attendance'">
-                        <div class="surface-card" style="padding: var(--space-6);">
-                            <h2>Learner Attendance</h2>
-                            <p style="color: var(--color-text-muted); margin-top: var(--space-4);">Daily attendance register</p>
-                        </div>
-                    </div>
-
-                    <!-- Other routes placeholders -->
-                    <div x-show="!['/app/overview', '/app/learners', '/app/attendance'].includes(currentRoute)">
-                        <div class="surface-card" style="padding: var(--space-6); text-align: center;">
-                            <h2 x-text="getPageTitle()"></h2>
-                            <p style="color: var(--color-text-muted); margin-top: var(--space-4);">Module under development</p>
-                        </div>
-                    </div>
-                </div>
-            </main>
+        <div x-show="loading" class="loading-block">
+          <span class="spinner spinner-lg"></span>
+          <span>Loading…</span>
         </div>
+
+        <div x-show="!loading && denied" class="empty-state">
+          <div class="empty-icon"><i data-lucide="lock"></i></div>
+          <h3>You do not have access to this page</h3>
+          <p>Your role does not include the permission required for this area. Ask an administrator if you believe this is a mistake.</p>
+          <a class="btn btn-primary" href="#/app/overview">Return to your overview</a>
+        </div>
+
+        <div id="view-root" x-show="!loading && !denied"></div>
+      </div>
     </div>
 
-    <script src="src/app.js"></script>
-    <script>
-        lucide.createIcons();
-    </script>
+    <!-- Quick add menu -->
+    <div x-show="quickOpen" x-cloak class="modal-backdrop" @click.self="quickOpen = false" style="align-items:flex-start;padding-top:12vh">
+      <div class="modal modal-narrow">
+        <div class="modal-head"><h3>Quick add</h3><button class="btn btn-ghost btn-icon btn-sm row-end" @click="quickOpen = false" aria-label="Close"><i data-lucide="x"></i></button></div>
+        <div class="modal-body">
+          <div class="stack">
+            <template x-for="action in quickActions" :key="action.label">
+              <button class="btn btn-secondary" style="justify-content:flex-start" @click="quickOpen = false; runQuickAction(action)">
+                <i :data-lucide="action.icon"></i><span x-text="action.label"></span>
+              </button>
+            </template>
+            <div class="muted small" x-show="!quickActions.length">No quick actions are available for your role.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
-    <style>
-        .auth-screen {
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: linear-gradient(135deg, var(--ecd-cream) 0%, var(--ecd-mint) 100%);
-        }
+  <!-- Generic modal -->
+  <div class="modal-backdrop" x-show="modal" x-cloak @click.self="closeModal()">
+    <div class="modal" :class="modal && modal.size === 'wide' ? 'modal-wide' : (modal && modal.size === 'narrow' ? 'modal-narrow' : '')" role="dialog" aria-modal="true" :aria-label="modal ? modal.title : ''">
+      <div class="modal-head">
+        <h3 x-text="modal ? modal.title : ''"></h3>
+        <button class="btn btn-ghost btn-icon btn-sm row-end" @click="closeModal()" aria-label="Close"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-danger" x-show="modal && modal.error" style="margin-bottom:12px"><i data-lucide="alert-circle"></i><span x-text="modal ? modal.error : ''"></span></div>
+        <div x-show="modal && modal.description" class="muted" style="margin-bottom:14px" x-text="modal ? modal.description : ''"></div>
+        <div x-show="modal && modal.type === 'detail'" x-html="modal ? modal.html : ''"></div>
+        <div x-show="modal && modal.type === 'confirm'">
+          <div class="alert" :class="modal && modal.danger ? 'alert-warn' : 'alert-info'" style="margin-bottom:10px">
+            <i data-lucide="alert-triangle"></i>
+            <span x-text="modal ? modal.message : ''"></span>
+          </div>
+        </div>
+        <form x-show="modal && modal.type === 'form'" @submit.prevent="submitModal()">
+          <div class="form-grid">
+            <template x-for="field in (modal ? modal.fields : [])" :key="field.name">
+              <div class="field" :class="field.span === 2 ? 'span-2' : ''">
+                <label :for="'modal-' + field.name" x-text="field.label"></label>
+                <template x-if="field.type === 'textarea'">
+                  <textarea class="textarea" :id="'modal-' + field.name" :name="field.name" :required="field.required" :placeholder="field.placeholder || ''" x-model="modal.data[field.name]"></textarea>
+                </template>
+                <template x-if="field.type === 'select'">
+                  <select class="select" :id="'modal-' + field.name" :name="field.name" :required="field.required" x-model="modal.data[field.name]">
+                    <option value="">Select…</option>
+                    <template x-for="option in (field.options || [])" :key="option.value !== undefined ? option.value : option">
+                      <option :value="option.value !== undefined ? option.value : option" x-text="option.label !== undefined ? option.label : option"></option>
+                    </template>
+                  </select>
+                </template>
+                <template x-if="field.type === 'checkbox'">
+                  <label class="check"><input type="checkbox" :id="'modal-' + field.name" x-model="modal.data[field.name]"><span x-text="field.help || 'Enabled'"></span></label>
+                </template>
+                <template x-if="!field.type || !['textarea','select','checkbox'].includes(field.type)">
+                  <input class="input" :id="'modal-' + field.name" :name="field.name" :type="field.type || 'text'" :required="field.required" :placeholder="field.placeholder || ''" :min="field.min" :max="field.max" :step="field.step" x-model="modal.data[field.name]">
+                </template>
+                <div class="hint" x-show="field.help && field.type !== 'checkbox'" x-text="field.help"></div>
+              </div>
+            </template>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary" @click="closeModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="modal && modal.saving">
+              <span class="spinner" x-show="modal && modal.saving" style="width:14px;height:14px"></span>
+              <span x-text="modal ? (modal.submitLabel || 'Save') : 'Save'"></span>
+            </button>
+          </div>
+        </form>
+      </div>
+      <div class="modal-foot" x-show="modal && modal.type === 'detail'">
+        <button class="btn btn-secondary" @click="closeModal()">Close</button>
+      </div>
+      <div class="modal-foot" x-show="modal && modal.type === 'confirm'">
+        <button class="btn btn-secondary" @click="closeModal()">Cancel</button>
+        <button class="btn" :class="modal && modal.danger ? 'btn-danger' : 'btn-primary'" @click="confirmModal()" :disabled="modal && modal.saving">
+          <span class="spinner" x-show="modal && modal.saving" style="width:14px;height:14px"></span>
+          <span x-text="modal ? modal.submitLabel : 'Confirm'"></span>
+        </button>
+      </div>
+    </div>
+  </div>
 
-        .auth-container {
-            width: 100%;
-            max-width: 400px;
-            padding: var(--space-8);
-        }
+  <!-- Command palette -->
+  <div class="command-backdrop" x-show="commandOpen" x-cloak @click.self="commandOpen = false">
+    <div class="command" role="dialog" aria-modal="true" aria-label="Command palette">
+      <div class="command-input">
+        <i data-lucide="search"></i>
+        <input type="text" x-ref="commandInput" x-model="commandQuery" @input.debounce.180ms="runCommandSearch()" @keydown.arrow-down.prevent="commandIndex = Math.min(commandIndex + 1, commandResults.length - 1)" @keydown.arrow-up.prevent="commandIndex = Math.max(commandIndex - 1, 0)" @keydown.enter.prevent="selectCommand(commandResults[commandIndex])" placeholder="Search learners, staff, pages or actions…" aria-label="Search">
+        <span class="muted small">Esc</span>
+      </div>
+      <div class="command-results">
+        <template x-for="(result, index) in commandResults" :key="result.key || result.route || result.label">
+          <div class="command-item" :class="{ active: index === commandIndex }" @click="selectCommand(result)" @mouseenter="commandIndex = index">
+            <i :data-lucide="result.icon || 'arrow-right'"></i>
+            <span x-text="result.label"></span>
+            <span class="cmd-kind" x-text="result.kind"></span>
+          </div>
+        </template>
+        <div class="command-empty" x-show="!commandResults.length">No results. Try a learner name, staff member or page.</div>
+      </div>
+    </div>
+  </div>
 
-        .auth-header {
-            text-align: center;
-            margin-bottom: var(--space-8);
-        }
+  <!-- Toasts -->
+  <div class="toast-root" aria-live="polite">
+    <template x-for="toast in toasts" :key="toast.id">
+      <div class="toast" :class="toast.type">
+        <i :data-lucide="toast.type === 'error' ? 'alert-circle' : (toast.type === 'warn' ? 'alert-triangle' : 'check-circle')"></i>
+        <div style="flex:1"><div x-text="toast.message"></div></div>
+        <button class="btn btn-ghost btn-icon btn-sm" @click="dismissToast(toast.id)" aria-label="Dismiss"><i data-lucide="x"></i></button>
+      </div>
+    </template>
+  </div>
 
-        .auth-header h1 {
-            color: var(--ecd-green);
-            margin: 0 0 var(--space-2) 0;
-            font-size: 28px;
-        }
-
-        .form-group {
-            margin-bottom: var(--space-4);
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: var(--space-2);
-            font-weight: 500;
-        }
-
-        .form-group input {
-            width: 100%;
-            padding: var(--space-3);
-            border: 1px solid var(--color-border);
-            border-radius: var(--radius-md);
-            background: var(--color-surface);
-            color: var(--color-text);
-        }
-
-        .app-shell {
-            display: grid;
-            grid-template-columns: var(--sidebar-width) 1fr;
-            min-height: 100vh;
-        }
-
-        .sidebar {
-            background: var(--color-surface);
-            border-right: 1px solid var(--color-border);
-            display: flex;
-            flex-direction: column;
-        }
-
-        .sidebar-header {
-            padding: var(--space-6);
-            border-bottom: 1px solid var(--color-border);
-        }
-
-        .sidebar-header h2 {
-            margin: 0;
-            color: var(--ecd-green);
-            font-size: 20px;
-        }
-
-        .sidebar-nav {
-            padding: var(--space-4);
-            flex: 1;
-        }
-
-        .nav-item {
-            display: flex;
-            align-items: center;
-            gap: var(--space-3);
-            padding: var(--space-3) var(--space-4);
-            margin-bottom: var(--space-1);
-            border-radius: var(--radius-md);
-            text-decoration: none;
-            color: var(--color-text);
-            transition: all var(--motion-fast) ease;
-        }
-
-        .nav-item:hover {
-            background: var(--color-surface-muted);
-        }
-
-        .nav-item.active {
-            background: var(--ecd-green);
-            color: white;
-        }
-
-        .nav-item i {
-            width: 20px;
-            height: 20px;
-        }
-
-        .main-content {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .app-header {
-            height: var(--header-height);
-            background: var(--color-surface);
-            border-bottom: 1px solid var(--color-border);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 var(--space-6);
-        }
-
-        .app-header h1 {
-            margin: 0;
-            font-size: 24px;
-        }
-
-        .header-right {
-            display: flex;
-            align-items: center;
-            gap: var(--space-4);
-        }
-
-        .icon-btn {
-            background: transparent;
-            border: none;
-            padding: var(--space-2);
-            border-radius: var(--radius-md);
-            color: var(--color-text);
-        }
-
-        .icon-btn:hover {
-            background: var(--color-surface-muted);
-        }
-
-        .user-menu {
-            display: flex;
-            align-items: center;
-            gap: var(--space-3);
-        }
-
-        .content-area {
-            padding: var(--space-6);
-            max-width: var(--content-max-width);
-            width: 100%;
-        }
-
-        .dashboard-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: var(--space-6);
-            margin-bottom: var(--space-6);
-        }
-
-        .kpi-card {
-            padding: var(--space-6);
-            display: flex;
-            align-items: center;
-            gap: var(--space-4);
-        }
-
-        .kpi-icon {
-            width: 48px;
-            height: 48px;
-            border-radius: var(--radius-md);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .kpi-icon i {
-            width: 24px;
-            height: 24px;
-        }
-
-        .kpi-value {
-            font-size: 28px;
-            font-weight: 700;
-            line-height: 1;
-        }
-
-        .kpi-label {
-            color: var(--color-text-muted);
-            font-size: 13px;
-            margin-top: var(--space-1);
-        }
-
-        .data-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        .data-table th,
-        .data-table td {
-            padding: var(--space-3) var(--space-4);
-            text-align: left;
-            border-bottom: 1px solid var(--color-border);
-        }
-
-        .data-table th {
-            background: var(--color-surface-muted);
-            font-weight: 600;
-            font-size: 13px;
-        }
-
-        .badge {
-            display: inline-block;
-            padding: var(--space-1) var(--space-3);
-            border-radius: var(--radius-pill);
-            font-size: 12px;
-            font-weight: 500;
-        }
-
-        .badge-success {
-            background: var(--ecd-mint);
-            color: var(--ecd-green);
-        }
-
-        @media (max-width: 768px) {
-            .app-shell {
-                grid-template-columns: 1fr;
-            }
-            .sidebar {
-                display: none;
-            }
-        }
-    </style>
+  <noscript>
+    <div style="padding:32px;font-family:sans-serif">Re-EL ECD requires JavaScript to run. Please enable JavaScript in your browser.</div>
+  </noscript>
 </body>
 </html>

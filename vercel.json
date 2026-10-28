@@ -1,15 +1,24 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
   "builds": [
-    {
-      "src": "apps/api/api/[[...path]].js",
-      "use": "@vercel/node"
-    }
+    { "src": "api/[...path].js", "use": "@vercel/node" },
+    { "src": "apps/web/**", "use": "@vercel/static" }
   ],
   "routes": [
+    { "src": "/api/(.*)", "dest": "/api/[...path].js" },
+    { "src": "/healthz", "dest": "/api/[...path].js" },
+    { "src": "/(.*\\.[a-zA-Z0-9]+)", "dest": "/apps/web/$1" },
+    { "src": "/(.*)", "dest": "/apps/web/index.html" }
+  ],
+  "headers": [
     {
-      "src": "/api/(.*)",
-      "dest": "apps/api/api/[[...path]].js"
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "X-Frame-Options", "value": "SAMEORIGIN" }
+      ]
     }
   ]
 }

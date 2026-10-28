@@ -1,4 +1,6 @@
-export const ROLES = {
+'use strict';
+
+const ROLES = {
   PLATFORM_SUPER_ADMIN: 'platform_super_admin',
   PLATFORM_SUPPORT_ADMIN: 'platform_support_admin',
   PLATFORM_FINANCE_ADMIN: 'platform_finance_admin',
@@ -16,18 +18,126 @@ export const ROLES = {
   SUBSTITUTE_STAFF: 'substitute_staff'
 };
 
-export const ROLE_HIERARCHY = {
-  [ROLES.PLATFORM_SUPER_ADMIN]: 100,
-  [ROLES.ORGANISATION_OWNER]: 90,
-  [ROLES.PRINCIPAL]: 80,
-  [ROLES.DAYCARE_ADMINISTRATOR]: 75,
-  [ROLES.DAYCARE_MANAGER]: 70,
-  [ROLES.FINANCE_OFFICER]: 65,
-  [ROLES.CURRICULUM_COORDINATOR]: 65,
-  [ROLES.ADMISSIONS_OFFICER]: 60,
-  [ROLES.TEACHER]: 50,
-  [ROLES.ASSISTANT_TEACHER]: 40,
-  [ROLES.SUBSTITUTE_STAFF]: 30,
-  [ROLES.SUPPORT_STAFF]: 20,
-  [ROLES.PARENT_GUARDIAN]: 10
+const ROLE_DEFINITIONS = [
+  { key: ROLES.PLATFORM_SUPER_ADMIN, name: 'Platform Super Admin', scope: 'platform', description: 'Global platform administration.' },
+  { key: ROLES.PLATFORM_SUPPORT_ADMIN, name: 'Platform Support Admin', scope: 'platform', description: 'Restricted diagnostics and authorised support.' },
+  { key: ROLES.PLATFORM_FINANCE_ADMIN, name: 'Platform Finance Admin', scope: 'platform', description: 'Subscription billing and platform financial reporting.' },
+  { key: ROLES.ORGANISATION_OWNER, name: 'Organisation Owner', scope: 'organisation', description: 'Organisation-wide business oversight.' },
+  { key: ROLES.PRINCIPAL, name: 'Principal', scope: 'daycare', description: 'Overall daycare operations.' },
+  { key: ROLES.DAYCARE_ADMINISTRATOR, name: 'Daycare Administrator', scope: 'daycare', description: 'Delegated administration.' },
+  { key: ROLES.DAYCARE_MANAGER, name: 'Daycare Manager', scope: 'daycare', description: 'Daily operations and coordination.' },
+  { key: ROLES.CURRICULUM_COORDINATOR, name: 'Curriculum Coordinator', scope: 'daycare', description: 'Curriculum oversight.' },
+  { key: ROLES.TEACHER, name: 'Teacher', scope: 'assigned', description: 'Assigned classes and learner records.' },
+  { key: ROLES.ASSISTANT_TEACHER, name: 'Assistant Teacher', scope: 'assigned', description: 'Delegated classroom operations.' },
+  { key: ROLES.SUPPORT_STAFF, name: 'Support Staff', scope: 'assigned', description: 'Cleaning, kitchen, maintenance and duties.' },
+  { key: ROLES.FINANCE_OFFICER, name: 'Finance Officer', scope: 'daycare', description: 'Billing, payments, expenses and reports.' },
+  { key: ROLES.ADMISSIONS_OFFICER, name: 'Admissions Officer', scope: 'daycare', description: 'Enquiries, applications and admissions.' },
+  { key: ROLES.PARENT_GUARDIAN, name: 'Parent / Guardian', scope: 'own', description: 'Authorised child records and parent functions.' },
+  { key: ROLES.SUBSTITUTE_STAFF, name: 'Substitute Staff', scope: 'assigned', description: 'Temporary shift and classroom access.' }
+];
+
+const ROLE_PERMISSIONS = {
+  [ROLES.PLATFORM_SUPER_ADMIN]: ['platform.organisations.read', 'platform.organisations.manage',
+    'platform.subscriptions.read', 'platform.subscriptions.manage', 'platform.audit.read', 'platform.health.read',
+    'platform.support.manage', 'platform.settings.manage', 'platform.features.manage', 'platform.impersonate.manage'],
+  [ROLES.PLATFORM_SUPPORT_ADMIN]: [
+    'platform.organisations.read', 'platform.audit.read', 'platform.health.read', 'platform.support.manage'
+  ],
+  [ROLES.PLATFORM_FINANCE_ADMIN]: [
+    'platform.organisations.read', 'platform.subscriptions.read', 'platform.subscriptions.manage'
+  ],
+  [ROLES.ORGANISATION_OWNER]: ['organisation.*', 'branches.*', 'access.*', 'delegations.*', 'learners.*', 'guardians.*',
+    'medical.*', 'collections.*', 'admissions.*', 'classrooms.*', 'curriculum.*', 'assessments.*', 'portfolio.*',
+    'attendance.*', 'staff.*', 'shifts.*', 'staff_attendance.*', 'timesheets.*', 'leave.*', 'forms.*', 'consent.*',
+    'announcements.*', 'messages.*', 'notifications.*', 'finance.*', 'expenses.*', 'inventory.*', 'safety.*',
+    'tasks.*', 'reports.*', 'website.*', 'audit.read.daycare'],
+  [ROLES.PRINCIPAL]: ['organisation.read.daycare', 'organisation.update.daycare', 'organisation.settings.manage',
+    'branches.read.daycare', 'branches.manage.daycare', 'access.read.daycare', 'access.manage.daycare',
+    'delegations.manage.daycare', 'learners.read.daycare', 'learners.create.daycare', 'learners.update.daycare',
+    'learners.archive.daycare', 'guardians.read.daycare', 'guardians.manage.daycare', 'medical.read.daycare',
+    'medical.manage.daycare', 'collections.read.daycare', 'collections.record.daycare', 'admissions.read.daycare',
+    'admissions.manage.daycare', 'admissions.enrol.daycare', 'classrooms.read.daycare', 'classrooms.manage.daycare',
+    'curriculum.read.daycare', 'curriculum.create.daycare', 'curriculum.publish.daycare', 'assessments.read.daycare',
+    'assessments.create.assigned', 'assessments.publish.daycare', 'portfolio.read.assigned', 'attendance.read.daycare',
+    'attendance.record.daycare', 'attendance.correct.daycare', 'attendance.reports.daycare', 'staff.read.daycare',
+    'staff.manage.daycare', 'shifts.read.daycare', 'shifts.create.daycare', 'shifts.approve.daycare',
+    'staff_attendance.read.daycare', 'staff_attendance.record.own', 'staff_attendance.record.daycare', 'staff_attendance.correct.daycare',
+    'timesheets.read.daycare', 'timesheets.approve.daycare', 'leave.request.own', 'leave.read.daycare',
+    'leave.manage.daycare', 'forms.read.daycare', 'forms.manage.daycare', 'forms.submissions.review.daycare',
+    'consent.read.daycare', 'consent.manage.daycare', 'announcements.read.daycare', 'announcements.manage.daycare',
+    'messages.read.own', 'messages.send.own', 'notifications.read.own', 'finance.read.daycare', 'finance.manage.daycare',
+    'finance.invoice.create.daycare', 'finance.invoice.issue.daycare', 'finance.payment.record.daycare',
+    'finance.payment.reconcile.daycare', 'finance.reports.daycare', 'expenses.read.daycare', 'expenses.manage.daycare',
+    'inventory.read.daycare', 'inventory.manage.daycare', 'safety.read.daycare', 'safety.report.daycare',
+    'safety.manage.daycare', 'tasks.read.daycare', 'tasks.manage.daycare', 'reports.read.daycare', 'reports.export.daycare',
+    'website.read.daycare', 'website.manage.daycare', 'audit.read.daycare'],
+  [ROLES.DAYCARE_ADMINISTRATOR]: ['organisation.read.daycare', 'branches.read.daycare', 'access.read.daycare',
+    'learners.read.daycare', 'learners.create.daycare', 'learners.update.daycare', 'guardians.read.daycare',
+    'guardians.manage.daycare', 'medical.read.daycare', 'medical.manage.daycare', 'collections.read.daycare',
+    'collections.record.daycare', 'admissions.read.daycare', 'admissions.manage.daycare', 'admissions.enrol.daycare',
+    'classrooms.read.daycare', 'classrooms.manage.daycare', 'curriculum.read.daycare', 'curriculum.create.daycare',
+    'assessments.read.daycare', 'assessments.create.assigned', 'attendance.read.daycare', 'attendance.record.daycare',
+    'attendance.correct.daycare', 'attendance.reports.daycare', 'staff.read.daycare', 'staff.manage.daycare',
+    'shifts.read.daycare', 'shifts.create.daycare', 'shifts.approve.daycare', 'staff_attendance.read.daycare',
+    'staff_attendance.record.own', 'timesheets.read.daycare', 'leave.request.own', 'leave.read.daycare',
+    'forms.read.daycare', 'forms.manage.daycare', 'forms.submissions.review.daycare', 'consent.read.daycare',
+    'announcements.read.daycare', 'announcements.manage.daycare', 'messages.read.own', 'messages.send.own',
+    'notifications.read.own', 'finance.read.daycare', 'finance.invoice.create.daycare', 'finance.invoice.issue.daycare',
+    'finance.payment.record.daycare', 'expenses.read.daycare', 'inventory.read.daycare', 'inventory.manage.daycare',
+    'safety.read.daycare', 'safety.report.daycare', 'tasks.read.daycare', 'tasks.manage.daycare', 'reports.read.daycare',
+    'reports.export.daycare', 'website.read.daycare', 'website.manage.daycare'],
+  [ROLES.DAYCARE_MANAGER]: ['organisation.read.daycare', 'branches.read.daycare', 'learners.read.daycare',
+    'learners.update.daycare', 'guardians.read.daycare', 'guardians.manage.daycare', 'medical.read.daycare',
+    'collections.read.daycare', 'collections.record.daycare', 'admissions.read.daycare', 'admissions.manage.daycare',
+    'classrooms.read.daycare', 'classrooms.manage.daycare', 'curriculum.read.daycare', 'curriculum.create.daycare',
+    'assessments.read.daycare', 'attendance.read.daycare', 'attendance.record.daycare', 'attendance.correct.daycare',
+    'attendance.reports.daycare', 'staff.read.daycare', 'shifts.read.daycare', 'shifts.create.daycare',
+    'shifts.approve.daycare', 'staff_attendance.read.daycare', 'staff_attendance.record.own', 'staff_attendance.record.daycare', 'timesheets.read.daycare',
+    'leave.request.own', 'leave.read.daycare', 'leave.manage.daycare', 'forms.read.daycare', 'forms.submissions.review.daycare',
+    'announcements.read.daycare', 'announcements.manage.daycare', 'messages.read.own', 'messages.send.own',
+    'notifications.read.own', 'finance.read.daycare', 'inventory.read.daycare', 'inventory.manage.daycare',
+    'safety.read.daycare', 'safety.report.daycare', 'safety.manage.daycare', 'tasks.read.daycare', 'tasks.manage.daycare',
+    'reports.read.daycare', 'reports.export.daycare'],
+  [ROLES.CURRICULUM_COORDINATOR]: ['learners.read.daycare', 'classrooms.read.daycare', 'curriculum.read.daycare',
+    'curriculum.create.daycare', 'curriculum.publish.daycare', 'assessments.read.daycare', 'assessments.create.assigned',
+    'assessments.publish.daycare', 'portfolio.read.assigned', 'attendance.read.assigned', 'reports.read.daycare',
+    'messages.read.own', 'messages.send.own', 'notifications.read.own', 'leave.request.own', 'tasks.read.own'],
+  [ROLES.TEACHER]: ['learners.read.assigned', 'learners.update.assigned', 'guardians.read.assigned',
+    'medical.read.daycare', 'collections.read.daycare', 'collections.record.daycare', 'classrooms.read.daycare',
+    'curriculum.read.daycare', 'curriculum.create.daycare', 'assessments.read.assigned', 'assessments.create.assigned',
+    'portfolio.read.assigned', 'portfolio.manage.assigned', 'attendance.read.assigned', 'attendance.record.assigned',
+    'shifts.read.assigned', 'staff_attendance.record.own', 'leave.request.own', 'messages.read.own',
+    'messages.send.own', 'notifications.read.own', 'tasks.read.own', 'reports.read.assigned', 'safety.report.daycare'],
+  [ROLES.ASSISTANT_TEACHER]: ['learners.read.assigned', 'classrooms.read.daycare', 'curriculum.read.daycare',
+    'assessments.read.assigned', 'assessments.create.assigned', 'attendance.read.assigned', 'attendance.record.assigned',
+    'shifts.read.assigned', 'staff_attendance.record.own', 'leave.request.own', 'messages.read.own',
+    'notifications.read.own', 'tasks.read.own'],
+  [ROLES.SUPPORT_STAFF]: ['tasks.read.own', 'inventory.read.daycare', 'safety.report.daycare',
+    'shifts.read.assigned', 'staff_attendance.record.own', 'leave.request.own', 'notifications.read.own',
+    'announcements.read.daycare', 'messages.read.own'],
+  [ROLES.FINANCE_OFFICER]: ['learners.read.daycare', 'guardians.read.daycare', 'finance.read.daycare',
+    'finance.manage.daycare', 'finance.invoice.create.daycare', 'finance.invoice.issue.daycare',
+    'finance.payment.record.daycare', 'finance.payment.reconcile.daycare', 'finance.reports.daycare',
+    'expenses.read.daycare', 'expenses.manage.daycare', 'inventory.read.daycare', 'reports.read.daycare',
+    'reports.export.daycare', 'messages.read.own', 'messages.send.own', 'notifications.read.own',
+    'leave.request.own', 'tasks.read.own', 'audit.read.daycare'],
+  [ROLES.ADMISSIONS_OFFICER]: ['learners.read.daycare', 'learners.create.daycare', 'learners.update.daycare',
+    'guardians.read.daycare', 'guardians.manage.daycare', 'admissions.read.daycare', 'admissions.manage.daycare',
+    'admissions.enrol.daycare', 'classrooms.read.daycare', 'forms.read.daycare', 'forms.submissions.review.daycare',
+    'announcements.read.daycare', 'messages.read.own', 'messages.send.own', 'notifications.read.own',
+    'leave.request.own', 'tasks.read.own', 'reports.read.daycare'],
+  [ROLES.PARENT_GUARDIAN]: ['parent.read.own', 'parent.forms.submit.own', 'parent.finance.read.own',
+    'parent.absence.report.own', 'messages.read.own', 'messages.send.own', 'notifications.read.own'],
+  [ROLES.SUBSTITUTE_STAFF]: ['learners.read.assigned', 'attendance.read.assigned', 'attendance.record.assigned',
+    'shifts.read.assigned', 'staff_attendance.record.own', 'tasks.read.own', 'notifications.read.own',
+    'safety.report.daycare']
 };
+
+const ROLE_HIERARCHY = Object.fromEntries(
+  [ROLES.PLATFORM_SUPER_ADMIN, ROLES.ORGANISATION_OWNER, ROLES.PRINCIPAL, ROLES.DAYCARE_ADMINISTRATOR,
+    ROLES.DAYCARE_MANAGER, ROLES.FINANCE_OFFICER, ROLES.CURRICULUM_COORDINATOR, ROLES.ADMISSIONS_OFFICER,
+    ROLES.TEACHER, ROLES.ASSISTANT_TEACHER, ROLES.SUBSTITUTE_STAFF, ROLES.SUPPORT_STAFF, ROLES.PARENT_GUARDIAN]
+    .map((role, index, all) => [role, (all.length - index) * 10])
+);
+
+module.exports = { ROLES, ROLE_DEFINITIONS, ROLE_PERMISSIONS, ROLE_HIERARCHY };

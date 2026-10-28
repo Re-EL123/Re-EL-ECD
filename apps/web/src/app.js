@@ -1,61 +1,878 @@
-function app() {
-    return {
-        authenticated: false,
-        currentRoute: '/app/overview',
-        user: { name: 'Admin User', email: 'admin@example.com' },
-        loginForm: { email: '', password: '' },
-        
-        init() {
-            // Check auth
-            this.setupRouting();
-            // Listen for hash changes
-            window.addEventListener('hashchange', () => {
-                this.setupRouting();
-            });
-        },
-        
-        setupRouting() {
-            const hash = window.location.hash || '#/app/overview';
-            this.currentRoute = hash.substring(1);
-        },
-        
-        login() {
-            // Simple demo login
-            if (this.loginForm.email && this.loginForm.password) {
-                this.authenticated = true;
-                window.location.hash = '#/app/overview';
-                this.setupRouting();
-                setTimeout(() => {
-                    if (typeof lucide !== 'undefined') {
-                        lucide.createIcons();
-                    }
-                }, 100);
-            }
-        },
-        
-        logout() {
-            this.authenticated = false;
-            window.location.hash = '#/login';
-        },
-        
-        getPageTitle() {
-            const titles = {
-                '/app/overview': 'Dashboard',
-                '/app/learners': 'Learners',
-                '/app/attendance': 'Attendance',
-                '/app/curriculum': 'Curriculum',
-                '/app/staff': 'Staff',
-                '/app/finance': 'Finance',
-                '/app/parents': 'Parents',
-                '/app/settings': 'Settings'
-            };
-            return titles[this.currentRoute] || 'Re-EL ECD';
-        },
-        
-        toggleTheme() {
-            const html = document.documentElement;
-            const current = html.getAttribute('data-theme');
-            html.setAttribute('data-theme', current === 'dark' ? 'light' : 'dark');
-        }
+'use strict';
+
+/* Application shell, router, session state and shared actions. */
+(function () {
+  const Reel = window.Reel;
+  const V = Reel.views;
+
+  function route(path, area, view, permission, title) {
+    return { path, area, view, permission, title };
+  }
+
+  const ROUTES = [
+    route('/login', 'login', null, null, 'Sign in'),
+    route('/site', 'public', 'publicSite', null, 'Daycare website'),
+    route('/site/:slug', 'public', 'publicSite', null, 'Daycare website'),
+    route('/site/:slug/apply', 'public', 'publicApply', null, 'Enquire'),
+    route('/site/:slug/forms/:formSlug', 'public', 'publicForm', null, 'Form'),
+
+    route('/platform/overview', 'platform', 'platformOverview', 'platform.organisations.read', 'Platform overview'),
+    route('/platform/organisations', 'platform', 'platformOrganisations', 'platform.organisations.read', 'Organisation directory'),
+    route('/platform/organisations/:id', 'platform', 'platformOrganisationDetail', 'platform.organisations.read', 'Organisation detail'),
+    route('/platform/subscriptions', 'platform', 'platformSubscriptions', 'platform.subscriptions.read', 'Subscriptions'),
+    route('/platform/access', 'platform', 'platformAccess', 'platform.organisations.read', 'Platform access'),
+    route('/platform/audit', 'platform', 'platformAudit', 'platform.audit.read', 'Platform audit'),
+    route('/platform/health', 'platform', 'platformHealth', 'platform.health.read', 'System health'),
+    route('/platform/settings', 'platform', 'platformSettings', 'platform.organisations.read', 'Platform settings'),
+    route('/platform/support', 'platform', 'platformSupport', 'platform.support.manage', 'Support workspace'),
+
+    route('/app/overview', 'app', 'overview', ['reports.read.daycare', 'tasks.read.own', 'attendance.read.assigned'], 'Overview'),
+    route('/app/learners', 'app', 'learners', ['learners.read.daycare', 'learners.read.assigned'], 'Learners'),
+    route('/app/learners/:id', 'app', 'learnerDetail', ['learners.read.daycare', 'learners.read.assigned'], 'Learner profile'),
+    route('/app/admissions', 'app', 'admissions', 'admissions.read.daycare', 'Admissions'),
+    route('/app/classrooms', 'app', 'classrooms', 'classrooms.read.daycare', 'Classrooms'),
+    route('/app/curriculum', 'app', 'curriculum', 'curriculum.read.daycare', 'Curriculum'),
+    route('/app/activities', 'app', 'activities', 'curriculum.read.daycare', 'Activities'),
+    route('/app/calendar', 'app', 'calendar', 'curriculum.read.daycare', 'Calendar'),
+    route('/app/assessments', 'app', 'assessments', ['assessments.read.daycare', 'assessments.read.assigned'], 'Assessments'),
+    route('/app/learner-attendance', 'app', 'attendance', ['attendance.read.daycare', 'attendance.read.assigned'], 'Learner attendance'),
+    route('/app/staff', 'app', 'staff', 'staff.read.daycare', 'Staff'),
+    route('/app/staff/:id', 'app', 'staffDetail', 'staff.read.daycare', 'Staff profile'),
+    route('/app/staff-shifts', 'app', 'shifts', ['shifts.read.daycare', 'shifts.read.assigned'], 'Shift calendar'),
+    route('/app/staff-attendance', 'app', 'staffAttendance', ['staff_attendance.read.daycare', 'staff_attendance.read.assigned', 'staff_attendance.record.own'], 'Staff attendance'),
+    route('/app/leave', 'app', 'leave', ['leave.read.daycare', 'leave.request.own'], 'Leave'),
+    route('/app/forms', 'app', 'forms', ['forms.read.daycare', 'forms.submissions.review.daycare'], 'Forms'),
+    route('/app/communications', 'app', 'communications', ['messages.read.own', 'announcements.read.daycare'], 'Communications'),
+    route('/app/finance', 'app', 'finance', 'finance.read.daycare', 'Finance'),
+    route('/app/expenses', 'app', 'expenses', ['expenses.read.daycare', 'expenses.manage.daycare'], 'Expenses'),
+    route('/app/inventory', 'app', 'inventory', 'inventory.read.daycare', 'Inventory'),
+    route('/app/safety', 'app', 'safety', 'safety.read.daycare', 'Health and safety'),
+    route('/app/tasks', 'app', 'tasks', ['tasks.read.own', 'tasks.read.daycare'], 'Tasks'),
+    route('/app/reports', 'app', 'reports', ['reports.read.daycare', 'reports.read.assigned'], 'Reports'),
+    route('/app/settings', 'app', 'settings', 'organisation.read.daycare', 'Settings'),
+    route('/app/website', 'app', 'website', 'website.read.daycare', 'Public website'),
+    route('/app/access', 'app', 'access', 'access.read.daycare', 'Users and access'),
+    route('/app/audit', 'app', 'audit', 'audit.read.daycare', 'Audit log'),
+    route('/app/automation', 'app', 'automation', 'organisation.settings.manage', 'Automation'),
+
+    route('/parent/overview', 'parent', 'parentOverview', 'parent.read.own', 'Family home'),
+    route('/parent/children', 'parent', 'parentChildren', 'parent.read.own', 'My children'),
+    route('/parent/children/:id', 'parent', 'parentChild', 'parent.read.own', 'Child profile'),
+    route('/parent/activities', 'parent', 'parentActivities', 'parent.read.own', 'Activity feed'),
+    route('/parent/progress', 'parent', 'parentProgress', 'parent.read.own', 'Development'),
+    route('/parent/attendance', 'parent', 'parentAttendance', 'parent.read.own', 'Attendance'),
+    route('/parent/forms', 'parent', 'parentForms', 'parent.forms.submit.own', 'Forms'),
+    route('/parent/messages', 'parent', 'parentMessages', 'messages.read.own', 'Messages'),
+    route('/parent/finance', 'parent', 'parentFinance', 'parent.finance.read.own', 'Fees'),
+    route('/parent/settings', 'parent', 'parentSettings', 'parent.read.own', 'Profile and consent')
+  ];
+
+  function compile(pattern) {
+    const keys = [];
+    const regex = new RegExp('^' + pattern.split('/').map((segment) => {
+      if (segment.startsWith(':')) { keys.push(segment.slice(1)); return '([^/]+)'; }
+      return segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }).join('/') + '/?$');
+    return { regex, keys };
+  }
+
+  ROUTES.forEach((r) => { const c = compile(r.path); r.regex = c.regex; r.keys = c.keys; });
+
+  function matchRoute(path) {
+    for (const r of ROUTES) {
+      const match = r.regex.exec(path);
+      if (!match) continue;
+      const params = {};
+      r.keys.forEach((key, index) => { params[key] = decodeURIComponent(match[index + 1]); });
+      return { route: r, params };
     }
-}
+    return null;
+  }
+
+  const NAV = {
+    platform: [
+      { label: 'Platform', items: [
+        { path: '/platform/overview', label: 'Overview', icon: 'layout-dashboard', permission: 'platform.organisations.read' },
+        { path: '/platform/organisations', label: 'Organisations', icon: 'building-2', permission: 'platform.organisations.read' },
+        { path: '/platform/subscriptions', label: 'Subscriptions', icon: 'credit-card', permission: 'platform.subscriptions.read' },
+        { path: '/platform/access', label: 'Platform access', icon: 'shield-check', permission: 'platform.organisations.read' }
+      ] },
+      { label: 'Governance', items: [
+        { path: '/platform/audit', label: 'Audit explorer', icon: 'scroll-text', permission: 'platform.audit.read' },
+        { path: '/platform/health', label: 'System health', icon: 'activity', permission: 'platform.health.read' },
+        { path: '/platform/support', label: 'Support', icon: 'life-buoy', permission: 'platform.support.manage' },
+        { path: '/platform/settings', label: 'Configuration', icon: 'settings', permission: 'platform.organisations.read' }
+      ] }
+    ],
+    app: [
+      { label: 'Today', items: [
+        { path: '/app/overview', label: 'Overview', icon: 'layout-dashboard', permission: ['reports.read.daycare', 'tasks.read.own', 'attendance.read.assigned'] }
+      ] },
+      { label: 'Children', items: [
+        { path: '/app/learners', label: 'Learners', icon: 'users', permission: ['learners.read.daycare', 'learners.read.assigned'] },
+        { path: '/app/admissions', label: 'Admissions', icon: 'user-plus', permission: 'admissions.read.daycare' },
+        { path: '/app/classrooms', label: 'Classrooms', icon: 'door-open', permission: 'classrooms.read.daycare' },
+        { path: '/app/learner-attendance', label: 'Attendance', icon: 'calendar-check', permission: ['attendance.read.daycare', 'attendance.read.assigned'] }
+      ] },
+      { label: 'Learning', items: [
+        { path: '/app/curriculum', label: 'Curriculum', icon: 'book-open', permission: 'curriculum.read.daycare' },
+        { path: '/app/activities', label: 'Activities', icon: 'puzzle', permission: 'curriculum.read.daycare' },
+        { path: '/app/calendar', label: 'Calendar', icon: 'calendar-days', permission: 'curriculum.read.daycare' },
+        { path: '/app/assessments', label: 'Assessments', icon: 'clipboard-list', permission: ['assessments.read.daycare', 'assessments.read.assigned'] }
+      ] },
+      { label: 'People', items: [
+        { path: '/app/staff', label: 'Staff', icon: 'id-card', permission: 'staff.read.daycare' },
+        { path: '/app/staff-shifts', label: 'Shifts', icon: 'calendar-clock', permission: ['shifts.read.daycare', 'shifts.read.assigned'] },
+        { path: '/app/staff-attendance', label: 'Staff attendance', icon: 'fingerprint', permission: ['staff_attendance.read.daycare', 'staff_attendance.read.assigned', 'staff_attendance.record.own'] },
+        { path: '/app/leave', label: 'Leave', icon: 'plane', permission: ['leave.read.daycare', 'leave.request.own'] }
+      ] },
+      { label: 'Operations', items: [
+        { path: '/app/forms', label: 'Forms', icon: 'file-text', permission: ['forms.read.daycare', 'forms.submissions.review.daycare'] },
+        { path: '/app/communications', label: 'Communications', icon: 'messages-square', permission: ['messages.read.own', 'announcements.read.daycare'] },
+        { path: '/app/tasks', label: 'Tasks', icon: 'list-checks', permission: ['tasks.read.own', 'tasks.read.daycare'] },
+        { path: '/app/safety', label: 'Safety', icon: 'shield-alert', permission: 'safety.read.daycare' },
+        { path: '/app/inventory', label: 'Inventory', icon: 'package', permission: 'inventory.read.daycare' },
+        { path: '/app/reports', label: 'Reports', icon: 'bar-chart-3', permission: ['reports.read.daycare', 'reports.read.assigned'] }
+      ] },
+      { label: 'Business', items: [
+        { path: '/app/finance', label: 'Finance', icon: 'wallet', permission: 'finance.read.daycare' },
+        { path: '/app/expenses', label: 'Expenses', icon: 'receipt', permission: ['expenses.read.daycare', 'expenses.manage.daycare'] }
+      ] },
+      { label: 'Configuration', items: [
+        { path: '/app/settings', label: 'Organisation', icon: 'settings', permission: 'organisation.read.daycare' },
+        { path: '/app/website', label: 'Public website', icon: 'globe', permission: 'website.read.daycare' },
+        { path: '/app/access', label: 'Users and access', icon: 'shield-check', permission: 'access.read.daycare' },
+        { path: '/app/audit', label: 'Audit log', icon: 'scroll-text', permission: 'audit.read.daycare' },
+        { path: '/app/automation', label: 'Automation', icon: 'workflow', permission: 'organisation.settings.manage' }
+      ] }
+    ],
+    parent: [
+      { label: 'Family', items: [
+        { path: '/parent/overview', label: 'Home', icon: 'home', permission: 'parent.read.own' },
+        { path: '/parent/children', label: 'My children', icon: 'users', permission: 'parent.read.own' },
+        { path: '/parent/activities', label: 'Activity feed', icon: 'sparkles', permission: 'parent.read.own' },
+        { path: '/parent/progress', label: 'Development', icon: 'line-chart', permission: 'parent.read.own' },
+        { path: '/parent/attendance', label: 'Attendance', icon: 'calendar-check', permission: 'parent.read.own' }
+      ] },
+      { label: 'Connect', items: [
+        { path: '/parent/forms', label: 'Forms', icon: 'file-text', permission: 'parent.forms.submit.own' },
+        { path: '/parent/messages', label: 'Messages', icon: 'messages-square', permission: 'messages.read.own' },
+        { path: '/parent/finance', label: 'Fees', icon: 'wallet', permission: 'parent.finance.read.own' },
+        { path: '/parent/settings', label: 'Profile and consent', icon: 'settings', permission: 'parent.read.own' }
+      ] }
+    ]
+  };
+
+  const QUICK_ACTIONS = [
+    { label: 'New learner', icon: 'user-plus', permission: 'learners.create.daycare', route: '/app/learners', modal: 'learner' },
+    { label: 'Record payment', icon: 'banknote', permission: 'finance.payment.record.daycare', route: '/app/finance', modal: 'payment' },
+    { label: 'Log an incident', icon: 'shield-alert', permission: ['safety.report.daycare', 'safety.manage.daycare'], route: '/app/safety', modal: 'incident' },
+    { label: 'New task', icon: 'list-plus', permission: ['tasks.read.own', 'tasks.manage.daycare'], route: '/app/tasks', modal: 'task' },
+    { label: 'New announcement', icon: 'megaphone', permission: 'announcements.manage.daycare', route: '/app/communications', modal: 'announcement' },
+    { label: 'New enquiry', icon: 'inbox', permission: 'admissions.manage.daycare', route: '/app/admissions', modal: 'enquiry' },
+    { label: 'Report absence', icon: 'calendar-x', permission: 'parent.absence.report.own', route: '/parent/attendance', modal: 'parentAbsence' }
+  ];
+
+  function reelApp() {
+    return {
+      mode: 'loading',
+      session: null,
+      route: null,
+      params: {},
+      area: 'app',
+      pageTitle: 'Re-EL ECD',
+      page: {},
+      loading: false,
+      error: null,
+      errorTitle: null,
+      denied: false,
+      tab: null,
+      filters: {},
+      sidebarOpen: false,
+      theme: 'light',
+      commandOpen: false,
+      commandQuery: '',
+      commandResults: [],
+      commandIndex: 0,
+      quickOpen: false,
+      modal: null,
+      toasts: [],
+      unread: 0,
+      _charts: [],
+      _chartInstances: [],
+      _searchSeq: 0,
+      _lastHash: null,
+      activeOrganisationId: null,
+
+      get activeMembership() {
+        if (!this.session || !this.session.memberships) return null;
+        return this.session.memberships.find((m) => m.organisation.id === this.activeOrganisationId) || this.session.memberships[0] || null;
+      },
+      get permissions() { return (this.activeMembership && this.activeMembership.permissions) || []; },
+      get branches() { return (this.activeMembership && this.activeMembership.branches) || []; },
+      get canSwitchOrganisation() { return Boolean(this.session && this.session.memberships && this.session.memberships.length > 1); },
+      get isPlatformAdmin() { return Boolean(this.session && this.session.isPlatformAdmin && this.activeMembership && this.activeMembership.roles.some((r) => r.startsWith('platform_'))); },
+      get isParentOnly() {
+        return this.has('parent.read.own') && !this.has('learners.read.daycare') && !this.has('learners.read.assigned') && !this.has('staff.read.daycare');
+      },
+      get navGroups() {
+        if (!this.session) return [];
+        const source = this.area === 'platform' ? NAV.platform : (this.area === 'parent' ? NAV.parent : NAV.app);
+        return source.map((group) => ({
+          label: group.label,
+          items: group.items.filter((item) => this.has(item.permission)).map((item) => Object.assign({}, item, {
+            badge: item.path === '/app/tasks' ? () => 0 : null
+          }))
+        })).filter((group) => group.items.length);
+      },
+      get quickActions() {
+        const isParentAction = (action) => (Array.isArray(action.permission) ? action.permission : [action.permission])
+          .some((key) => String(key).startsWith('parent.'));
+        return QUICK_ACTIONS.filter((action) => this.has(action.permission) && (this.area === 'app' || (this.area === 'parent' && isParentAction(action))));
+      },
+
+      has(permission) {
+        if (!permission) return true;
+        const permissions = this.permissions;
+        const keys = Array.isArray(permission) ? permission : [permission];
+        return keys.some((key) => permissions.includes(key) || permissions.includes('*') || permissions.includes('platform.*'));
+      },
+
+      async boot() {
+        try { this.theme = localStorage.getItem('reel.theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch { this.theme = 'light'; }
+        document.documentElement.dataset.theme = this.theme;
+        this.installIconObserver();
+        window.addEventListener('hashchange', () => this.navigate());
+        try {
+          const payload = await Reel.api('GET', '/auth/session', null, { organisationId: null });
+          this.applySession(payload.data);
+        } catch (error) {
+          this.session = null;
+        }
+        if (!location.hash) location.hash = this.session ? this.defaultRoute() : '/login';
+        await this.navigate();
+      },
+
+      installIconObserver() {
+        if (!window.MutationObserver) return;
+        let scheduled = false;
+        const render = () => {
+          scheduled = false;
+          if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
+        };
+        const observer = new MutationObserver(() => {
+          if (scheduled) return;
+          scheduled = true;
+          window.requestAnimationFrame(render);
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+      },
+
+      applySession(payload) {
+        this.session = payload;
+        if (Reel.setCsrf) Reel.setCsrf(payload.csrfToken || null);
+        const stored = (() => { try { return localStorage.getItem('reel.activeOrganisation'); } catch { return null; } })();
+        const candidate = payload.memberships.find((m) => m.organisation.id === stored);
+        this.activeOrganisationId = (candidate && candidate.organisation.id) || payload.activeOrganisationId || (payload.memberships[0] && payload.memberships[0].organisation.id) || null;
+        try { if (this.activeOrganisationId) localStorage.setItem('reel.activeOrganisation', this.activeOrganisationId); } catch { /* ignore */ }
+        this.refreshUnread();
+      },
+
+      defaultRoute() {
+        if (!this.session) return '/login';
+        if (this.isPlatformAdmin) return '/platform/overview';
+        if (this.isParentOnly) return '/parent/overview';
+        return '/app/overview';
+      },
+
+      async switchOrganisation(id) {
+        if (!id || id === this.activeOrganisationId) return;
+        this.activeOrganisationId = id;
+        try { localStorage.setItem('reel.activeOrganisation', id); } catch { /* ignore */ }
+        const target = this.isPlatformAdmin ? '/platform/overview' : (this.isParentOnly ? '/parent/overview' : '/app/overview');
+        if (this.area === 'platform' && !this.isPlatformAdmin) location.hash = target;
+        else await this.navigate(true);
+      },
+
+      parseHash() {
+        const raw = (location.hash || '#/login').replace(/^#/, '') || '/login';
+        const [path, queryString] = raw.split('?');
+        const query = {};
+        new URLSearchParams(queryString || '').forEach((value, key) => { query[key] = value; });
+        return { path: path || '/login', query };
+      },
+
+      async navigate(force) {
+        const { path, query } = this.parseHash();
+        const matched = matchRoute(path);
+        if (!matched) {
+          this.mode = this.session ? 'app' : 'login';
+          if (this.session) {
+            this.area = this.isPlatformAdmin ? 'platform' : (this.isParentOnly ? 'parent' : 'app');
+            this.denied = false;
+            this.loading = false;
+            this.pageTitle = 'Page not found';
+            this.renderHtml('<div class="empty-state"><div class="empty-icon"><i data-lucide="compass"></i></div><h3>Page not found</h3><p>The page <span class="mono">' + Reel.esc(path) + '</span> does not exist.</p><a class="btn btn-primary" href="#' + this.defaultRoute() + '">Go to your overview</a></div>');
+          }
+          return;
+        }
+        this.route = matched.route;
+        this.params = matched.params;
+        this.area = matched.route.area;
+        this.pageTitle = matched.route.title;
+        if (query.tab) this.tab = query.tab;
+
+        if (matched.route.area === 'public') {
+          this.mode = 'public';
+          this.loading = false;
+          await this.renderPublic(matched.route, matched.params);
+          return;
+        }
+
+        if (!this.session) {
+          this.mode = 'login';
+          this.loading = false;
+          this.renderAuth();
+          return;
+        }
+
+        if (matched.route.path === '/login') {
+          location.hash = this.defaultRoute();
+          return;
+        }
+
+        if (matched.route.area === 'platform' && !this.isPlatformAdmin) {
+          this.mode = 'app';
+          this.denied = true;
+          this.loading = false;
+          return;
+        }
+
+        if (matched.route.area === 'parent' && !this.has('parent.read.own')) {
+          this.mode = 'app';
+          this.denied = true;
+          this.loading = false;
+          return;
+        }
+
+        this.mode = 'app';
+        this.denied = false;
+        this.error = null;
+        this.loading = true;
+        this.sidebarOpen = false;
+        if (!force) {
+          this.tab = query.tab || null;
+          this.filters = {};
+        }
+        this._charts = [];
+        this.destroyCharts();
+
+        if (!this.has(matched.route.permission)) {
+          this.denied = true;
+          this.loading = false;
+          return;
+        }
+
+        try {
+          const view = V[matched.route.view];
+          if (!view) throw new Error('This screen has not been implemented.');
+          this.page = (view.load ? await view.load(this, matched.params) : {}) || {};
+          const html = view.render ? view.render(this, matched.params, this.page) : '';
+          this.renderHtml(html);
+          this.loading = false;
+          await this.$nextTick();
+          this.afterRender();
+        } catch (error) {
+          this.loading = false;
+          if (error instanceof Reel.ApiError && (error.code === 'FORBIDDEN' || error.status === 403)) {
+            this.denied = true;
+            return;
+          }
+          if (error instanceof Reel.ApiError && error.code === 'UNAUTHENTICATED') {
+            if (Reel.setCsrf) Reel.setCsrf(null);
+            this.session = null;
+            this.mode = 'login';
+            this.renderAuth();
+            return;
+          }
+          this.error = error.message || 'Unable to load this page.';
+          this.errorTitle = 'Could not load ' + matched.route.title;
+          if (window.console) console.error(error);
+        }
+      },
+
+      renderHtml(html) {
+        const root = document.getElementById('view-root');
+        if (!root) return;
+        if (window.Alpine && window.Alpine.destroyTree) window.Alpine.destroyTree(root);
+        root.innerHTML = html;
+        if (window.Alpine && window.Alpine.initTree) window.Alpine.initTree(root);
+      },
+
+      afterRender() {
+        if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
+        this.mountCharts();
+        if (window.gsap && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          const root = document.getElementById('view-root');
+          if (root) {
+            window.gsap.fromTo(root.querySelectorAll('.card, .page-head, .table-wrap'), { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.32, stagger: 0.035, ease: 'power2.out', overwrite: true });
+          }
+        }
+        this.refreshUnread();
+      },
+
+      chart(id, type, data, options) {
+        this._charts.push({ id, type, data, options: options || {} });
+      },
+
+      mountCharts() {
+        if (!window.Chart || !this._charts.length) return;
+        const palette = ['#3A7D44', '#E89A2B', '#3D8FAE', '#B86B4B', '#81599B', '#4F9A58', '#C73B3B'];
+        for (const spec of this._charts) {
+          const canvas = document.getElementById(spec.id);
+          if (!canvas) continue;
+          try {
+            const chart = new window.Chart(canvas, {
+              type: spec.type,
+              data: spec.data,
+              options: Object.assign({
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { labels: { boxWidth: 10, usePointStyle: true, color: getComputedStyle(document.documentElement).getPropertyValue('--text') } } },
+                scales: spec.type === 'doughnut' || spec.type === 'pie' ? undefined : {
+                  x: { grid: { display: false }, ticks: { color: getComputedStyle(document.documentElement).getPropertyValue('--text-muted') } },
+                  y: { grid: { color: 'rgba(120,130,120,0.14)' }, ticks: { color: getComputedStyle(document.documentElement).getPropertyValue('--text-muted') }, beginAtZero: true }
+                }
+              }, spec.options),
+              plugins: spec.type === 'doughnut' || spec.type === 'pie' ? [] : []
+            });
+            this._chartInstances.push(chart);
+          } catch (error) {
+            if (window.console) console.warn('Chart failed', error);
+          }
+          canvas.style.maxHeight = '280px';
+          if (!canvas.dataset.palette) canvas.dataset.palette = palette.join(',');
+        }
+      },
+
+      destroyCharts() {
+        for (const chart of this._chartInstances) { try { chart.destroy(); } catch { /* ignore */ } }
+        this._chartInstances = [];
+      },
+
+      setTab(tab) {
+        this.tab = tab;
+        const { path } = this.parseHash();
+        history.replaceState(null, '', '#' + path + '?tab=' + encodeURIComponent(tab));
+        this.navigate(true);
+      },
+
+      setFilter(name, value) {
+        this.filters[name] = value;
+        this.navigate(true);
+      },
+
+      isActive(path) {
+        if (!this.route) return false;
+        if (this.route.path === path) return true;
+        if (path !== '/app/overview' && this.route.path.startsWith(path + '/')) return true;
+        return false;
+      },
+
+      roleLabel() {
+        const membership = this.activeMembership;
+        if (!membership || !membership.roles || !membership.roles.length) return 'Member';
+        return membership.roles.map((r) => Reel.titleCase(r)).join(' · ');
+      },
+
+      initials(name) { return Reel.initials(name); },
+
+      toggleTheme() {
+        this.theme = this.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = this.theme;
+        try { localStorage.setItem('reel.theme', this.theme); } catch { /* ignore */ }
+        this.mountCharts();
+      },
+
+      async refreshUnread() {
+        if (!this.session) return;
+        try {
+          const payload = await Reel.api('GET', '/notifications/unread-count');
+          this.unread = payload.data.unread || 0;
+        } catch { /* non-critical */ }
+      },
+
+      async signOut() {
+        try { await Reel.api('POST', '/auth/logout', {}); } catch { /* ignore */ }
+        if (Reel.setCsrf) Reel.setCsrf(null);
+        this.session = null;
+        this.mode = 'login';
+        location.hash = '/login';
+        this.renderAuth();
+      },
+
+      reload() { return this.navigate(true); },
+
+      toast(message, type) {
+        const id = 'toast_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+        this.toasts.push({ id, message, type: type || 'success' });
+        setTimeout(() => this.dismissToast(id), 5200);
+      },
+
+      dismissToast(id) { this.toasts = this.toasts.filter((t) => t.id !== id); },
+
+      closeOverlays() {
+        this.commandOpen = false;
+        this.quickOpen = false;
+        if (this.modal && !this.modal.saving) this.closeModal();
+      },
+
+      async apiAction(method, path, body, options) {
+        const opts = options || {};
+        try {
+          const result = await Reel.api(method, path, body, opts);
+          if (opts.successMessage) this.toast(opts.successMessage);
+          if (opts.reload !== false) await this.navigate(true);
+          return result;
+        } catch (error) {
+          this.toast(error.message || 'The action failed.', 'error');
+          if (error.details && Array.isArray(error.details)) {
+            this.toast(error.details.map((d) => d.message || d.field).join(' · '), 'warn');
+          }
+          throw error;
+        }
+      },
+
+      act(method, path, body, options) {
+        return this.apiAction(method, path, body, options);
+      },
+
+      confirmAction(title, message, endpoint, options) {
+        const opts = options || {};
+        this.openConfirm(title, message, {
+          endpoint,
+          method: opts.method || 'POST',
+          body: opts.body || {},
+          submitLabel: opts.submitLabel || 'Confirm',
+          successMessage: opts.successMessage || 'Done.',
+          danger: opts.danger !== false
+        });
+      },
+
+      exportCurrentCsv(filename, keys, labels) {
+        const source = (this.page && (this.page.rows || this.page.items || this.page.events)) || [];
+        const columns = keys || [];
+        const header = labels && labels.length === columns.length ? labels : columns;
+        const csv = [header.join(',')].concat(source.map((row) => columns.map((key) =>
+          '"' + String(row[key] === null || row[key] === undefined ? '' : row[key]).replace(/"/g, '""') + '"').join(','))).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename || 'export.csv';
+        a.click();
+        URL.revokeObjectURL(url);
+        this.toast('Export downloaded.');
+      },
+
+      openModal(config) {
+        const data = {};
+        (config.fields || []).forEach((field) => { data[field.name] = field.value === undefined ? (field.type === 'checkbox' ? false : '') : field.value; });
+        this.modal = {
+          type: 'form',
+          title: config.title,
+          description: config.description || null,
+          fields: config.fields || [],
+          data,
+          submitLabel: config.submitLabel || 'Save',
+          successMessage: config.successMessage || 'Saved successfully.',
+          size: config.size || null,
+          endpoint: config.endpoint,
+          method: config.method || 'POST',
+          transform: config.transform || null,
+          onSubmit: config.onSubmit || null,
+          onSuccess: config.onSuccess || null,
+          saving: false,
+          error: null
+        };
+      },
+
+      openDetail(title, html, size) {
+        this.modal = { type: 'detail', title, html, size: size || 'wide', saving: false };
+      },
+
+      openConfirm(title, message, options) {
+        const opts = options || {};
+        this.modal = {
+          type: 'confirm', title, message, description: opts.description || null,
+          submitLabel: opts.submitLabel || 'Confirm', danger: opts.danger !== false,
+          endpoint: opts.endpoint, method: opts.method || 'POST', body: opts.body || {},
+          successMessage: opts.successMessage || 'Done.', saving: false, error: null
+        };
+      },
+
+      closeModal() {
+        if (this.modal && this.modal.saving) return;
+        this.modal = null;
+      },
+
+      async submitModal() {
+        if (!this.modal || this.modal.saving) return;
+        const missing = (this.modal.fields || []).filter((f) => f.required && (this.modal.data[f.name] === '' || this.modal.data[f.name] === null || this.modal.data[f.name] === undefined));
+        if (missing.length) {
+          this.modal.error = 'Please complete: ' + missing.map((f) => f.label).join(', ');
+          return;
+        }
+        this.modal.saving = true;
+        this.modal.error = null;
+        try {
+          let body = this.modal.transform ? this.modal.transform(this.modal.data) : Object.assign({}, this.modal.data);
+          if (this.modal.onSuccess) body = this.modal.onSuccess(body) || body;
+          if (this.modal.onSubmit) await this.modal.onSubmit(body, this.modal.data);
+          else await Reel.api(this.modal.method, this.modal.endpoint, body);
+          const message = this.modal.successMessage || 'Saved successfully.';
+          this.modal = null;
+          this.toast(message);
+          await this.navigate(true);
+        } catch (error) {
+          this.modal.error = error.message || 'The action failed.';
+          if (error.details && Array.isArray(error.details)) {
+            this.modal.error += ' ' + error.details.map((d) => d.message || d.field).join(' · ');
+          }
+          this.modal.saving = false;
+        }
+      },
+
+      async confirmModal() {
+        if (!this.modal || this.modal.saving) return;
+        this.modal.saving = true;
+        try {
+          await Reel.api(this.modal.method, this.modal.endpoint, this.modal.body || {});
+          const message = this.modal.successMessage;
+          this.modal = null;
+          this.toast(message || 'Done.');
+          await this.navigate(true);
+        } catch (error) {
+          this.modal.error = error.message || 'The action failed.';
+          this.modal.saving = false;
+        }
+      },
+
+      openCommand() {
+        if (!this.session) return;
+        this.commandOpen = true;
+        this.commandQuery = '';
+        this.commandIndex = 0;
+        this.runCommandSearch();
+        this.$nextTick(() => { if (this.$refs.commandInput) this.$refs.commandInput.focus(); });
+      },
+
+      async runCommandSearch() {
+        const query = this.commandQuery.trim().toLowerCase();
+        const navResults = [];
+        const groups = this.area === 'platform' ? NAV.platform : (this.area === 'parent' ? NAV.parent : NAV.app);
+        for (const group of groups) {
+          for (const item of group.items) {
+            if (!this.has(item.permission)) continue;
+            if (!query || item.label.toLowerCase().includes(query)) {
+              navResults.push({ key: 'nav-' + item.path, label: item.label, route: item.path, kind: 'Page', icon: item.icon });
+            }
+          }
+        }
+        let apiResults = [];
+        if (query.length >= 2) {
+          const seq = ++this._searchSeq;
+          try {
+            const payload = await Reel.api('GET', '/search?q=' + encodeURIComponent(this.commandQuery.trim()));
+            if (seq !== this._searchSeq) return;
+            const data = payload.data || {};
+            apiResults = [
+              ...(data.learners || []).map((l) => ({ key: 'learner-' + l.id, label: l.first_name + ' ' + l.last_name, route: '/app/learners/' + l.id, kind: 'Learner', icon: 'user' })),
+              ...(data.staff || []).map((s) => ({ key: 'staff-' + s.id, label: s.display_name, route: '/app/staff/' + s.id, kind: 'Staff', icon: 'id-card' }))
+            ];
+          } catch { apiResults = []; }
+        }
+        const pages = (this.area === 'app' && this.has(['learners.create.daycare'])) ? [{ key: 'action-learner', label: 'Add a learner', route: '/app/learners', kind: 'Action', icon: 'user-plus', action: 'learner' }] : [];
+        this.commandResults = [...apiResults, ...navResults, ...pages].slice(0, 18);
+        this.commandIndex = 0;
+      },
+
+      selectCommand(result) {
+        if (!result) return;
+        this.commandOpen = false;
+        if (result.action) {
+          if (result.route) location.hash = result.route;
+          setTimeout(() => this.runQuickAction({ modal: result.action }), 120);
+          return;
+        }
+        if (result.route) location.hash = result.route;
+      },
+
+      runQuickAction(action) {
+        if (!action) return;
+        if (action.route) location.hash = action.route;
+        if (action.modal) setTimeout(() => this.openNamedModal(action.modal), 140);
+      },
+
+      openNamedModal(name, id) {
+        const view = this.route && V[this.route.view];
+        if (view && view.openModal) { view.openModal(this, name, id); return; }
+        this.toast('Open the relevant page to use this action.', 'warn');
+      },
+
+      openViewModal(name, id) {
+        const view = this.route && V[this.route.view];
+        if (view && view.openModal) { view.openModal(this, name, id); return; }
+        this.toast('That action is not available here.', 'warn');
+      },
+
+      async postJson(path, body, message) {        try {
+          const result = await Reel.api('POST', path, body || {});
+          if (message) this.toast(message);
+          await this.navigate(true);
+          return result;
+        } catch (error) {
+          this.toast(error.message || 'The action failed.', 'error');
+          return null;
+        }
+      },
+
+      async markAllPresent() {
+        const rows = ((this.page && this.page.rows) || []).filter((r) => !r.attendance_id);
+        if (!rows.length) { this.toast('Every child is already marked.', 'warn'); return; }
+        await this.postJson('/learner-attendance/register', {
+          date: (this.page && this.page.date) || Reel.today(),
+          records: rows.map((r) => ({ learnerId: r.learner_id, status: 'present' }))
+        }, rows.length + ' children marked present.');
+      },
+
+      async generateAssessmentReport() {
+        const learner = document.getElementById('report-learner');
+        const period = document.getElementById('report-period');
+        const format = document.getElementById('report-format');
+        if (!learner || !learner.value || !period || !period.value) {
+          this.toast('Choose a child and an assessment period.', 'warn');
+          return;
+        }
+        try {
+          const payload = await Reel.api('POST', '/assessments/reports/generate', {
+            learnerId: learner.value, assessmentPeriodId: period.value, format: format ? format.value : 'pdf'
+          });
+          this.toast('Report generated.');
+          const report = payload && payload.data && (payload.data.report || payload.data);
+          if (report && report.html) this.openDetail('Progress report', report.html);
+          else if (report && report.url) window.open(report.url, '_blank', 'noopener');
+          else await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'The report could not be generated.', 'error');
+        }
+      },
+
+      async sendMessage(conversationId) {
+        const el = document.getElementById('message-body');
+        const body = el ? String(el.value || '').trim() : '';
+        if (!body) { this.toast('Write a message first.', 'warn'); return; }
+        try {
+          await Reel.api('POST', '/conversations/' + encodeURIComponent(conversationId) + '/messages', { body });
+          if (el) el.value = '';
+          await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'The message could not be sent.', 'error');
+        }
+      },
+
+      openNamedDetail(name, id) {
+        const view = this.route && V[this.route.view];
+        if (view && view.detail) {
+          const result = view.detail(this, name, id);
+          if (result) { this.openDetail(result.title, result.html, result.size); return; }
+        }
+        this.toast('That record could not be opened.', 'warn');
+      },
+
+      renderAuth() {
+        const root = document.getElementById('auth-root');
+        if (!root) return;
+        root.innerHTML = Reel.views.auth ? Reel.views.auth.render(this) : '';
+        if (window.Alpine && window.Alpine.initTree) window.Alpine.initTree(root);
+      },
+
+      async renderPublic(route, params) {
+        const root = document.getElementById('public-root');
+        if (!root) return;
+        const view = V[route.view];
+        try {
+          const page = view && view.load ? await view.load(this, params) : {};
+          root.innerHTML = view.render(this, params, page);
+          if (window.Alpine && window.Alpine.initTree) window.Alpine.initTree(root);
+          if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+        } catch (error) {
+          root.innerHTML = '<div style="min-height:100vh;display:grid;place-items:center;padding:24px"><div class="card" style="max-width:520px;text-align:center"><h2>Website unavailable</h2><p class="muted">' + Reel.esc(error.message) + '</p><a class="btn btn-primary" href="#/login">Staff sign in</a></div></div>';
+        }
+      },
+
+      async login(event) {
+        const form = event && event.target ? event.target : null;
+        const email = form ? form.email.value.trim() : this.loginEmail;
+        const password = form ? form.password.value : this.loginPassword;
+        this.loginError = null;
+        this.loginBusy = true;
+        try {
+          const payload = await Reel.api('POST', '/auth/login', { email, password });
+          this.applySession(payload.data);
+          location.hash = this.defaultRoute();
+          await this.navigate(true);
+        } catch (error) {
+          this.loginError = error.message || 'Sign in failed.';
+        } finally {
+          this.loginBusy = false;
+        }
+      },
+
+      fillDemo(email) {
+        this.loginEmail = email;
+        this.loginPassword = 'Re-EL-Demo-2026!';
+        this.$nextTick(() => {
+          const form = document.getElementById('login-form');
+          if (form) { form.email.value = email; form.password.value = 'Re-EL-Demo-2026!'; }
+        });
+      },
+
+      async submitPublicEnquiry(event, slug) {
+        this.publicError = null;
+        this.publicResult = null;
+        const data = Object.assign({}, this.publicEnquiry, { organisationSlug: slug });
+        if (!data.branchId) delete data.branchId;
+        try {
+          await Reel.api('POST', '/public/enquiries', data);
+          this.publicResult = 'Thank you. Your enquiry has been received and the team will be in touch.';
+          this.publicEnquiry = { guardianName: '', guardianEmail: '', guardianPhone: '', childName: '', childDateOfBirth: '', requestedAgeGroup: '', preferredStartDate: '', message: '', website: '' };
+          if (event && event.target && event.target.reset) event.target.reset();
+        } catch (error) {
+          this.publicError = error.message || 'We could not send your enquiry. Please try again.';
+        }
+      },
+
+      async submitPublicForm(event, slug, formSlug) {
+        this.publicError = null;
+        this.publicResult = null;
+        try {
+          const payload = await Reel.api('POST', '/public/forms/' + encodeURIComponent(slug) + '/' + encodeURIComponent(formSlug) + '/submit', { data: this.publicFormData });
+          this.publicResult = payload.data && payload.data.received ? 'Thank you. Your response has been submitted.' : 'Thank you.';
+        } catch (error) {
+          this.publicError = error.message || 'We could not submit the form. Please check the fields and try again.';
+        }
+      },
+
+      loginEmail: 'principal@littlesprouts.local',
+      loginPassword: 'Re-EL-Demo-2026!',
+      loginError: null,
+      loginBusy: false
+    };
+  }
+
+  Reel.reelApp = reelApp;
+  window.reelApp = reelApp;
+  Reel.ROUTES = ROUTES;
+  Reel.matchRoute = matchRoute;
+})();

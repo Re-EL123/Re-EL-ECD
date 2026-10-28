@@ -1,0 +1,57 @@
+-- Tenant isolation performance indexes.
+-- Every tenant-owned table is queried with organisation_id as the leading
+-- predicate; these indexes keep those scans bounded as data grows.
+
+CREATE INDEX IF NOT EXISTS ix_branches_org ON branches(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_organisation_settings_org ON organisation_settings(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_delegations_org ON delegations(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_invitations_org ON invitations(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_support_cases_org ON support_cases(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_classrooms_org ON classrooms(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_learner_classroom_history_org ON learner_classroom_history(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_learner_guardians_org ON learner_guardians(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_learner_medical_records_org ON learner_medical_records(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_authorised_collectors_org ON authorised_collectors(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_learner_collection_events_org ON learner_collection_events(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_learner_documents_org ON learner_documents(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_admission_applications_org ON admission_applications(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_enrolments_org ON enrolments(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_curriculum_frameworks_org ON curriculum_frameworks(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_academic_periods_org ON academic_periods(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_lesson_plans_org ON lesson_plans(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_activities_org ON activities(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_activity_participation_org ON activity_participation(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_assessment_periods_org ON assessment_periods(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_learner_assessments_org ON learner_assessments(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_learner_portfolio_items_org ON learner_portfolio_items(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_daily_reports_org ON daily_reports(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_attendance_adjustments_org ON attendance_adjustments(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_staff_classrooms_org ON staff_classrooms(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_staff_documents_org ON staff_documents(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_staff_attendance_events_org ON staff_attendance_events(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_timesheets_org ON timesheets(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_leave_requests_org ON leave_requests(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_staff_training_records_org ON staff_training_records(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_form_definitions_org ON form_definitions(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_form_submissions_org ON form_submissions(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_consent_records_org ON consent_records(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_announcements_org ON announcements(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_conversations_org ON conversations(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_notifications_org ON notifications(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_fee_plans_org ON fee_plans(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_invoice_counters_org ON invoice_counters(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_payments_org ON payments(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_payment_webhook_events_org ON payment_webhook_events(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_suppliers_org ON suppliers(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_expense_categories_org ON expense_categories(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_expenses_org ON expenses(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_inventory_items_org ON inventory_items(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_inventory_transactions_org ON inventory_transactions(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_incidents_org ON incidents(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_website_configs_org ON website_configs(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_domains_org ON domains(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_platform_subscriptions_org ON platform_subscriptions(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_idempotency_keys_org ON idempotency_keys(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_jobs_org ON jobs(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_automation_rules_org ON automation_rules(organisation_id);
+CREATE INDEX IF NOT EXISTS ix_report_jobs_org ON report_jobs(organisation_id);

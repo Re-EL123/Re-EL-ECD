@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+*.pem
+*.key
+
+# Build and deployment output
+.vercel/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Runtime data
+.pglite/
+data/
+*.sqlite
+*.sqlite3
+*.log
+logs/
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Test output
+test-results/
+playwright-report/
