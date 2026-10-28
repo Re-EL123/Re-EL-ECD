@@ -1,6 +1,6 @@
 -- 007: finance, expenses, suppliers and inventory
 CREATE TABLE fee_plans (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   name VARCHAR(150) NOT NULL,
   billing_frequency VARCHAR(20) NOT NULL DEFAULT 'monthly'
@@ -11,7 +11,7 @@ CREATE TABLE fee_plans (
 );
 
 CREATE TABLE fee_plan_items (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   fee_plan_id UUID NOT NULL REFERENCES fee_plans(id) ON DELETE CASCADE,
   description VARCHAR(200) NOT NULL,
   amount NUMERIC(12,2) NOT NULL CHECK (amount >= 0),
@@ -24,7 +24,7 @@ CREATE TABLE invoice_counters (
 );
 
 CREATE TABLE invoices (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
   invoice_number VARCHAR(60) NOT NULL,
@@ -50,7 +50,7 @@ CREATE INDEX ix_invoices_org_status ON invoices(organisation_id, status);
 CREATE INDEX ix_invoices_guardian ON invoices(guardian_id);
 
 CREATE TABLE invoice_items (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   invoice_id UUID NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
   description VARCHAR(200) NOT NULL,
   quantity NUMERIC(10,2) NOT NULL DEFAULT 1 CHECK (quantity > 0),
@@ -59,7 +59,7 @@ CREATE TABLE invoice_items (
 );
 
 CREATE TABLE payments (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   guardian_id UUID REFERENCES guardians(id) ON DELETE SET NULL,
   currency VARCHAR(3) NOT NULL DEFAULT 'ZAR',
@@ -80,7 +80,7 @@ CREATE TABLE payments (
 );
 
 CREATE TABLE payment_allocations (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   payment_id UUID NOT NULL REFERENCES payments(id) ON DELETE CASCADE,
   invoice_id UUID NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
   allocated_amount NUMERIC(12,2) NOT NULL CHECK (allocated_amount > 0),
@@ -88,7 +88,7 @@ CREATE TABLE payment_allocations (
 );
 
 CREATE TABLE payment_webhook_events (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID REFERENCES organisations(id) ON DELETE CASCADE,
   provider VARCHAR(40) NOT NULL,
   event_id VARCHAR(200) NOT NULL UNIQUE,
@@ -98,7 +98,7 @@ CREATE TABLE payment_webhook_events (
 );
 
 CREATE TABLE suppliers (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   name VARCHAR(200) NOT NULL,
   contact_details JSONB NOT NULL DEFAULT '{}',
@@ -107,13 +107,13 @@ CREATE TABLE suppliers (
 );
 
 CREATE TABLE expense_categories (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   name VARCHAR(120) NOT NULL
 );
 
 CREATE TABLE expenses (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
   category_id UUID REFERENCES expense_categories(id) ON DELETE SET NULL,
@@ -130,7 +130,7 @@ CREATE TABLE expenses (
 );
 
 CREATE TABLE inventory_items (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
   name VARCHAR(150) NOT NULL,
@@ -145,7 +145,7 @@ CREATE TABLE inventory_items (
 );
 
 CREATE TABLE inventory_transactions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   inventory_item_id UUID NOT NULL REFERENCES inventory_items(id) ON DELETE CASCADE,
   transaction_type VARCHAR(20) NOT NULL CHECK (transaction_type IN ('received','issued','adjustment','write_off')),

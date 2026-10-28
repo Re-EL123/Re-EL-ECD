@@ -1,6 +1,6 @@
 -- 001: identity, tenancy and access control
 CREATE TABLE users (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   auth_provider VARCHAR(50) DEFAULT 'local',
   auth_subject VARCHAR(255),
   email VARCHAR(255) NOT NULL,
@@ -23,7 +23,7 @@ CREATE UNIQUE INDEX ux_users_auth_subject ON users(auth_provider, auth_subject);
 CREATE INDEX ix_users_email ON users(email_normalized);
 
 CREATE TABLE sessions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   token_hash VARCHAR(128) NOT NULL UNIQUE,
   csrf_token VARCHAR(128) NOT NULL,
@@ -37,7 +37,7 @@ CREATE TABLE sessions (
 CREATE INDEX ix_sessions_user ON sessions(user_id);
 
 CREATE TABLE organisations (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name VARCHAR(255) NOT NULL,
   slug VARCHAR(120) NOT NULL UNIQUE,
   legal_name VARCHAR(255),
@@ -58,7 +58,7 @@ CREATE TABLE organisations (
 );
 
 CREATE TABLE branches (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   name VARCHAR(255) NOT NULL,
   slug VARCHAR(120) NOT NULL,
@@ -81,7 +81,7 @@ CREATE TABLE organisation_settings (
 );
 
 CREATE TABLE memberships (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   status VARCHAR(20) NOT NULL DEFAULT 'invited' CHECK (status IN ('invited','active','suspended','revoked')),
@@ -92,7 +92,7 @@ CREATE TABLE memberships (
 CREATE INDEX ix_memberships_org ON memberships(organisation_id);
 
 CREATE TABLE branch_memberships (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   membership_id UUID NOT NULL REFERENCES memberships(id) ON DELETE CASCADE,
   branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -100,7 +100,7 @@ CREATE TABLE branch_memberships (
 );
 
 CREATE TABLE roles (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name VARCHAR(100) NOT NULL,
   role_key VARCHAR(100) NOT NULL UNIQUE,
   scope_type VARCHAR(50) NOT NULL,
@@ -109,7 +109,7 @@ CREATE TABLE roles (
 );
 
 CREATE TABLE permissions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   permission_key VARCHAR(120) NOT NULL UNIQUE,
   resource VARCHAR(60) NOT NULL,
   action VARCHAR(60) NOT NULL,
@@ -124,7 +124,7 @@ CREATE TABLE role_permissions (
 );
 
 CREATE TABLE membership_roles (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   membership_id UUID NOT NULL REFERENCES memberships(id) ON DELETE CASCADE,
   role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
   branch_id UUID REFERENCES branches(id) ON DELETE CASCADE,
@@ -136,7 +136,7 @@ CREATE TABLE membership_roles (
 CREATE INDEX ix_membership_roles_membership ON membership_roles(membership_id);
 
 CREATE TABLE delegations (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   branch_id UUID REFERENCES branches(id) ON DELETE CASCADE,
   grantor_user_id UUID NOT NULL REFERENCES users(id),
@@ -156,7 +156,7 @@ CREATE TABLE delegations_permissions (
 );
 
 CREATE TABLE invitations (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   email VARCHAR(255) NOT NULL,
   role_key VARCHAR(100) NOT NULL,
@@ -169,7 +169,7 @@ CREATE TABLE invitations (
 );
 
 CREATE TABLE feature_flags (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   flag_key VARCHAR(100) NOT NULL UNIQUE,
   description TEXT,
   enabled BOOLEAN NOT NULL DEFAULT true,
@@ -178,7 +178,7 @@ CREATE TABLE feature_flags (
 );
 
 CREATE TABLE support_cases (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   opened_by UUID REFERENCES users(id),
   subject VARCHAR(255) NOT NULL,

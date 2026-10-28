@@ -4,8 +4,10 @@ A complete, multi-tenant early-childhood-development operating platform for
 South African daycare centres: admissions, learners, classrooms, curriculum,
 developmental assessment, attendance, staff and shifts, leave, forms and
 consent, communications, finance, safety, tasks and operational checklists,
-reporting, a parent portal,
-public daycare websites, and a platform command centre.
+reporting, a parent portal, public daycare websites, and a platform command
+centre.
+
+**Live:** <https://ecd.re-el.co.za> · **API:** <https://re-el-ecd-api.vercel.app>
 
 ## Stack
 

@@ -108,8 +108,13 @@ break a period filter.
 
 PGlite serialises queries through a mutex, so a `pool.query` call inside a
 `withTransaction` callback would deadlock. Transaction bodies therefore use the
-supplied `client` only. The adapter also installs a `uuid_generate_v4()` shim
-that PGlite does not ship.
+supplied `client` only.
+
+Primary keys default to `gen_random_uuid()`, which PostgreSQL 13+ provides
+without an extension, so the same migrations run unchanged on Neon and on the
+embedded database. Connection and statement timeouts are configurable through
+`DATABASE_CONNECT_TIMEOUT_MS` and `DATABASE_STATEMENT_TIMEOUT_MS`; the defaults
+allow for a suspended Neon compute waking on the first request.
 
 Migrations are plain SQL files applied in filename order and recorded in
 `schema_migrations`. `scripts/check-migrations.js` verifies ordering and

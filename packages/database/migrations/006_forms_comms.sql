@@ -1,6 +1,6 @@
 -- 006: forms, consent, communications and notifications
 CREATE TABLE form_definitions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   name VARCHAR(200) NOT NULL,
   slug VARCHAR(120) NOT NULL,
@@ -15,7 +15,7 @@ CREATE TABLE form_definitions (
 );
 
 CREATE TABLE form_versions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   form_definition_id UUID NOT NULL REFERENCES form_definitions(id) ON DELETE CASCADE,
   version_number INTEGER NOT NULL,
   schema_json JSONB NOT NULL DEFAULT '{"fields":[]}',
@@ -26,7 +26,7 @@ CREATE TABLE form_versions (
 );
 
 CREATE TABLE form_submissions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   form_definition_id UUID NOT NULL REFERENCES form_definitions(id) ON DELETE CASCADE,
   form_version_id UUID NOT NULL REFERENCES form_versions(id) ON DELETE CASCADE,
@@ -43,7 +43,7 @@ CREATE TABLE form_submissions (
 );
 
 CREATE TABLE consent_records (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   learner_id UUID REFERENCES learners(id) ON DELETE CASCADE,
   guardian_id UUID REFERENCES guardians(id) ON DELETE SET NULL,
@@ -58,7 +58,7 @@ CREATE TABLE consent_records (
 );
 
 CREATE TABLE announcements (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   branch_id UUID REFERENCES branches(id) ON DELETE CASCADE,
   title VARCHAR(200) NOT NULL,
@@ -72,7 +72,7 @@ CREATE TABLE announcements (
 );
 
 CREATE TABLE conversations (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   subject VARCHAR(200),
   conversation_type VARCHAR(30) NOT NULL DEFAULT 'direct'
@@ -94,7 +94,7 @@ CREATE TABLE conversation_participants (
 );
 
 CREATE TABLE messages (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
   sender_user_id UUID NOT NULL REFERENCES users(id),
   body TEXT NOT NULL,
@@ -104,7 +104,7 @@ CREATE TABLE messages (
 );
 
 CREATE TABLE notifications (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID REFERENCES organisations(id) ON DELETE CASCADE,
   recipient_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   notification_type VARCHAR(60) NOT NULL DEFAULT 'general',
@@ -118,7 +118,7 @@ CREATE TABLE notifications (
 CREATE INDEX ix_notifications_recipient ON notifications(recipient_user_id, read_at);
 
 CREATE TABLE notification_deliveries (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   notification_id UUID NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
   channel VARCHAR(20) NOT NULL CHECK (channel IN ('in_app','email','sms')),
   delivery_status VARCHAR(20) NOT NULL DEFAULT 'queued'

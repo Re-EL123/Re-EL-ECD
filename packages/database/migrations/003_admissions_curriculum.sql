@@ -1,6 +1,6 @@
 -- 003: admissions, enrolment, curriculum and delivery
 CREATE TABLE admission_enquiries (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
   guardian_name VARCHAR(200) NOT NULL,
@@ -20,7 +20,7 @@ CREATE TABLE admission_enquiries (
 CREATE INDEX ix_enquiries_org ON admission_enquiries(organisation_id, status);
 
 CREATE TABLE admission_applications (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
   enquiry_id UUID REFERENCES admission_enquiries(id) ON DELETE SET NULL,
@@ -45,7 +45,7 @@ CREATE TABLE admission_applications (
 );
 
 CREATE TABLE enrolments (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
   learner_id UUID NOT NULL REFERENCES learners(id) ON DELETE CASCADE,
@@ -59,7 +59,7 @@ CREATE TABLE enrolments (
 );
 
 CREATE TABLE curriculum_frameworks (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID REFERENCES organisations(id) ON DELETE CASCADE,
   name VARCHAR(200) NOT NULL,
   version VARCHAR(40) NOT NULL DEFAULT '1.0',
@@ -69,7 +69,7 @@ CREATE TABLE curriculum_frameworks (
 );
 
 CREATE TABLE curriculum_domains (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   framework_id UUID NOT NULL REFERENCES curriculum_frameworks(id) ON DELETE CASCADE,
   name VARCHAR(150) NOT NULL,
   description TEXT,
@@ -77,7 +77,7 @@ CREATE TABLE curriculum_domains (
 );
 
 CREATE TABLE learning_objectives (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   domain_id UUID NOT NULL REFERENCES curriculum_domains(id) ON DELETE CASCADE,
   age_group VARCHAR(60),
   code VARCHAR(40) NOT NULL,
@@ -87,7 +87,7 @@ CREATE TABLE learning_objectives (
 );
 
 CREATE TABLE academic_periods (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   branch_id UUID REFERENCES branches(id) ON DELETE CASCADE,
   name VARCHAR(120) NOT NULL,
@@ -98,7 +98,7 @@ CREATE TABLE academic_periods (
 );
 
 CREATE TABLE lesson_plans (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
   classroom_id UUID REFERENCES classrooms(id),
@@ -119,7 +119,7 @@ CREATE TABLE lesson_plans (
 );
 
 CREATE TABLE activities (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
   title VARCHAR(200) NOT NULL,
@@ -135,7 +135,7 @@ CREATE TABLE activities (
 );
 
 CREATE TABLE scheduled_activities (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
   classroom_id UUID REFERENCES classrooms(id),
@@ -153,7 +153,7 @@ CREATE TABLE scheduled_activities (
 CREATE INDEX ix_scheduled_org_date ON scheduled_activities(organisation_id, starts_at);
 
 CREATE TABLE activity_participation (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   scheduled_activity_id UUID NOT NULL REFERENCES scheduled_activities(id) ON DELETE CASCADE,
   learner_id UUID NOT NULL REFERENCES learners(id) ON DELETE CASCADE,

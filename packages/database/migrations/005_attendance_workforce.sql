@@ -1,6 +1,6 @@
 -- 005: learner attendance and staff workforce
 CREATE TABLE learner_attendance (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
   learner_id UUID NOT NULL REFERENCES learners(id) ON DELETE CASCADE,
@@ -20,7 +20,7 @@ CREATE TABLE learner_attendance (
 CREATE INDEX ix_learner_attendance_org_date ON learner_attendance(organisation_id, attendance_date);
 
 CREATE TABLE attendance_adjustments (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   attendance_record_id UUID NOT NULL REFERENCES learner_attendance(id) ON DELETE CASCADE,
   requested_by UUID REFERENCES users(id),
@@ -34,7 +34,7 @@ CREATE TABLE attendance_adjustments (
 );
 
 CREATE TABLE staff_profiles (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   user_id UUID REFERENCES users(id) ON DELETE SET NULL,
   employee_reference VARCHAR(50) NOT NULL,
@@ -51,7 +51,7 @@ CREATE TABLE staff_profiles (
 CREATE INDEX ix_staff_org ON staff_profiles(organisation_id);
 
 CREATE TABLE staff_classrooms (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   staff_id UUID NOT NULL REFERENCES staff_profiles(id) ON DELETE CASCADE,
   classroom_id UUID NOT NULL REFERENCES classrooms(id) ON DELETE CASCADE,
@@ -60,7 +60,7 @@ CREATE TABLE staff_classrooms (
 );
 
 CREATE TABLE staff_documents (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   staff_id UUID NOT NULL REFERENCES staff_profiles(id) ON DELETE CASCADE,
   document_type VARCHAR(80) NOT NULL,
@@ -75,7 +75,7 @@ CREATE TABLE staff_documents (
 );
 
 CREATE TABLE staff_shifts (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
   staff_id UUID NOT NULL REFERENCES staff_profiles(id) ON DELETE CASCADE,
@@ -94,7 +94,7 @@ CREATE TABLE staff_shifts (
 CREATE INDEX ix_shifts_org_date ON staff_shifts(organisation_id, shift_date);
 
 CREATE TABLE staff_attendance_events (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
   staff_id UUID NOT NULL REFERENCES staff_profiles(id) ON DELETE CASCADE,
@@ -112,7 +112,7 @@ CREATE TABLE staff_attendance_events (
 CREATE INDEX ix_staff_events_staff ON staff_attendance_events(staff_id, recorded_at);
 
 CREATE TABLE timesheets (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   staff_id UUID NOT NULL REFERENCES staff_profiles(id) ON DELETE CASCADE,
   period_start DATE NOT NULL,
@@ -128,7 +128,7 @@ CREATE TABLE timesheets (
 );
 
 CREATE TABLE leave_requests (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   staff_id UUID NOT NULL REFERENCES staff_profiles(id) ON DELETE CASCADE,
   leave_type VARCHAR(20) NOT NULL CHECK (leave_type IN ('annual','sick','family','study','unpaid','maternity')),
@@ -143,7 +143,7 @@ CREATE TABLE leave_requests (
 );
 
 CREATE TABLE staff_training_records (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   staff_id UUID NOT NULL REFERENCES staff_profiles(id) ON DELETE CASCADE,
   course_name VARCHAR(200) NOT NULL,

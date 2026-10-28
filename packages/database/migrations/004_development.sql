@@ -1,6 +1,6 @@
 -- 004: observations, assessments, portfolios and daily reports
 CREATE TABLE learner_observations (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
   learner_id UUID NOT NULL REFERENCES learners(id) ON DELETE CASCADE,
@@ -22,7 +22,7 @@ CREATE TABLE learner_observations (
 CREATE INDEX ix_observations_learner ON learner_observations(learner_id, observation_date);
 
 CREATE TABLE assessment_periods (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   name VARCHAR(120) NOT NULL,
   starts_on DATE NOT NULL,
@@ -31,7 +31,7 @@ CREATE TABLE assessment_periods (
 );
 
 CREATE TABLE learner_assessments (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   learner_id UUID NOT NULL REFERENCES learners(id) ON DELETE CASCADE,
   assessment_period_id UUID NOT NULL REFERENCES assessment_periods(id) ON DELETE CASCADE,
@@ -48,7 +48,7 @@ CREATE TABLE learner_assessments (
 );
 
 CREATE TABLE learner_portfolio_items (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   learner_id UUID NOT NULL REFERENCES learners(id) ON DELETE CASCADE,
   activity_id UUID REFERENCES activities(id) ON DELETE SET NULL,
@@ -63,7 +63,7 @@ CREATE TABLE learner_portfolio_items (
 );
 
 CREATE TABLE daily_reports (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   learner_id UUID NOT NULL REFERENCES learners(id) ON DELETE CASCADE,
   report_date DATE NOT NULL DEFAULT CURRENT_DATE,

@@ -1,6 +1,6 @@
 -- 002: learners, guardians, medical and collection records
 CREATE TABLE classrooms (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
   name VARCHAR(100) NOT NULL,
@@ -15,7 +15,7 @@ CREATE TABLE classrooms (
 );
 
 CREATE TABLE learners (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
   classroom_id UUID REFERENCES classrooms(id) ON DELETE SET NULL,
@@ -40,7 +40,7 @@ CREATE INDEX ix_learners_org_branch ON learners(organisation_id, branch_id);
 CREATE INDEX ix_learners_classroom ON learners(classroom_id);
 
 CREATE TABLE learner_classroom_history (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   learner_id UUID NOT NULL REFERENCES learners(id) ON DELETE CASCADE,
   classroom_id UUID REFERENCES classrooms(id),
@@ -52,7 +52,7 @@ CREATE TABLE learner_classroom_history (
 );
 
 CREATE TABLE guardians (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   user_id UUID REFERENCES users(id) ON DELETE SET NULL,
   first_name VARCHAR(100) NOT NULL,
@@ -67,7 +67,7 @@ CREATE INDEX ix_guardians_org ON guardians(organisation_id);
 CREATE INDEX ix_guardians_user ON guardians(user_id);
 
 CREATE TABLE learner_guardians (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   learner_id UUID NOT NULL REFERENCES learners(id) ON DELETE CASCADE,
   guardian_id UUID NOT NULL REFERENCES guardians(id) ON DELETE CASCADE,
@@ -85,7 +85,7 @@ CREATE TABLE learner_guardians (
 );
 
 CREATE TABLE learner_medical_records (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   learner_id UUID NOT NULL REFERENCES learners(id) ON DELETE CASCADE,
   record_type VARCHAR(60) NOT NULL,
@@ -100,7 +100,7 @@ CREATE TABLE learner_medical_records (
 );
 
 CREATE TABLE authorised_collectors (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   learner_id UUID NOT NULL REFERENCES learners(id) ON DELETE CASCADE,
   name VARCHAR(200) NOT NULL,
@@ -115,7 +115,7 @@ CREATE TABLE authorised_collectors (
 );
 
 CREATE TABLE learner_collection_events (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
   learner_id UUID NOT NULL REFERENCES learners(id) ON DELETE CASCADE,
@@ -130,7 +130,7 @@ CREATE TABLE learner_collection_events (
 );
 
 CREATE TABLE learner_documents (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   learner_id UUID NOT NULL REFERENCES learners(id) ON DELETE CASCADE,
   document_type VARCHAR(80) NOT NULL,

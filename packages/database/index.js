@@ -109,8 +109,8 @@ async function getPool() {
       ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false },
       max: Number(process.env.DATABASE_POOL_MAX || 5),
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 10000,
-      statement_timeout: 20000
+      connectionTimeoutMillis: Number(process.env.DATABASE_CONNECT_TIMEOUT_MS || 30000),
+      statement_timeout: Number(process.env.DATABASE_STATEMENT_TIMEOUT_MS || 30000)
     });
   } else {
     if (isProduction() && process.env.ALLOW_IN_MEMORY_DB !== 'true') {

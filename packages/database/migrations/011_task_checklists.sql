@@ -5,7 +5,7 @@
 -- stay in one place and every tick is attributable and auditable.
 
 CREATE TABLE task_checklist_items (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   label VARCHAR(300) NOT NULL,

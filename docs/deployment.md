@@ -11,6 +11,31 @@ Re-EL ECD is a monorepo with three deployable pieces:
 The same request pipeline runs locally and on Vercel, so behaviour does not
 diverge between environments.
 
+## Live deployment
+
+| Piece | URL |
+| --- | --- |
+| Web app | <https://ecd.re-el.co.za> |
+| API | <https://re-el-ecd-api.vercel.app> |
+| Health | <https://re-el-ecd-api.vercel.app/healthz> |
+
+The web app is a GitHub Pages site served on the custom domain
+`ecd.re-el.co.za` (CNAME to `re-el123.github.io`). The API is the Vercel
+project `re-el-ecd-api` in the `akanishibiri4422-4914` team, connected to
+`Re-EL123/Re-EL-ECD` so every push to `master` deploys. The database is the
+Neon resource `re-el-ecd-db`, provisioned through the Vercel Neon integration,
+which injects `DATABASE_URL` (pooled) and `DATABASE_URL_UNPOOLED`.
+
+Because the two hosts differ, the deployment runs with:
+
+```text
+FRONTEND_ORIGIN=https://ecd.re-el.co.za
+CROSS_SITE_COOKIES=true
+```
+
+and the repository variable `REEL_API_BASE=https://re-el-ecd-api.vercel.app`
+so the Pages build injects the API origin into `config.js`.
+
 ## 1. Prerequisites
 
 - Node.js 20 or newer (24 is used in development).
@@ -132,17 +157,34 @@ access rules.
 The web app is a no-build classic-script SPA. To publish it:
 
 1. Set the repository variable `REEL_API_BASE` to the API origin, for example
-   `https://re-el-ecd.vercel.app`.
-2. Push to `master`. `.github/workflows/pages.yml` injects the API origin into
+   `https://re-el-ecd-api.vercel.app`:
+
+   ```bash
+   gh variable set REEL_API_BASE --body "https://re-el-ecd-api.vercel.app"
+   ```
+
+2. In GitHub, set **Settings → Pages → Build and deployment → Source** to
+   **GitHub Actions**. This is not optional: with "Deploy from a branch" GitHub
+   publishes the repository root, so visitors see the rendered `README.md`
+   instead of the app.
+3. Push to `master`. `.github/workflows/pages.yml` injects the API origin into
    `apps/web/config.js` and deploys `apps/web` to Pages.
-3. In the API environment set:
+4. In the API environment set:
 
    ```text
-   FRONTEND_ORIGIN=https://<owner>.github.io
+   FRONTEND_ORIGIN=https://<owner>.github.io   (or the custom domain)
    CROSS_SITE_COOKIES=true
    ```
 
-4. In GitHub, enable Pages with "GitHub Actions" as the source.
+5. Point the custom domain at Pages with a `CNAME` DNS record, then enable
+   **Enforce HTTPS** once the certificate is approved.
+
+The Pages source can also be set from the command line:
+
+```bash
+gh api -X PUT repos/<owner>/<repo>/pages -f build_type=workflow
+gh api -X PUT repos/<owner>/<repo>/pages -F https_enforced=true
+```
 
 Hash routing (`#/app/overview`) means no server rewrite rules are needed.
 
@@ -175,7 +217,8 @@ the CI check before merging.
 - [ ] CI is green on the release commit.
 - [ ] Migrations reviewed and applied to a staging copy.
 - [ ] `DATABASE_URL`, `FRONTEND_ORIGIN` and cookie settings verified.
-- [ ] Demo data is not present in production.
+- [ ] Demo data is removed before real children are onboarded. The
+      public showcase deployment is intentionally seeded with demo data.
 - [ ] Platform administrator accounts use strong unique passwords and MFA at
       the identity provider.
 - [ ] `/healthz` and `/api/v1/platform/health` return healthy.
@@ -193,4 +236,7 @@ the CI check before merging.
 | 403 `CSRF_FAILED` | The SPA did not receive a CSRF token; check that login/session responses are not cached and that `config.js` points at the right API. |
 | 403 `TENANT_MISMATCH` | The user is not an active member of the requested organisation, or a stale organisation id is stored in the browser. Sign out and back in. |
 | Static assets are stale | Bump the `?v=` query string in `apps/web/index.html` when changing scripts or styles. |
+| The site shows the README text instead of the app | Pages is publishing the branch root. Set the Pages source to "GitHub Actions" and re-run `pages.yml`. |
+| Every API call returns 404 on the Pages domain | `REEL_API_BASE` is empty, so the SPA calls the static host. Set the repository variable and re-run `pages.yml`. |
+| Vercel preview URLs return 302 "Protected by Vercel Authentication" | Deployment protection applies to preview URLs; use the production alias. |
 | Migrations did not run on Vercel | Check the function logs for the migration error; run `npm run migrate` manually against the database. |

@@ -5,8 +5,7 @@ node_modules/
 
 # Environment and secrets
 .env
-.env.local
-.env.*.local
+.env.*
 !.env.example
 *.pem
 *.key
@@ -36,3 +35,7 @@ Thumbs.db
 # Test output
 test-results/
 playwright-report/
+
+# Agent tooling artefacts
+.agents/
+skills-lock.json

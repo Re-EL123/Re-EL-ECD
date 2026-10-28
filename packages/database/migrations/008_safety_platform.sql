@@ -1,6 +1,6 @@
 -- 008: safety, tasks, website, platform billing, audit and jobs
 CREATE TABLE incidents (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
   incident_type VARCHAR(80) NOT NULL,
@@ -20,7 +20,7 @@ CREATE TABLE incidents (
 );
 
 CREATE TABLE incident_participants (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   incident_id UUID NOT NULL REFERENCES incidents(id) ON DELETE CASCADE,
   participant_type VARCHAR(30) NOT NULL CHECK (participant_type IN ('learner','staff','guardian','other')),
   participant_id UUID,
@@ -28,7 +28,7 @@ CREATE TABLE incident_participants (
 );
 
 CREATE TABLE incident_actions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   incident_id UUID NOT NULL REFERENCES incidents(id) ON DELETE CASCADE,
   action_description TEXT NOT NULL,
   assigned_to UUID REFERENCES users(id),
@@ -39,7 +39,7 @@ CREATE TABLE incident_actions (
 );
 
 CREATE TABLE tasks (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   branch_id UUID REFERENCES branches(id) ON DELETE CASCADE,
   title VARCHAR(200) NOT NULL,
@@ -60,7 +60,7 @@ CREATE TABLE tasks (
 CREATE INDEX ix_tasks_org_status ON tasks(organisation_id, status);
 
 CREATE TABLE task_comments (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   author_user_id UUID NOT NULL REFERENCES users(id),
   body TEXT NOT NULL,
@@ -68,7 +68,7 @@ CREATE TABLE task_comments (
 );
 
 CREATE TABLE website_configs (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   branch_id UUID REFERENCES branches(id) ON DELETE CASCADE,
   slug VARCHAR(120) NOT NULL UNIQUE,
@@ -82,7 +82,7 @@ CREATE TABLE website_configs (
 );
 
 CREATE TABLE domains (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   domain_name VARCHAR(255) NOT NULL UNIQUE,
   verification_status VARCHAR(20) NOT NULL DEFAULT 'pending'
@@ -93,7 +93,7 @@ CREATE TABLE domains (
 );
 
 CREATE TABLE subscription_plans (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name VARCHAR(120) NOT NULL,
   plan_key VARCHAR(60) NOT NULL UNIQUE,
   monthly_price NUMERIC(10,2) NOT NULL DEFAULT 0,
@@ -105,7 +105,7 @@ CREATE TABLE subscription_plans (
 );
 
 CREATE TABLE platform_subscriptions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   plan_id UUID REFERENCES subscription_plans(id),
   status VARCHAR(20) NOT NULL DEFAULT 'trial'
@@ -117,7 +117,7 @@ CREATE TABLE platform_subscriptions (
 );
 
 CREATE TABLE audit_events (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   actor_user_id UUID REFERENCES users(id),
   organisation_id UUID REFERENCES organisations(id) ON DELETE CASCADE,
   branch_id UUID REFERENCES branches(id) ON DELETE SET NULL,
@@ -133,7 +133,7 @@ CREATE INDEX ix_audit_org_time ON audit_events(organisation_id, occurred_at);
 CREATE INDEX ix_audit_action ON audit_events(action);
 
 CREATE TABLE idempotency_keys (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID REFERENCES organisations(id) ON DELETE CASCADE,
   key VARCHAR(200) NOT NULL,
   user_id UUID REFERENCES users(id),
@@ -145,7 +145,7 @@ CREATE TABLE idempotency_keys (
 );
 
 CREATE TABLE jobs (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID REFERENCES organisations(id) ON DELETE CASCADE,
   job_type VARCHAR(80) NOT NULL,
   payload JSONB NOT NULL DEFAULT '{}',
@@ -161,7 +161,7 @@ CREATE TABLE jobs (
 );
 
 CREATE TABLE automation_rules (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   name VARCHAR(150) NOT NULL,
   trigger_event VARCHAR(120) NOT NULL,
@@ -174,7 +174,7 @@ CREATE TABLE automation_rules (
 );
 
 CREATE TABLE report_jobs (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
   report_key VARCHAR(80) NOT NULL,
   parameters JSONB NOT NULL DEFAULT '{}',
