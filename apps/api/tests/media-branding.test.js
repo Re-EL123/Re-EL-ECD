@@ -101,6 +101,11 @@ test('themes are validated, created, applied to the session and website, then de
   assert.equal(theme.tokens.injected, undefined);
   assert.equal(theme.tokens.onPrimary, '#FFFFFF');
 
+  const duplicate = await client.post('/organisation/themes', {
+    name: 'Ocean test', tokens: { primary: '#123456' }
+  }, { organisationId });
+  assert.equal(duplicate.status, 409);
+
   const applied = await client.post(`/organisation/themes/${theme.id}/apply`, {}, { organisationId });
   assert.equal(applied.status, 200);
   assert.equal(applied.data.primary_colour, '#123456');

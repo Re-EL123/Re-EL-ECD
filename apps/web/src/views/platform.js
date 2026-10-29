@@ -307,6 +307,13 @@
           '<li>' + R.icon('check-circle') + '<div><div class="strong">Migrations</div><div class="muted small">Schema is at the expected version</div></div><span class="badge badge-green row-end">Pass</span></li>' +
           '</ul>') +
         '</div><div class="stack">' +
+        R.card('Integrations', '<div class="detail-list">' +
+          R.detailItem('Email', R.esc((h.email || {}).provider || '—') + ' · ' + ((h.email || {}).configured ? '<span class="badge badge-green">Configured</span>' : '<span class="badge badge-danger">Not configured</span>')) +
+          R.detailItem('Sender', R.esc((h.email || {}).from || '—')) +
+          R.detailItem('PayFast', (((h.payments || {}).payfast || {}).configured ? '<span class="badge badge-green">Configured</span>' : '<span class="badge badge-danger">Not configured</span>') + ' · ' + (((h.payments || {}).payfast || {}).sandbox ? 'Sandbox' : 'Live')) +
+          R.detailItem('Media storage', ((h.storage || {}).configured ? '<span class="badge badge-green">Configured</span>' : '<span class="badge badge-danger">Not configured</span>') + ' · ' + R.esc((h.storage || {}).provider || '—')) +
+          R.detailItem('Bucket', R.esc((h.storage || {}).bucket || '—')) +
+          '</div>') +
         R.card('Operational notes', '<p class="muted small">Health is computed on each request. In production, point an uptime monitor at <span class="mono">/healthz</span> and alert on non-200 responses.</p>' +
           '<a class="btn btn-secondary btn-sm" href="#/platform/audit">Open audit explorer</a>') +
         '</div></div>';

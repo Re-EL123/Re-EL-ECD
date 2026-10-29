@@ -79,6 +79,11 @@ function register(router) {
     if (!tokens.primary) {
       throw new AppError('VALIDATION', [{ field: 'tokens', message: 'A theme needs a primary colour.' }]);
     }
+    const clash = await ctx.db.one(
+      'SELECT id FROM organisation_themes WHERE organisation_id = $1 AND lower(name) = lower($2)',
+      [ctx.organisationId, body.name]
+    );
+    if (clash) throw new AppError('CONFLICT', null, 'A theme with that name already exists.');
     tokens.onPrimary = branding.onColour(tokens.primary);
     const theme = await ctx.db.withTransaction(async (client) => {
       if (body.isDefault === true) {
@@ -108,6 +113,13 @@ function register(router) {
       [ctx.params.id, ctx.organisationId]
     );
     if (!theme) throw new AppError('NOT_FOUND');
+    if (body.name && body.name.toLowerCase() !== String(theme.name).toLowerCase()) {
+      const clash = await ctx.db.one(
+        'SELECT id FROM organisation_themes WHERE organisation_id = $1 AND lower(name) = lower($2) AND id <> $3',
+        [ctx.organisationId, body.name, theme.id]
+      );
+      if (clash) throw new AppError('CONFLICT', null, 'A theme with that name already exists.');
+    }
     const tokens = body.tokens ? { ...branding.normalizeTokens(theme.tokens), ...branding.normalizeTokens(body.tokens) } : null;
     if (tokens && tokens.primary) tokens.onPrimary = branding.onColour(tokens.primary);
     const updated = await ctx.db.withTransaction(async (client) => {
