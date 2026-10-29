@@ -138,6 +138,7 @@
             { name: 'locationDescription', label: 'Location', placeholder: 'Outdoor play area' },
             { name: 'learnerId', label: 'Child involved', type: 'select', options: (page.learners || []).map((l) => ({ value: l.id, label: l.first_name + ' ' + l.last_name })) },
             { name: 'description', label: 'What happened', type: 'textarea', required: true, span: 2 },
+            { name: 'attachmentUrls', label: 'Photos or files', type: 'media', multiple: true, scope: 'incident', accept: 'image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/webm,video/quicktime,audio/mpeg,application/pdf,text/plain,text/csv', span: 2, help: 'Add photos, video, audio or documents that support the record.' },
             { name: 'restricted', label: 'Restrict access', type: 'checkbox', value: false, help: 'Limit to management until reviewed' }
           ],
           transform: (data) => {
@@ -155,7 +156,8 @@
             { name: 'status', label: 'Status', type: 'select', required: true, options: (STATUS_FLOW[incident.status] || []).map((s) => ({ value: s, label: R.titleCase(s) })) },
             { name: 'severity', label: 'Severity', type: 'select', options: SEVERITIES.map((s) => ({ value: s, label: R.titleCase(s) })) },
             { name: 'locationDescription', label: 'Location', value: incident.location_description },
-            { name: 'description', label: 'Description', type: 'textarea', value: incident.description, span: 2 }
+            { name: 'description', label: 'Description', type: 'textarea', value: incident.description, span: 2 },
+            { name: 'attachmentUrls', label: 'Photos or files', type: 'media', multiple: true, scope: 'incident', accept: 'image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/webm,video/quicktime,audio/mpeg,application/pdf,text/plain,text/csv', value: R.mediaList(incident.attachment_urls), span: 2 }
           ]
         });
       } else if (name === 'incidentView' && id) {
@@ -169,6 +171,9 @@
             '<div class="muted small">' + R.dateTime(i.occurred_at) + ' · ' + R.esc(i.location_description || 'Location not recorded') + '</div></div>' +
             '<div style="text-align:right">' + R.badge(i.severity) + ' ' + R.badge(i.status) + '</div></div>' +
             '<div class="section"></div><p style="white-space:pre-wrap">' + R.esc(i.description) + '</p>' +
+            (R.mediaList(i.attachment_urls).length ? '<div class="section"></div><h3>Attachments</h3><div class="media-grid">' +
+              R.mediaList(i.attachment_urls).map((url) => '<div class="media-card">' +
+                R.mediaHtml(url, R.kindForUrl(url), { alt: 'Incident attachment' }) + '</div>').join('') + '</div>' : '') +
             '<div class="section"></div><div class="detail-list">' +
             R.detailItem('Reported by', R.esc((i.reportedBy || {}).display_name || '—')) +
             R.detailItem('Reviewed by', R.esc((i.reviewedBy || {}).display_name || 'Not yet')) +

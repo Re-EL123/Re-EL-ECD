@@ -221,6 +221,7 @@ function register(router) {
       employmentStatus: { type: 'string', enum: ['active', 'on_leave', 'suspended', 'ended'], optional: true },
       startDate: { type: 'string', date: true, optional: true },
       endDate: { type: 'string', date: true, optional: true },
+      avatarUrl: { type: 'string', max: 500, optional: true },
       contactDetails: { type: 'object', optional: true }
     });
     const staff = await staffById(ctx, ctx.params.id);
@@ -231,6 +232,9 @@ function register(router) {
       [body.jobTitle || null, body.employmentStatus || null, body.startDate || null, body.endDate || null,
         body.contactDetails ? JSON.stringify(body.contactDetails) : null, staff.id]
     );
+    if (body.avatarUrl) {
+      await ctx.db.query('UPDATE users SET avatar_url = $1 WHERE id = $2', [body.avatarUrl, staff.user_id]);
+    }
     await recordAudit(ctx.db, ctx, {
       action: 'staff.updated', resourceType: 'staff_profile', resourceId: staff.id, metadata: { fields: Object.keys(body) }
     });
@@ -272,14 +276,16 @@ function register(router) {
       documentType: { type: 'string', min: 2, max: 80 },
       title: { type: 'string', min: 2, max: 200 },
       storageKey: { type: 'string', min: 3, max: 500, optional: true },
+      fileUrl: { type: 'string', max: 500, optional: true },
       issuedAt: { type: 'string', date: true, optional: true },
       expiresAt: { type: 'string', date: true, optional: true }
     });
     const staff = await staffById(ctx, ctx.params.id);
+    const location = body.fileUrl || body.storageKey || null;
     const document = await ctx.db.one(
-      `INSERT INTO staff_documents (organisation_id, staff_id, document_type, title, storage_key, issued_at, expires_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [ctx.organisationId, staff.id, body.documentType, body.title, body.storageKey || null,
+      `INSERT INTO staff_documents (organisation_id, staff_id, document_type, title, storage_key, file_url, issued_at, expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [ctx.organisationId, staff.id, body.documentType, body.title, location, location,
         body.issuedAt || null, body.expiresAt || null]
     );
     await recordAudit(ctx.db, ctx, {

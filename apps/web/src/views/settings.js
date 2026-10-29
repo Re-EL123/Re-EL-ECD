@@ -13,14 +13,16 @@
         R.api('GET', '/organisations/current'),
         R.api('GET', '/organisations/current/settings'),
         R.api('GET', '/onboarding/checklist'),
-        R.api('GET', '/branches')
+        R.api('GET', '/branches'),
+        R.api('GET', '/organisation/themes')
       ]);
-      const [organisation, settings, onboarding, branches] = settled;
+      const [organisation, settings, onboarding, branches, themes] = settled;
       return {
         organisation: organisation.status === 'fulfilled' ? organisation.value.data : null,
         settings: settings.status === 'fulfilled' ? settings.value.data : {},
         onboarding: onboarding.status === 'fulfilled' ? onboarding.value.data : null,
-        branches: branches.status === 'fulfilled' ? branches.value.data : []
+        branches: branches.status === 'fulfilled' ? branches.value.data : [],
+        themes: themes.status === 'fulfilled' ? themes.value.data : { themes: [], current: null, appliedThemeId: null }
       };
     },
 
@@ -40,8 +42,8 @@
       return R.pageHead('Settings', 'How the centre is configured — the details every other screen depends on.',
         (canUpdate ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'organisation\')">' + R.icon('building-2') + ' Edit organisation</button>' : '') +
         (canManageBranches ? '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'branch\')">' + R.icon('plus') + ' Add branch</button>' : '')) +
-        R.tabs([{ key: 'organisation', label: 'Organisation' }, { key: 'branches', label: 'Branches (' + branches.length + ')' }, { key: 'operations', label: 'Operations' }, { key: 'onboarding', label: 'Setup checklist' }], tab) +
-        (tab === 'branches' ? this.renderBranches(ctx, page) : tab === 'operations' ? this.renderOperations(ctx, settings, hours, attendance, notifications, retention, canManageSettings) : tab === 'onboarding' ? this.renderOnboarding(onboarding) : this.renderOrganisation(org, branches, settings));
+        R.tabs([{ key: 'organisation', label: 'Organisation' }, { key: 'branding', label: 'Branding' }, { key: 'branches', label: 'Branches (' + branches.length + ')' }, { key: 'operations', label: 'Operations' }, { key: 'onboarding', label: 'Setup checklist' }], tab) +
+        (tab === 'branches' ? this.renderBranches(ctx, page) : tab === 'branding' ? this.renderBranding(ctx, page) : tab === 'operations' ? this.renderOperations(ctx, settings, hours, attendance, notifications, retention, canManageSettings) : tab === 'onboarding' ? this.renderOnboarding(onboarding) : this.renderOrganisation(org, branches, settings));
     },
 
     renderOrganisation(org, branches, settings) {
@@ -75,10 +77,59 @@
         '</div></div>';
     },
 
+    renderBranding(ctx, page) {
+      const org = page.organisation || {};
+      const bundle = page.themes || {};
+      const current = Object.assign({}, R.DEFAULT_THEME, bundle.current || org.theme_tokens || {});
+      const themes = bundle.themes || [];
+      const canUpdate = ctx.has('organisation.update.daycare');
+      const swatch = (colour) => '<span class="swatch" style="background:' + R.attr(colour) + '"></span>';
+      const logo = org.logo_url
+        ? '<img class="logo-preview" src="' + R.attr(org.logo_url) + '" alt="Organisation logo">'
+        : '<div class="logo-placeholder">' + R.icon('image') + '</div>';
+      const themeCard = (theme) => {
+        const tokens = Object.assign({}, R.DEFAULT_THEME, theme.tokens || {});
+        const applied = bundle.appliedThemeId === theme.id;
+        return '<div class="theme-card' + (applied ? ' applied' : '') + '">' +
+          '<div class="row" style="justify-content:space-between"><strong>' + R.esc(theme.name) + '</strong>' +
+          (applied ? '<span class="badge badge-green">Applied</span>' : (theme.is_default ? '<span class="badge badge-sky">Default</span>' : '')) + '</div>' +
+          '<div class="theme-preview">' + ['primary', 'secondary', 'accent', 'background', 'surface'].map((key) =>
+            '<span style="background:' + R.attr(tokens[key] || R.DEFAULT_THEME[key]) + '"></span>').join('') + '</div>' +
+          '<div class="swatch-row">' + ['primary', 'secondary', 'accent'].map((key) => swatch(tokens[key])).join('') + '</div>' +
+          (canUpdate ? '<div class="row" style="gap:8px;flex-wrap:wrap">' +
+            (!applied ? '<button class="btn btn-sm btn-primary" @click="applyOrganisationTheme(\'' + R.attr(theme.id) + '\')">Apply</button>' : '') +
+            '<button class="btn btn-sm btn-ghost" @click="confirmAction(\'Delete theme\',\'This removes the saved palette. The applied colours stay until another theme is applied.\',\'/organisation/themes/' + R.attr(theme.id) + '\',{method:\'DELETE\',submitLabel:\'Delete\',successMessage:\'Theme deleted\'})">Delete</button>' +
+            '</div>' : '') +
+          '</div>';
+      };
+      return '<div class="split"><div class="stack">' +
+        R.card('Logo', '<div class="row" style="gap:16px;align-items:flex-start">' + logo +
+          '<div style="flex:1"><p class="muted small">Your logo appears on the workspace, the public website and email accents. Images and videos are stored in Cloudflare R2; only the file URL is saved in the database.</p>' +
+          (canUpdate ? '<div class="btn-group" style="margin-top:10px"><button class="btn btn-sm btn-primary" @click="openNamedModal(\'logo\')">' + R.icon('upload') + ' Upload logo</button>' +
+            '<button class="btn btn-sm btn-secondary" @click="extractLogoPalette()">' + R.icon('palette') + ' Extract colours</button></div>' : '') +
+          '</div></div>') +
+        R.card('Current palette', '<div class="swatch-row" style="margin-bottom:12px">' +
+          ['primary', 'secondary', 'accent', 'background', 'surface', 'text'].map((key) =>
+            swatch(current[key]) + '<span class="mono small">' + R.esc(current[key]) + '</span>').join('') + '</div>' +
+          '<div class="detail-list">' +
+          R.detailItem('Primary', '<span class="mono">' + R.esc(current.primary) + '</span>') +
+          R.detailItem('Secondary', '<span class="mono">' + R.esc(current.secondary) + '</span>') +
+          R.detailItem('Accent', '<span class="mono">' + R.esc(current.accent) + '</span>') +
+          R.detailItem('Text on primary', '<span class="mono">' + R.esc(current.onPrimary) + '</span>') +
+          '</div>', canUpdate ? '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'branding\')">' + R.icon('pencil') + ' Edit colours</button>' : '') +
+        '</div><div class="stack">' +
+        R.card('Saved themes (' + themes.length + ')', themes.length ? '<div class="stack">' + themes.map(themeCard).join('') + '</div>' :
+          R.emptyState('No saved themes', 'Create a palette or extract one from your logo.', canUpdate ? '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'theme\')">Create theme</button>' : '', 'palette'),
+          canUpdate ? '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'theme\')">' + R.icon('plus') + ' New theme</button>' : '') +
+        R.card('How branding works', '<p class="muted small">Colours are validated hex tokens, not free CSS. Applying a theme updates the workspace, the public website and email accents for this organisation only. Themes are tenant-scoped and audited.</p>') +
+        '</div></div>';
+    },
+
     renderBranches(ctx, page) {
       const canManage = ctx.has('branches.manage.daycare');
       const branches = page.branches || [];
       return '<div class="grid grid-2">' + branches.map((b) => R.card(b.name,
+        (b.image_url ? '<img class="cover-image" src="' + R.attr(b.image_url) + '" alt="' + R.attr(b.name) + '" style="margin-bottom:12px">' : '') +
         '<div class="row" style="margin-bottom:8px">' + R.badge(b.status || 'active') +
         '<span class="badge badge-muted">' + R.esc(b.slug) + '</span></div>' +
         '<div class="detail-list">' +
@@ -144,12 +195,68 @@
             { name: 'name', label: 'Trading name', required: true, value: org.name || '' },
             { name: 'legalName', label: 'Legal name', value: org.legal_name || '' },
             { name: 'registrationNumber', label: 'Registration number', value: org.registration_number || '' },
-            { name: 'logoUrl', label: 'Logo URL', value: org.logo_url || '' },
-            { name: 'primaryColour', label: 'Primary colour', value: org.primary_colour || '#3A7D44' },
+            { name: 'logoUrl', label: 'Logo', type: 'media', scope: 'branding', accept: 'image/jpeg,image/png,image/webp,image/gif,image/avif', value: org.logo_url || '', span: 2 },
+            { name: 'primaryColour', label: 'Primary colour', type: 'colour', value: org.primary_colour || '#3A7D44' },
             { name: 'timezone', label: 'Timezone', value: org.timezone || 'Africa/Johannesburg' },
             { name: 'currency', label: 'Currency', value: org.currency || 'ZAR' },
             { name: 'locale', label: 'Locale', value: org.locale || 'en-ZA' }
           ]
+        });
+      } else if (name === 'logo') {
+        ctx.openModal({
+          title: 'Upload logo', endpoint: '/organisations/current', method: 'PATCH', submitLabel: 'Save logo', size: 'wide',
+          description: 'Use a square or wide logo with a transparent or solid background. It is stored in R2 and only its URL is saved.',
+          fields: [
+            { name: 'logoUrl', label: 'Logo', type: 'media', scope: 'branding', accept: 'image/jpeg,image/png,image/webp,image/gif,image/avif', value: org.logo_url || '', span: 2, help: 'PNG, JPG, WEBP, GIF or AVIF up to 15 MB.' }
+          ],
+          transform: (data) => ({ logoUrl: data.logoUrl })
+        });
+      } else if (name === 'branding') {
+        const current = Object.assign({}, R.DEFAULT_THEME, (page.themes || {}).current || {});
+        ctx.openModal({
+          title: 'Edit brand colours', endpoint: '/organisations/current', method: 'PATCH', submitLabel: 'Save colours', size: 'wide',
+          description: 'These colours drive buttons, navigation, badges and the public website. Text on primary is calculated for contrast.',
+          fields: [
+            { name: 'primaryColour', label: 'Primary', type: 'colour', value: current.primary, required: true },
+            { name: 'secondaryColour', label: 'Secondary', type: 'colour', value: current.secondary, required: true },
+            { name: 'accentColour', label: 'Accent', type: 'colour', value: current.accent, required: true },
+            { name: 'background', label: 'Page background', type: 'colour', value: current.background },
+            { name: 'surface', label: 'Card surface', type: 'colour', value: current.surface },
+            { name: 'text', label: 'Text', type: 'colour', value: current.text }
+          ],
+          transform: (data) => ({
+            primaryColour: data.primaryColour,
+            secondaryColour: data.secondaryColour,
+            accentColour: data.accentColour,
+            themeTokens: {
+              primary: data.primaryColour, secondary: data.secondaryColour, accent: data.accentColour,
+              background: data.background, surface: data.surface, text: data.text
+            }
+          })
+        });
+      } else if (name === 'theme') {
+        const current = Object.assign({}, R.DEFAULT_THEME, (page.themes || {}).current || {});
+        ctx.openModal({
+          title: 'New theme', endpoint: '/organisation/themes', submitLabel: 'Save theme', size: 'wide',
+          description: 'Saved themes can be applied to the whole organisation at any time.',
+          fields: [
+            { name: 'name', label: 'Theme name', required: true, placeholder: 'Summer palette' },
+            { name: 'isDefault', label: 'Make this the default theme', type: 'checkbox', value: false, help: 'Highlight this theme in the list' },
+            { name: 'primary', label: 'Primary', type: 'colour', value: current.primary, required: true },
+            { name: 'secondary', label: 'Secondary', type: 'colour', value: current.secondary, required: true },
+            { name: 'accent', label: 'Accent', type: 'colour', value: current.accent, required: true },
+            { name: 'background', label: 'Background', type: 'colour', value: current.background },
+            { name: 'surface', label: 'Surface', type: 'colour', value: current.surface },
+            { name: 'text', label: 'Text', type: 'colour', value: current.text }
+          ],
+          transform: (data) => ({
+            name: data.name,
+            isDefault: data.isDefault === true,
+            tokens: {
+              primary: data.primary, secondary: data.secondary, accent: data.accent,
+              background: data.background, surface: data.surface, text: data.text
+            }
+          })
         });
       } else if (name === 'operations') {
         ctx.openModal({
@@ -188,6 +295,7 @@
             { name: 'address', label: 'Address', span: 2 },
             { name: 'contactEmail', label: 'Contact email', type: 'email' },
             { name: 'contactPhone', label: 'Contact phone' },
+            { name: 'imageUrl', label: 'Branch photo', type: 'media', scope: 'branch-image', accept: 'image/jpeg,image/png,image/webp,image/gif,image/avif', span: 2 },
             { name: 'openingTime', label: 'Opening time', value: '06:30' },
             { name: 'closingTime', label: 'Closing time', value: '18:00' }
           ]
@@ -202,6 +310,7 @@
             { name: 'address', label: 'Address', span: 2, value: branch.address || '' },
             { name: 'contactEmail', label: 'Contact email', type: 'email', value: branch.contact_email || '' },
             { name: 'contactPhone', label: 'Contact phone', value: branch.contact_phone || '' },
+            { name: 'imageUrl', label: 'Branch photo', type: 'media', scope: 'branch-image', accept: 'image/jpeg,image/png,image/webp,image/gif,image/avif', value: branch.image_url || '', span: 2 },
             { name: 'openingTime', label: 'Opening time', value: branch.opening_time || '06:30' },
             { name: 'closingTime', label: 'Closing time', value: branch.closing_time || '18:00' }
           ]

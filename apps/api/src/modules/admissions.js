@@ -7,20 +7,23 @@ const { rateLimit } = require('../middleware/rate-limit');
 const { createNotification } = require('../services/notification-service');
 const { sendTemplate } = require('../services/email-service');
 const { parsePagination } = require('../utils/http');
+const branding = require('../services/branding-service');
 const { has } = require('./helpers');
 
 function register(router) {
   router.get('/public/daycares/:slug', async (ctx) => {
     const org = await ctx.db.one("SELECT * FROM organisations WHERE slug = $1 AND status IN ('active','onboarding')", [ctx.params.slug]);
     if (!org) throw new AppError('NOT_FOUND');
+    const theme = branding.themeFromOrganisation(org);
     const website = await ctx.db.one(
       `SELECT * FROM website_configs WHERE organisation_id = $1 AND status = 'published' ORDER BY published_at DESC LIMIT 1`,
       [org.id]
     );
-    if (!website) return { organisation: { name: org.name, slug: org.slug }, published: false, content: null };
-    const branches = await ctx.db.many("SELECT id, name, address, contact_email, contact_phone FROM branches WHERE organisation_id = $1 AND status = 'active'", [org.id]);
+    if (!website) return { organisation: { name: org.name, slug: org.slug, logoUrl: org.logo_url }, branding: theme, published: false, content: null };
+    const branches = await ctx.db.many("SELECT id, name, address, contact_email, contact_phone, image_url FROM branches WHERE organisation_id = $1 AND status = 'active'", [org.id]);
     return {
       organisation: { name: org.name, slug: org.slug, logoUrl: org.logo_url, currency: org.currency },
+      branding: theme,
       published: true,
       theme: website.theme,
       content: website.published_content,

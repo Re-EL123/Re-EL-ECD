@@ -7,6 +7,7 @@ const { createNotification, notifyRole } = require('../services/notification-ser
 const { sendTemplate } = require('../services/email-service');
 const { rateLimit } = require('../middleware/rate-limit');
 const { parsePagination } = require('../utils/http');
+const branding = require('../services/branding-service');
 const { has, guardianLearnerIds, getLearner } = require('./helpers');
 
 const FIELD_TYPES = ['text', 'textarea', 'email', 'phone', 'number', 'date', 'select', 'checkbox', 'radio', 'file', 'signature'];
@@ -287,7 +288,7 @@ function register(router) {
   // --- Public forms -------------------------------------------------------
 
   router.get('/public/forms/:orgSlug/:formSlug', async (ctx) => {
-    const org = await ctx.db.one("SELECT id, name, slug FROM organisations WHERE slug = $1 AND status = 'active'", [ctx.params.orgSlug]);
+    const org = await ctx.db.one("SELECT id, name, slug, logo_url, primary_colour, secondary_colour, accent_colour, theme_tokens FROM organisations WHERE slug = $1 AND status = 'active'", [ctx.params.orgSlug]);
     if (!org) throw new AppError('NOT_FOUND');
     const form = await ctx.db.one(
       `SELECT f.id, f.name, f.description, f.form_type, v.schema_json FROM form_definitions f
@@ -296,7 +297,11 @@ function register(router) {
       [org.id, ctx.params.formSlug]
     );
     if (!form) throw new AppError('NOT_FOUND');
-    return { organisation: org, form };
+    return {
+      organisation: { id: org.id, name: org.name, slug: org.slug, logoUrl: org.logo_url },
+      branding: branding.themeFromOrganisation(org),
+      form
+    };
   }, { public: true });
 
   router.post('/public/forms/:orgSlug/:formSlug/submit', async (ctx) => {

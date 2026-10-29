@@ -38,7 +38,7 @@
           R.selectFilter(ctx, 'status', EMPLOYMENT.map((s) => ({ value: s, label: R.titleCase(s) })), 'All employment statuses') +
           R.selectFilter(ctx, 'branchId', R.branchOptions(ctx), 'All branches')) +
         R.table({ rows: page.rows || [], columns: [
-          { label: 'Staff member', render: (s) => '<a class="cell-strong" href="#/app/staff/' + R.attr(s.id) + '">' + R.esc(s.display_name) + '</a><span class="cell-sub mono">' + R.esc(s.employee_reference) + '</span>' },
+          { label: 'Staff member', render: (s) => '<div class="row" style="gap:10px">' + R.mediaThumb(s.avatar_url, s.display_name) + '<div><a class="cell-strong" href="#/app/staff/' + R.attr(s.id) + '">' + R.esc(s.display_name) + '</a><span class="cell-sub mono">' + R.esc(s.employee_reference) + '</span></div></div>' },
           { label: 'Role', render: (s) => R.esc(s.job_title) },
           { label: 'Classrooms', render: (s) => (s.classrooms || []).map((c) => '<span class="badge badge-muted">' + R.esc(c.name) + '</span>').join(' ') || '<span class="muted">Unassigned</span>' },
           { label: 'Contact', render: (s) => R.esc(s.email || '—') + '<span class="cell-sub">' + R.esc(s.phone || '') + '</span>' },
@@ -81,10 +81,13 @@
       const user = s.user || {};
       const canManage = ctx.has('staff.manage.daycare');
       return '<a href="#/app/staff" class="muted small">← All staff</a>' +
+        '<div class="row" style="gap:14px;align-items:flex-start">' + R.mediaThumb(user.avatarUrl, user.displayName || 'Staff') +
+        '<div style="flex:1">' +
         R.pageHead(user.displayName || 'Staff profile', R.esc(s.job_title) + ' · ' + R.esc(s.employee_reference),
           (canManage ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'editStaff\')">' + R.icon('pencil') + ' Edit</button>' : '') +
           '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'document\')">' + R.icon('file-plus') + ' Add document</button>' +
           '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'training\')">' + R.icon('graduation-cap') + ' Add training</button>') +
+        '</div></div>' +
         '<div class="grid grid-4 section">' +
         R.statCard({ label: 'Status', value: R.titleCase(s.employment_status), icon: 'id-card', foot: 'Started ' + R.date(s.start_date) }) +
         R.statCard({ label: 'Classrooms', value: R.number((s.classrooms || []).length), icon: 'door-open', tone: 'sky' }) +
@@ -109,6 +112,7 @@
         '</div><div class="stack">' +
         R.card('Documents', R.table({ rows: s.documents || [], compact: true, columns: [
           { label: 'Document', render: (d) => '<span class="cell-strong">' + R.esc(d.title) + '</span><span class="cell-sub">' + R.esc(R.titleCase(d.document_type)) + '</span>' },
+          { label: 'File', render: (d) => d.file_url ? '<a class="btn btn-sm btn-ghost" href="' + R.attr(d.file_url) + '" target="_blank" rel="noopener">' + R.icon('external-link') + ' Open</a>' : '<span class="muted">—</span>' },
           { label: 'Expires', render: (d) => R.date(d.expires_at) },
           { label: 'Status', render: (d) => R.badge(d.verification_status) },
           { label: '', align: 'right', render: (d) => d.verification_status !== 'verified' && canManage ? '<button class="btn btn-sm btn-secondary" @click="act(\'POST\',\'/staff/' + R.attr(s.id) + '/documents/' + R.attr(d.id) + '/verify\',{verificationStatus:\'verified\'},{successMessage:\'Document verified\'})">Verify</button>' : '' }
@@ -129,6 +133,7 @@
           { name: 'employmentStatus', label: 'Employment status', type: 'select', options: EMPLOYMENT, value: s.employment_status },
           { name: 'startDate', label: 'Start date', type: 'date', value: (s.start_date || '').slice(0, 10) },
           { name: 'endDate', label: 'End date', type: 'date', value: (s.end_date || '').slice(0, 10) },
+          { name: 'avatarUrl', label: 'Profile photo', type: 'media', scope: 'staff-avatar', accept: 'image/jpeg,image/png,image/webp,image/gif,image/avif', value: user.avatarUrl || '', span: 2 },
           { name: 'contactDetails', label: 'Contact details (JSON)', type: 'textarea', value: R.json(s.contact_details || {}), span: 2 }
         ], transform: (data) => {
           const body = Object.assign({}, data);
@@ -139,7 +144,7 @@
         ctx.openModal({ title: 'Add staff document', endpoint: '/staff/' + s.id + '/documents', submitLabel: 'Add document', fields: [
           { name: 'documentType', label: 'Type', type: 'select', required: true, options: ['qualification', 'first_aid', 'police_clearance', 'contract', 'id', 'other'] },
           { name: 'title', label: 'Title', required: true },
-          { name: 'storageKey', label: 'Storage reference', required: true, span: 2 },
+          { name: 'fileUrl', label: 'File', type: 'media', scope: 'staff-document', accept: 'application/pdf,text/plain,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/jpeg,image/png', span: 2, help: 'PDF, Word, Excel, text, CSV or an image.' },
           { name: 'issuedAt', label: 'Issued', type: 'date' },
           { name: 'expiresAt', label: 'Expires', type: 'date' }
         ] });

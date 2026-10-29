@@ -101,6 +101,7 @@ function register(router) {
       restricted: { type: 'boolean', optional: true },
       learnerIds: { type: 'array', of: 'uuid', max: 50, optional: true },
       staffIds: { type: 'array', of: 'uuid', max: 50, optional: true },
+      attachmentUrls: { type: 'array', of: 'string', max: 20, optional: true },
       actions: { type: 'array', max: 20, optional: true }
     });
     const branch = await ctx.db.one('SELECT id FROM branches WHERE id = $1 AND organisation_id = $2',
@@ -109,10 +110,11 @@ function register(router) {
     const result = await ctx.db.withTransaction(async (client) => {
       const incident = (await client.query(
         `INSERT INTO incidents (organisation_id, branch_id, incident_type, occurred_at, location_description, description,
-          severity, restricted, reported_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+          severity, restricted, attachment_urls, reported_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
         [ctx.organisationId, body.branchId, body.incidentType, body.occurredAt || new Date().toISOString(),
-          body.locationDescription || null, body.description, body.severity, body.restricted === true, ctx.user.id]
+          body.locationDescription || null, body.description, body.severity, body.restricted === true,
+          JSON.stringify(body.attachmentUrls || []), ctx.user.id]
       )).rows[0];
       for (const learnerId of body.learnerIds || []) {
         const learner = (await client.query('SELECT id FROM learners WHERE id = $1 AND organisation_id = $2',
@@ -231,7 +233,8 @@ function register(router) {
       description: { type: 'string', min: 10, max: 8000, optional: true },
       severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'], optional: true },
       status: { type: 'string', enum: ['reported', 'reviewed', 'action_assigned', 'follow_up', 'closed'], optional: true },
-      restricted: { type: 'boolean', optional: true }
+      restricted: { type: 'boolean', optional: true },
+      attachmentUrls: { type: 'array', of: 'string', max: 20, optional: true }
     });
     const incident = await ctx.db.one('SELECT * FROM incidents WHERE id = $1 AND organisation_id = $2',
       [ctx.params.id, ctx.organisationId]);
@@ -254,10 +257,12 @@ function register(router) {
         severity = COALESCE($4,severity), status = COALESCE($5,status), restricted = COALESCE($6,restricted),
         reviewed_by = CASE WHEN $5 = 'reviewed' THEN $7 ELSE reviewed_by END,
         closed_at = CASE WHEN $5 = 'closed' THEN now() ELSE closed_at END,
+        attachment_urls = CASE WHEN $9::jsonb IS NULL THEN attachment_urls ELSE $9::jsonb END,
         updated_at = now() WHERE id = $8`,
       [body.incidentType || null, body.locationDescription || null, body.description || null,
         body.severity || null, body.status || null,
-        body.restricted === undefined ? null : body.restricted, ctx.user.id, incident.id]
+        body.restricted === undefined ? null : body.restricted, ctx.user.id, incident.id,
+        body.attachmentUrls ? JSON.stringify(body.attachmentUrls) : null]
     );
     await recordAudit(ctx.db, ctx, {
       action: 'safety.incident_updated', resourceType: 'incident', resourceId: incident.id,

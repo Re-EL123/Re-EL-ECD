@@ -50,7 +50,7 @@ function register(router) {
       });
     }
     const announcements = await ctx.db.many(
-      `SELECT id, title, body, published_at FROM announcements
+      `SELECT id, title, body, attachment_urls, published_at FROM announcements
        WHERE organisation_id = $1 AND status = 'published'
          AND audience_type IN ('all','parents','guardians')
        ORDER BY published_at DESC LIMIT 5`, [ctx.organisationId]
@@ -167,7 +167,7 @@ function register(router) {
   router.get('/parent/children/:id/portfolio', async (ctx) => {
     const { learner } = await childOrFail(ctx, ctx.params.id);
     return ctx.db.many(
-      `SELECT id, title, description, media_type, storage_key, created_at FROM learner_portfolio_items
+      `SELECT id, title, description, media_type, media_url, storage_key, created_at FROM learner_portfolio_items
        WHERE learner_id = $1 AND sharing_status IN ('guardians','public')
        ORDER BY created_at DESC`, [learner.id]
     );
@@ -333,7 +333,7 @@ function register(router) {
 
   router.get('/parent/announcements', async (ctx) => {
     return ctx.db.many(
-      `SELECT id, title, body, published_at FROM announcements
+      `SELECT id, title, body, attachment_urls, published_at FROM announcements
        WHERE organisation_id = $1 AND status = 'published' AND audience_type IN ('all','parents','guardians')
        ORDER BY published_at DESC LIMIT 50`, [ctx.organisationId]
     );

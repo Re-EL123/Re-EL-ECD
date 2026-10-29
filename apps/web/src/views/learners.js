@@ -37,7 +37,7 @@
           R.selectFilter(ctx, 'branchId', R.branchOptions(ctx), 'All branches')
         ) +
         R.table({ rows, columns: [
-          { label: 'Learner', render: (l) => '<a class="cell-strong" href="#/app/learners/' + R.attr(l.id) + '">' + R.esc(l.first_name) + ' ' + R.esc(l.last_name) + '</a><span class="cell-sub mono">' + R.esc(l.learner_reference) + '</span>' },
+          { label: 'Learner', render: (l) => '<div class="row" style="gap:10px">' + R.mediaThumb(l.profile_image_url, l.first_name + ' ' + l.last_name) + '<div><a class="cell-strong" href="#/app/learners/' + R.attr(l.id) + '">' + R.esc(l.first_name) + ' ' + R.esc(l.last_name) + '</a><span class="cell-sub mono">' + R.esc(l.learner_reference) + '</span></div></div>' },
           { label: 'Age', render: (l) => R.esc(l.age_years) + ' yrs<span class="cell-sub">' + R.date(l.date_of_birth) + '</span>' },
           { label: 'Classroom', render: (l) => R.esc(l.classroom_name || 'Unassigned') + '<span class="cell-sub">' + R.esc(l.branch_name || '') + '</span>' },
           { label: 'Guardian', render: (l) => l.primary_guardian ? R.esc(l.primary_guardian.first_name + ' ' + l.primary_guardian.last_name) + '<span class="cell-sub">' + R.esc(l.primary_guardian.phone || l.primary_guardian.email || '') + '</span>' : '<span class="muted">Not linked</span>' },
@@ -62,6 +62,7 @@
           { name: 'dateOfBirth', label: 'Date of birth', type: 'date', required: true },
           { name: 'gender', label: 'Gender', type: 'select', options: ['female', 'male', 'other', 'prefer not to say'] },
           { name: 'homeLanguage', label: 'Home language' },
+          { name: 'profileImageUrl', label: 'Profile photo', type: 'media', scope: 'learner-photo', accept: 'image/jpeg,image/png,image/webp,image/gif,image/avif', span: 2, help: 'Optional. Stored in R2; only the URL is saved.' },
           { name: 'branchId', label: 'Branch', type: 'select', required: true, options: R.branchOptions(ctx) },
           { name: 'classroomId', label: 'Classroom', type: 'select', options: R.classroomOptions(ctx.page) },
           { name: 'learnerReference', label: 'Reference', help: 'Leave blank to generate automatically' },
@@ -108,10 +109,13 @@
       const tab = ctx.tab || 'overview';
 
       const head = '<a href="#/app/learners" class="muted small">← All learners</a>' +
+        '<div class="row" style="gap:14px;align-items:flex-start">' + R.mediaThumb(l.profile_image_url, (l.first_name || '') + ' ' + (l.last_name || '')) +
+        '<div style="flex:1">' +
         R.pageHead((l.first_name || '') + ' ' + (l.last_name || ''), (l.learner_reference || '') + ' · ' + R.esc(classroom.name || 'No classroom') + ' · ' + R.esc(branch.name || ''),
           (canUpdate ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'editLearner\')">' + R.icon('pencil') + ' Edit</button>' : '') +
           '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'dailyReport\')">' + R.icon('notebook-pen') + ' Daily report</button>' +
-          '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'guardian\')">' + R.icon('user-plus') + ' Add guardian</button>');
+          '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'guardian\')">' + R.icon('user-plus') + ' Add guardian</button>') +
+        '</div></div>';
 
       const summary = '<div class="grid grid-4 section">' +
         R.statCard({ label: 'Age', value: (R.ageYears(l.date_of_birth) || '—') + ' yrs', icon: 'cake', foot: 'Born ' + R.date(l.date_of_birth) }) +
@@ -187,11 +191,15 @@
           { label: 'Meals', render: (d) => R.esc(d.meals || '—') },
           { label: 'Naps', render: (d) => R.esc(d.naps || '—') },
           { label: 'Summary', render: (d) => R.esc(R.truncate(d.activities_summary || d.notes, 80)) },
+          { label: 'Photos', render: (d) => R.mediaList(d.photo_urls).length ? R.mediaThumb(R.mediaList(d.photo_urls)[0], 'Report photo') : '<span class="muted">—</span>' },
           { label: 'Shared', render: (d) => d.shared_with_guardians ? '<span class="badge badge-green">Yes</span>' : '<span class="badge badge-muted">No</span>' }
         ], emptyTitle: 'No daily reports', emptyMessage: 'Write a report to share the child\'s day with their family.' }), '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'dailyReport\')">' + R.icon('plus') + ' New report</button>');
       } else if (tab === 'portfolio') {
-        body = R.card('Portfolio', (page.portfolio || []).length ? '<div class="grid grid-3">' + page.portfolio.map((item) =>
-          '<div class="card"><div class="card-head"><h3>' + R.esc(item.title) + '</h3></div><p class="muted small">' + R.esc(item.description || '') + '</p><div class="row"><span class="badge badge-muted">' + R.esc(R.titleCase(item.media_type || 'note')) + '</span>' + R.badge(item.sharing_status) + '</div></div>').join('') + '</div>' : R.emptyState('Portfolio is empty', 'Capture photos, work samples and moments worth remembering.', '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'portfolio\')">Add item</button>', 'images'), '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'portfolio\')">' + R.icon('plus') + ' Add item</button>');
+        body = R.card('Portfolio', (page.portfolio || []).length ? '<div class="media-grid">' + page.portfolio.map((item) =>
+          '<div class="media-card">' + (item.media_url ? R.mediaHtml(item.media_url, item.media_type === 'video' ? 'video' : (item.media_type === 'document' ? 'document' : 'image'), { alt: item.title }) : '') +
+          '<div class="media-card-body"><div class="row" style="justify-content:space-between"><strong>' + R.esc(item.title) + '</strong>' + R.badge(item.sharing_status) + '</div>' +
+          '<p class="muted small" style="margin:6px 0">' + R.esc(item.description || '') + '</p>' +
+          '<span class="badge badge-muted">' + R.esc(R.titleCase(item.media_type || 'note')) + '</span></div></div>').join('') + '</div>' : R.emptyState('Portfolio is empty', 'Capture photos, work samples and moments worth remembering.', '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'portfolio\')">Add item</button>', 'images'), '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'portfolio\')">' + R.icon('plus') + ' Add item</button>');
       } else if (tab === 'medical') {
         body = R.card('Medical records', R.table({ rows: page.medical || [], columns: [
           { label: 'Type', render: (m) => '<span class="cell-strong">' + R.esc(R.titleCase(m.record_type)) + '</span>' },
@@ -202,6 +210,7 @@
       } else if (tab === 'documents') {
         body = R.card('Documents', R.table({ rows: page.documents || [], columns: [
           { label: 'Document', render: (d) => '<span class="cell-strong">' + R.esc(d.title) + '</span><span class="cell-sub">' + R.esc(R.titleCase(d.document_type)) + '</span>' },
+          { label: 'File', render: (d) => d.file_url ? '<a class="btn btn-sm btn-ghost" href="' + R.attr(d.file_url) + '" target="_blank" rel="noopener">' + R.icon('external-link') + ' Open</a>' : '<span class="muted">—</span>' },
           { label: 'Type', render: (d) => R.esc(R.titleCase(d.media_type || '—')) },
           { label: 'Visibility', render: (d) => R.badge(d.visibility) },
           { label: 'Expires', render: (d) => R.date(d.expires_at) },
@@ -241,6 +250,7 @@
           { name: 'dateOfBirth', label: 'Date of birth', type: 'date', value: (l.date_of_birth || '').slice(0, 10) },
           { name: 'gender', label: 'Gender', type: 'select', options: ['female', 'male', 'other', 'prefer not to say'], value: l.gender },
           { name: 'homeLanguage', label: 'Home language', value: l.home_language },
+          { name: 'profileImageUrl', label: 'Profile photo', type: 'media', scope: 'learner-photo', accept: 'image/jpeg,image/png,image/webp,image/gif,image/avif', value: l.profile_image_url || '', span: 2 },
           { name: 'classroomId', label: 'Classroom', type: 'select', options: R.classroomOptions(ctx.page), value: l.classroom_id },
           { name: 'status', label: 'Status', type: 'select', options: STATUSES, value: l.status },
           { name: 'departureDate', label: 'Departure date', type: 'date', value: (l.departure_date || '').slice(0, 10) }
@@ -271,6 +281,7 @@
           { name: 'title', label: 'Title', required: true, span: 2 },
           { name: 'description', label: 'Description', type: 'textarea', span: 2 },
           { name: 'mediaType', label: 'Media type', type: 'select', options: ['photo', 'video', 'drawing', 'note', 'document'], value: 'photo' },
+          { name: 'mediaUrl', label: 'Photo or video', type: 'media', scope: 'portfolio', accept: 'image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/webm,video/quicktime,application/pdf', mediaTypeField: 'mediaType', span: 2 },
           { name: 'sharingStatus', label: 'Sharing', type: 'select', options: [{ value: 'private', label: 'Staff only' }, { value: 'guardians', label: 'Share with guardians' }], value: 'private' }
         ] });
       } else if (name === 'dailyReport') {
@@ -282,13 +293,14 @@
           { name: 'toileting', label: 'Toileting' },
           { name: 'activitiesSummary', label: 'What we did', type: 'textarea', span: 2 },
           { name: 'notes', label: 'Notes for the family', type: 'textarea', span: 2 },
+          { name: 'photoUrl', label: 'Photo', type: 'media', scope: 'daily-report', accept: 'image/jpeg,image/png,image/webp,image/gif,image/avif', span: 2 },
           { name: 'sharedWithGuardians', label: 'Share with guardians', type: 'checkbox', value: true, help: 'Publish to the family portal' }
         ] });
       } else if (name === 'document') {
         ctx.openModal({ title: 'Add document', endpoint: '/learners/' + id + '/documents', submitLabel: 'Save document', fields: [
           { name: 'documentType', label: 'Document type', type: 'select', required: true, options: ['consent', 'medical', 'report', 'certificate', 'other'] },
           { name: 'title', label: 'Title', required: true },
-          { name: 'storageKey', label: 'Storage reference', required: true, help: 'Object storage key or URL' },
+          { name: 'fileUrl', label: 'File', type: 'media', scope: 'learner-document', accept: 'application/pdf,text/plain,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/jpeg,image/png', span: 2, help: 'PDF, Word, Excel, text, CSV or an image.' },
           { name: 'mediaType', label: 'Media type', type: 'select', options: ['application/pdf', 'image/jpeg', 'image/png', 'text/plain'], value: 'application/pdf' },
           { name: 'visibility', label: 'Visibility', type: 'select', options: ['staff', 'guardians', 'management'], value: 'staff' },
           { name: 'expiresAt', label: 'Expires', type: 'date' }

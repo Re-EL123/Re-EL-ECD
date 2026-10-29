@@ -54,6 +54,7 @@ function register(router) {
       body: { type: 'string', min: 3, max: 10000 },
       branchId: { type: 'string', uuid: true, optional: true },
       audienceType: { type: 'string', enum: ['all', 'staff', 'parents', 'guardians', 'teachers'], optional: true },
+      attachmentUrls: { type: 'array', of: 'string', max: 20, optional: true },
       publish: { type: 'boolean', optional: true }
     });
     if (body.branchId) {
@@ -63,10 +64,11 @@ function register(router) {
     }
     const publish = body.publish === true;
     const announcement = await ctx.db.one(
-      `INSERT INTO announcements (organisation_id, branch_id, title, body, audience_type, status, published_at, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      `INSERT INTO announcements (organisation_id, branch_id, title, body, audience_type, status, published_at, attachment_urls, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
       [ctx.organisationId, body.branchId || null, body.title, body.body, body.audienceType || 'all',
-        publish ? 'published' : 'draft', publish ? new Date().toISOString() : null, ctx.user.id]
+        publish ? 'published' : 'draft', publish ? new Date().toISOString() : null,
+        JSON.stringify(body.attachmentUrls || []), ctx.user.id]
     );
     if (publish) await dispatchAnnouncement(ctx, announcement);
     await recordAudit(ctx.db, ctx, {
@@ -81,7 +83,8 @@ function register(router) {
     const body = validate(ctx.body, {
       title: { type: 'string', min: 3, max: 200, optional: true },
       body: { type: 'string', min: 3, max: 10000, optional: true },
-      audienceType: { type: 'string', enum: ['all', 'staff', 'parents', 'guardians', 'teachers'], optional: true }
+      audienceType: { type: 'string', enum: ['all', 'staff', 'parents', 'guardians', 'teachers'], optional: true },
+      attachmentUrls: { type: 'array', of: 'string', max: 20, optional: true }
     });
     const announcement = await ctx.db.one('SELECT * FROM announcements WHERE id = $1 AND organisation_id = $2',
       [ctx.params.id, ctx.organisationId]);
@@ -89,8 +92,11 @@ function register(router) {
     if (announcement.status === 'published') fail('CONFLICT', null, 'Published announcements cannot be edited. Create a new announcement.');
     await ctx.db.query(
       `UPDATE announcements SET title = COALESCE($1,title), body = COALESCE($2,body),
-        audience_type = COALESCE($3,audience_type) WHERE id = $4`,
-      [body.title || null, body.body || null, body.audienceType || null, announcement.id]
+        audience_type = COALESCE($3,audience_type),
+        attachment_urls = CASE WHEN $4::jsonb IS NULL THEN attachment_urls ELSE $4::jsonb END
+       WHERE id = $5`,
+      [body.title || null, body.body || null, body.audienceType || null,
+        body.attachmentUrls ? JSON.stringify(body.attachmentUrls) : null, announcement.id]
     );
     return ctx.db.one('SELECT * FROM announcements WHERE id = $1', [announcement.id]);
   }, { permission: 'announcements.manage.daycare' });

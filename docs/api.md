@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **261 routes** across 16 modules.
+Generated from the router: **271 routes** across 17 modules.
 
 ## Access
 
@@ -306,6 +306,16 @@ Generated from the router: **261 routes** across 16 modules.
 | POST | `/leave` | leave.request.own OR leave.manage.daycare |
 | POST | `/leave/:id/review` | leave.manage.daycare |
 
+## Media
+
+| Method | Path | Access |
+| --- | --- | --- |
+| GET | `/media/assets` | media.read.daycare |
+| DELETE | `/media/assets/:id` | media.manage.daycare |
+| POST | `/media/assets/:id/complete` | media.upload.daycare |
+| GET | `/media/config` | media.read.daycare |
+| POST | `/media/uploads` | media.upload.daycare |
+
 ## Notifications
 
 | Method | Path | Access |
@@ -320,6 +330,16 @@ Generated from the router: **261 routes** across 16 modules.
 | Method | Path | Access |
 | --- | --- | --- |
 | GET | `/onboarding/checklist` | organisation.read.daycare |
+
+## Organisation
+
+| Method | Path | Access |
+| --- | --- | --- |
+| GET | `/organisation/themes` | organisation.read.daycare |
+| POST | `/organisation/themes` | organisation.update.daycare |
+| DELETE | `/organisation/themes/:id` | organisation.update.daycare |
+| PATCH | `/organisation/themes/:id` | organisation.update.daycare |
+| POST | `/organisation/themes/:id/apply` | organisation.update.daycare |
 
 ## Organisations
 

@@ -8,12 +8,14 @@ const { resolveAccess, invalidateAccess } = require('../services/access-service'
 const { rateLimit } = require('../middleware/rate-limit');
 const { recordAudit } = require('../services/audit-service');
 const { sendTemplate } = require('../services/email-service');
+const branding = require('../services/branding-service');
 const { clearCookie } = require('../utils/http');
 
 async function sessionPayload(ctx) {
   const memberships = await ctx.db.many(
     `SELECT m.id AS membership_id, m.status, m.organisation_id, o.name, o.slug, o.status AS organisation_status,
-            o.currency, o.timezone, o.logo_url
+            o.currency, o.timezone, o.logo_url, o.primary_colour, o.secondary_colour, o.accent_colour,
+            o.theme_tokens, o.applied_theme_id
      FROM memberships m JOIN organisations o ON o.id = m.organisation_id
      WHERE m.user_id = $1 AND m.status = 'active'
      ORDER BY m.created_at ASC`,
@@ -35,7 +37,12 @@ async function sessionPayload(ctx) {
         status: membership.organisation_status,
         currency: membership.currency,
         timezone: membership.timezone,
-        logoUrl: membership.logo_url
+        logoUrl: membership.logo_url,
+        primaryColour: membership.primary_colour,
+        secondaryColour: membership.secondary_colour,
+        accentColour: membership.accent_colour,
+        appliedThemeId: membership.applied_theme_id,
+        theme: branding.themeFromOrganisation(membership)
       },
       roles: access.roles,
       permissions: Array.from(access.permissions),

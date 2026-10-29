@@ -63,14 +63,18 @@
       const routine = content.routine || [];
       const faqs = content.faqs || [];
       const theme = (page && page.theme) || 'nature';
+      const branding = (page && page.branding) || {};
+      const logo = org.logoUrl
+        ? '<img class="public-brand-logo" src="' + R.attr(org.logoUrl) + '" alt="' + R.attr(org.name) + '">'
+        : '<img src="assets/logo-little-sprouts.svg" alt="" width="38" height="38" style="border-radius:10px">';
 
       const section = (id, title, body, alt) => '<section class="public-section ' + (alt ? 'alt' : '') + '" id="' + id + '"><h2>' + R.esc(title) + '</h2>' + body + '</section>';
 
       return '' +
-        '<div class="public" data-site-theme="' + R.attr(theme) + '">' +
+        '<div class="public" data-site-theme="' + R.attr(theme) + '" ' + R.themeStyle(branding) + '>' +
         (!page || !page.published ? '<div class="site-banner">This daycare website is being prepared. Staff can sign in to manage it.</div>' : '') +
         '<nav class="public-nav">' +
-        '<div class="row" style="gap:10px"><img src="assets/logo-little-sprouts.svg" alt="" width="38" height="38" style="border-radius:10px"><div><div class="brand-name">' + R.esc(org.name) + '</div><div class="brand-sub">Early learning centre</div></div></div>' +
+        '<div class="row" style="gap:10px">' + logo + '<div><div class="brand-name">' + R.esc(org.name) + '</div><div class="brand-sub">Early learning centre</div></div></div>' +
         '<div class="links"><a href="#about">About</a><a href="#programmes">Programmes</a><a href="#routine">Our day</a><a href="#contact">Contact</a><a class="btn btn-primary btn-sm" href="#/site/' + R.attr(params.slug || 'little-sprouts') + '/apply">Enquire</a><a href="#/login" class="muted">Staff</a></div>' +
         '</nav>' +
         '<header class="hero">' +
@@ -96,7 +100,7 @@
           '</ul></div><div class="public-card"><h3>Fees</h3><p>' + R.esc(content.fees || 'Please contact us for current fee information.') + '</p></div></div></div>', false) +
         (faqs.length ? section('faqs', 'Questions families ask', '<div class="public-grid">' + faqs.map((f) => '<div class="public-card"><h3>' + R.esc(f.question) + '</h3><p>' + R.esc(f.answer) + '</p></div>').join('') + '</div>', true) : '') +
         '<section class="public-section" id="contact"><div class="split"><div><h2>Come and see us</h2><p class="lede">Book a visit or ask a question. We will reply by email.</p>' +
-          '<div class="stack">' + (branches.length ? branches.map((b) => '<div class="public-card"><h3>' + R.esc(b.name) + '</h3><p>' + R.esc(b.address || '') + '</p><p class="small"><strong>' + R.esc(b.contact_phone || '') + '</strong><br>' + R.esc(b.contact_email || '') + '</p></div>').join('') : '<div class="public-card"><h3>Contact</h3><p>Use the enquiry form and we will be in touch.</p></div>') + '</div></div>' +
+          '<div class="stack">' + (branches.length ? branches.map((b) => '<div class="public-card">' + (b.image_url ? '<img class="cover-image" src="' + R.attr(b.image_url) + '" alt="' + R.attr(b.name) + '" style="margin-bottom:10px">' : '') + '<h3>' + R.esc(b.name) + '</h3><p>' + R.esc(b.address || '') + '</p><p class="small"><strong>' + R.esc(b.contact_phone || '') + '</strong><br>' + R.esc(b.contact_email || '') + '</p></div>').join('') : '<div class="public-card"><h3>Contact</h3><p>Use the enquiry form and we will be in touch.</p></div>') + '</div></div>' +
           '<div class="card glass"><h3>Send an enquiry</h3><div class="alert alert-success" x-show="publicResult" style="margin-bottom:12px"><i data-lucide="check-circle"></i><span x-text="publicResult"></span></div>' +
           '<div class="alert alert-danger" x-show="publicError" style="margin-bottom:12px"><i data-lucide="alert-circle"></i><span x-text="publicError"></span></div>' +
           '<form @submit.prevent="submitPublicEnquiry($event, \'' + R.attr(params.slug || 'little-sprouts') + '\')">' +
@@ -126,8 +130,12 @@
     },
     render(ctx, params, page) {
       const org = page.site.organisation;
+      const branding = page.site.branding || {};
       const branches = page.form.branches || [];
-      return '<div class="public"><nav class="public-nav"><div class="row" style="gap:10px"><a href="#/site/' + R.attr(params.slug) + '" class="row" style="gap:10px;text-decoration:none"><img src="assets/logo-little-sprouts.svg" width="36" height="36" alt="" style="border-radius:10px"><div class="brand-name">' + R.esc(org.name) + '</div></a></div><div class="links"><a href="#/site/' + R.attr(params.slug) + '">Back to website</a><a href="#/login">Staff</a></div></nav>' +
+      const logo = org.logoUrl
+        ? '<img class="public-brand-logo" src="' + R.attr(org.logoUrl) + '" width="36" height="36" alt="">'
+        : '<img src="assets/logo-little-sprouts.svg" width="36" height="36" alt="" style="border-radius:10px">';
+      return '<div class="public" ' + R.themeStyle(branding) + '><nav class="public-nav"><div class="row" style="gap:10px"><a href="#/site/' + R.attr(params.slug) + '" class="row" style="gap:10px;text-decoration:none">' + logo + '<div class="brand-name">' + R.esc(org.name) + '</div></a></div><div class="links"><a href="#/site/' + R.attr(params.slug) + '">Back to website</a><a href="#/login">Staff</a></div></nav>' +
         '<section class="public-section" style="max-width:760px;margin:0 auto"><a href="#/site/' + R.attr(params.slug) + '" class="muted small">← Back to website</a><h1 style="margin-top:14px">Enquire about a place</h1><p class="lede">Share a few details and the admissions team will be in touch. There is no obligation.</p>' +
         '<div class="alert alert-success" x-show="publicResult"><i data-lucide="check-circle"></i><span x-text="publicResult"></span></div>' +
         '<div class="alert alert-danger" x-show="publicError" style="margin-top:10px"><i data-lucide="alert-circle"></i><span x-text="publicError"></span></div>' +
@@ -158,6 +166,11 @@
     },
     render(ctx, params, page) {
       const fields = (page.form.schema_json && page.form.schema_json.fields) || [];
+      const branding = page.branding || {};
+      const org = page.organisation || {};
+      const logo = org.logoUrl
+        ? '<img class="public-brand-logo" src="' + R.attr(org.logoUrl) + '" width="38" height="38" alt="">'
+        : '';
       const input = (field) => {
         const model = 'publicFormData.' + field.key;
         if (field.type === 'textarea') return '<textarea class="textarea" x-model="' + model + '" ' + (field.required ? 'required' : '') + '></textarea>';
@@ -169,7 +182,7 @@
         if (field.type === 'phone') return '<input class="input" type="tel" x-model="' + model + '" ' + (field.required ? 'required' : '') + '>';
         return '<input class="input" type="text" x-model="' + model + '" ' + (field.required ? 'required' : '') + '>';
       };
-      return '<div class="public"><nav class="public-nav"><div class="brand-name">' + R.esc(page.organisation.name) + '</div><div class="links"><a href="#/site/' + R.attr(params.slug) + '">Back to website</a></div></nav>' +
+      return '<div class="public" ' + R.themeStyle(branding) + '><nav class="public-nav"><div class="row" style="gap:10px">' + logo + '<div class="brand-name">' + R.esc(page.organisation.name) + '</div></div><div class="links"><a href="#/site/' + R.attr(params.slug) + '">Back to website</a></div></nav>' +
         '<section class="public-section" style="max-width:720px;margin:0 auto"><h1>' + R.esc(page.form.name) + '</h1><p class="lede">' + R.esc(page.form.description || '') + '</p>' +
         '<div class="alert alert-success" x-show="publicResult"><i data-lucide="check-circle"></i><span x-text="publicResult"></span></div>' +
         '<div class="alert alert-danger" x-show="publicError" style="margin-top:10px"><i data-lucide="alert-circle"></i><span x-text="publicError"></span></div>' +

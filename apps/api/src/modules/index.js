@@ -5,6 +5,7 @@ const modules = [
   require('./access'),
   require('./platform'),
   require('./organisation'),
+  require('./media'),
   require('./learners'),
   require('./admissions'),
   require('./curriculum'),

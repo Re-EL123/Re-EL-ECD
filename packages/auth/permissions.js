@@ -14,6 +14,8 @@ const PERMISSION_KEYS = [
   // Organisation
   'organisation.read.daycare', 'organisation.update.daycare', 'organisation.settings.manage',
   'branches.read.daycare', 'branches.manage.daycare',
+  // Media library (files live in object storage; the database stores URLs)
+  'media.read.daycare', 'media.upload.daycare', 'media.manage.daycare',
   // Access control
   'access.read.daycare', 'access.manage.daycare', 'delegations.manage.daycare',
   // Learners

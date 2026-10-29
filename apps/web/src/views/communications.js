@@ -76,6 +76,9 @@
           (a.branch_name ? '<span class="badge badge-sky">' + R.esc(a.branch_name) + '</span>' : '<span class="badge badge-muted">All branches</span>') +
           '<span class="muted small row-end">' + (a.published_at ? R.relative(a.published_at) : 'Created ' + R.relative(a.created_at)) + '</span></div>' +
           '<p class="muted" style="white-space:pre-wrap">' + R.esc(a.body) + '</p>' +
+          (R.mediaList(a.attachment_urls).length ? '<div class="media-grid" style="margin:10px 0">' +
+            R.mediaList(a.attachment_urls).map((url) => '<div class="media-card">' +
+              R.mediaHtml(url, R.kindForUrl(url), { alt: a.title }) + '</div>').join('') + '</div>' : '') +
           '<div class="muted small">By ' + R.esc(a.created_by_name || 'System') + '</div>',
           canManage ? '<div class="btn-group">' +
             (a.status === 'draft' ? '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/announcements/' + R.attr(a.id) + '/publish\',{},{successMessage:\'Announcement published\'})">Publish</button>' +
@@ -141,6 +144,7 @@
             { name: 'audienceType', label: 'Audience', type: 'select', options: AUDIENCES.map((a) => ({ value: a, label: R.titleCase(a) })), value: 'all' },
             { name: 'branchId', label: 'Branch', type: 'select', options: R.branchOptions(ctx) },
             { name: 'body', label: 'Message', type: 'textarea', required: true, span: 2 },
+            { name: 'attachmentUrls', label: 'Attachments', type: 'media', multiple: true, scope: 'announcement', accept: 'image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/webm,video/quicktime,audio/mpeg,application/pdf,text/plain,text/csv', span: 2, help: 'Photos, video, audio or documents to include with this announcement.' },
             { name: 'publish', label: 'Publish immediately', type: 'checkbox', value: true, help: 'Notify the audience now' }
           ]
         });
@@ -151,7 +155,8 @@
           fields: [
             { name: 'title', label: 'Title', value: a.title, required: true, span: 2 },
             { name: 'audienceType', label: 'Audience', type: 'select', value: a.audience_type, options: AUDIENCES.map((x) => ({ value: x, label: R.titleCase(x) })) },
-            { name: 'body', label: 'Message', type: 'textarea', value: a.body, required: true, span: 2 }
+            { name: 'body', label: 'Message', type: 'textarea', value: a.body, required: true, span: 2 },
+            { name: 'attachmentUrls', label: 'Attachments', type: 'media', multiple: true, scope: 'announcement', accept: 'image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/webm,video/quicktime,audio/mpeg,application/pdf,text/plain,text/csv', value: R.mediaList(a.attachment_urls), span: 2 }
           ]
         });
       } else if (name === 'conversation') {

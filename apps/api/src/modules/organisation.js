@@ -4,6 +4,7 @@ const { validate } = require('../../../../packages/contracts/validate');
 const { AppError } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
 const { parsePagination } = require('../utils/http');
+const branding = require('../services/branding-service');
 const { assignedClassroomIds, has, today } = require('./helpers');
 
 function register(router) {
@@ -20,22 +21,144 @@ function register(router) {
       legalName: { type: 'string', max: 200, optional: true },
       registrationNumber: { type: 'string', max: 100, optional: true },
       logoUrl: { type: 'string', max: 500, optional: true },
-      primaryColour: { type: 'string', max: 9, optional: true },
+      primaryColour: { type: 'string', max: 9, regex: branding.HEX, optional: true, message: 'Primary colour must be a hex colour such as #3A7D44.' },
+      secondaryColour: { type: 'string', max: 9, regex: branding.HEX, optional: true, message: 'Secondary colour must be a hex colour such as #C97A12.' },
+      accentColour: { type: 'string', max: 9, regex: branding.HEX, optional: true, message: 'Accent colour must be a hex colour such as #3D8FAE.' },
+      themeTokens: { type: 'object', optional: true },
       timezone: { type: 'string', max: 64, optional: true },
       currency: { type: 'string', min: 3, max: 3, optional: true },
       locale: { type: 'string', max: 10, optional: true }
     });
+    const tokens = body.themeTokens ? branding.normalizeTokens(body.themeTokens) : null;
     await ctx.db.query(
       `UPDATE organisations SET name = COALESCE($1,name), legal_name = COALESCE($2,legal_name),
         registration_number = COALESCE($3,registration_number), logo_url = COALESCE($4,logo_url),
-        primary_colour = COALESCE($5,primary_colour), timezone = COALESCE($6,timezone),
-        currency = COALESCE($7,currency), locale = COALESCE($8,locale), updated_at = now()
-       WHERE id = $9`,
+        primary_colour = COALESCE($5,primary_colour), secondary_colour = COALESCE($6,secondary_colour),
+        accent_colour = COALESCE($7,accent_colour),
+        theme_tokens = CASE WHEN $8::jsonb IS NULL THEN theme_tokens ELSE $8::jsonb END,
+        timezone = COALESCE($9,timezone), currency = COALESCE($10,currency), locale = COALESCE($11,locale),
+        updated_at = now()
+       WHERE id = $12`,
       [body.name || null, body.legalName || null, body.registrationNumber || null, body.logoUrl || null,
-        body.primaryColour || null, body.timezone || null, body.currency || null, body.locale || null, ctx.organisationId]
+        body.primaryColour || null, body.secondaryColour || null, body.accentColour || null,
+        tokens && Object.keys(tokens).length ? JSON.stringify(tokens) : null,
+        body.timezone || null, body.currency || null, body.locale || null, ctx.organisationId]
     );
+    if (body.primaryColour || body.secondaryColour || body.accentColour) {
+      const current = await ctx.db.one('SELECT * FROM organisations WHERE id = $1', [ctx.organisationId]);
+      const merged = branding.mergeTokens(branding.themeFromOrganisation(current), tokens || {});
+      await ctx.db.query(
+        'UPDATE organisations SET theme_tokens = $1, updated_at = now() WHERE id = $2',
+        [JSON.stringify(merged), ctx.organisationId]
+      );
+    }
     await recordAudit(ctx.db, ctx, { action: 'organisation.updated', resourceType: 'organisation', resourceId: ctx.organisationId });
     return ctx.db.one('SELECT * FROM organisations WHERE id = $1', [ctx.organisationId]);
+  }, { permission: 'organisation.update.daycare' });
+
+  router.get('/organisation/themes', async (ctx) => {
+    const themes = await ctx.db.many(
+      'SELECT * FROM organisation_themes WHERE organisation_id = $1 ORDER BY is_default DESC, created_at ASC',
+      [ctx.organisationId]
+    );
+    const organisation = await ctx.db.one('SELECT * FROM organisations WHERE id = $1', [ctx.organisationId]);
+    return {
+      themes,
+      appliedThemeId: organisation ? organisation.applied_theme_id : null,
+      current: branding.themeFromOrganisation(organisation)
+    };
+  }, { permission: 'organisation.read.daycare' });
+
+  router.post('/organisation/themes', async (ctx) => {
+    const body = validate(ctx.body, {
+      name: { type: 'string', min: 2, max: 80 },
+      tokens: { type: 'object' },
+      isDefault: { type: 'boolean', optional: true }
+    });
+    const tokens = branding.normalizeTokens(body.tokens);
+    if (!tokens.primary) {
+      throw new AppError('VALIDATION', [{ field: 'tokens', message: 'A theme needs a primary colour.' }]);
+    }
+    tokens.onPrimary = branding.onColour(tokens.primary);
+    const theme = await ctx.db.withTransaction(async (client) => {
+      if (body.isDefault === true) {
+        await client.query('UPDATE organisation_themes SET is_default = false WHERE organisation_id = $1', [ctx.organisationId]);
+      }
+      return (await client.query(
+        `INSERT INTO organisation_themes (organisation_id, name, tokens, is_default, created_by)
+         VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+        [ctx.organisationId, body.name, JSON.stringify(tokens), body.isDefault === true, ctx.user.id]
+      )).rows[0];
+    });
+    await recordAudit(ctx.db, ctx, {
+      action: 'organisation.theme_created', resourceType: 'organisation_theme', resourceId: theme.id
+    });
+    ctx.status = 201;
+    return theme;
+  }, { permission: 'organisation.update.daycare' });
+
+  router.patch('/organisation/themes/:id', async (ctx) => {
+    const body = validate(ctx.body, {
+      name: { type: 'string', min: 2, max: 80, optional: true },
+      tokens: { type: 'object', optional: true },
+      isDefault: { type: 'boolean', optional: true }
+    });
+    const theme = await ctx.db.one(
+      'SELECT * FROM organisation_themes WHERE id = $1 AND organisation_id = $2',
+      [ctx.params.id, ctx.organisationId]
+    );
+    if (!theme) throw new AppError('NOT_FOUND');
+    const tokens = body.tokens ? { ...branding.normalizeTokens(theme.tokens), ...branding.normalizeTokens(body.tokens) } : null;
+    if (tokens && tokens.primary) tokens.onPrimary = branding.onColour(tokens.primary);
+    const updated = await ctx.db.withTransaction(async (client) => {
+      if (body.isDefault === true) {
+        await client.query('UPDATE organisation_themes SET is_default = false WHERE organisation_id = $1', [ctx.organisationId]);
+      }
+      return (await client.query(
+        `UPDATE organisation_themes SET name = COALESCE($1,name),
+          tokens = CASE WHEN $2::jsonb IS NULL THEN tokens ELSE $2::jsonb END,
+          is_default = COALESCE($3,is_default), updated_at = now()
+         WHERE id = $4 RETURNING *`,
+        [body.name || null, tokens ? JSON.stringify(tokens) : null,
+          body.isDefault === undefined ? null : body.isDefault, theme.id]
+      )).rows[0];
+    });
+    await recordAudit(ctx.db, ctx, {
+      action: 'organisation.theme_updated', resourceType: 'organisation_theme', resourceId: theme.id
+    });
+    return updated;
+  }, { permission: 'organisation.update.daycare' });
+
+  router.post('/organisation/themes/:id/apply', async (ctx) => {
+    const theme = await ctx.db.one(
+      'SELECT * FROM organisation_themes WHERE id = $1 AND organisation_id = $2',
+      [ctx.params.id, ctx.organisationId]
+    );
+    if (!theme) throw new AppError('NOT_FOUND');
+    const tokens = branding.mergeTokens(theme.tokens);
+    tokens.onPrimary = branding.onColour(tokens.primary);
+    await ctx.db.query(
+      `UPDATE organisations SET primary_colour = $1, secondary_colour = $2, accent_colour = $3,
+        theme_tokens = $4, applied_theme_id = $5, updated_at = now() WHERE id = $6`,
+      [tokens.primary, tokens.secondary, tokens.accent, JSON.stringify(tokens), theme.id, ctx.organisationId]
+    );
+    await recordAudit(ctx.db, ctx, {
+      action: 'organisation.theme_applied', resourceType: 'organisation_theme', resourceId: theme.id
+    });
+    return ctx.db.one('SELECT * FROM organisations WHERE id = $1', [ctx.organisationId]);
+  }, { permission: 'organisation.update.daycare' });
+
+  router.delete('/organisation/themes/:id', async (ctx) => {
+    const theme = await ctx.db.one(
+      'SELECT * FROM organisation_themes WHERE id = $1 AND organisation_id = $2',
+      [ctx.params.id, ctx.organisationId]
+    );
+    if (!theme) throw new AppError('NOT_FOUND');
+    await ctx.db.query('DELETE FROM organisation_themes WHERE id = $1', [theme.id]);
+    await recordAudit(ctx.db, ctx, {
+      action: 'organisation.theme_deleted', resourceType: 'organisation_theme', resourceId: theme.id
+    });
+    return { success: true };
   }, { permission: 'organisation.update.daycare' });
 
   router.get('/organisations/current/settings', async (ctx) => {
@@ -80,14 +203,15 @@ function register(router) {
       address: { type: 'string', max: 500, optional: true },
       contactEmail: { type: 'string', email: true, optional: true },
       contactPhone: { type: 'string', max: 50, optional: true },
+      imageUrl: { type: 'string', max: 500, optional: true },
       openingTime: { type: 'string', max: 5, optional: true },
       closingTime: { type: 'string', max: 5, optional: true }
     });
     const branch = await ctx.db.one(
-      `INSERT INTO branches (organisation_id, name, slug, address, contact_email, contact_phone, opening_time, closing_time)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      `INSERT INTO branches (organisation_id, name, slug, address, contact_email, contact_phone, image_url, opening_time, closing_time)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
       [ctx.organisationId, body.name, body.slug, body.address || null, body.contactEmail || null,
-        body.contactPhone || null, body.openingTime || '06:30', body.closingTime || '18:00']
+        body.contactPhone || null, body.imageUrl || null, body.openingTime || '06:30', body.closingTime || '18:00']
     );
     await recordAudit(ctx.db, ctx, { action: 'branch.created', resourceType: 'branch', resourceId: branch.id, branchId: branch.id });
     ctx.status = 201;
@@ -100,6 +224,7 @@ function register(router) {
       address: { type: 'string', max: 500, optional: true },
       contactEmail: { type: 'string', email: true, optional: true },
       contactPhone: { type: 'string', max: 50, optional: true },
+      imageUrl: { type: 'string', max: 500, optional: true },
       openingTime: { type: 'string', max: 5, optional: true },
       closingTime: { type: 'string', max: 5, optional: true },
       status: { type: 'string', enum: ['active', 'inactive'], optional: true }
@@ -111,10 +236,10 @@ function register(router) {
     await ctx.db.query(
       `UPDATE branches SET name = COALESCE($1,name), address = COALESCE($2,address),
         contact_email = COALESCE($3,contact_email), contact_phone = COALESCE($4,contact_phone),
-        opening_time = COALESCE($5,opening_time), closing_time = COALESCE($6,closing_time),
-        status = COALESCE($7,status), updated_at = now() WHERE id = $8`,
+        image_url = COALESCE($5,image_url), opening_time = COALESCE($6,opening_time), closing_time = COALESCE($7,closing_time),
+        status = COALESCE($8,status), updated_at = now() WHERE id = $9`,
       [body.name || null, body.address || null, body.contactEmail || null, body.contactPhone || null,
-        body.openingTime || null, body.closingTime || null, body.status || null, branch.id]
+        body.imageUrl || null, body.openingTime || null, body.closingTime || null, body.status || null, branch.id]
     );
     await recordAudit(ctx.db, ctx, { action: 'branch.updated', resourceType: 'branch', resourceId: branch.id, branchId: branch.id });
     return ctx.db.one('SELECT * FROM branches WHERE id = $1', [branch.id]);

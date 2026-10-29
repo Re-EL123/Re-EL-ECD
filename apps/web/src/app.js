@@ -212,6 +212,7 @@
       },
       get permissions() { return (this.activeMembership && this.activeMembership.permissions) || []; },
       get branches() { return (this.activeMembership && this.activeMembership.branches) || []; },
+      get organisationTheme() { return (this.activeMembership && this.activeMembership.organisation && this.activeMembership.organisation.theme) || null; },
       get canSwitchOrganisation() { return Boolean(this.session && this.session.memberships && this.session.memberships.length > 1); },
       get isPlatformAdmin() { return Boolean(this.session && this.session.isPlatformAdmin && this.activeMembership && this.activeMembership.roles.some((r) => r.startsWith('platform_'))); },
       get isParentOnly() {
@@ -277,7 +278,70 @@
         const candidate = payload.memberships.find((m) => m.organisation.id === stored);
         this.activeOrganisationId = (candidate && candidate.organisation.id) || payload.activeOrganisationId || (payload.memberships[0] && payload.memberships[0].organisation.id) || null;
         try { if (this.activeOrganisationId) localStorage.setItem('reel.activeOrganisation', this.activeOrganisationId); } catch { /* ignore */ }
+        if (Reel.applyTheme) Reel.applyTheme(this.organisationTheme);
         this.refreshUnread();
+      },
+
+      async refreshSession() {
+        try {
+          const payload = await Reel.api('GET', '/auth/session', null, { organisationId: null });
+          this.applySession(payload.data);
+        } catch (error) {
+          if (window.console) console.warn('Session refresh failed', error);
+        }
+      },
+
+      async applyOrganisationTheme(id) {
+        try {
+          await Reel.api('POST', '/organisation/themes/' + encodeURIComponent(id) + '/apply', {});
+          await this.refreshSession();
+          this.toast('Theme applied to your workspace and website.');
+          await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'The theme could not be applied.', 'error');
+        }
+      },
+
+      async extractLogoPalette() {
+        const membership = this.activeMembership;
+        const pageOrg = this.page && this.page.organisation;
+        const logo = (membership && membership.organisation && membership.organisation.logoUrl)
+          || (pageOrg && pageOrg.logo_url);
+        if (!logo) { this.toast('Upload a logo first, then extract its colours.', 'warn'); return; }
+        this.toast('Reading colours from your logo…', 'info');
+        try {
+          const palette = await Reel.paletteFromImage(logo, 6);
+          const primary = palette[0] || '#3A7D44';
+          const secondary = palette[1] || Reel.shade(primary, -0.2);
+          const accent = palette[2] || Reel.shade(primary, 0.2);
+          const background = Reel.mix(primary, '#FFFFFF', 0.93);
+          const text = Reel.onColour(background);
+          this.openModal({
+            title: 'Create a theme from your logo',
+            endpoint: '/organisation/themes',
+            submitLabel: 'Save theme',
+            size: 'wide',
+            description: 'We sampled the strongest colours from your logo. Adjust anything before saving.',
+            fields: [
+              { name: 'name', label: 'Theme name', required: true, value: 'Logo palette' },
+              { name: 'primary', label: 'Primary', type: 'colour', value: primary, required: true },
+              { name: 'secondary', label: 'Secondary', type: 'colour', value: secondary, required: true },
+              { name: 'accent', label: 'Accent', type: 'colour', value: accent, required: true },
+              { name: 'background', label: 'Background', type: 'colour', value: background },
+              { name: 'surface', label: 'Surface', type: 'colour', value: '#FFFFFF' },
+              { name: 'text', label: 'Text', type: 'colour', value: text }
+            ],
+            transform: (data) => ({
+              name: data.name,
+              tokens: {
+                primary: data.primary, secondary: data.secondary, accent: data.accent,
+                background: data.background, surface: data.surface, text: data.text
+              }
+            })
+          });
+        } catch (error) {
+          this.toast(error.message || 'The logo colours could not be read.', 'error');
+        }
       },
 
       defaultRoute() {
@@ -291,6 +355,7 @@
         if (!id || id === this.activeOrganisationId) return;
         this.activeOrganisationId = id;
         try { localStorage.setItem('reel.activeOrganisation', id); } catch { /* ignore */ }
+        if (Reel.applyTheme) Reel.applyTheme(this.organisationTheme);
         const target = this.isPlatformAdmin ? '/platform/overview' : (this.isParentOnly ? '/parent/overview' : '/app/overview');
         if (this.area === 'platform' && !this.isPlatformAdmin) location.hash = target;
         else await this.navigate(true);
@@ -493,6 +558,7 @@
       toggleTheme() {
         this.theme = this.theme === 'dark' ? 'light' : 'dark';
         document.documentElement.dataset.theme = this.theme;
+        if (Reel.applyTheme) Reel.applyTheme(this.organisationTheme);
         try { localStorage.setItem('reel.theme', this.theme); } catch { /* ignore */ }
         this.mountCharts();
       },
@@ -590,7 +656,16 @@
 
       openModal(config) {
         const data = {};
-        (config.fields || []).forEach((field) => { data[field.name] = field.value === undefined ? (field.type === 'checkbox' ? false : '') : field.value; });
+        (config.fields || []).forEach((field) => {
+          if (field.type === 'checkbox') {
+            data[field.name] = field.value === undefined ? false : field.value;
+          } else if (field.multiple) {
+            const initial = field.value === undefined ? [] : field.value;
+            data[field.name] = Array.isArray(initial) ? initial.slice() : (initial ? [initial] : []);
+          } else {
+            data[field.name] = field.value === undefined ? '' : field.value;
+          }
+        });
         this.modal = {
           type: 'form',
           title: config.title,
@@ -605,6 +680,8 @@
           transform: config.transform || null,
           onSubmit: config.onSubmit || null,
           onSuccess: config.onSuccess || null,
+          mediaBusy: {},
+          mediaDraft: {},
           saving: false,
           error: null
         };
@@ -629,15 +706,89 @@
         this.modal = null;
       },
 
+      mediaPreview(field, url) {
+        if (!url) return '';
+        return Reel.mediaHtml(url, field.kind || Reel.kindForUrl(url), { compact: true, alt: field.label || '' });
+      },
+
+      async uploadModalMedia(field, event) {
+        const input = event && event.target;
+        const files = input && input.files ? Array.from(input.files) : [];
+        if (!files.length || !this.modal) return;
+        this.modal.mediaBusy = this.modal.mediaBusy || {};
+        this.modal.mediaBusy[field.name] = true;
+        this.modal.error = null;
+        try {
+          for (const file of files) {
+            const asset = await Reel.uploadMedia(file, {
+              scope: field.scope || 'general',
+              ownerType: field.ownerType || undefined,
+              ownerId: field.ownerId || undefined
+            });
+            if (field.multiple) {
+              const list = Array.isArray(this.modal.data[field.name]) ? this.modal.data[field.name] : [];
+              list.push(asset.url);
+              this.modal.data[field.name] = list;
+            } else {
+              this.modal.data[field.name] = asset.url;
+            }
+            if (field.mediaTypeField && this.modal.data[field.mediaTypeField] !== undefined) {
+              const kind = Reel.kindForUrl(asset.url, 'image');
+              this.modal.data[field.mediaTypeField] = (field.mediaTypeMap || {})[kind] || kind;
+            }
+            if (field.storageKeyField && this.modal.data[field.storageKeyField] !== undefined) {
+              this.modal.data[field.storageKeyField] = asset.storage_key;
+            }
+          }
+          this.toast(files.length > 1 ? files.length + ' files uploaded.' : 'File uploaded.');
+        } catch (error) {
+          this.modal.error = error.message || 'The file could not be uploaded.';
+        } finally {
+          this.modal.mediaBusy[field.name] = false;
+          if (input) input.value = '';
+        }
+      },
+
+      addModalMediaUrl(field) {
+        if (!this.modal) return;
+        const draft = ((this.modal.mediaDraft || {})[field.name] || '').trim();
+        if (!draft) return;
+        const list = Array.isArray(this.modal.data[field.name]) ? this.modal.data[field.name] : [];
+        list.push(draft);
+        this.modal.data[field.name] = list;
+        this.modal.mediaDraft[field.name] = '';
+      },
+
+      removeModalMedia(field, index) {
+        if (!this.modal) return;
+        const list = Array.isArray(this.modal.data[field.name]) ? this.modal.data[field.name].slice() : [];
+        list.splice(index, 1);
+        this.modal.data[field.name] = list;
+      },
+
+      clearModalMedia(field) {
+        if (!this.modal) return;
+        this.modal.data[field.name] = field.multiple ? [] : '';
+        if (field.storageKeyField && this.modal.data[field.storageKeyField] !== undefined) {
+          this.modal.data[field.storageKeyField] = '';
+        }
+      },
+
       async submitModal() {
         if (!this.modal || this.modal.saving) return;
-        const missing = (this.modal.fields || []).filter((f) => f.required && (this.modal.data[f.name] === '' || this.modal.data[f.name] === null || this.modal.data[f.name] === undefined));
+        const missing = (this.modal.fields || []).filter((f) => {
+          if (!f.required) return false;
+          const value = this.modal.data[f.name];
+          if (Array.isArray(value)) return value.length === 0;
+          return value === '' || value === null || value === undefined;
+        });
         if (missing.length) {
           this.modal.error = 'Please complete: ' + missing.map((f) => f.label).join(', ');
           return;
         }
         this.modal.saving = true;
         this.modal.error = null;
+        const endpoint = this.modal.endpoint || '';
         try {
           let body = this.modal.transform ? this.modal.transform(this.modal.data) : Object.assign({}, this.modal.data);
           if (this.modal.onSuccess) body = this.modal.onSuccess(body) || body;
@@ -645,6 +796,7 @@
           else await Reel.api(this.modal.method, this.modal.endpoint, body);
           const message = this.modal.successMessage || 'Saved successfully.';
           this.modal = null;
+          if (/^\/organisations\/current$/.test(endpoint)) await this.refreshSession();
           this.toast(message);
           await this.navigate(true);
         } catch (error) {

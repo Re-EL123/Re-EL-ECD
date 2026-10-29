@@ -64,6 +64,7 @@ function register(router) {
       dateOfBirth: { type: 'string', date: true },
       gender: { type: 'string', max: 20, optional: true },
       homeLanguage: { type: 'string', max: 60, optional: true },
+      profileImageUrl: { type: 'string', max: 500, optional: true },
       branchId: { type: 'string', uuid: true },
       classroomId: { type: 'string', uuid: true, optional: true },
       learnerReference: { type: 'string', max: 50, optional: true },
@@ -84,10 +85,11 @@ function register(router) {
     const learner = await ctx.db.withTransaction(async (client) => {
       const row = (await client.query(
         `INSERT INTO learners (organisation_id, branch_id, classroom_id, learner_reference, first_name, last_name,
-          preferred_name, date_of_birth, gender, home_language, status, enrolment_date, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'enrolled',$11,$12) RETURNING *`,
+          preferred_name, date_of_birth, gender, home_language, profile_image_url, status, enrolment_date, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'enrolled',$12,$13) RETURNING *`,
         [ctx.organisationId, body.branchId, body.classroomId || null, reference, body.firstName, body.lastName,
           body.preferredName || null, body.dateOfBirth, body.gender || null, body.homeLanguage || null,
+          body.profileImageUrl || null,
           body.enrolmentDate || new Date().toISOString().slice(0, 10), ctx.user.id]
       )).rows[0];
       if (body.classroomId) {
@@ -177,6 +179,7 @@ function register(router) {
       dateOfBirth: { type: 'string', date: true, optional: true },
       gender: { type: 'string', max: 20, optional: true },
       homeLanguage: { type: 'string', max: 60, optional: true },
+      profileImageUrl: { type: 'string', max: 500, optional: true },
       classroomId: { type: 'string', uuid: true, optional: true },
       status: { type: 'string', enum: ['applicant', 'enrolled', 'waitlisted', 'withdrawn', 'completed', 'archived'], optional: true },
       departureDate: { type: 'string', date: true, optional: true }
@@ -202,11 +205,12 @@ function register(router) {
       `UPDATE learners SET first_name = COALESCE($1,first_name), last_name = COALESCE($2,last_name),
         preferred_name = COALESCE($3,preferred_name), date_of_birth = COALESCE($4,date_of_birth),
         gender = COALESCE($5,gender), home_language = COALESCE($6,home_language),
-        classroom_id = COALESCE($7,classroom_id), status = COALESCE($8,status),
-        departure_date = COALESCE($9,departure_date), updated_at = now() WHERE id = $10`,
+        profile_image_url = COALESCE($7,profile_image_url),
+        classroom_id = COALESCE($8,classroom_id), status = COALESCE($9,status),
+        departure_date = COALESCE($10,departure_date), updated_at = now() WHERE id = $11`,
       [body.firstName || null, body.lastName || null, body.preferredName || null, body.dateOfBirth || null,
-        body.gender || null, body.homeLanguage || null, body.classroomId || null, body.status || null,
-        body.departureDate || null, learner.id]
+        body.gender || null, body.homeLanguage || null, body.profileImageUrl || null,
+        body.classroomId || null, body.status || null, body.departureDate || null, learner.id]
     );
     await recordAudit(ctx.db, ctx, {
       action: 'learner.updated', resourceType: 'learner', resourceId: learner.id,
@@ -391,14 +395,15 @@ function register(router) {
       description: { type: 'string', max: 2000, optional: true },
       activityId: { type: 'string', uuid: true, optional: true },
       mediaType: { type: 'string', max: 100, optional: true },
+      mediaUrl: { type: 'string', max: 500, optional: true },
       sharingStatus: { type: 'string', enum: ['private', 'staff', 'guardians', 'public'], optional: true }
     });
     const learner = await getLearner(ctx, ctx.params.id);
     const item = await ctx.db.one(
       `INSERT INTO learner_portfolio_items (organisation_id, learner_id, activity_id, title, description, media_type,
-        sharing_status, uploaded_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+        media_url, sharing_status, uploaded_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
       [ctx.organisationId, learner.id, body.activityId || null, body.title, body.description || null,
-        body.mediaType || null, body.sharingStatus || 'guardians', ctx.user.id]
+        body.mediaType || null, body.mediaUrl || null, body.sharingStatus || 'guardians', ctx.user.id]
     );
     await recordAudit(ctx.db, ctx, { action: 'learner.portfolio_item_created', resourceType: 'learner', resourceId: learner.id });
     ctx.status = 201;
@@ -493,16 +498,21 @@ function register(router) {
     const body = validate(ctx.body, {
       documentType: { type: 'string', min: 2, max: 80 },
       title: { type: 'string', min: 2, max: 200 },
-      storageKey: { type: 'string', min: 3, max: 500 },
+      storageKey: { type: 'string', min: 3, max: 500, optional: true },
+      fileUrl: { type: 'string', max: 500, optional: true },
       mediaType: { type: 'string', max: 100, optional: true },
       visibility: { type: 'string', enum: ['staff', 'guardians', 'restricted'], optional: true },
       expiresAt: { type: 'string', date: true, optional: true }
     });
     const learner = await getLearner(ctx, ctx.params.id);
+    const location = body.fileUrl || body.storageKey;
+    if (!location) {
+      fail('VALIDATION', [{ field: 'fileUrl', message: 'Upload a file or provide a storage reference.' }]);
+    }
     const doc = await ctx.db.one(
-      `INSERT INTO learner_documents (organisation_id, learner_id, document_type, title, storage_key, media_type,
-        visibility, expires_at, uploaded_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [ctx.organisationId, learner.id, body.documentType, body.title, body.storageKey, body.mediaType || null,
+      `INSERT INTO learner_documents (organisation_id, learner_id, document_type, title, storage_key, file_url, media_type,
+        visibility, expires_at, uploaded_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [ctx.organisationId, learner.id, body.documentType, body.title, location, location, body.mediaType || null,
         body.visibility || 'guardians', body.expiresAt || null, ctx.user.id]
     );
     await recordAudit(ctx.db, ctx, { action: 'learner.document_uploaded', resourceType: 'learner', resourceId: learner.id });
@@ -528,6 +538,7 @@ function register(router) {
       toileting: { type: 'string', max: 1000, optional: true },
       activitiesSummary: { type: 'string', max: 2000, optional: true },
       notes: { type: 'string', max: 2000, optional: true },
+      photoUrl: { type: 'string', max: 500, optional: true },
       sharedWithGuardians: { type: 'boolean', optional: true }
     });
     const learner = await getLearner(ctx, ctx.params.id);
@@ -536,10 +547,11 @@ function register(router) {
     if (existing) fail('CONFLICT', null, 'A daily report already exists for this date. Edit the existing report instead.');
     const report = await ctx.db.one(
       `INSERT INTO daily_reports (organisation_id, learner_id, report_date, mood, meals, naps, toileting,
-        activities_summary, notes, shared_with_guardians, recorded_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+        activities_summary, notes, photo_urls, shared_with_guardians, recorded_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [ctx.organisationId, learner.id, date, body.mood || null, body.meals || null, body.naps || null,
         body.toileting || null, body.activitiesSummary || null, body.notes || null,
+        JSON.stringify(body.photoUrl ? [body.photoUrl] : []),
         body.sharedWithGuardians === true, ctx.user.id]
     );
     await recordAudit(ctx.db, ctx, { action: 'learner.daily_report_created', resourceType: 'learner', resourceId: learner.id });

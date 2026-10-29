@@ -181,6 +181,7 @@
       return '<div class="grid grid-3 section">' + items.map((item) => R.card(item.title,
         '<div class="row" style="margin-bottom:8px"><span class="badge badge-sky">' + R.esc(R.titleCase(item.media_type || 'note')) + '</span>' +
         '<span class="muted small">' + R.relative(item.created_at) + '</span></div>' +
+        (item.media_url ? '<div style="margin-bottom:8px">' + R.mediaHtml(item.media_url, R.kindForUrl(item.media_url), { alt: item.title }) + '</div>' : '') +
         '<p class="muted small">' + R.esc(item.description || '') + '</p>')).join('') + '</div>' +
         (items.length ? '' : R.emptyState('Portfolio is empty', 'Photos, artwork and moments shared by the teachers will appear here.', '', 'image'));
     },
@@ -195,7 +196,9 @@
         R.detailItem('Toileting', R.esc(r.toileting || '—')) +
         '</div>' +
         (r.activities_summary ? '<p class="muted small" style="margin-top:10px"><strong>Activities:</strong> ' + R.esc(r.activities_summary) + '</p>' : '') +
-        (r.notes ? '<p class="muted small" style="white-space:pre-wrap"><strong>Notes:</strong> ' + R.esc(r.notes) + '</p>' : ''))).join('') + '</div>' +
+        (r.notes ? '<p class="muted small" style="white-space:pre-wrap"><strong>Notes:</strong> ' + R.esc(r.notes) + '</p>' : '') +
+        (R.mediaList(r.photo_urls).length ? '<div class="media-grid" style="margin-top:10px">' +
+          R.mediaList(r.photo_urls).map((url) => '<div class="media-card">' + R.mediaHtml(url, R.kindForUrl(url), { alt: 'Daily report photo' }) + '</div>').join('') + '</div>' : ''))).join('') + '</div>' +
         (reports.length ? '' : R.emptyState('No daily reports yet', 'Daily reports appear once a teacher shares one.', '', 'notebook-pen'));
     }
   };
@@ -229,10 +232,13 @@
           '<div class="t-body">' + R.esc(R.truncate(r.activities_summary || r.notes || '', 140)) + '</div></div>').join('') + '</div>' :
           '<p class="muted small">No daily reports yet.</p>') +
         R.card('Portfolio moments', portfolio.length ? '<div class="grid grid-2">' + portfolio.slice(0, 6).map((item) =>
-          '<div class="detail-item"><div class="d-label">' + R.esc(item.childName) + ' · ' + R.relative(item.created_at) + '</div><div class="d-value">' + R.esc(item.title) + '</div><div class="muted small">' + R.esc(item.description || '') + '</div></div>').join('') + '</div>' :
+          '<div class="detail-item"><div class="d-label">' + R.esc(item.childName) + ' · ' + R.relative(item.created_at) + '</div>' +
+          (item.media_url ? '<div style="margin:6px 0">' + R.mediaHtml(item.media_url, R.kindForUrl(item.media_url), { alt: item.title }) + '</div>' : '') +
+          '<div class="d-value">' + R.esc(item.title) + '</div><div class="muted small">' + R.esc(item.description || '') + '</div></div>').join('') + '</div>' :
           '<p class="muted small">No portfolio items yet.</p>') +
         '</div><div class="stack">' +
-        R.card('Announcements', announcements.length ? '<div class="stack">' + announcements.map((a) => '<div><div class="strong" style="font-size:0.9rem">' + R.esc(a.title) + '</div><div class="muted small">' + R.relative(a.published_at) + '</div><p class="muted small" style="white-space:pre-wrap;margin-top:4px">' + R.esc(R.truncate(a.body, 180)) + '</p></div>').join('') + '</div>' : '<p class="muted small">Nothing published.</p>') +
+        R.card('Announcements', announcements.length ? '<div class="stack">' + announcements.map((a) => '<div><div class="strong" style="font-size:0.9rem">' + R.esc(a.title) + '</div><div class="muted small">' + R.relative(a.published_at) + '</div><p class="muted small" style="white-space:pre-wrap;margin-top:4px">' + R.esc(R.truncate(a.body, 180)) + '</p>' +
+          (R.mediaList(a.attachment_urls).length ? '<div class="media-grid" style="margin-top:8px">' + R.mediaList(a.attachment_urls).map((url) => '<div class="media-card">' + R.mediaHtml(url, R.kindForUrl(url), { alt: a.title }) + '</div>').join('') + '</div>' : '') + '</div>').join('') + '</div>' : '<p class="muted small">Nothing published.</p>') +
         '</div></div>';
     }
   };
