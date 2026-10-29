@@ -35,11 +35,19 @@ function parseFormPairs(raw) {
   for (const part of String(raw).split('&')) {
     if (!part) continue;
     const index = part.indexOf('=');
-    const key = decodeURIComponent((index === -1 ? part : part.slice(0, index)).replace(/\+/g, ' '));
-    const value = index === -1 ? '' : decodeURIComponent(part.slice(index + 1).replace(/\+/g, ' '));
+    const key = decodeFormPart(index === -1 ? part : part.slice(0, index));
+    const value = index === -1 ? '' : decodeFormPart(part.slice(index + 1));
     if (key) pairs.push([key, value]);
   }
   return pairs;
+}
+
+function decodeFormPart(value) {
+  try {
+    return decodeURIComponent(String(value).replace(/\+/g, ' '));
+  } catch {
+    return String(value).replace(/\+/g, ' ');
+  }
 }
 
 function readBody(req, limitBytes = 1024 * 1024) {

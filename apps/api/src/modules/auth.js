@@ -121,6 +121,8 @@ function register(router) {
 
   router.post('/auth/forgot-password', async (ctx) => {
     const body = validate(ctx.body, { email: { type: 'string', email: true } });
+    const limit = rateLimit(`forgot:${ctx.ip}:${body.email.toLowerCase()}`, 5, 15 * 60 * 1000);
+    if (!limit.allowed) throw new AppError('RATE_LIMITED');
     const user = await ctx.db.one('SELECT id, email, display_name FROM users WHERE email_normalized = $1', [body.email.toLowerCase()]);
     let token = null;
     if (user) {
