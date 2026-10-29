@@ -8,6 +8,7 @@ const { recordAudit } = require('../services/audit-service');
 const { invalidateAccess } = require('../services/access-service');
 const { sendTemplate, isConfigured: emailConfigured, fromAddress } = require('../services/email-service');
 const payfast = require('../services/payfast-service');
+const storage = require('../services/storage-service');
 const { parsePagination } = require('../utils/http');
 
 function register(router) {
@@ -318,6 +319,12 @@ function register(router) {
       failedActions24h: errorEvents.total,
       email: { provider: 'resend', configured: emailConfigured(), from: fromAddress() },
       payments: { payfast: { configured: payfast.isConfigured(), sandbox: payfast.isSandbox() } },
+      storage: {
+        provider: 'cloudflare-r2',
+        configured: storage.isConfigured(),
+        bucket: process.env.R2_BUCKET || null,
+        publicBase: Boolean(process.env.R2_PUBLIC_BASE_URL)
+      },
       checkedAt: new Date().toISOString()
     };
   }, { platformOnly: true, permission: 'platform.health.read' });
