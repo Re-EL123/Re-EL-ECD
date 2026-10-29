@@ -68,7 +68,7 @@ function createClient() {
     const csrf = options.csrf !== undefined ? options.csrf : csrfToken;
     if (csrf && !['GET', 'HEAD'].includes(method)) headers['X-CSRF-Token'] = csrf;
 
-    const response = await fetch(baseUrl + '/api/v1' + path, { method, headers, body });
+    const response = await fetch(baseUrl + '/api/v1' + path, { method, headers, body, redirect: options.redirect || 'follow' });
     Object.assign(cookies, parseCookies(response));
     const text = await response.text();
     let payload = null;
@@ -89,6 +89,27 @@ function createClient() {
     request,
     get: (path, options) => request('GET', path, options),
     post: (path, body, options) => request('POST', path, Object.assign({ body }, options)),
+    // PayFast posts ITNs as application/x-www-form-urlencoded and signs the
+    // fields in the exact order they were posted, so order must be preserved.
+    async postForm(path, pairs, options = {}) {
+      const headers = Object.assign({ Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' }, options.headers || {});
+      const cookie = Object.entries(cookies).map(([key, value]) => `${key}=${value}`).join('; ');
+      if (cookie) headers.Cookie = cookie;
+      const body = pairs.map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`).join('&');
+      const response = await fetch(baseUrl + '/api/v1' + path, { method: 'POST', headers, body });
+      Object.assign(cookies, parseCookies(response));
+      const text = await response.text();
+      let payload = null;
+      try { payload = text ? JSON.parse(text) : null; } catch { payload = null; }
+      return {
+        status: response.status,
+        data: payload && payload.data,
+        meta: payload && payload.meta,
+        error: payload && payload.error,
+        text,
+        headers: response.headers
+      };
+    },
     patch: (path, body, options) => request('PATCH', path, Object.assign({ body }, options)),
     delete: (path, options) => request('DELETE', path, options),
     get csrf() { return csrfToken; },

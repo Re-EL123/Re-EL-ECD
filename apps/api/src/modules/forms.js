@@ -3,7 +3,8 @@
 const { validate } = require('../../../../packages/contracts/validate');
 const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
-const { createNotification } = require('../services/notification-service');
+const { createNotification, notifyRole } = require('../services/notification-service');
+const { sendTemplate } = require('../services/email-service');
 const { rateLimit } = require('../middleware/rate-limit');
 const { parsePagination } = require('../utils/http');
 const { has, guardianLearnerIds, getLearner } = require('./helpers');
@@ -328,6 +329,28 @@ function register(router) {
       action: 'form.public_submission', resourceType: 'form_submission', resourceId: submission.id,
       organisationId: org.id
     });
+    await notifyRole(ctx.db, ctx, ['principal', 'daycare_administrator', 'admissions_officer'], {
+      organisationId: org.id, type: 'form_submission', title: 'New form submission',
+      body: `${form.name} was submitted through the public website.`,
+      resourceType: 'form_submission', resourceId: submission.id
+    });
+    const reviewers = await ctx.db.many(
+      `SELECT DISTINCT u.email FROM memberships m
+       JOIN users u ON u.id = m.user_id
+       JOIN membership_roles mr ON mr.membership_id = m.id
+       JOIN roles r ON r.id = mr.role_id
+       WHERE m.organisation_id = $1 AND m.status = 'active'
+         AND r.role_key IN ('principal','daycare_administrator','admissions_officer')`,
+      [org.id]
+    );
+    for (const reviewer of reviewers) {
+      await sendTemplate(ctx.db, 'formSubmission', {
+        to: reviewer.email,
+        organisationId: org.id,
+        metadata: { submissionId: submission.id, formId: form.id },
+        data: { formName: form.name, submittedBy: body.email || 'A website visitor' }
+      });
+    }
     return { received: true, submissionId: submission.id };
   }, { public: true });
 

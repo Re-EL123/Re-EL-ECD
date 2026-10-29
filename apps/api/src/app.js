@@ -127,7 +127,9 @@ async function handle(req, res) {
     platformAccess: null,
     status: 200,
     meta: {},
-    rawResponse: false
+    rawResponse: false,
+    formPairs: null,
+    rawBody: ''
   };
   res.setHeader('X-Request-Id', ctx.requestId);
 
@@ -140,7 +142,10 @@ async function handle(req, res) {
     else if (path.startsWith('/api')) path = path.slice(4) || '/';
 
     if (!SAFE_METHODS.has(req.method)) {
-      ctx.body = await readBody(req);
+      const parsed = await readBody(req);
+      ctx.body = parsed.value;
+      ctx.formPairs = parsed.formPairs;
+      ctx.rawBody = parsed.raw;
     }
 
     const match = router.match(req.method, path);

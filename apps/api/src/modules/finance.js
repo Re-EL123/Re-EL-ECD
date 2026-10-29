@@ -4,6 +4,9 @@ const { validate, csvCell } = require('../../../../packages/contracts/validate')
 const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
 const { createNotification } = require('../services/notification-service');
+const { sendTemplate, appLink } = require('../services/email-service');
+const payfast = require('../services/payfast-service');
+const { createInvoiceIntent, outstandingFor, isPayable, guardianForInvoice, learnerName } = require('../services/payment-intent-service');
 const { parsePagination, sendText } = require('../utils/http');
 const { has, nextInvoiceNumber, paging, roundMoney, today } = require('./helpers');
 
@@ -356,6 +359,60 @@ function register(router) {
     return ctx.db.one('SELECT * FROM invoices WHERE id = $1', [invoice.id]);
   }, { permission: 'finance.invoice.issue.daycare' });
 
+  router.post('/invoices/:id/payfast-link', async (ctx) => {
+    if (!payfast.isConfigured()) {
+      fail('CONFLICT', null, 'Online payments are not configured. Set PAYFAST_MERCHANT_ID and PAYFAST_MERCHANT_KEY.');
+    }
+    const body = validate(ctx.body || {}, {
+      amount: { type: 'number', min: 0.01, optional: true },
+      sendEmail: { type: 'boolean', optional: true }
+    });
+    const invoice = await ctx.db.one('SELECT * FROM invoices WHERE id = $1 AND organisation_id = $2',
+      [ctx.params.id, ctx.organisationId]);
+    if (!invoice) throw new AppError('NOT_FOUND');
+    if (!isPayable(invoice)) fail('CONFLICT', null, 'This invoice is not open for payment.');
+    const outstanding = outstandingFor(invoice);
+    const amount = body.amount ? roundMoney(Math.min(Number(body.amount), outstanding)) : outstanding;
+    if (amount <= 0) fail('CONFLICT', null, 'There is nothing left to pay on this invoice.');
+
+    const guardian = await guardianForInvoice(ctx.db, invoice);
+    const { intent, checkout } = await createInvoiceIntent(ctx.db, {
+      organisation: ctx.organisation,
+      invoice,
+      guardian,
+      amount,
+      createdBy: ctx.user.id,
+      req: ctx.req,
+      scope: 'staff',
+      itemName: 'Invoice ' + invoice.invoice_number
+    });
+
+    if (body.sendEmail !== false && guardian) {
+      await sendTemplate(ctx.db, 'invoiceIssued', {
+        to: guardian.email,
+        organisationId: ctx.organisationId,
+        metadata: { invoiceId: invoice.id, intentId: intent.id },
+        data: {
+          organisationName: ctx.organisation.name,
+          invoiceNumber: invoice.invoice_number,
+          learnerName: await learnerName(ctx.db, invoice),
+          amount: outstanding,
+          paid: Number(invoice.amount_paid || 0),
+          currency: invoice.currency,
+          dueDate: invoice.due_at ? new Date(invoice.due_at).toLocaleDateString('en-ZA') : 'On receipt',
+          payUrl: checkout.action + '?' + checkout.query,
+          viewUrl: appLink('/#/app/finance')
+        }
+      });
+    }
+
+    await recordAudit(ctx.db, ctx, {
+      action: 'finance.payment_link_created', resourceType: 'invoice', resourceId: invoice.id,
+      metadata: { intentId: intent.id, amount, reference: intent.reference }
+    });
+    return { intent, checkout };
+  }, { permission: 'finance.payment.record.daycare' });
+
   router.post('/invoices/generate', async (ctx) => {
     const body = validate(ctx.body, {
       branchId: { type: 'string', uuid: true, optional: true },
@@ -457,7 +514,7 @@ function register(router) {
     const body = validate(ctx.body, {
       guardianId: { type: 'string', uuid: true, optional: true },
       amount: { type: 'number', min: 0.01 },
-      paymentMethod: { type: 'string', enum: ['eft', 'cash', 'card', 'debit_order', 'snapscan', 'other'] },
+      paymentMethod: { type: 'string', enum: ['eft', 'cash', 'card', 'debit_order', 'snapscan', 'payfast', 'other'] },
       providerReference: { type: 'string', max: 200, optional: true },
       receivedAt: { type: 'string', datetime: true, optional: true },
       notes: { type: 'string', max: 1000, optional: true },
@@ -850,16 +907,177 @@ function register(router) {
       'Content-Disposition': 'attachment; filename="re-el-invoices.csv"'
     });
   }, { permission: 'finance.reports.daycare' });
+
+  // --- PayFast hosted checkout --------------------------------------------
+
+  router.post('/public/payfast/itn', async (ctx) => {
+    ctx.rawResponse = true;
+    const ack = (text) => sendText(ctx.res, 200, text || 'OK');
+
+    if (!payfast.isConfigured()) return ack('IGNORED');
+    if (!payfast.ipAllowed(ctx.ip)) {
+      console.error(JSON.stringify({ level: 'warn', message: 'payfast itn from unlisted ip', ip: ctx.ip }));
+      return sendText(ctx.res, 403, 'FORBIDDEN');
+    }
+
+    const pairs = ctx.formPairs || [];
+    const body = ctx.body || {};
+    const verification = payfast.verifyItn(pairs);
+    if (!verification.valid) {
+      console.error(JSON.stringify({ level: 'warn', message: 'payfast itn rejected', reason: verification.reason, ip: ctx.ip }));
+      return sendText(ctx.res, 400, 'INVALID');
+    }
+    const data = verification.data;
+    if (!data.reference) return sendText(ctx.res, 400, 'INVALID');
+
+    const intents = await ctx.db.many('SELECT * FROM payment_intents WHERE reference = $1', [data.reference]);
+    if (intents.length !== 1) {
+      console.error(JSON.stringify({ level: 'warn', message: 'payfast itn for unknown reference', reference: data.reference }));
+      return ack('UNKNOWN');
+    }
+    const intent = intents[0];
+
+    const serverCheck = await payfast.validateWithPayfast(ctx.rawBody);
+    if (serverCheck.status === 'invalid') {
+      console.error(JSON.stringify({ level: 'warn', message: 'payfast itn failed server validation', reference: data.reference }));
+      return sendText(ctx.res, 400, 'INVALID');
+    }
+
+    const eventId = 'payfast:' + (data.providerReference || data.reference) + ':' + (data.paymentStatus || 'unknown');
+    const event = await ctx.db.one(
+      `INSERT INTO payment_webhook_events (organisation_id, provider, event_id, payload)
+       VALUES ($1,'payfast',$2,$3) ON CONFLICT (event_id) DO NOTHING RETURNING id`,
+      [intent.organisation_id, eventId, JSON.stringify({ ...body, serverValidation: serverCheck.status })]
+    );
+    if (!event) return ack('DUPLICATE');
+
+    if (data.paymentStatus !== 'COMPLETE') {
+      const nextStatus = data.paymentStatus === 'CANCELLED' ? 'cancelled' : 'failed';
+      await ctx.db.query(
+        "UPDATE payment_intents SET status = $1 WHERE id = $2 AND status = 'pending'",
+        [nextStatus, intent.id]
+      );
+      await ctx.db.query('UPDATE payment_webhook_events SET processed_at = now() WHERE id = $1', [event.id]);
+      return ack('ACKNOWLEDGED');
+    }
+
+    if (Math.abs(Number(data.amountGross) - Number(intent.amount)) > 0.01) {
+      await ctx.db.query('UPDATE payment_webhook_events SET processed_at = now() WHERE id = $1', [event.id]);
+      console.error(JSON.stringify({
+        level: 'error', message: 'payfast amount mismatch', reference: intent.reference,
+        expected: Number(intent.amount), received: Number(data.amountGross)
+      }));
+      return ack('REJECTED');
+    }
+
+    if (intent.status === 'paid' && intent.payment_id) {
+      await ctx.db.query('UPDATE payment_webhook_events SET processed_at = now() WHERE id = $1', [event.id]);
+      return ack('ALREADY_PAID');
+    }
+
+    const invoice = intent.invoice_id
+      ? await ctx.db.one('SELECT * FROM invoices WHERE id = $1', [intent.invoice_id])
+      : null;
+
+    const result = await ctx.db.withTransaction(async (client) => {
+      const payment = (await client.query(
+        `INSERT INTO payments (organisation_id, guardian_id, currency, amount, payment_method, provider_reference,
+          status, received_at, idempotency_key, notes)
+         VALUES ($1,$2,$3,$4,'payfast',$5,'confirmed',now(),$6,$7) RETURNING *`,
+        [intent.organisation_id, intent.guardian_id, intent.currency, Number(intent.amount),
+          data.providerReference || null, 'payfast:' + (data.providerReference || intent.reference),
+          'PayFast ' + (data.providerReference || intent.reference)]
+      )).rows[0];
+
+      let allocations = [];
+      if (invoice) {
+        const outstanding = Math.max(0, Number(invoice.total_amount) - Number(invoice.amount_paid));
+        if (outstanding > 0) {
+          allocations = await allocatePayment({ organisationId: intent.organisation_id }, client, payment, [
+            { invoiceId: invoice.id, amount: Math.min(Number(intent.amount), outstanding) }
+          ]);
+        }
+      }
+
+      await client.query(
+        `UPDATE payment_intents SET status = 'paid', payment_id = $1, provider_reference = $2, completed_at = now()
+         WHERE id = $3`,
+        [payment.id, data.providerReference || null, intent.id]
+      );
+      await client.query('UPDATE payment_webhook_events SET processed_at = now() WHERE id = $1', [event.id]);
+      return { payment, allocations };
+    });
+
+    const [guardian, organisation] = await Promise.all([
+      intent.guardian_id ? ctx.db.one('SELECT * FROM guardians WHERE id = $1', [intent.guardian_id]) : null,
+      ctx.db.one('SELECT * FROM organisations WHERE id = $1', [intent.organisation_id])
+    ]);
+    if (guardian && guardian.email && organisation) {
+      await sendTemplate(ctx.db, 'paymentReceipt', {
+        to: guardian.email,
+        organisationId: intent.organisation_id,
+        metadata: { paymentId: result.payment.id, intentId: intent.id },
+        data: {
+          organisationName: organisation.name,
+          invoiceNumber: invoice ? invoice.invoice_number : null,
+          amount: Number(result.payment.amount),
+          currency: result.payment.currency,
+          method: 'PayFast card payment',
+          reference: data.providerReference || intent.reference,
+          paidAt: new Date(result.payment.received_at).toLocaleString('en-ZA')
+        }
+      });
+    }
+
+    await recordAudit(ctx.db, { requestId: ctx.requestId, ip: ctx.ip }, {
+      action: 'finance.payment_received', resourceType: 'payment', resourceId: result.payment.id,
+      organisationId: intent.organisation_id,
+      metadata: { provider: 'payfast', reference: intent.reference, intentId: intent.id }
+    });
+    return ack('OK');
+  }, { public: true, skipCsrf: true });
+
+  router.get('/public/payfast/return', async (ctx) => {
+    const reference = ctx.query.ref || ctx.query.m_payment_id || '';
+    const status = ctx.query.payment || 'return';
+    ctx.rawResponse = true;
+    const target = payfast.frontendBaseUrl() + '/#/parent/finance?payment='
+      + encodeURIComponent(String(status)) + '&ref=' + encodeURIComponent(String(reference));
+    ctx.res.statusCode = 302;
+    ctx.res.setHeader('Location', target);
+    ctx.res.setHeader('Cache-Control', 'no-store');
+    ctx.res.end();
+  }, { public: true });
 }
 
 async function notifyGuardianInvoice(ctx, invoice) {
   const guardian = await ctx.db.one('SELECT * FROM guardians WHERE id = $1', [invoice.guardian_id]);
-  if (!guardian || !guardian.user_id) return;
-  await createNotification(ctx.db, ctx, {
-    recipientUserIds: [guardian.user_id], type: 'invoice_issued',
-    title: `Invoice ${invoice.invoice_number}`,
-    body: `A new invoice has been issued to your account.`,
-    resourceType: 'invoice', resourceId: invoice.id
+  if (!guardian) return;
+  if (guardian.user_id) {
+    await createNotification(ctx.db, ctx, {
+      recipientUserIds: [guardian.user_id], type: 'invoice_issued',
+      title: `Invoice ${invoice.invoice_number}`,
+      body: `A new invoice has been issued to your account.`,
+      resourceType: 'invoice', resourceId: invoice.id
+    });
+  }
+  const learner = invoice.learner_id
+    ? await ctx.db.one('SELECT first_name, last_name FROM learners WHERE id = $1', [invoice.learner_id])
+    : null;
+  await sendTemplate(ctx.db, 'invoiceIssued', {
+    to: guardian.email,
+    organisationId: ctx.organisationId,
+    metadata: { invoiceId: invoice.id },
+    data: {
+      organisationName: ctx.organisation.name,
+      invoiceNumber: invoice.invoice_number,
+      learnerName: learner ? `${learner.first_name} ${learner.last_name}` : null,
+      amount: Number(invoice.total_amount) - Number(invoice.amount_paid || 0),
+      paid: Number(invoice.amount_paid || 0),
+      currency: invoice.currency,
+      dueDate: invoice.due_at ? new Date(invoice.due_at).toLocaleDateString('en-ZA') : 'On receipt',
+      viewUrl: appLink('/#/parent/finance')
+    }
   });
 }
 

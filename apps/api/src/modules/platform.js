@@ -6,6 +6,8 @@ const { hashPassword, randomToken, sha256 } = require('../../../../packages/auth
 const { ROLES } = require('../../../../packages/auth/roles');
 const { recordAudit } = require('../services/audit-service');
 const { invalidateAccess } = require('../services/access-service');
+const { sendTemplate, isConfigured: emailConfigured, fromAddress } = require('../services/email-service');
+const payfast = require('../services/payfast-service');
 const { parsePagination } = require('../utils/http');
 
 function register(router) {
@@ -43,12 +45,19 @@ function register(router) {
        ORDER BY ae.occurred_at DESC LIMIT 12`
     );
     return {
-      organisations: orgs,
+      organisations: orgs.total,
+      organisationStatus: {
+        total: orgs.total,
+        active: orgs.active || 0,
+        onboarding: orgs.onboarding || 0,
+        suspended: orgs.suspended || 0
+      },
       activeUsers: users.total,
       activeLearners: learners.total,
       subscriptionRevenue: revenue.mrr,
       failedPaymentEvents: failedPayments.total,
-      securityEvents: security,
+      securityEvents: security.reduce((sum, row) => sum + row.total, 0),
+      securityBreakdown: security,
       recentEvents
     };
   }, { platformOnly: true, permission: 'platform.organisations.read' });
@@ -184,6 +193,19 @@ function register(router) {
       return { organisation: org, branch, membership, owner };
     });
     invalidateAccess(result.owner.id, result.organisation.id);
+    if (!ownerExisting && !body.temporaryPassword) {
+      const token = randomToken(24);
+      await ctx.db.query(
+        `INSERT INTO password_resets (user_id, token_hash, expires_at) VALUES ($1,$2,now() + interval '1 hour')`,
+        [result.owner.id, sha256(token)]
+      );
+      await sendTemplate(ctx.db, 'welcome', {
+        to: body.ownerEmail,
+        organisationId: result.organisation.id,
+        metadata: { organisationId: result.organisation.id, ownerUserId: result.owner.id },
+        data: { ownerName: body.ownerName, organisationName: result.organisation.name, token }
+      });
+    }
     if (process.env.NODE_ENV !== 'production') ctx.meta.temporaryPassword = password;
     ctx.status = 201;
     return result.organisation;
@@ -294,6 +316,8 @@ function register(router) {
       version: process.env.APP_VERSION || '1.0.0',
       environment: process.env.NODE_ENV || 'development',
       failedActions24h: errorEvents.total,
+      email: { provider: 'resend', configured: emailConfigured(), from: fromAddress() },
+      payments: { payfast: { configured: payfast.isConfigured(), sandbox: payfast.isSandbox() } },
       checkedAt: new Date().toISOString()
     };
   }, { platformOnly: true, permission: 'platform.health.read' });

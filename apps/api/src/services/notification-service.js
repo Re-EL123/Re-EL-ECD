@@ -1,6 +1,6 @@
 'use strict';
 
-const nodemailerNotInstalled = process.env.EMAIL_API_KEY ? false : true;
+const { isConfigured } = require('./email-service');
 
 async function createNotification(db, ctx, { recipientUserIds, type = 'general', title, body = '', resourceType = null, resourceId = null, organisationId = null }) {
   const created = [];
@@ -17,11 +17,13 @@ async function createNotification(db, ctx, { recipientUserIds, type = 'general',
        VALUES ($1,'in_app','delivered',1,now())`,
       [row.id]
     );
-    // Email delivery is queued; a durable worker processes it when configured.
+    // In-app delivery is immediate. Transactional email is sent explicitly by
+    // the domain module and recorded in `email_deliveries`; this row keeps the
+    // notification fan-out auditable without pretending a worker exists.
     await db.query(
       `INSERT INTO notification_deliveries (notification_id, channel, delivery_status, attempt_count)
        VALUES ($1,'email',$2,0)`,
-      [row.id, nodemailerNotInstalled ? 'skipped' : 'queued']
+      [row.id, isConfigured() ? 'queued' : 'skipped']
     );
   }
   return created;

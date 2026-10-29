@@ -8,6 +8,7 @@ const { hasPermission } = require('../../../../packages/auth/permissions');
 const { invalidateAccess } = require('../services/access-service');
 const { recordAudit } = require('../services/audit-service');
 const { createNotification } = require('../services/notification-service');
+const { sendTemplate } = require('../services/email-service');
 
 async function actorRank(ctx) {
   let max = 0;
@@ -90,6 +91,18 @@ function register(router) {
         title: 'Organisation invitation', body: `You have been invited to join ${ctx.organisation.name}.`
       });
     }
+    await sendTemplate(ctx.db, 'invitation', {
+      to: body.email,
+      organisationId: ctx.organisationId,
+      metadata: { invitationId: invitation.id, roleKey: body.roleKey },
+      data: {
+        organisationName: ctx.organisation.name,
+        inviterName: ctx.user.display_name,
+        roleLabel: role.name,
+        token,
+        expiresAt: invitation.expires_at
+      }
+    });
     if (process.env.NODE_ENV !== 'production') ctx.meta.inviteToken = token;
     return { invitationId: invitation.id, email: body.email, roleKey: body.roleKey, expiresAt: invitation.expires_at };
   }, { permission: 'access.manage.daycare' });

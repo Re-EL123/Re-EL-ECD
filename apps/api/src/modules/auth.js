@@ -7,6 +7,7 @@ const { createSession, revokeSession, revokeAllSessions, SESSION_COOKIE, CSRF_CO
 const { resolveAccess, invalidateAccess } = require('../services/access-service');
 const { rateLimit } = require('../middleware/rate-limit');
 const { recordAudit } = require('../services/audit-service');
+const { sendTemplate } = require('../services/email-service');
 const { clearCookie } = require('../utils/http');
 
 async function sessionPayload(ctx) {
@@ -120,7 +121,7 @@ function register(router) {
 
   router.post('/auth/forgot-password', async (ctx) => {
     const body = validate(ctx.body, { email: { type: 'string', email: true } });
-    const user = await ctx.db.one('SELECT id FROM users WHERE email_normalized = $1', [body.email.toLowerCase()]);
+    const user = await ctx.db.one('SELECT id, email, display_name FROM users WHERE email_normalized = $1', [body.email.toLowerCase()]);
     let token = null;
     if (user) {
       token = randomToken(24);
@@ -129,6 +130,11 @@ function register(router) {
         [user.id, sha256(token)]
       );
       if (process.env.NODE_ENV !== 'production') ctx.meta.resetToken = token;
+      await sendTemplate(ctx.db, 'passwordReset', {
+        to: user.email,
+        metadata: { userId: user.id },
+        data: { displayName: user.display_name, token }
+      });
       await recordAudit(ctx.db, ctx, { action: 'auth.password_reset_requested', resourceType: 'user', resourceId: user.id });
     }
     // Always respond identically to avoid disclosing account existence.

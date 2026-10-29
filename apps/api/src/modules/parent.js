@@ -4,6 +4,8 @@ const { validate } = require('../../../../packages/contracts/validate');
 const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
 const { createNotification } = require('../services/notification-service');
+const payfast = require('../services/payfast-service');
+const { createInvoiceIntent, outstandingFor, isPayable, guardianForInvoice } = require('../services/payment-intent-service');
 const { has, guardianLearnerIds, guardianForLearner, today, roundMoney } = require('./helpers');
 const { progressFor } = require('./assessments');
 
@@ -214,6 +216,44 @@ function register(router) {
        WHERE pa.invoice_id = $1 ORDER BY p.received_at`, [invoice.id]
     );
     return { ...invoice, items, payments, outstanding: roundMoney(Number(invoice.total_amount) - Number(invoice.amount_paid)) };
+  }, { permission: 'parent.finance.read.own' });
+
+  router.post('/parent/invoices/:id/pay', async (ctx) => {
+    if (!payfast.isConfigured()) {
+      fail('CONFLICT', null, 'Online card payments are not available yet. Please pay by EFT and use the reference on your invoice.');
+    }
+    const invoice = await ctx.db.one(
+      `SELECT i.* FROM invoices i JOIN learner_guardians lg ON lg.learner_id = i.learner_id
+       JOIN guardians g ON g.id = lg.guardian_id
+       WHERE i.id = $1 AND i.organisation_id = $2 AND g.user_id = $3
+         AND lg.can_receive_financial_information = true`,
+      [ctx.params.id, ctx.organisationId, ctx.user.id]
+    );
+    if (!invoice) throw new AppError('NOT_FOUND');
+    if (!isPayable(invoice)) fail('CONFLICT', null, 'This invoice is not open for payment.');
+    const body = validate(ctx.body || {}, { amount: { type: 'number', min: 0.01, optional: true } });
+    const outstanding = outstandingFor(invoice);
+    const amount = body.amount ? roundMoney(Math.min(Number(body.amount), outstanding)) : outstanding;
+    if (amount <= 0) fail('CONFLICT', null, 'There is nothing left to pay on this invoice.');
+
+    const guardian = await guardianForInvoice(ctx.db, invoice);
+
+    const { intent, checkout } = await createInvoiceIntent(ctx.db, {
+      organisation: ctx.organisation,
+      invoice,
+      guardian,
+      amount,
+      createdBy: ctx.user.id,
+      req: ctx.req,
+      scope: 'parent',
+      itemName: 'School fees — ' + invoice.invoice_number
+    });
+
+    await recordAudit(ctx.db, ctx, {
+      action: 'finance.payment_link_created', resourceType: 'invoice', resourceId: invoice.id,
+      metadata: { intentId: intent.id, amount, reference: intent.reference, channel: 'parent' }
+    });
+    return { intent, checkout };
   }, { permission: 'parent.finance.read.own' });
 
   router.get('/parent/finance/summary', async (ctx) => {

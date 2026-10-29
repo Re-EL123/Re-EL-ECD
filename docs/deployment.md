@@ -132,8 +132,71 @@ static output. Configure these environment variables in Vercel:
 | `CROSS_SITE_COOKIES` | When hosted separately | `true` for `SameSite=None; Secure`. |
 | `SESSION_HOURS` | No | Defaults to 8. |
 | `DATABASE_SSL` | No | Defaults to `require` for remote databases. |
+| `DATABASE_CONNECT_TIMEOUT_MS` | No | Defaults to 30000, so a suspended Neon compute can wake. |
+| `DATABASE_STATEMENT_TIMEOUT_MS` | No | Defaults to 30000. |
 | `DEMO_PASSWORD` | No | Do not set in production. |
-| `EMAIL_API_KEY` | No | Notifications are recorded without a provider. |
+| `RESEND_API_KEY` | No | Enables transactional email. Without it, sends are logged as `skipped`. |
+| `EMAIL_FROM` | No | Defaults to `Re-EL ECD <no-reply@re-el.co.za>`. Must be a verified Resend sender. |
+| `EMAIL_REPLY_TO` | No | Reply-to address for outbound mail. |
+| `APP_BASE_URL` | No | Web origin used in email links. Defaults to the first `FRONTEND_ORIGIN`. |
+| `API_BASE_URL` | No | API origin used for the PayFast ITN callback. Derived from the request when blank. |
+| `PAYFAST_MERCHANT_ID` | For card payments | PayFast merchant id. |
+| `PAYFAST_MERCHANT_KEY` | For card payments | PayFast merchant key. |
+| `PAYFAST_PASSPHRASE` | If set in PayFast | Must match the PayFast account passphrase. |
+| `PAYFAST_SANDBOX` | No | `true` uses `sandbox.payfast.co.za`. |
+| `PAYFAST_IP_ALLOWLIST` | No | Comma-separated IPs allowed to post ITNs. |
+| `PAYFAST_VALIDATE` | No | Defaults to `true` (server-to-server ITN confirmation). |
+
+### Email (Resend)
+
+Transactional email is sent through the Resend HTTP API. Every attempt is
+recorded in `email_deliveries` with a status of `sent`, `failed` or `skipped`,
+so "did the guardian receive the invoice?" is answerable from the database.
+Email is best-effort: a provider outage never fails an invitation, invoice or
+payment webhook.
+
+Wired templates: welcome (new tenant owner), staff invitation, password reset,
+website enquiry notification and acknowledgement, public form submission,
+announcement publication, invoice issued, payment receipt, high-severity
+incident alert and leave decision.
+
+To enable it:
+
+1. Verify the sending domain in Resend (for example `re-el.co.za`).
+2. Set `RESEND_API_KEY` and `EMAIL_FROM` in Vercel for Production.
+3. Send a test by inviting a staff member or requesting a password reset.
+
+`GET /api/v1/platform/health` reports whether email is configured and which
+sender is in use.
+
+### Payments (PayFast)
+
+PayFast is the hosted checkout provider. The platform never stores card
+details: a guardian is redirected to PayFast, and the invoice is settled when
+PayFast posts an ITN to `POST /api/v1/public/payfast/itn`.
+
+The flow:
+
+1. A guardian taps **Pay online** in the parent portal, or the office creates a
+   **Payment link** from Finance → Invoices.
+2. `POST /parent/invoices/:id/pay` or `POST /invoices/:id/payfast-link`
+   creates a `payment_intents` row with an unguessable reference and returns a
+   signed checkout payload.
+3. PayFast collects the payment and posts an ITN. The handler verifies the
+   signature in the posted field order, checks the merchant id, confirms the
+   amount, optionally validates the ITN server-to-server with PayFast, records
+   a `payment_webhook_events` row for replay protection, creates a `payments`
+   row with method `payfast`, allocates it to the invoice and emails a receipt.
+4. The browser returns to `#/parent/finance?payment=return`, which explains
+   that confirmation is in progress.
+
+Set `PAYFAST_MERCHANT_ID`, `PAYFAST_MERCHANT_KEY` and (if configured in the
+PayFast account) `PAYFAST_PASSPHRASE`. Use `PAYFAST_SANDBOX=true` until the
+account is live. PayFast must be able to reach the public API URL; set
+`API_BASE_URL` if the request host is not the public origin.
+
+The webhook is idempotent: the same `pf_payment_id` and status is only
+processed once, and a duplicate ITN returns `200 DUPLICATE`.
 
 Deploy with the Vercel Git integration (recommended) or:
 
@@ -240,3 +303,9 @@ the CI check before merging.
 | Every API call returns 404 on the Pages domain | `REEL_API_BASE` is empty, so the SPA calls the static host. Set the repository variable and re-run `pages.yml`. |
 | Vercel preview URLs return 302 "Protected by Vercel Authentication" | Deployment protection applies to preview URLs; use the production alias. |
 | Migrations did not run on Vercel | Check the function logs for the migration error; run `npm run migrate` manually against the database. |
+| Emails are not arriving | Check `email_deliveries` for the row: `skipped` means `RESEND_API_KEY` is unset or `EMAIL_ENABLED=false`; `failed` carries the Resend error. A verified sender domain is required for `EMAIL_FROM`. |
+| Password reset or invitation links point at the wrong host | Set `APP_BASE_URL` (or `FRONTEND_ORIGIN`) to the public web origin; links are built from it. |
+| "Online payments are not configured" | `PAYFAST_MERCHANT_ID` and `PAYFAST_MERCHANT_KEY` are unset in the API environment. |
+| PayFast ITNs never arrive | PayFast must reach the public API; set `API_BASE_URL` to the deployed API origin. `GET /api/v1/platform/health` reports the PayFast mode. |
+| PayFast ITN returns `INVALID` | The passphrase or merchant id does not match the PayFast account, or a proxy reordered the form fields. ITNs are signed in posted order. |
+| PayFast ITN returns `REJECTED` | The signed amount did not match the intent amount; the invoice is intentionally left open and the mismatch is logged. |

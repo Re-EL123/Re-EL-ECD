@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **257 routes** across 16 modules.
+Generated from the router: **261 routes** across 16 modules.
 
 ## Access
 
@@ -252,6 +252,7 @@ Generated from the router: **257 routes** across 16 modules.
 | GET | `/invoices/:id` | finance.read.daycare |
 | PATCH | `/invoices/:id` | finance.invoice.issue.daycare |
 | POST | `/invoices/:id/issue` | finance.invoice.issue.daycare |
+| POST | `/invoices/:id/payfast-link` | finance.payment.record.daycare |
 | POST | `/invoices/:id/write-off` | finance.manage.daycare |
 | POST | `/invoices/generate` | finance.invoice.create.daycare |
 
@@ -347,6 +348,7 @@ Generated from the router: **257 routes** across 16 modules.
 | GET | `/parent/finance/summary` | parent.finance.read.own |
 | GET | `/parent/forms` | parent.forms.submit.own |
 | GET | `/parent/invoices/:id` | parent.finance.read.own |
+| POST | `/parent/invoices/:id/pay` | parent.finance.read.own |
 | GET | `/parent/overview` | parent.read.own |
 
 ## Payments
@@ -388,6 +390,8 @@ Generated from the router: **257 routes** across 16 modules.
 | POST | `/public/enquiries` | Public |
 | GET | `/public/forms/:orgSlug/:formSlug` | Public |
 | POST | `/public/forms/:orgSlug/:formSlug/submit` | Public |
+| POST | `/public/payfast/itn` | Public |
+| GET | `/public/payfast/return` | Public |
 
 ## Reports
 

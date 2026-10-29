@@ -32,6 +32,12 @@
         '<button type="button" @click="fillDemo(\'platform@re-el-ecd.local\')">Platform admin</button>' +
         '</div>' +
         '<div class="auth-foot">Demo password: <span class="mono">Re-EL-Demo-2026!</span> · <a href="#/site/little-sprouts">View a public daycare website</a></div>' +
+        '<div class="row" style="margin-top:10px;justify-content:center"><button type="button" class="link-strong small" @click="forgotOpen = !forgotOpen">Forgot password?</button></div>' +
+        '<div x-show="forgotOpen" x-cloak style="margin-top:10px">' +
+        '<div class="alert alert-success" x-show="resetSent" x-cloak><i data-lucide="check-circle"></i><span x-text="resetSent"></span></div>' +
+        '<form @submit.prevent="sendPasswordReset($event)" x-show="!resetSent">' +
+        '<div class="field"><label for="forgot-email">Email address</label><input class="input" id="forgot-email" name="email" type="email" autocomplete="username" required placeholder="you@centre.co.za"></div>' +
+        '<button class="btn btn-secondary btn-block" type="submit">Email me a reset link</button></form></div>' +
         '</div></div></div>';
     }
   };
@@ -170,6 +176,53 @@
         '<div class="card glass" style="margin-top:16px"><form @submit.prevent="submitPublicForm($event, \'' + R.attr(params.slug) + '\', \'' + R.attr(params.formSlug) + '\')">' +
         (fields.length ? fields.map((f) => '<div class="field"><label>' + R.esc(f.label) + (f.required ? ' *' : '') + '</label>' + input(f) + (f.helpText ? '<div class="hint">' + R.esc(f.helpText) + '</div>' : '') + '</div>').join('') : '<p class="muted">This form has no fields yet.</p>') +
         '<button class="btn btn-primary" type="submit">Submit</button></form></div></section></div>';
+    }
+  };
+
+  V.resetPassword = {
+    load(ctx) {
+      ctx.resetDone = false;
+      ctx.resetError = null;
+      return { token: (ctx.query && ctx.query.token) || '' };
+    },
+    render(ctx, params, page) {
+      const body = page.token
+        ? '<div class="alert alert-success" x-show="resetDone"><i data-lucide="check-circle"></i><span>Your password has been changed. You can now sign in.</span></div>' +
+          '<div class="alert alert-danger" x-show="resetError" style="margin-top:10px"><i data-lucide="alert-circle"></i><span x-text="resetError"></span></div>' +
+          '<form @submit.prevent="submitResetPassword($event)" x-show="!resetDone">' +
+          '<div class="field"><label for="reset-password">New password</label><input class="input" id="reset-password" name="password" type="password" autocomplete="new-password" minlength="10" required placeholder="At least 10 characters"></div>' +
+          '<div class="field"><label for="reset-confirm">Confirm password</label><input class="input" id="reset-confirm" name="confirm" type="password" autocomplete="new-password" minlength="10" required></div>' +
+          '<button class="btn btn-primary btn-block" type="submit">Choose new password</button></form>' +
+          '<div class="row" style="margin-top:14px"><a class="muted small" href="#/login" x-show="resetDone">Go to sign in →</a></div>'
+        : '<div class="alert alert-warning"><i data-lucide="alert-triangle"></i><span>This reset link is missing its token. Request a new link from the sign-in page.</span></div>' +
+          '<a class="btn btn-primary" href="#/login">Back to sign in</a>';
+      return '<div class="public"><nav class="public-nav"><div class="row" style="gap:10px"><div class="brand-mark">R</div><div><div class="brand-name">Re-EL ECD</div><div class="brand-sub">Early childhood, elevated</div></div></div><div class="links"><a href="#/login">Sign in</a></div></nav>' +
+        '<section class="public-section" style="max-width:520px;margin:40px auto"><h1>Choose a new password</h1><p class="lede">Use at least 10 characters. Signing in elsewhere will be required again.</p>' +
+        '<div class="card glass" style="margin-top:16px">' + body + '</div></section></div>';
+    }
+  };
+
+  V.acceptInvite = {
+    load(ctx) {
+      ctx.inviteDone = false;
+      ctx.inviteError = null;
+      return { token: (ctx.query && ctx.query.token) || '' };
+    },
+    render(ctx, params, page) {
+      const body = page.token
+        ? '<div class="alert alert-success" x-show="inviteDone"><i data-lucide="check-circle"></i><span>Your account is ready. Sign in with your email and new password.</span></div>' +
+          '<div class="alert alert-danger" x-show="inviteError" style="margin-top:10px"><i data-lucide="alert-circle"></i><span x-text="inviteError"></span></div>' +
+          '<form @submit.prevent="submitAcceptInvite($event)" x-show="!inviteDone">' +
+          '<div class="field"><label for="invite-name">Your name</label><input class="input" id="invite-name" name="displayName" autocomplete="name" required placeholder="How your name appears in the centre"></div>' +
+          '<div class="field"><label for="invite-password">Password</label><input class="input" id="invite-password" name="password" type="password" autocomplete="new-password" minlength="10" required placeholder="At least 10 characters"></div>' +
+          '<div class="field"><label for="invite-confirm">Confirm password</label><input class="input" id="invite-confirm" name="confirm" type="password" autocomplete="new-password" minlength="10" required></div>' +
+          '<button class="btn btn-primary btn-block" type="submit">Accept invitation</button></form>' +
+          '<div class="row" style="margin-top:14px"><a class="muted small" href="#/login" x-show="inviteDone">Go to sign in →</a></div>'
+        : '<div class="alert alert-warning"><i data-lucide="alert-triangle"></i><span>This invitation link is missing its token. Ask the centre administrator to send a new invitation.</span></div>' +
+          '<a class="btn btn-primary" href="#/login">Back to sign in</a>';
+      return '<div class="public"><nav class="public-nav"><div class="row" style="gap:10px"><div class="brand-mark">R</div><div><div class="brand-name">Re-EL ECD</div><div class="brand-sub">Early childhood, elevated</div></div></div><div class="links"><a href="#/login">Sign in</a></div></nav>' +
+        '<section class="public-section" style="max-width:520px;margin:40px auto"><h1>Join your centre</h1><p class="lede">Set your name and a password to activate your Re-EL ECD account.</p>' +
+        '<div class="card glass" style="margin-top:16px">' + body + '</div></section></div>';
     }
   };
 })();

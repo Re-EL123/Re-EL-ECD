@@ -25,6 +25,23 @@ function parseCookies(header) {
   return out;
 }
 
+/**
+ * Parse `application/x-www-form-urlencoded` while preserving the original field
+ * order. PayFast signs ITNs in the order the fields were posted, so an object
+ * alone is not enough to verify the signature.
+ */
+function parseFormPairs(raw) {
+  const pairs = [];
+  for (const part of String(raw).split('&')) {
+    if (!part) continue;
+    const index = part.indexOf('=');
+    const key = decodeURIComponent((index === -1 ? part : part.slice(0, index)).replace(/\+/g, ' '));
+    const value = index === -1 ? '' : decodeURIComponent(part.slice(index + 1).replace(/\+/g, ' '));
+    if (key) pairs.push([key, value]);
+  }
+  return pairs;
+}
+
 function readBody(req, limitBytes = 1024 * 1024) {
   return new Promise((resolve, reject) => {
     let size = 0;
@@ -40,9 +57,18 @@ function readBody(req, limitBytes = 1024 * 1024) {
     });
     req.on('end', () => {
       const raw = Buffer.concat(chunks).toString('utf8');
-      if (!raw) return resolve(null);
+      if (!raw) return resolve({ value: null, formPairs: null, raw: '' });
+      const contentType = String(req.headers['content-type'] || '').toLowerCase();
+      if (contentType.includes('application/x-www-form-urlencoded')) {
+        const pairs = parseFormPairs(raw);
+        const value = {};
+        for (const [key, fieldValue] of pairs) {
+          if (!(key in value)) value[key] = fieldValue;
+        }
+        return resolve({ value, formPairs: pairs, raw });
+      }
       try {
-        resolve(JSON.parse(raw));
+        resolve({ value: JSON.parse(raw), formPairs: null, raw });
       } catch {
         reject(Object.assign(new Error('Malformed JSON body'), { code: 'INVALID_JSON' }));
       }

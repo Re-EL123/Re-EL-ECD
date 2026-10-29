@@ -4,6 +4,7 @@ const { validate } = require('../../../../packages/contracts/validate');
 const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
 const { createNotification } = require('../services/notification-service');
+const { sendTemplate } = require('../services/email-service');
 const { parsePagination } = require('../utils/http');
 const { has } = require('./helpers');
 
@@ -299,7 +300,8 @@ async function dispatchAnnouncement(ctx, announcement) {
   let recipients;
   if (audienceFilter) {
     recipients = await ctx.db.many(
-      `SELECT DISTINCT m.user_id FROM memberships m
+      `SELECT DISTINCT m.user_id, u.email FROM memberships m
+       JOIN users u ON u.id = m.user_id
        JOIN membership_roles mr ON mr.membership_id = m.id
        JOIN roles r ON r.id = mr.role_id
        WHERE m.organisation_id = $1 AND m.status = 'active' AND r.role_key = ANY($2)`,
@@ -307,7 +309,8 @@ async function dispatchAnnouncement(ctx, announcement) {
     );
   } else {
     recipients = await ctx.db.many(
-      `SELECT m.user_id FROM memberships m WHERE m.organisation_id = $1 AND m.status = 'active'`,
+      `SELECT m.user_id, u.email FROM memberships m JOIN users u ON u.id = m.user_id
+       WHERE m.organisation_id = $1 AND m.status = 'active'`,
       [ctx.organisationId]
     );
   }
@@ -317,6 +320,19 @@ async function dispatchAnnouncement(ctx, announcement) {
     title: announcement.title, body: announcement.body.slice(0, 500),
     resourceType: 'announcement', resourceId: announcement.id
   });
+  for (const recipient of recipients) {
+    await sendTemplate(ctx.db, 'announcement', {
+      to: recipient.email,
+      organisationId: ctx.organisationId,
+      metadata: { announcementId: announcement.id },
+      data: {
+        organisationName: ctx.organisation.name,
+        title: announcement.title,
+        body: announcement.body,
+        url: '/#/app/communications'
+      }
+    });
+  }
 }
 
 module.exports = { register };

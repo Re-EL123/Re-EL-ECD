@@ -4,6 +4,7 @@ const { validate } = require('../../../../packages/contracts/validate');
 const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
 const { createNotification } = require('../services/notification-service');
+const { sendTemplate } = require('../services/email-service');
 const { parsePagination } = require('../utils/http');
 const { has } = require('./helpers');
 
@@ -147,7 +148,8 @@ function register(router) {
     });
     if (['high', 'critical'].includes(body.severity)) {
       const leaders = await ctx.db.many(
-        `SELECT DISTINCT m.user_id FROM memberships m
+        `SELECT DISTINCT m.user_id, u.email FROM memberships m
+         JOIN users u ON u.id = m.user_id
          JOIN membership_roles mr ON mr.membership_id = m.id
          JOIN roles r ON r.id = mr.role_id
          WHERE m.organisation_id = $1 AND m.status = 'active'
@@ -160,6 +162,24 @@ function register(router) {
           title: `${body.severity === 'critical' ? 'Critical' : 'High severity'} incident reported`,
           body: body.description.slice(0, 300),
           resourceType: 'incident', resourceId: result.id
+        });
+      }
+      const firstLearner = (body.learnerIds || []).length
+        ? await ctx.db.one('SELECT first_name, last_name FROM learners WHERE id = $1 AND organisation_id = $2',
+          [body.learnerIds[0], ctx.organisationId])
+        : null;
+      for (const leader of leaders) {
+        await sendTemplate(ctx.db, 'incidentAlert', {
+          to: leader.email,
+          organisationId: ctx.organisationId,
+          metadata: { incidentId: result.id, severity: body.severity },
+          data: {
+            learnerName: firstLearner ? `${firstLearner.first_name} ${firstLearner.last_name}` : 'Multiple children',
+            severity: body.severity,
+            summary: body.description.slice(0, 500),
+            reportedBy: ctx.user.display_name,
+            occurredAt: new Date(body.occurredAt || Date.now()).toLocaleString('en-ZA')
+          }
         });
       }
     }

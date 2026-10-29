@@ -15,6 +15,8 @@
     route('/site/:slug', 'public', 'publicSite', null, 'Daycare website'),
     route('/site/:slug/apply', 'public', 'publicApply', null, 'Enquire'),
     route('/site/:slug/forms/:formSlug', 'public', 'publicForm', null, 'Form'),
+    route('/reset-password', 'public', 'resetPassword', null, 'Reset password'),
+    route('/accept-invite', 'public', 'acceptInvite', null, 'Accept invitation'),
 
     route('/platform/overview', 'platform', 'platformOverview', 'platform.organisations.read', 'Platform overview'),
     route('/platform/organisations', 'platform', 'platformOrganisations', 'platform.organisations.read', 'Organisation directory'),
@@ -304,6 +306,7 @@
 
       async navigate(force) {
         const { path, query } = this.parseHash();
+        this.query = query;
         const matched = matchRoute(path);
         if (!matched) {
           this.mode = this.session ? 'app' : 'login';
@@ -874,10 +877,58 @@
         }
       },
 
+      async sendPasswordReset(event) {
+        const form = event && event.target ? event.target : null;
+        const email = form ? form.email.value.trim() : '';
+        this.loginError = null;
+        this.resetSent = null;
+        try {
+          await Reel.api('POST', '/auth/forgot-password', { email });
+          this.resetSent = 'If that email belongs to an account, a reset link is on its way. Check the inbox and spam folder.';
+        } catch (error) {
+          this.loginError = error.message || 'The reset email could not be sent.';
+        }
+      },
+
+      async submitResetPassword(event) {
+        const form = event && event.target ? event.target : null;
+        const token = (this.query && this.query.token) || '';
+        const password = form ? form.password.value : '';
+        const confirm = form ? form.confirm.value : '';
+        this.resetError = null;
+        if (password.length < 10) { this.resetError = 'Use at least 10 characters.'; return; }
+        if (password !== confirm) { this.resetError = 'The two passwords do not match.'; return; }
+        try {
+          await Reel.api('POST', '/auth/reset-password', { token, password });
+          this.resetDone = true;
+        } catch (error) {
+          this.resetError = error.message || 'This reset link is invalid or has expired.';
+        }
+      },
+
+      async submitAcceptInvite(event) {
+        const form = event && event.target ? event.target : null;
+        const token = (this.query && this.query.token) || '';
+        const displayName = form ? form.displayName.value.trim() : '';
+        const password = form ? form.password.value : '';
+        const confirm = form ? form.confirm.value : '';
+        this.inviteError = null;
+        if (password.length < 10) { this.inviteError = 'Use at least 10 characters.'; return; }
+        if (password !== confirm) { this.inviteError = 'The two passwords do not match.'; return; }
+        try {
+          await Reel.api('POST', '/auth/invitations/accept', { token, displayName, password });
+          this.inviteDone = true;
+        } catch (error) {
+          this.inviteError = error.message || 'This invitation is invalid or has expired.';
+        }
+      },
+
       loginEmail: 'principal@littlesprouts.local',
       loginPassword: 'Re-EL-Demo-2026!',
       loginError: null,
-      loginBusy: false
+      loginBusy: false,
+      forgotOpen: false,
+      resetSent: null
     };
   }
 

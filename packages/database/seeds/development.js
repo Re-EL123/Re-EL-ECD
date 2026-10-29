@@ -105,7 +105,7 @@ async function seedDevelopment({ force = false } = {}) {
   if (existing.rows.length && !force) return { seeded: false, reason: 'existing data' };
 
   if (force) {
-    const tables = ['payment_webhook_events', 'payment_allocations', 'payments', 'invoice_items', 'invoices',
+    const tables = ['email_deliveries', 'payment_intents', 'payment_webhook_events', 'payment_allocations', 'payments', 'invoice_items', 'invoices',
       'invoice_counters', 'expenses', 'suppliers', 'expense_categories', 'inventory_transactions', 'inventory_items',
       'incident_actions', 'incident_participants', 'incidents', 'task_checklist_items', 'task_comments', 'tasks', 'report_jobs', 'jobs',
       'automation_rules', 'notification_deliveries', 'notifications', 'messages', 'conversation_participants',

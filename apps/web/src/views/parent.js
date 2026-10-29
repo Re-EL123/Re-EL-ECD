@@ -447,7 +447,14 @@
       const invoices = page.invoices || [];
       const outstanding = Number(page.outstanding || 0);
       const overdue = invoices.filter((i) => ['overdue', 'partially_paid', 'issued'].includes(i.status) && Number(i.total_amount) > Number(i.amount_paid));
+      const paymentState = ctx.query && ctx.query.payment;
+      const banner = paymentState === 'return'
+        ? '<div class="alert alert-info section">' + R.icon('clock') + '<span>Thank you — we are confirming your payment with PayFast. Refresh this page in a moment; the invoice updates as soon as the confirmation arrives.</span></div>'
+        : paymentState === 'cancelled'
+          ? '<div class="alert alert-warn section">' + R.icon('alert-circle') + '<span>Payment cancelled. Nothing has been charged. You can try again whenever you are ready.</span></div>'
+          : '';
       return R.pageHead('Fees', 'What has been billed, what has been paid and what is still open.') +
+        banner +
         '<div class="grid grid-4 section">' +
         R.statCard({ label: 'Outstanding', value: R.money(outstanding), icon: 'wallet', tone: outstanding ? 'clay' : 'green', foot: 'Across all invoices' }) +
         R.statCard({ label: 'Invoices', value: R.number(invoices.length), icon: 'file-text', tone: 'sky', foot: 'Issued to your family' }) +
@@ -461,9 +468,35 @@
           { label: 'Total', align: 'right', render: (i) => R.money(i.total_amount) },
           { label: 'Paid', align: 'right', render: (i) => R.money(i.amount_paid) },
           { label: 'Outstanding', align: 'right', render: (i) => R.money(Number(i.total_amount) - Number(i.amount_paid)) },
-          { label: 'Status', render: (i) => R.badge(i.status) }
+          { label: 'Status', render: (i) => R.badge(i.status) },
+          { label: '', align: 'right', render: (i) => (['issued', 'partially_paid', 'overdue'].includes(i.status) && Number(i.total_amount) > Number(i.amount_paid)
+            ? '<button class="btn btn-sm btn-primary" @click="payInvoice(\'' + R.attr(i.id) + '\')">' + R.icon('credit-card') + ' Pay online</button>'
+            : '') }
         ], emptyTitle: 'No invoices', emptyMessage: 'Invoices issued to your family will appear here.' }) +
         '<div class="alert alert-info section">' + R.icon('info') + '<span>Contact the centre office if an invoice looks wrong. Payments are recorded against the invoice, never deleted.</span></div>';
+    },
+
+    async payInvoice(ctx, id) {
+      try {
+        const payload = await R.api('POST', '/parent/invoices/' + encodeURIComponent(id) + '/pay', {});
+        const checkout = (payload.data && payload.data.checkout) || {};
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = checkout.action;
+        form.style.display = 'none';
+        Object.entries(checkout.fields || {}).forEach(([key, value]) => {
+          if (value === undefined || value === null || value === '') return;
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = key;
+          input.value = value;
+          form.appendChild(input);
+        });
+        document.body.appendChild(form);
+        form.submit();
+      } catch (error) {
+        ctx.toast(error.message || 'Online payment could not be started.', 'error');
+      }
     },
 
     async openModal(ctx, name, id) {

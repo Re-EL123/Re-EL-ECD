@@ -5,6 +5,17 @@
   const R = window.Reel;
   const V = R.views;
 
+  function settingLabel(key) {
+    return R.titleCase(String(key).replace(/([a-z0-9])([A-Z])/g, '$1 $2'));
+  }
+
+  function settingValue(value) {
+    if (value === null || value === undefined || value === '') return '';
+    if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+    if (typeof value === 'object') return '<span class="mono small">' + R.esc(R.json(value)) + '</span>';
+    return R.esc(String(value));
+  }
+
   function orgRow(o) {
     return '<tr>' +
       '<td><a class="cell-strong" href="#/platform/organisations/' + R.attr(o.id) + '">' + R.esc(o.name) + '</a>' +
@@ -30,11 +41,13 @@
       const o = page.overview || {};
       const orgs = page.organisations || [];
       const revenue = Number(o.subscriptionRevenue || 0);
+      const status = o.organisationStatus || {};
+      const security = Array.isArray(o.securityBreakdown) ? o.securityBreakdown : [];
       return R.pageHead('Platform overview', 'Every daycare on Re-EL ECD, in one calm view.',
         '<a class="btn btn-secondary btn-sm" href="#/platform/health">' + R.icon('activity') + ' System health</a>' +
         '<a class="btn btn-primary btn-sm" href="#/platform/organisations">' + R.icon('building-2') + ' Organisations</a>') +
         '<div class="grid grid-4 section">' +
-        R.statCard({ label: 'Organisations', value: R.number(o.organisations), icon: 'building-2', foot: orgs.filter((x) => x.status === 'active').length + ' active' }) +
+        R.statCard({ label: 'Organisations', value: R.number(o.organisations), icon: 'building-2', foot: R.number(status.active !== undefined ? status.active : orgs.filter((x) => x.status === 'active').length) + ' active' }) +
         R.statCard({ label: 'Active users', value: R.number(o.activeUsers), icon: 'users', tone: 'sky', foot: 'Across all tenants' }) +
         R.statCard({ label: 'Learners', value: R.number(o.activeLearners), icon: 'baby', tone: 'clay', foot: 'Enrolled children' }) +
         R.statCard({ label: 'Subscription revenue', value: R.money(revenue), icon: 'credit-card', tone: 'plum', foot: 'Monthly recurring' }) +
@@ -56,8 +69,11 @@
           '<div class="kpi-row"><span class="kpi-label">Failed payment events</span><span class="kpi-value">' + R.number(o.failedPaymentEvents) + '</span></div>' +
           '<div class="kpi-row"><span class="kpi-label">Security events</span><span class="kpi-value">' + R.number(o.securityEvents) + '</span></div>' +
           '<div class="kpi-row"><span class="kpi-label">Organisations on trial</span><span class="kpi-value">' + R.number(orgs.filter((x) => x.subscription_status === 'trial').length) + '</span></div>' +
-          '<div class="kpi-row"><span class="kpi-label">Suspended</span><span class="kpi-value">' + R.number(orgs.filter((x) => x.status === 'suspended').length) + '</span></div>' +
+          '<div class="kpi-row"><span class="kpi-label">Suspended</span><span class="kpi-value">' + R.number(status.suspended !== undefined ? status.suspended : orgs.filter((x) => x.status === 'suspended').length) + '</span></div>' +
           '</div>') +
+        (security.length ? R.card('Security activity', '<div class="kpi-list">' + security.map((row) =>
+          '<div class="kpi-row"><span class="kpi-label">' + R.esc(R.titleCase(row.action)) + '</span><span class="kpi-value">' + R.number(row.total) + '</span></div>'
+        ).join('') + '</div>') : '') +
         R.card('Quick links', '<div class="stack">' +
           '<a class="btn btn-secondary" style="justify-content:flex-start" href="#/platform/subscriptions">' + R.icon('credit-card') + ' Subscriptions and plans</a>' +
           '<a class="btn btn-secondary" style="justify-content:flex-start" href="#/platform/access">' + R.icon('shield-check') + ' Feature flags</a>' +
@@ -165,7 +181,10 @@
           '<div class="kpi-row"><span class="kpi-label">Status</span><span class="kpi-value">' + R.badge(s.status) + '</span></div>' +
           '<div class="kpi-row"><span class="kpi-label">Period ends</span><span class="kpi-value">' + R.date(s.current_period_end) + '</span></div>' +
           '</div>' : R.emptyState('No subscription', 'Attach a plan from the subscriptions page.', '', 'credit-card')) +
-        R.card('Settings', '<pre class="mono small" style="white-space:pre-wrap;margin:0">' + R.esc(R.json(o.settings || {})) + '</pre>') +
+        R.card('Settings', Object.keys(o.settings || {}).length
+          ? '<div class="detail-list">' + Object.entries(o.settings).map(([key, value]) =>
+            R.detailItem(settingLabel(key), settingValue(value))).join('') + '</div>'
+          : R.emptyState('No settings recorded', 'This tenant has not customised its settings yet.', '', 'settings')) +
         '</div></div>';
     },
   };

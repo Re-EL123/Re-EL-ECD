@@ -4,6 +4,7 @@ const { validate } = require('../../../../packages/contracts/validate');
 const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
 const { createNotification } = require('../services/notification-service');
+const { sendTemplate } = require('../services/email-service');
 const { parsePagination } = require('../utils/http');
 const { has, today } = require('./helpers');
 
@@ -821,12 +822,30 @@ function register(router) {
         [leave.staff_id]
       );
     }
-    const staff = await ctx.db.one('SELECT user_id FROM staff_profiles WHERE id = $1', [leave.staff_id]);
+    const staff = await ctx.db.one(
+      `SELECT sp.user_id, u.email, u.display_name FROM staff_profiles sp
+       LEFT JOIN users u ON u.id = sp.user_id WHERE sp.id = $1`, [leave.staff_id]
+    );
     if (staff && staff.user_id) {
       await createNotification(ctx.db, ctx, {
         recipientUserIds: [staff.user_id], type: 'leave_decision',
         title: `Leave ${body.decision}`, body: body.reason || `Your leave request was ${body.decision}.`,
         resourceType: 'leave_request', resourceId: leave.id
+      });
+    }
+    if (staff && staff.email) {
+      await sendTemplate(ctx.db, 'leaveDecision', {
+        to: staff.email,
+        organisationId: ctx.organisationId,
+        metadata: { leaveRequestId: leave.id },
+        data: {
+          staffName: staff.display_name,
+          status: body.decision,
+          leaveType: leave.leave_type,
+          dates: `${leave.starts_on} to ${leave.ends_on}`,
+          reviewer: ctx.user.display_name,
+          note: body.reason
+        }
       });
     }
     await recordAudit(ctx.db, ctx, {

@@ -7,7 +7,7 @@
 
   const INVOICE_STATUSES = ['draft', 'issued', 'partially_paid', 'paid', 'overdue', 'void', 'cancelled', 'written_off'];
   const PAYMENT_STATUSES = ['confirmed', 'reconciled', 'reversed', 'failed'];
-  const PAYMENT_METHODS = ['eft', 'cash', 'card', 'debit_order', 'snapscan', 'other'];
+  const PAYMENT_METHODS = ['eft', 'cash', 'card', 'debit_order', 'snapscan', 'payfast', 'other'];
   const EXPENSE_STATUSES = ['draft', 'submitted', 'approved', 'rejected', 'paid'];
 
   function statusFilter(ctx, key, values, label) {
@@ -112,6 +112,7 @@
           { label: '', align: 'right', render: (i) => '<div class="btn-group">' +
             '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'invoiceView\',\'' + R.attr(i.id) + '\')">View</button>' +
             (i.status === 'draft' ? '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/invoices/' + R.attr(i.id) + '/issue\',{},{successMessage:\'Invoice issued\'})">Issue</button>' : '') +
+            (['issued', 'partially_paid', 'overdue'].includes(i.status) && Number(i.total_amount) > Number(i.amount_paid) ? '<button class="btn btn-sm btn-secondary" @click="paymentLink(\'' + R.attr(i.id) + '\')">Payment link</button>' : '') +
             (!['paid', 'void', 'cancelled', 'written_off'].includes(i.status) ? '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'writeOff\',\'' + R.attr(i.id) + '\')">Write off</button>' : '') +
             '</div>' }
         ], emptyTitle: 'No invoices found', emptyMessage: 'Issue an invoice or generate them from a fee plan.' }) +
@@ -196,6 +197,23 @@
           { label: 'Total', align: 'right', render: (c) => R.money(c.total) }
         ], emptyTitle: 'No expenses' })) +
         '</div></div>';
+    },
+
+    async paymentLink(ctx, id) {
+      try {
+        const payload = await R.api('POST', '/invoices/' + encodeURIComponent(id) + '/payfast-link', {});
+        const checkout = payload.data.checkout || {};
+        const url = checkout.action + '?' + checkout.query;
+        ctx.openDetail('PayFast payment link',
+          '<p class="muted small">Share this link with the guardian, or open it to pay now. The invoice is marked paid only when PayFast confirms the transaction.</p>' +
+          '<div class="field"><label class="label">Payment link</label>' +
+          '<input class="input mono" readonly value="' + R.attr(url) + '" onclick="this.select()"></div>' +
+          '<div class="row" style="margin-top:14px">' +
+          '<a class="btn btn-primary" href="' + R.attr(url) + '" target="_blank" rel="noopener">' + R.icon('external-link') + ' Open PayFast</a>' +
+          '</div>');
+      } catch (error) {
+        ctx.toast(error.message || 'The payment link could not be created.', 'error');
+      }
     },
 
     async openModal(ctx, name, id) {

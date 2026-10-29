@@ -5,6 +5,7 @@ const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
 const { rateLimit } = require('../middleware/rate-limit');
 const { createNotification } = require('../services/notification-service');
+const { sendTemplate } = require('../services/email-service');
 const { parsePagination } = require('../utils/http');
 const { has } = require('./helpers');
 
@@ -67,7 +68,8 @@ function register(router) {
     );
     if (!spam) {
       const officers = await ctx.db.many(
-        `SELECT DISTINCT m.user_id FROM memberships m
+        `SELECT DISTINCT m.user_id, u.email FROM memberships m
+         JOIN users u ON u.id = m.user_id
          JOIN membership_roles mr ON mr.membership_id = m.id
          JOIN roles r ON r.id = mr.role_id
          WHERE m.organisation_id = $1 AND m.status = 'active'
@@ -82,6 +84,33 @@ function register(router) {
           resourceType: 'admission_enquiry', resourceId: enquiry.id
         });
       }
+      for (const officer of officers) {
+        await sendTemplate(ctx.db, 'enquiryReceived', {
+          to: officer.email,
+          organisationId: org.id,
+          metadata: { enquiryId: enquiry.id },
+          data: {
+            guardianName: body.guardianName,
+            childName: body.childName,
+            email: body.guardianEmail,
+            phone: body.guardianPhone,
+            preferredStartDate: body.preferredStartDate,
+            message: body.message
+          }
+        });
+      }
+      await sendTemplate(ctx.db, 'enquiryAcknowledgement', {
+        to: body.guardianEmail,
+        organisationId: org.id,
+        metadata: { enquiryId: enquiry.id },
+        data: {
+          guardianName: body.guardianName,
+          organisationName: org.name,
+          childName: body.childName,
+          preferredStartDate: body.preferredStartDate,
+          slug: org.slug
+        }
+      });
     }
     // Identical response for spam to avoid tipping off automated submissions.
     return { received: true, enquiryId: spam ? null : enquiry.id };
