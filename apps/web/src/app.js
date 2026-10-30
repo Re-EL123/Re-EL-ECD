@@ -378,6 +378,22 @@
         // call). Only the newest one may render, otherwise stale data and
         // duplicate charts leak onto the screen.
         const seq = (this._navSeq = (this._navSeq || 0) + 1);
+        try {
+          return await this.navigateInner(force, seq);
+        } finally {
+          // Alpine can coalesce the final loading change when navigations
+          // overlap; make the spinner state match the data exactly.
+          if (seq === this._navSeq) this.syncLoading();
+        }
+      },
+
+      syncLoading() {
+        const block = document.querySelector('.content > .loading-block');
+        if (!block) return;
+        block.style.display = this.loading ? 'flex' : 'none';
+      },
+
+      async navigateInner(force, seq) {
         const { path, query } = this.parseHash();
         this.query = query;
         const matched = matchRoute(path);
