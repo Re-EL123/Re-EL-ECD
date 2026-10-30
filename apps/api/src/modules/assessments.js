@@ -408,8 +408,21 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+/** Resolve a stored logo path to an absolute URL a printed report can load. */
+function absoluteAsset(value) {
+  if (!value) return null;
+  if (/^https?:\/\//i.test(value)) return value;
+  const base = String(
+    process.env.APP_BASE_URL
+    || (process.env.FRONTEND_ORIGIN || '').split(',')[0]
+    || 'https://ecd.re-el.co.za'
+  ).trim().replace(/\/+$/, '');
+  return base + '/' + String(value).replace(/^\/+/, '');
+}
+
 function renderProgressReport(ctx, report) {
   const org = escapeHtml(ctx.organisation && ctx.organisation.name);
+  const logo = absoluteAsset(ctx.organisation && ctx.organisation.logo_url);
   const child = escapeHtml(report.learner.firstName + ' ' + report.learner.lastName);
   const periodLabel = report.period
     ? escapeHtml(report.period.name + ' (' + report.period.startsOn + ' to ' + report.period.endsOn + ')')
@@ -431,7 +444,9 @@ function renderProgressReport(ctx, report) {
     escapeHtml(o.observation_text) + (o.context ? ' <em>(' + escapeHtml(o.context) + ')</em>' : '') + '</li>'
   )).join('');
   return '<article class="progress-report">' +
-    '<header><p class="eyebrow">' + org + '</p><h2>Developmental progress report</h2>' +
+    '<header>' +
+    (logo ? '<img src="' + escapeHtml(logo) + '" alt="' + org + '" style="height:44px;width:auto;max-width:180px;object-fit:contain;display:block;margin-bottom:10px;background:#fff;border-radius:8px;padding:4px">' : '') +
+    '<p class="eyebrow">' + org + '</p><h2>Developmental progress report</h2>' +
     '<p><strong>' + child + '</strong><br>' + periodLabel + '</p>' +
     '<p class="muted">Generated ' + escapeHtml(report.generatedAt.slice(0, 10)) + ' · ' +
     report.totals.observed + ' of ' + report.totals.objectives + ' objectives observed (' + report.totals.coverage + '%) · ' +
