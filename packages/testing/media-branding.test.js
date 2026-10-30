@@ -62,6 +62,14 @@ test('buildKey is tenant-scoped, random and limited to known scopes', () => {
   });
   assert.match(unknownScope, /^org\/org-123\/general\//);
   assert.equal(unknownScope.includes('..'), false);
+
+  // The extension comes from the validated MIME type, never the filename, so
+  // an image can never be published with an executable extension.
+  const disguised = storage.buildKey({
+    organisationId: 'org-123', scope: 'branding', filename: 'logo.html', contentType: 'image/png'
+  });
+  assert.match(disguised, /\.png$/);
+  assert.equal(disguised.includes('.html'), false);
 });
 
 test('presignPut produces a stable, encoded SigV4 URL with an expiry', () => {
@@ -79,7 +87,7 @@ test('presignPut produces a stable, encoded SigV4 URL with an expiry', () => {
   assert.match(first.url, /^https:\/\/account\.r2\.cloudflarestorage\.com\/reel-media\/org\/abc\/learner-photo\/one%20two\.jpg\?/);
   assert.match(first.url, /X-Amz-Algorithm=AWS4-HMAC-SHA256/);
   assert.match(first.url, /X-Amz-Credential=AKIAEXAMPLE%2F20260102%2Fauto%2Fs3%2Faws4_request/);
-  assert.match(first.url, /X-Amz-SignedHeaders=host/);
+  assert.match(first.url, /X-Amz-SignedHeaders=content-type%3Bhost/);
   assert.match(first.url, /X-Amz-Signature=[a-f0-9]{64}$/);
 });
 

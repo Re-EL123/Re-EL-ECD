@@ -133,20 +133,31 @@ function presign(method, key, options = {}) {
   const timestamp = amzDate(now);
   const credentialScope = `${stamp}/${cfg.region}/s3/aws4_request`;
   const canonicalUri = encodeKeyPath(cfg.bucket, key);
+  // Signing Content-Type pins the object's MIME type to the value the API
+  // validated, so a browser cannot upload HTML (or anything else) under an
+  // image content type. GET requests have no body and sign only the host.
+  // SigV4 requires signed header names to be sorted and lower-case.
+  const signed = [['host', cfg.host]];
+  if (method === 'PUT' && options.contentType) {
+    signed.push(['content-type', String(options.contentType).trim().toLowerCase()]);
+  }
+  signed.sort((left, right) => (left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0));
+  const signedHeaderNames = signed.map(([name]) => name);
+  const canonicalHeaders = signed.map(([name, value]) => `${name}:${value}\n`).join('');
   const params = {
     'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
     'X-Amz-Credential': `${cfg.accessKeyId}/${credentialScope}`,
     'X-Amz-Date': timestamp,
     'X-Amz-Expires': String(expires),
-    'X-Amz-SignedHeaders': 'host'
+    'X-Amz-SignedHeaders': signedHeaderNames.join(';')
   };
   const query = canonicalQuery(params);
   const canonicalRequest = [
     method,
     canonicalUri,
     query,
-    `host:${cfg.host}\n`,
-    'host',
+    canonicalHeaders,
+    signedHeaderNames.join(';'),
     'UNSIGNED-PAYLOAD'
   ].join('\n');
   const stringToSign = [
@@ -242,7 +253,10 @@ function extensionFor(filename, contentType) {
 function buildKey({ organisationId, scope = 'general', filename, contentType }) {
   const tenant = safeSegment(organisationId, 'org');
   const area = SCOPES.includes(scope) ? scope : 'general';
-  const ext = extensionFor(filename, contentType);
+  // The extension follows the validated MIME type, not the name the browser
+  // supplied, so the public URL can never end in .html/.svg for an image.
+  const known = MIME_KINDS[String(contentType || '').split(';')[0].trim().toLowerCase()];
+  const ext = known ? known.extension : extensionFor(filename, contentType);
   const random = crypto.randomBytes(12).toString('hex');
   return `org/${tenant}/${area}/${Date.now().toString(36)}-${random}.${ext}`;
 }
