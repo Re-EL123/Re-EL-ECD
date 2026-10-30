@@ -9,6 +9,7 @@ const { invalidateAccess } = require('../services/access-service');
 const { recordAudit } = require('../services/audit-service');
 const { createNotification } = require('../services/notification-service');
 const { sendTemplate } = require('../services/email-service');
+const bulk = require('../services/bulk-service');
 
 async function actorRank(ctx) {
   let max = 0;
@@ -181,6 +182,33 @@ function register(router) {
       metadata: { status: body.status }
     });
     return { success: true };
+  }, { permission: 'access.manage.daycare' });
+
+  router.post('/access/memberships/bulk', async (ctx) => {
+    const body = bulk.parse(ctx.body, ['suspend', 'activate']);
+    const target = body.action === 'suspend' ? 'suspended' : 'active';
+    return bulk.run(ctx, {
+      ids: body.ids,
+      action: body.action,
+      resourceType: 'membership',
+      auditAction: 'access.membership_updated',
+      handler: async (id) => {
+        const membership = await ctx.db.one(
+          'SELECT * FROM memberships WHERE id = $1 AND organisation_id = $2', [id, ctx.organisationId]
+        );
+        if (!membership) return { ok: false, reason: 'not found' };
+        if (membership.user_id === ctx.user.id) return { ok: false, reason: 'you cannot change your own access' };
+        if (membership.status === target) return { ok: false, reason: 'already ' + target };
+        await ctx.db.query('UPDATE memberships SET status = $1 WHERE id = $2', [target, membership.id]);
+        invalidateAccess(membership.user_id, ctx.organisationId);
+        if (target !== 'active') {
+          await ctx.db.query(
+            'UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [membership.user_id]
+          );
+        }
+        return { ok: true, metadata: { status: target } };
+      }
+    });
   }, { permission: 'access.manage.daycare' });
 
   router.get('/access/delegations', async (ctx) => {

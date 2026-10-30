@@ -52,7 +52,11 @@
         R.filterBar(
           R.selectFilter(ctx, 'status', TASK_STATUSES.map((s) => ({ value: s, label: R.titleCase(s) })), 'All statuses') +
           R.selectFilter(ctx, 'mine', [{ value: 'true', label: 'Assigned to me' }], 'Everyone')) +
-        R.table({ rows, columns: [
+        (ctx.has('tasks.manage.daycare') ? R.bulkBar([
+          { label: 'Complete selected', icon: 'check-circle-2', path: '/tasks/bulk', action: 'complete' },
+          { label: 'Reopen selected', icon: 'rotate-ccw', path: '/tasks/bulk', action: 'reopen' }
+        ]) : '') +
+        R.table({ rows, selectable: ctx.has('tasks.manage.daycare'), columns: [
           { label: 'Task', render: (t) => '<button class="link-strong" @click="openNamedModal(\'taskView\',\'' + R.attr(t.id) + '\')">' + R.esc(t.title) + '</button><span class="cell-sub">' + R.esc(R.truncate(t.description || '', 80)) + '</span>' },
           { label: 'Status', render: (t) => R.badge(t.status) },
           { label: 'Priority', render: (t) => '<span class="badge ' + R.priorityTone(t.priority) + '">' + R.esc(t.priority) + '</span>' },

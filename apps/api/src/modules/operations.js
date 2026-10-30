@@ -5,6 +5,7 @@ const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
 const { createNotification } = require('../services/notification-service');
 const { parsePagination, sendText } = require('../utils/http');
+const bulk = require('../services/bulk-service');
 const { has, today, roundMoney } = require('./helpers');
 
 const REPORT_CATALOGUE = [
@@ -141,6 +142,34 @@ function register(router) {
     });
     return ctx.db.one('SELECT * FROM tasks WHERE id = $1', [task.id]);
   }, { permission: ['tasks.read.own', 'tasks.manage.daycare'], permissionMode: 'any' });
+
+  router.post('/tasks/bulk', async (ctx) => {
+    const body = bulk.parse(ctx.body, ['complete', 'reopen']);
+    return bulk.run(ctx, {
+      ids: body.ids,
+      action: body.action,
+      resourceType: 'task',
+      auditAction: body.action === 'complete' ? 'task.completed' : 'task.reopened',
+      handler: async (id) => {
+        const task = await ctx.db.one(
+          'SELECT * FROM tasks WHERE id = $1 AND organisation_id = $2', [id, ctx.organisationId]
+        );
+        if (!task) return { ok: false, reason: 'not found' };
+        if (body.action === 'complete') {
+          if (task.status === 'done') return { ok: false, reason: 'already done' };
+          await ctx.db.query(
+            "UPDATE tasks SET status = 'done', completed_at = now(), updated_at = now() WHERE id = $1", [id]
+          );
+        } else {
+          if (task.status !== 'done' && task.status !== 'cancelled') return { ok: false, reason: 'not closed' };
+          await ctx.db.query(
+            "UPDATE tasks SET status = 'open', completed_at = NULL, updated_at = now() WHERE id = $1", [id]
+          );
+        }
+        return { ok: true, branchId: task.branch_id };
+      }
+    });
+  }, { permission: 'tasks.manage.daycare' });
 
   router.get('/tasks/:id', async (ctx) => {
     const task = await ctx.db.one('SELECT * FROM tasks WHERE id = $1 AND organisation_id = $2',

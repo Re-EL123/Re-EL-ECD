@@ -4,7 +4,8 @@ const { validate } = require('../../../../packages/contracts/validate');
 const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
 const { parsePagination } = require('../utils/http');
-const { getLearner, assertLearnerWrite, has, assignedClassroomIds } = require('./helpers');
+const bulk = require('../services/bulk-service');
+const { getLearner, assertLearnerWrite, assertPermission, has, assignedClassroomIds } = require('./helpers');
 
 function register(router) {
   router.get('/learners', async (ctx) => {
@@ -232,6 +233,41 @@ function register(router) {
     });
     return { success: true };
   }, { permission: 'learners.archive.daycare' });
+
+  router.post('/learners/bulk', async (ctx) => {
+    const body = bulk.parse(ctx.body, ['archive', 'restore']);
+    if (body.action === 'archive') assertPermission(ctx, 'learners.archive.daycare');
+    else assertPermission(ctx, 'learners.update.daycare');
+    return bulk.run(ctx, {
+      ids: body.ids,
+      action: body.action,
+      resourceType: 'learner',
+      auditAction: body.action === 'archive' ? 'learner.archived' : 'learner.restored',
+      handler: async (id) => {
+        const learner = await ctx.db.one(
+          'SELECT * FROM learners WHERE id = $1 AND organisation_id = $2', [id, ctx.organisationId]
+        );
+        if (!learner) return { ok: false, reason: 'not found' };
+        if (body.action === 'archive') {
+          if (learner.status === 'archived') return { ok: false, reason: 'already archived' };
+          await ctx.db.query(
+            `UPDATE learners SET status = 'archived', departure_date = COALESCE(departure_date, CURRENT_DATE), updated_at = now()
+             WHERE id = $1`, [id]
+          );
+          await ctx.db.query(
+            "UPDATE enrolments SET status = 'withdrawn', end_date = CURRENT_DATE WHERE learner_id = $1 AND status = 'active'",
+            [id]
+          );
+        } else {
+          if (learner.status !== 'archived') return { ok: false, reason: 'not archived' };
+          await ctx.db.query(
+            "UPDATE learners SET status = 'enrolled', departure_date = NULL, updated_at = now() WHERE id = $1", [id]
+          );
+        }
+        return { ok: true, branchId: learner.branch_id };
+      }
+    });
+  }, { permission: ['learners.archive.daycare', 'learners.update.daycare'], permissionMode: 'any' });
 
   router.get('/learners/:id/guardians', async (ctx) => {
     const learner = await getLearner(ctx, ctx.params.id);

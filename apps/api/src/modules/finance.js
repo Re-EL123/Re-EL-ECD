@@ -8,6 +8,7 @@ const { sendTemplate, appLink } = require('../services/email-service');
 const payfast = require('../services/payfast-service');
 const { createInvoiceIntent, outstandingFor, isPayable, guardianForInvoice, learnerName } = require('../services/payment-intent-service');
 const { parsePagination, sendText } = require('../utils/http');
+const bulk = require('../services/bulk-service');
 const { has, nextInvoiceNumber, paging, roundMoney, today } = require('./helpers');
 
 async function recomputeInvoice(client, invoiceId) {
@@ -310,7 +311,7 @@ function register(router) {
     const learner = invoice.learner_id ? await ctx.db.one('SELECT id, first_name, last_name, learner_reference FROM learners WHERE id = $1', [invoice.learner_id]) : null;
     const guardian = invoice.guardian_id ? await ctx.db.one('SELECT id, first_name, last_name, email, phone FROM guardians WHERE id = $1', [invoice.guardian_id]) : null;
     const branch = await ctx.db.one('SELECT id, name, address, contact_email, contact_phone FROM branches WHERE id = $1', [invoice.branch_id]);
-    return { ...invoice, items, allocations, learner, guardian, branch, organisation: { name: ctx.organisation.name, legalName: ctx.organisation.legal_name } };
+    return { ...invoice, items, allocations, learner, guardian, branch, organisation: { name: ctx.organisation.name, legalName: ctx.organisation.legal_name, logoUrl: ctx.organisation.logo_url } };
   }, { permission: 'finance.read.daycare' });
 
   router.patch('/invoices/:id', async (ctx) => {
@@ -357,6 +358,36 @@ function register(router) {
       action: 'finance.invoice_issued', resourceType: 'invoice', resourceId: invoice.id
     });
     return ctx.db.one('SELECT * FROM invoices WHERE id = $1', [invoice.id]);
+  }, { permission: 'finance.invoice.issue.daycare' });
+
+  router.post('/invoices/bulk', async (ctx) => {
+    const body = bulk.parse(ctx.body, ['issue', 'void']);
+    return bulk.run(ctx, {
+      ids: body.ids,
+      action: body.action,
+      resourceType: 'invoice',
+      auditAction: body.action === 'issue' ? 'finance.invoice_issued' : 'finance.invoice_voided',
+      handler: async (id) => {
+        const invoice = await ctx.db.one(
+          'SELECT * FROM invoices WHERE id = $1 AND organisation_id = $2', [id, ctx.organisationId]
+        );
+        if (!invoice) return { ok: false, reason: 'not found' };
+        if (body.action === 'issue') {
+          if (invoice.status !== 'draft') return { ok: false, reason: 'only draft invoices can be issued' };
+          await ctx.db.query(
+            "UPDATE invoices SET status = 'issued', issued_at = now(), updated_at = now() WHERE id = $1", [id]
+          );
+          if (invoice.guardian_id) await notifyGuardianInvoice(ctx, invoice);
+          return { ok: true, metadata: { invoiceNumber: invoice.invoice_number } };
+        }
+        if (['paid', 'void', 'cancelled', 'written_off'].includes(invoice.status)) {
+          return { ok: false, reason: 'invoice is already closed' };
+        }
+        if (Number(invoice.amount_paid) > 0) return { ok: false, reason: 'invoices with payments cannot be voided' };
+        await ctx.db.query("UPDATE invoices SET status = 'void', updated_at = now() WHERE id = $1", [id]);
+        return { ok: true, metadata: { invoiceNumber: invoice.invoice_number } };
+      }
+    });
   }, { permission: 'finance.invoice.issue.daycare' });
 
   router.post('/invoices/:id/payfast-link', async (ctx) => {

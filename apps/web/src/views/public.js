@@ -4,19 +4,41 @@
   const R = window.Reel;
   const V = R.views;
 
+  /**
+   * The tenant's own logo, or a neutral initial chip while no logo has been
+   * uploaded. Never borrow another tenant's artwork.
+   */
+  function logoMark(org, size) {
+    const source = org || {};
+    const name = source.name || 'Re-EL ECD';
+    const dimension = size || 38;
+    if (source.logoUrl) {
+      return '<img class="public-brand-logo" src="' + R.attr(source.logoUrl) + '" alt="' + R.attr(name) +
+        '" width="' + dimension + '" height="' + dimension + '">';
+    }
+    return '<span class="brand-logo brand-logo-fallback" style="width:' + dimension + 'px;height:' + dimension +
+      'px;flex:0 0 ' + dimension + 'px">' + R.esc(String(name).trim().charAt(0).toUpperCase()) + '</span>';
+  }
+
   V.auth = {
-    render() {
+    render(ctx) {
+      const brand = (ctx && ctx.platformBrand) || null;
+      const organisation = (brand && brand.organisation) || {};
+      const name = organisation.name || 'Re-EL ECD';
+      const logo = organisation.logoUrl || R.PLATFORM_LOGO;
+      const style = brand && brand.branding ? R.themeStyle(brand.branding) : '';
+      const logoMark = '<span class="auth-brand-logo"><img src="' + R.attr(logo) + '" alt="' + R.attr(name) + '"></span>';
       return '' +
-        '<div class="auth-screen">' +
+        '<div class="auth-screen" ' + style + '>' +
         '<div class="auth-art">' +
-        '<div><div class="row" style="gap:10px"><div class="brand-mark" style="background:rgba(255,255,255,0.16)">R</div><div><div class="brand-name" style="color:#fff">Re-EL ECD</div><div class="brand-sub" style="color:rgba(255,255,255,0.7)">Early childhood, elevated</div></div></div>' +
+        '<div><div class="row" style="gap:10px">' + logoMark + '<div><div class="brand-name" style="color:#fff">' + R.esc(name) + '</div><div class="brand-sub" style="color:rgba(255,255,255,0.7)">Early childhood, elevated</div></div></div>' +
         '<h1 style="margin-top:56px">Every child\'s early years, held with care.</h1>' +
         '<p style="margin-top:16px">One calm workspace for enrolment, learning, attendance, families, finance and the everyday safety of the children in your care.</p></div>' +
         '<div><div class="auth-quote">“The way we care for our youngest children is the clearest statement of what we value.”</div>' +
         '<div class="row" style="margin-top:22px;gap:18px"><span class="chip" style="background:rgba(255,255,255,0.14);color:#fff">Multi-tenant</span><span class="chip" style="background:rgba(255,255,255,0.14);color:#fff">Role-based</span><span class="chip" style="background:rgba(255,255,255,0.14);color:#fff">Audit-ready</span></div></div>' +
         '</div>' +
         '<div class="auth-panel"><div class="auth-card">' +
-        '<div class="row" style="margin-bottom:18px"><div class="brand-mark">R</div><div><div class="brand-name">Re-EL ECD</div><div class="brand-sub">Sign in to your workspace</div></div></div>' +
+        '<div class="row" style="margin-bottom:18px">' + logoMark + '<div><div class="brand-name">' + R.esc(name) + '</div><div class="brand-sub">Sign in to your workspace</div></div></div>' +
         '<h2>Welcome back</h2><div class="muted">Use your work email and password. Parents use the same sign-in.</div>' +
         '<div class="alert alert-danger" x-show="loginError" style="margin-bottom:12px"><i data-lucide="alert-circle"></i><span x-text="loginError"></span></div>' +
         '<form id="login-form" @submit.prevent="login($event)">' +
@@ -64,9 +86,7 @@
       const faqs = content.faqs || [];
       const theme = (page && page.theme) || 'nature';
       const branding = (page && page.branding) || {};
-      const logo = org.logoUrl
-        ? '<img class="public-brand-logo" src="' + R.attr(org.logoUrl) + '" alt="' + R.attr(org.name) + '">'
-        : '<img src="assets/logo-little-sprouts.svg" alt="" width="38" height="38" style="border-radius:10px">';
+      const logo = logoMark(org, 38);
 
       const section = (id, title, body, alt) => '<section class="public-section ' + (alt ? 'alt' : '') + '" id="' + id + '"><h2>' + R.esc(title) + '</h2>' + body + '</section>';
 
@@ -132,9 +152,7 @@
       const org = page.site.organisation;
       const branding = page.site.branding || {};
       const branches = page.form.branches || [];
-      const logo = org.logoUrl
-        ? '<img class="public-brand-logo" src="' + R.attr(org.logoUrl) + '" width="36" height="36" alt="">'
-        : '<img src="assets/logo-little-sprouts.svg" width="36" height="36" alt="" style="border-radius:10px">';
+      const logo = logoMark(org, 36);
       return '<div class="public" ' + R.themeStyle(branding) + '><nav class="public-nav"><div class="row" style="gap:10px"><a href="#/site/' + R.attr(params.slug) + '" class="row" style="gap:10px;text-decoration:none">' + logo + '<div class="brand-name">' + R.esc(org.name) + '</div></a></div><div class="links"><a href="#/site/' + R.attr(params.slug) + '">Back to website</a><a href="#/login">Staff</a></div></nav>' +
         '<section class="public-section" style="max-width:760px;margin:0 auto"><a href="#/site/' + R.attr(params.slug) + '" class="muted small">← Back to website</a><h1 style="margin-top:14px">Enquire about a place</h1><p class="lede">Share a few details and the admissions team will be in touch. There is no obligation.</p>' +
         '<div class="alert alert-success" x-show="publicResult"><i data-lucide="check-circle"></i><span x-text="publicResult"></span></div>' +
@@ -168,9 +186,7 @@
       const fields = (page.form.schema_json && page.form.schema_json.fields) || [];
       const branding = page.branding || {};
       const org = page.organisation || {};
-      const logo = org.logoUrl
-        ? '<img class="public-brand-logo" src="' + R.attr(org.logoUrl) + '" width="38" height="38" alt="">'
-        : '';
+      const logo = logoMark(org, 38);
       const input = (field) => {
         const model = 'publicFormData.' + field.key;
         if (field.type === 'textarea') return '<textarea class="textarea" x-model="' + model + '" ' + (field.required ? 'required' : '') + '></textarea>';

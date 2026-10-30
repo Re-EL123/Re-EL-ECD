@@ -115,6 +115,31 @@ function register(router) {
     return updated;
   }, { permission: 'media.upload.daycare' });
 
+  router.post('/media/assets/bulk', async (ctx) => {
+    const body = validate(ctx.body, {
+      ids: { type: 'array', of: 'uuid', max: 200 },
+      action: { type: 'string', enum: ['delete'] }
+    });
+    if (!body.ids.length) fail('VALIDATION', [{ field: 'ids', message: 'Select at least one file.' }]);
+    const updated = [];
+    const skipped = [];
+    for (const id of body.ids) {
+      const asset = await ctx.db.one(
+        'SELECT * FROM media_assets WHERE id = $1 AND organisation_id = $2 AND status <> $3',
+        [id, ctx.organisationId, 'deleted']
+      );
+      if (!asset) { skipped.push({ id, reason: 'not found' }); continue; }
+      await storage.deleteObject(asset.storage_key);
+      await ctx.db.query("UPDATE media_assets SET status = 'deleted' WHERE id = $1", [asset.id]);
+      await recordAudit(ctx.db, ctx, {
+        action: 'media.asset_deleted', resourceType: 'media_asset', resourceId: asset.id,
+        metadata: { bulk: true, scope: asset.scope }
+      });
+      updated.push(asset.id);
+    }
+    return { action: body.action, updated: updated.length, skipped };
+  }, { permission: 'media.manage.daycare' });
+
   router.delete('/media/assets/:id', async (ctx) => {
     const asset = await ctx.db.one(
       'SELECT * FROM media_assets WHERE id = $1 AND organisation_id = $2',

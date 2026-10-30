@@ -45,28 +45,42 @@ function money(amount, currency) {
   return symbol + value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }
 
-function layout({ heading, intro, rows = [], body = '', ctaLabel, ctaUrl, footer, accent = '#3A7D44' }) {
+function layout({ heading, intro, rows = [], body = '', ctaLabel, ctaUrl, footer, accent = '#3A7D44', brand = null }) {
+  const brandName = (brand && brand.name) || 'Re-EL ECD';
+  const brandLogo = brand && brand.logoUrl ? absoluteUrl(brand.logoUrl) : null;
+  const accentColour = (brand && brand.accent) || accent;
   const rowHtml = rows.filter((row) => row && row.value !== undefined && row.value !== null && row.value !== '').map((row) =>
     '<tr><td style="padding:6px 0;color:#5d6b5f;font-size:13px">' + esc(row.label) + '</td>' +
     '<td style="padding:6px 0;color:#1f2a22;font-size:13px;text-align:right;font-weight:600">' + esc(row.value) + '</td></tr>'
   ).join('');
+  const header = brandLogo
+    ? '<tr><td style="background:' + accentColour + ';padding:14px 24px">' +
+      '<img src="' + esc(brandLogo) + '" alt="' + esc(brandName) + '" height="36" style="height:36px;max-width:200px;object-fit:contain;display:block;background:#ffffff;border-radius:8px;padding:4px">' +
+      '</td></tr>'
+    : '<tr><td style="background:' + accentColour + ';padding:18px 24px;color:#ffffff;font-size:15px;font-weight:600;letter-spacing:.01em">' + esc(brandName) + '</td></tr>';
   return '<!doctype html><html><body style="margin:0;padding:0;background:#f4f6f3;font-family:Inter,Helvetica,Arial,sans-serif">' +
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f3;padding:28px 12px">' +
     '<tr><td align="center">' +
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8df">' +
-    '<tr><td style="background:' + accent + ';padding:18px 24px;color:#ffffff;font-size:15px;font-weight:600;letter-spacing:.01em">Re-EL ECD</td></tr>' +
+    header +
     '<tr><td style="padding:26px 24px 8px">' +
     '<h1 style="margin:0 0 10px;font-size:20px;line-height:1.3;color:#16211a">' + esc(heading) + '</h1>' +
     '<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#46524a">' + esc(intro) + '</p>' +
     (body ? '<div style="font-size:14px;line-height:1.6;color:#46524a">' + body + '</div>' : '') +
     (rowHtml ? '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:14px 0;border-top:1px solid #eef1ec">' + rowHtml + '</table>' : '') +
-    (ctaLabel && ctaUrl ? '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0 6px"><tr><td style="border-radius:10px;background:' + accent + '">' +
+    (ctaLabel && ctaUrl ? '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0 6px"><tr><td style="border-radius:10px;background:' + accentColour + '">' +
       '<a href="' + esc(ctaUrl) + '" style="display:inline-block;padding:12px 20px;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600">' + esc(ctaLabel) + '</a>' +
       '</td></tr></table>' : '') +
     '<p style="margin:18px 0 0;font-size:12px;line-height:1.6;color:#8a968c">' + esc(footer || 'You are receiving this because of your role at an ECD centre using Re-EL ECD.') + '</p>' +
     '</td></tr>' +
-    '<tr><td style="padding:16px 24px 22px;border-top:1px solid #eef1ec;font-size:11px;color:#9aa69c">Re-EL ECD · Early childhood, elevated.</td></tr>' +
+    '<tr><td style="padding:16px 24px 22px;border-top:1px solid #eef1ec;font-size:11px;color:#9aa69c">' + esc((brand && brand.footer) || (brandName + ' · Early childhood, elevated.')) + '</td></tr>' +
     '</table></td></tr></table></body></html>';
+}
+
+function absoluteUrl(value) {
+  if (!value) return null;
+  if (/^https?:\/\//i.test(value)) return value;
+  return appBaseUrl() + (value.startsWith('/') ? value : '/' + value);
 }
 
 function plain(lines) {
@@ -143,6 +157,7 @@ const templates = {
     return {
       subject: 'Welcome to Re-EL ECD — ' + data.organisationName,
       html: layout({
+        brand: data.brand,
         heading: 'Welcome, ' + data.ownerName,
         intro: data.organisationName + ' has been created on Re-EL ECD. Choose a password to finish setting up your centre.',
         rows: [{ label: 'Organisation', value: data.organisationName }, { label: 'Your role', value: 'Owner' }],
@@ -159,6 +174,7 @@ const templates = {
     return {
       subject: 'You are invited to ' + data.organisationName,
       html: layout({
+        brand: data.brand,
         heading: 'Join ' + data.organisationName,
         intro: (data.inviterName ? data.inviterName + ' invited you' : 'You have been invited') +
           ' to ' + data.organisationName + ' on Re-EL ECD as ' + data.roleLabel + '.',
@@ -176,6 +192,7 @@ const templates = {
     return {
       subject: 'Reset your Re-EL ECD password',
       html: layout({
+        brand: data.brand,
         heading: 'Reset your password',
         intro: 'Use the button below to choose a new password. The link expires in one hour and can only be used once.',
         ctaLabel: 'Choose a new password',
@@ -190,6 +207,7 @@ const templates = {
     return {
       subject: 'New website enquiry: ' + data.guardianName,
       html: layout({
+        brand: data.brand,
         heading: 'New enquiry from the website',
         intro: (data.childName ? data.childName + ' — ' : '') + 'submitted by ' + data.guardianName + '.',
         rows: [
@@ -209,6 +227,7 @@ const templates = {
     return {
       subject: 'We received your enquiry — ' + data.organisationName,
       html: layout({
+        brand: data.brand,
         heading: 'Thank you, ' + data.guardianName,
         intro: 'Your enquiry has reached ' + data.organisationName + '. The admissions team will be in touch shortly.',
         rows: [{ label: 'Child', value: data.childName }, { label: 'Preferred start', value: data.preferredStartDate }],
@@ -224,6 +243,7 @@ const templates = {
     return {
       subject: 'Form submitted: ' + data.formName,
       html: layout({
+        brand: data.brand,
         heading: 'A form was submitted',
         intro: data.submittedBy + ' submitted ' + data.formName + '.',
         rows: [{ label: 'Form', value: data.formName }, { label: 'Submitted by', value: data.submittedBy }],
@@ -238,6 +258,7 @@ const templates = {
     return {
       subject: data.title,
       html: layout({
+        brand: data.brand,
         heading: data.title,
         intro: data.organisationName + ' posted an announcement.',
         body: '<p style="white-space:pre-wrap">' + esc(data.body) + '</p>',
@@ -252,6 +273,7 @@ const templates = {
     return {
       subject: 'Invoice ' + data.invoiceNumber + ' from ' + data.organisationName,
       html: layout({
+        brand: data.brand,
         heading: 'Invoice ' + data.invoiceNumber,
         intro: 'An invoice has been issued for ' + (data.learnerName || 'your child') + '.',
         rows: [
@@ -271,6 +293,7 @@ const templates = {
     return {
       subject: 'Payment received — ' + data.organisationName,
       html: layout({
+        brand: data.brand,
         heading: 'Thank you, payment received',
         intro: 'We have recorded your payment' + (data.invoiceNumber ? ' against invoice ' + data.invoiceNumber : '') + '.',
         rows: [
@@ -291,6 +314,7 @@ const templates = {
     return {
       subject: '[' + String(data.severity).toUpperCase() + '] Incident reported — ' + data.learnerName,
       html: layout({
+        brand: data.brand,
         heading: 'Incident reported',
         intro: data.summary,
         rows: [
@@ -311,6 +335,7 @@ const templates = {
     return {
       subject: 'Leave request ' + data.status,
       html: layout({
+        brand: data.brand,
         heading: 'Your leave request was ' + data.status,
         intro: 'Hello ' + data.staffName + ', your ' + data.leaveType + ' leave request has been ' + data.status + '.',
         rows: [
@@ -333,7 +358,29 @@ function build(template, data) {
 }
 
 async function sendTemplate(db, template, { to, organisationId, data, replyTo, metadata }) {
-  const message = build(template, data);
+  const payload = Object.assign({}, data);
+  if (organisationId && !payload.brand) {
+    try {
+      const organisation = await db.one(
+        `SELECT name, slug, logo_url, primary_colour, secondary_colour, accent_colour, theme_tokens
+         FROM organisations WHERE id = $1`, [organisationId]
+      );
+      if (organisation) {
+        const branding = require('./branding-service');
+        const theme = branding.themeFromOrganisation(organisation);
+        const platform = organisation.slug === 're-el-platform';
+        payload.brand = {
+          name: platform ? 'Re-EL ECD' : organisation.name,
+          logoUrl: organisation.logo_url || (platform ? 'assets/branding/logo-re-el-ecd-wide.png' : null),
+          accent: theme.primary,
+          footer: platform ? 'Re-EL ECD · Early childhood, elevated.' : organisation.name + ' · Sent via Re-EL ECD.'
+        };
+      }
+    } catch (error) {
+      // Branding is decorative: an email must still send if the lookup fails.
+    }
+  }
+  const message = build(template, payload);
   return sendEmail(db, {
     to, subject: message.subject, html: message.html, text: message.text,
     template, organisationId, replyTo, metadata

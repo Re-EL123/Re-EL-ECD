@@ -36,7 +36,11 @@
           R.selectFilter(ctx, 'classroomId', classrooms.map((c) => ({ value: c.id, label: c.name })), 'All classrooms') +
           R.selectFilter(ctx, 'branchId', R.branchOptions(ctx), 'All branches')
         ) +
-        R.table({ rows, columns: [
+        (ctx.has('learners.archive.daycare') ? R.bulkBar([
+          { label: 'Archive selected', icon: 'archive', path: '/learners/bulk', action: 'archive', tone: 'danger' },
+          { label: 'Restore selected', icon: 'rotate-ccw', path: '/learners/bulk', action: 'restore' }
+        ], { hint: 'Archiving withdraws the learner from active enrolments.' }) : '') +
+        R.table({ rows, selectable: ctx.has('learners.archive.daycare') || ctx.has('learners.update.daycare'), columns: [
           { label: 'Learner', render: (l) => '<div class="row" style="gap:10px">' + R.mediaThumb(l.profile_image_url, l.first_name + ' ' + l.last_name) + '<div><a class="cell-strong" href="#/app/learners/' + R.attr(l.id) + '">' + R.esc(l.first_name) + ' ' + R.esc(l.last_name) + '</a><span class="cell-sub mono">' + R.esc(l.learner_reference) + '</span></div></div>' },
           { label: 'Age', render: (l) => R.esc(l.age_years) + ' yrs<span class="cell-sub">' + R.date(l.date_of_birth) + '</span>' },
           { label: 'Classroom', render: (l) => R.esc(l.classroom_name || 'Unassigned') + '<span class="cell-sub">' + R.esc(l.branch_name || '') + '</span>' },

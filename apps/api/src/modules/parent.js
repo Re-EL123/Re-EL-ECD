@@ -215,7 +215,8 @@ function register(router) {
        FROM payment_allocations pa JOIN payments p ON p.id = pa.payment_id
        WHERE pa.invoice_id = $1 ORDER BY p.received_at`, [invoice.id]
     );
-    return { ...invoice, items, payments, outstanding: roundMoney(Number(invoice.total_amount) - Number(invoice.amount_paid)) };
+    return { ...invoice, items, payments, outstanding: roundMoney(Number(invoice.total_amount) - Number(invoice.amount_paid)),
+      organisation: { name: ctx.organisation.name, logoUrl: ctx.organisation.logo_url } };
   }, { permission: 'parent.finance.read.own' });
 
   router.post('/parent/invoices/:id/pay', async (ctx) => {

@@ -6,6 +6,7 @@ const { recordAudit } = require('../services/audit-service');
 const { createNotification } = require('../services/notification-service');
 const { sendTemplate } = require('../services/email-service');
 const { parsePagination } = require('../utils/http');
+const bulk = require('../services/bulk-service');
 const { has } = require('./helpers');
 
 async function conversationAccess(ctx, conversationId) {
@@ -125,6 +126,33 @@ function register(router) {
       action: 'announcement.archived', resourceType: 'announcement', resourceId: announcement.id
     });
     return { success: true };
+  }, { permission: 'announcements.manage.daycare' });
+
+  router.post('/announcements/bulk', async (ctx) => {
+    const body = bulk.parse(ctx.body, ['publish', 'archive']);
+    return bulk.run(ctx, {
+      ids: body.ids,
+      action: body.action,
+      resourceType: 'announcement',
+      auditAction: body.action === 'publish' ? 'announcement.published' : 'announcement.archived',
+      handler: async (id) => {
+        const announcement = await ctx.db.one(
+          'SELECT * FROM announcements WHERE id = $1 AND organisation_id = $2', [id, ctx.organisationId]
+        );
+        if (!announcement) return { ok: false, reason: 'not found' };
+        if (body.action === 'publish') {
+          if (announcement.status === 'published') return { ok: false, reason: 'already published' };
+          await ctx.db.query(
+            "UPDATE announcements SET status = 'published', published_at = now() WHERE id = $1", [id]
+          );
+          await dispatchAnnouncement(ctx, announcement);
+          return { ok: true, branchId: announcement.branch_id };
+        }
+        if (announcement.status === 'archived') return { ok: false, reason: 'already archived' };
+        await ctx.db.query("UPDATE announcements SET status = 'archived' WHERE id = $1", [id]);
+        return { ok: true, branchId: announcement.branch_id };
+      }
+    });
   }, { permission: 'announcements.manage.daycare' });
 
   router.get('/conversations', async (ctx) => {

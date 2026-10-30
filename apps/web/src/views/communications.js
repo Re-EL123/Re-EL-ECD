@@ -70,8 +70,13 @@
         R.selectFilter(ctx, 'audience', AUDIENCES.map((a) => ({ value: a, label: R.titleCase(a) })), 'All audiences') +
         (canManage ? R.selectFilter(ctx, 'status', [{ value: 'draft', label: 'Draft' }, { value: 'published', label: 'Published' }, { value: 'archived', label: 'Archived' }], 'All statuses') : '') +
         R.selectFilter(ctx, 'branchId', R.branchOptions(ctx), 'All branches')) +
+        (canManage ? R.bulkBar([
+          { label: 'Publish selected', icon: 'megaphone', path: '/announcements/bulk', action: 'publish' },
+          { label: 'Archive selected', icon: 'archive', path: '/announcements/bulk', action: 'archive', tone: 'danger' }
+        ], { hint: 'Publishing notifies the audience immediately.' }) : '') +
         '<div class="stack section">' + rows.map((a) => R.card(a.title,
           '<div class="row" style="margin-bottom:8px">' + R.badge(a.status) +
+          (canManage ? '<label class="check" style="gap:6px"><input type="checkbox" :checked="isSelected(' + R.attr(JSON.stringify(a.id)) + ')" @change="toggleSelect(' + R.attr(JSON.stringify(a.id)) + ', $event.target.checked)" aria-label="Select announcement"><span class="muted small">Select</span></label>' : '') +
           '<span class="badge badge-muted">' + R.esc(R.titleCase(a.audience_type)) + '</span>' +
           (a.branch_name ? '<span class="badge badge-sky">' + R.esc(a.branch_name) + '</span>' : '<span class="badge badge-muted">All branches</span>') +
           '<span class="muted small row-end">' + (a.published_at ? R.relative(a.published_at) : 'Created ' + R.relative(a.created_at)) + '</span></div>' +

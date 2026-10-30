@@ -101,7 +101,11 @@
       return R.filterBar(
         R.searchFilter(ctx, 'q', 'Search invoice or learner…') +
         statusFilter(ctx, 'status', INVOICE_STATUSES, 'All statuses')) +
-        R.table({ rows: page.invoices || [], columns: [
+        (ctx.has('finance.invoice.issue.daycare') ? R.bulkBar([
+          { label: 'Issue selected', icon: 'send', path: '/invoices/bulk', action: 'issue' },
+          { label: 'Void selected', icon: 'ban', path: '/invoices/bulk', action: 'void', tone: 'danger' }
+        ], { hint: 'Only drafts can be issued; invoices with payments cannot be voided.' }) : '') +
+        R.table({ rows: page.invoices || [], selectable: ctx.has('finance.invoice.issue.daycare'), columns: [
           { label: 'Invoice', render: (i) => '<button class="link-strong mono" @click="openNamedModal(\'invoiceView\',\'' + R.attr(i.id) + '\')">' + R.esc(i.invoice_number) + '</button><span class="cell-sub">' + R.esc((i.first_name || '') + ' ' + (i.last_name || '')) + '</span>' },
           { label: 'Guardian', render: (i) => R.esc(i.guardian_name || '—') + '<span class="cell-sub">' + R.esc(i.guardian_email || '') + '</span>' },
           { label: 'Issued', render: (i) => R.date(i.issued_at) },
@@ -297,9 +301,14 @@
           const i = payload.data || {};
           const items = i.items || [];
           const allocations = i.allocations || [];
+          const invoiceOrg = i.organisation || {};
+          const orgLogo = invoiceOrg.logoUrl
+            ? '<span class="brand-logo" style="width:34px;height:34px;flex:0 0 34px"><img src="' + R.attr(invoiceOrg.logoUrl) + '" alt=""></span>'
+            : '';
           const html = '<div class="row" style="justify-content:space-between;align-items:flex-start">' +
+            '<div class="row" style="gap:10px">' + orgLogo +
             '<div><div class="mono cell-strong" style="font-size:1.1rem">' + R.esc(i.invoice_number) + '</div>' +
-            '<div class="muted small">' + R.esc((i.organisation || {}).name || '') + '</div></div>' +
+            '<div class="muted small">' + R.esc(invoiceOrg.name || '') + '</div></div></div>' +
             '<div style="text-align:right">' + R.badge(i.status) + '<div class="muted small">Issued ' + R.date(i.issued_at) + '</div></div></div>' +
             '<div class="section"></div><div class="detail-list">' +
             R.detailItem('Learner', R.esc(((i.learner || {}).first_name || '') + ' ' + ((i.learner || {}).last_name || ''))) +

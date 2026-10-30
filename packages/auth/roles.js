@@ -39,7 +39,8 @@ const ROLE_DEFINITIONS = [
 const ROLE_PERMISSIONS = {
   [ROLES.PLATFORM_SUPER_ADMIN]: ['platform.organisations.read', 'platform.organisations.manage',
     'platform.subscriptions.read', 'platform.subscriptions.manage', 'platform.audit.read', 'platform.health.read',
-    'platform.support.manage', 'platform.settings.manage', 'platform.features.manage', 'platform.impersonate.manage'],
+    'platform.support.manage', 'platform.settings.manage', 'platform.features.manage', 'platform.impersonate.manage',
+    'media.*'],
   [ROLES.PLATFORM_SUPPORT_ADMIN]: [
     'platform.organisations.read', 'platform.audit.read', 'platform.health.read', 'platform.support.manage'
   ],

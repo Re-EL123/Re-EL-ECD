@@ -16,17 +16,23 @@
     return R.esc(String(value));
   }
 
-  function orgRow(o) {
-    return '<tr>' +
-      '<td><a class="cell-strong" href="#/platform/organisations/' + R.attr(o.id) + '">' + R.esc(o.name) + '</a>' +
-      '<span class="cell-sub">' + R.esc(o.slug) + '</span></td>' +
-      '<td>' + R.badge(o.status) + '</td>' +
-      '<td>' + R.badge(o.subscription_status) + '<span class="cell-sub">' + R.esc(o.plan_name || 'No plan') + '</span></td>' +
-      '<td class="num">' + R.number(o.learner_count) + '</td>' +
-      '<td class="num">' + R.number(o.staff_count) + '</td>' +
-      '<td class="num">' + R.number(o.branch_count) + '</td>' +
-      '<td class="cell-actions"><a class="btn btn-sm btn-secondary" href="#/platform/organisations/' + R.attr(o.id) + '">Open</a></td>' +
-      '</tr>';
+  /**
+   * Suspension always needs a reason: it revokes every session and is shown to
+   * the tenant in the audit trail. Both the directory and the detail screen use
+   * this form so neither path can send an empty reason.
+   */
+  function openSuspendOrgModal(ctx, id) {
+    if (!id) { ctx.toast('That organisation could not be found.', 'warn'); return; }
+    ctx.openModal({
+      title: 'Suspend organisation',
+      description: 'All staff and parents lose access immediately and every active session is revoked. The reason is recorded in the platform audit trail and shown to the tenant.',
+      endpoint: '/platform/organisations/' + encodeURIComponent(id) + '/suspend',
+      submitLabel: 'Suspend organisation',
+      successMessage: 'Organisation suspended',
+      fields: [
+        { name: 'reason', label: 'Reason', type: 'textarea', required: true, span: 2, help: 'Explain why access is being withdrawn so the tenant understands what to fix.' }
+      ]
+    });
   }
 
   V.platformOverview = {
@@ -88,8 +94,11 @@
       const query = new URLSearchParams();
       if (ctx.filters.q) query.set('q', ctx.filters.q);
       if (ctx.filters.status) query.set('status', ctx.filters.status);
-      const payload = await R.api('GET', '/platform/organisations' + (query.toString() ? '?' + query : ''));
-      return { rows: payload.data, meta: payload.meta || {} };
+      const [payload, plans] = await Promise.all([
+        R.api('GET', '/platform/organisations' + (query.toString() ? '?' + query : '')),
+        R.api('GET', '/platform/plans').catch(() => ({ data: [] }))
+      ]);
+      return { rows: payload.data, meta: payload.meta || {}, plans: plans.data || [] };
     },
     render(ctx, params, page) {
       const rows = page.rows || [];
@@ -97,7 +106,13 @@
         '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'newOrganisation\')">' + R.icon('plus') + ' New organisation</button>') +
         R.filterBar(R.searchFilter(ctx, 'q', 'Search name or slug…') +
           R.selectFilter(ctx, 'status', [{ value: 'active', label: 'Active' }, { value: 'suspended', label: 'Suspended' }, { value: 'onboarding', label: 'Onboarding' }], 'All statuses')) +
-        R.table({ rows, columns: [
+        (ctx.has('platform.organisations.manage')
+          ? R.bulkBar([
+            { label: 'Suspend selected', icon: 'pause', modal: 'bulkSuspendOrgs', tone: 'danger' },
+            { label: 'Restore selected', icon: 'play', path: '/platform/organisations/bulk', action: 'restore' }
+          ], { hint: 'Bulk changes are recorded in the platform audit trail.' })
+          : '') +
+        R.table({ rows, selectable: ctx.has('platform.organisations.manage'), columns: [
           { label: 'Organisation', render: (x) => '<a class="cell-strong" href="#/platform/organisations/' + R.attr(x.id) + '">' + R.esc(x.name) + '</a><span class="cell-sub">' + R.esc(x.slug) + ' · ' + R.esc(x.currency) + '</span>' },
           { label: 'Status', render: (x) => R.badge(x.status) },
           { label: 'Subscription', render: (x) => R.badge(x.subscription_status) + '<span class="cell-sub">' + R.esc(x.plan_name || 'No plan') + '</span>' },
@@ -108,13 +123,17 @@
             '<a class="btn btn-sm btn-secondary" href="#/platform/organisations/' + R.attr(x.id) + '">Open</a>' +
             (x.status === 'suspended'
               ? '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/platform/organisations/' + R.attr(x.id) + '/restore\',{},{successMessage:\'Organisation restored\'})">Restore</button>'
-              : '<button class="btn btn-sm btn-danger" @click="confirmAction(\'Suspend organisation\',\'All staff and parents lose access until the organisation is restored. This is logged in the platform audit trail.\',\'/platform/organisations/' + R.attr(x.id) + '/suspend\',{submitLabel:\'Suspend\',successMessage:\'Organisation suspended\'})">Suspend</button>') +
+              : '<button class="btn btn-sm btn-danger" @click="openNamedModal(\'suspendOrg\', ' + R.attr(JSON.stringify(x.id)) + ')">Suspend</button>') +
             '</div>' }
         ], emptyTitle: 'No organisations found', emptyMessage: 'Adjust the filters or create a new tenant.' }) +
         '<div class="muted small" style="margin-top:10px">' + R.number(page.meta.total || rows.length) + ' organisations</div>';
     },
-    openModal(ctx, name) {
+    openModal(ctx, name, id) {
       if (name === 'newOrganisation') {
+        const plans = ((ctx.page && ctx.page.plans) || []).filter((plan) => plan.status === 'active');
+        const planOptions = plans.length
+          ? plans.map((plan) => ({ value: plan.plan_key, label: plan.name + ' · ' + R.money(plan.monthly_price, plan.currency) + '/mo' }))
+          : ['seedling', 'sapling', 'evergreen'];
         ctx.openModal({
           title: 'Create organisation',
           description: 'The owner receives an invitation to finish setting up their daycare.',
@@ -130,11 +149,32 @@
             { name: 'ownerName', label: 'Owner name', required: true },
             { name: 'ownerEmail', label: 'Owner email', type: 'email', required: true },
             { name: 'branchName', label: 'First branch', value: 'Main Campus' },
-            { name: 'planKey', label: 'Plan', type: 'select', options: ['seedling', 'sapling', 'canopy'], value: 'seedling' },
+            { name: 'planKey', label: 'Plan', type: 'select', options: planOptions, value: plans.length ? plans[0].plan_key : 'seedling' },
             { name: 'currency', label: 'Currency', type: 'select', options: ['ZAR', 'USD', 'EUR', 'GBP'], value: 'ZAR' },
             { name: 'timezone', label: 'Timezone', value: 'Africa/Johannesburg' },
             { name: 'temporaryPassword', label: 'Temporary password', type: 'password', help: 'Optional — leave blank to email an invitation' }
           ]
+        });
+        return;
+      }
+      if (name === 'suspendOrg') {
+        openSuspendOrgModal(ctx, id);
+        return;
+      }
+      if (name === 'bulkSuspendOrgs') {
+        ctx.openModal({
+          title: 'Suspend selected organisations',
+          description: 'Every selected tenant loses access immediately and its sessions are revoked. The reason is recorded once per organisation in the audit trail.',
+          submitLabel: 'Suspend ' + ctx.selectedCount,
+          successMessage: 'Bulk suspension complete.',
+          fields: [
+            { name: 'reason', label: 'Reason', type: 'textarea', required: true, span: 2, help: 'Shared with the platform audit trail and shown to the tenant.' }
+          ],
+          async onSubmit(body) {
+            const result = await ctx.runBulk('/platform/organisations/bulk', 'suspend', { reason: body.reason }, { reload: false, silent: true });
+            if (!result) throw new Error('The bulk suspension could not be completed.');
+            if (!Number(result.updated)) throw new Error('No organisations were suspended. They may already be suspended.');
+          }
         });
       }
     },
@@ -154,7 +194,7 @@
           '<a class="btn btn-secondary btn-sm" href="#/platform/organisations">Back</a>' +
           (o.status === 'suspended'
             ? '<button class="btn btn-primary btn-sm" @click="act(\'POST\',\'/platform/organisations/' + R.attr(o.id) + '/restore\',{},{successMessage:\'Organisation restored\'})">Restore access</button>'
-            : '<button class="btn btn-danger btn-sm" @click="confirmAction(\'Suspend organisation\',\'All staff and parents lose access until the organisation is restored.\',\'/platform/organisations/' + R.attr(o.id) + '/suspend\',{submitLabel:\'Suspend\',successMessage:\'Organisation suspended\'})">Suspend</button>')) +
+            : '<button class="btn btn-danger btn-sm" @click="openNamedModal(\'suspendOrg\', ' + R.attr(JSON.stringify(o.id)) + ')">Suspend</button>')) +
         '<div class="grid grid-4 section">' +
         R.statCard({ label: 'Status', value: R.titleCase(o.status), icon: 'building-2', foot: R.badge(o.subscription_status) }) +
         R.statCard({ label: 'Learners', value: R.number(counts.learners), icon: 'users', tone: 'clay' }) +
@@ -187,35 +227,63 @@
           : R.emptyState('No settings recorded', 'This tenant has not customised its settings yet.', '', 'settings')) +
         '</div></div>';
     },
+    openModal(ctx, name, id) {
+      if (name === 'suspendOrg') openSuspendOrgModal(ctx, id || (ctx.page && ctx.page.org && ctx.page.org.id));
+    },
   };
 
   V.platformSubscriptions = {
     async load() {
-      const payload = await R.api('GET', '/platform/subscriptions');
-      return { data: payload.data };
+      const [subscriptions, organisations] = await Promise.all([
+        R.api('GET', '/platform/subscriptions'),
+        R.api('GET', '/platform/organisations')
+      ]);
+      return { data: subscriptions.data, organisations: organisations.data || [] };
     },
     render(ctx, params, page) {
       const d = page.data || {};
       const plans = d.plans || [];
       const subs = d.subscriptions || [];
+      const canManage = ctx.has('platform.subscriptions.manage');
+      const activePlanCount = (plan) => subs.filter((s) => s.plan_id === plan.id && ['trial', 'active', 'past_due'].includes(s.status)).length;
+      const planCard = (p) => '<div class="plan-card ' + (p.status === 'archived' ? 'archived' : '') + '">' +
+        '<div class="row" style="justify-content:space-between;align-items:flex-start">' +
+        '<div><div class="cell-strong" style="font-size:1rem">' + R.esc(p.name) + '</div>' +
+        '<div class="cell-sub mono">' + R.esc(p.plan_key) + '</div></div>' +
+        R.badge(p.status) + '</div>' +
+        '<div class="plan-price">' + R.money(p.monthly_price, p.currency) + '<span> /month</span></div>' +
+        '<div class="muted small">' + R.esc(p.description || 'No description yet.') + '</div>' +
+        '<div class="kpi-list">' +
+        '<div class="kpi-row"><span class="kpi-label">Learner limit</span><span class="kpi-value">' + (p.max_learners ? R.number(p.max_learners) : 'Unlimited') + '</span></div>' +
+        '<div class="kpi-row"><span class="kpi-label">Staff limit</span><span class="kpi-value">' + (p.max_staff ? R.number(p.max_staff) : 'Unlimited') + '</span></div>' +
+        '<div class="kpi-row"><span class="kpi-label">Active tenants</span><span class="kpi-value">' + R.number(activePlanCount(p)) + '</span></div>' +
+        '</div>' +
+        ((p.features || []).length ? '<div class="plan-features">' + (p.features || []).map((f) => '<span class="badge badge-muted">' + R.esc(R.titleCase(String(f).replace(/_/g, ' '))) + '</span>').join('') + '</div>' : '') +
+        (canManage ? '<div class="plan-actions">' +
+          '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'editPlan\',' + R.attr(JSON.stringify(p.id)) + ')">' + R.icon('pencil') + ' Edit</button>' +
+          '<button class="btn btn-sm ' + (p.status === 'archived' ? 'btn-secondary' : 'btn-ghost') + '" @click="act(\'PATCH\',\'/platform/plans/' + R.attr(p.id) + '\',{status:\'' + (p.status === 'archived' ? 'active' : 'archived') + '\'},{successMessage:\'Plan ' + (p.status === 'archived' ? 'restored' : 'archived') + '\'})">' + R.icon(p.status === 'archived' ? 'rotate-ccw' : 'archive') + ' ' + (p.status === 'archived' ? 'Restore' : 'Archive') + '</button>' +
+          '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'assignPlan\')">' + R.icon('user-plus') + ' Assign</button>' +
+          '</div>' : '') +
+        '</div>';
       return R.pageHead('Subscriptions', 'Plans, tenant billing state and monthly recurring revenue.',
+        (canManage ? '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'newPlan\')">' + R.icon('plus') + ' New plan</button>' : '') +
         '<a class="btn btn-secondary btn-sm" href="#/platform/organisations">' + R.icon('building-2') + ' Organisations</a>') +
-        '<div class="grid grid-3 section">' + plans.map((p) => R.card(p.name,
-          '<div class="stat-value">' + R.money(p.monthly_price) + '<span class="muted" style="font-size:0.8rem;font-weight:500"> /month</span></div>' +
-          '<div class="muted small" style="margin:6px 0 10px">' + R.esc(p.description || '') + '</div>' +
-          '<div class="kpi-list">' +
-          '<div class="kpi-row"><span class="kpi-label">Learner limit</span><span class="kpi-value">' + R.esc(p.learner_limit || 'Unlimited') + '</span></div>' +
-          '<div class="kpi-row"><span class="kpi-label">Staff limit</span><span class="kpi-value">' + R.esc(p.staff_limit || 'Unlimited') + '</span></div>' +
-          '<div class="kpi-row"><span class="kpi-label">Active tenants</span><span class="kpi-value">' + subs.filter((s) => s.plan_name === p.name && s.status === 'active').length + '</span></div>' +
-          '</div>')) .join('') + '</div>' +
+        '<div class="grid grid-3 section">' +
+        R.statCard({ label: 'Monthly recurring', value: R.money(d.mrr), icon: 'credit-card', foot: subs.filter((s) => s.status === 'active').length + ' paying tenants' }) +
+        R.statCard({ label: 'Active plans', value: R.number(plans.filter((p) => p.status === 'active').length), icon: 'layers', tone: 'sky', foot: plans.length + ' in catalogue' }) +
+        R.statCard({ label: 'Trials', value: R.number(subs.filter((s) => s.status === 'trial').length), icon: 'hourglass', tone: 'plum', foot: 'Awaiting conversion' }) +
+        '</div>' +
+        R.card('Plan catalogue', '<div class="plan-grid">' + plans.map(planCard).join('') + '</div>',
+          canManage ? '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'newPlan\')">' + R.icon('plus') + ' New plan</button>' : '') +
+        '<div class="section"></div>' +
         '<div class="grid grid-2 section">' +
         R.card('Tenant subscriptions', R.table({ rows: subs, columns: [
-          { label: 'Organisation', render: (s) => '<span class="cell-strong">' + R.esc(s.organisation_name) + '</span><span class="cell-sub">' + R.esc(s.plan_name) + '</span>' },
+          { label: 'Organisation', render: (s) => '<a class="cell-strong" href="#/platform/organisations/' + R.attr(s.organisation_id) + '">' + R.esc(s.organisation_name) + '</a><span class="cell-sub">' + R.esc(s.plan_name || 'No plan') + '</span>' },
           { label: 'Status', render: (s) => R.badge(s.status) },
           { label: 'Billing', render: (s) => R.esc(R.titleCase(s.billing_period)) },
           { label: 'Renews', render: (s) => R.date(s.current_period_end) },
-          { label: 'MRR', align: 'right', render: (s) => R.money(s.monthly_price) }
-        ], emptyTitle: 'No subscriptions' })) +
+          { label: 'MRR', align: 'right', render: (s) => R.money(s.monthly_price, s.organisation_currency) }
+        ], emptyTitle: 'No subscriptions', emptyMessage: 'Assign a plan to an organisation to begin billing.' })) +
         R.card('Revenue', '<div class="stat-value">' + R.money(d.mrr) + '</div><div class="muted small">Monthly recurring revenue</div>' +
           '<div class="kpi-list" style="margin-top:14px">' +
           '<div class="kpi-row"><span class="kpi-label">Paying tenants</span><span class="kpi-value">' + subs.filter((s) => s.status === 'active').length + '</span></div>' +
@@ -223,6 +291,71 @@
           '<div class="kpi-row"><span class="kpi-label">Past due</span><span class="kpi-value">' + subs.filter((s) => s.status === 'past_due' || s.status === 'overdue').length + '</span></div>' +
           '</div>') +
         '</div>';
+    },
+    openModal(ctx, name, id) {
+      const page = ctx.page || {};
+      const plans = ((page.data || {}).plans) || [];
+      const organisations = page.organisations || [];
+      if (name === 'newPlan' || name === 'editPlan') {
+        const plan = name === 'editPlan' ? plans.find((p) => p.id === id) : null;
+        if (name === 'editPlan' && !plan) { ctx.toast('That plan could not be found.', 'warn'); return; }
+        ctx.openModal({
+          title: plan ? 'Edit ' + plan.name : 'Create a subscription plan',
+          description: plan ? 'Changes apply to new subscriptions; existing subscriptions keep their agreed price until renewed.' : 'Plans define price, limits and the features a tenant can use.',
+          endpoint: plan ? '/platform/plans/' + encodeURIComponent(plan.id) : '/platform/plans',
+          method: plan ? 'PATCH' : 'POST',
+          submitLabel: plan ? 'Save plan' : 'Create plan',
+          successMessage: plan ? 'Plan updated' : 'Plan created',
+          size: 'wide',
+          fields: [
+            { name: 'name', label: 'Plan name', required: true, value: plan ? plan.name : '' },
+            { name: 'planKey', label: 'Plan key', required: true, value: plan ? plan.plan_key : '', help: 'Lowercase letters, numbers and hyphens. Cannot be changed casually — it identifies the plan in billing.' },
+            { name: 'description', label: 'Description', type: 'textarea', span: 2, value: plan ? (plan.description || '') : '' },
+            { name: 'monthlyPrice', label: 'Monthly price', type: 'number', min: 0, step: '0.01', required: true, value: plan ? plan.monthly_price : 0 },
+            { name: 'currency', label: 'Currency', type: 'select', options: ['ZAR', 'USD', 'EUR', 'GBP'], value: plan ? plan.currency : 'ZAR' },
+            { name: 'maxLearners', label: 'Learner limit', type: 'number', min: 0, value: plan ? plan.max_learners : 50, help: '0 means unlimited' },
+            { name: 'maxStaff', label: 'Staff limit', type: 'number', min: 0, value: plan ? plan.max_staff : 10, help: '0 means unlimited' },
+            { name: 'features', label: 'Features', type: 'textarea', span: 2, value: plan ? (plan.features || []).join(', ') : 'attendance, assessments, parent_portal, finance', help: 'Comma-separated feature keys.' },
+            { name: 'status', label: 'Status', type: 'select', options: [{ value: 'active', label: 'Active' }, { value: 'archived', label: 'Archived' }], value: plan ? plan.status : 'active' }
+          ],
+          transform(data) {
+            const body = {
+              name: data.name,
+              planKey: String(data.planKey || '').trim().toLowerCase(),
+              description: data.description || null,
+              monthlyPrice: Number(data.monthlyPrice) || 0,
+              currency: data.currency || 'ZAR',
+              maxLearners: Number(data.maxLearners) || 0,
+              maxStaff: Number(data.maxStaff) || 0,
+              features: String(data.features || '').split(',').map((f) => f.trim()).filter(Boolean),
+              status: data.status || 'active'
+            };
+            return body;
+          }
+        });
+        return;
+      }
+      if (name === 'assignPlan') {
+        const activePlans = plans.filter((p) => p.status === 'active');
+        ctx.openModal({
+          title: 'Assign a subscription plan',
+          description: 'The current subscription is cancelled and replaced. The tenant sees the new limits immediately.',
+          endpoint: '/platform/organisations',
+          submitLabel: 'Assign plan',
+          successMessage: 'Subscription assigned',
+          fields: [
+            { name: 'organisationId', label: 'Organisation', type: 'select', required: true, options: organisations.map((o) => ({ value: o.id, label: o.name + ' · ' + o.slug })) },
+            { name: 'planId', label: 'Plan', type: 'select', required: true, options: activePlans.map((p) => ({ value: p.id, label: p.name + ' · ' + R.money(p.monthly_price, p.currency) + '/mo' })) },
+            { name: 'status', label: 'Status', type: 'select', options: [{ value: 'active', label: 'Active' }, { value: 'trial', label: 'Trial' }, { value: 'past_due', label: 'Past due' }], value: 'active' },
+            { name: 'billingPeriod', label: 'Billing period', type: 'select', options: [{ value: 'monthly', label: 'Monthly' }, { value: 'annual', label: 'Annual' }], value: 'monthly' }
+          ],
+          async onSubmit(body) {
+            await R.api('POST', '/platform/organisations/' + encodeURIComponent(body.organisationId) + '/subscription', {
+              planId: body.planId, status: body.status, billingPeriod: body.billingPeriod
+            });
+          }
+        });
+      }
     }
   };
 
@@ -327,12 +460,38 @@
         R.api('GET', '/platform/settings')
       ]);
       const payload = config.data || {};
-      return { features: features.data, org: Object.assign({}, payload.organisation || {}, { settings: payload.settings || {} }) };
+      return {
+        features: features.data,
+        org: Object.assign({}, payload.organisation || {}, { settings: payload.settings || {} }),
+        theme: payload.theme || R.PLATFORM_BRAND.theme
+      };
     },
     render(ctx, params, page) {
       const org = page.org || {};
-      return R.pageHead('Platform configuration', 'The platform organisation profile and global switches.',
+      const theme = page.theme || R.PLATFORM_BRAND.theme;
+      const logo = org.logo_url || R.PLATFORM_LOGO;
+      const canManage = ctx.has('platform.settings.manage');
+      const swatch = (label, value) => '<div style="text-align:center"><span class="swatch" style="display:inline-block;background:' + R.attr(value) + '"></span><div class="muted small mono">' + R.esc(value) + '</div><div class="muted small">' + R.esc(label) + '</div></div>';
+      return R.pageHead('Platform configuration', 'The Re-EL ECD brand, the platform organisation profile and global switches.',
+        (canManage ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'platformBranding\')">' + R.icon('palette') + ' Edit brand colours</button>' : '') +
         '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'editOrg\')">' + R.icon('pencil') + ' Edit profile</button>') +
+        R.card('Platform brand',
+          '<div class="platform-logo-card">' +
+          '<img class="logo-preview" src="' + R.attr(logo) + '" alt="Re-EL ECD logo">' +
+          '<div style="flex:1;min-width:200px">' +
+          '<div class="cell-strong" style="font-size:1.05rem">' + R.esc(org.name || R.PLATFORM_BRAND.name) + '</div>' +
+          '<div class="muted small">' + R.esc(R.PLATFORM_BRAND.tagline) + ' · shown on the sign-in screen, sidebar and platform console.</div>' +
+          (canManage ? '<div class="btn-group" style="margin-top:10px">' +
+            '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'platformLogo\')">' + R.icon('upload') + ' Upload logo</button>' +
+            '<button class="btn btn-sm btn-secondary" @click="extractLogoPalette()">' + R.icon('pipette') + ' Extract colours</button>' +
+            '</div>' : '') +
+          '</div></div>' +
+          '<div class="swatch-row" style="margin-top:16px">' +
+          swatch('Primary', theme.primary) + swatch('Secondary', theme.secondary) + swatch('Accent', theme.accent) +
+          swatch('Background', theme.background) + swatch('Surface', theme.surface) + swatch('Text', theme.text) +
+          '</div>',
+          canManage ? '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'platformBranding\')">Edit palette ' + R.icon('arrow-right') + '</button>' : '') +
+        '<div class="section"></div>' +
         '<div class="split"><div class="stack">' +
         R.card('Platform organisation', '<div class="detail-list">' +
           R.detailItem('Name', R.esc(org.name)) + R.detailItem('Slug', R.esc(org.slug)) +
@@ -376,6 +535,60 @@
               allowTenantSignup: data.allowTenantSignup === true,
               supportEmail: data.supportEmail || null,
               dataRetention: { years: Number(data.retentionYears) || 7 }
+            }
+          };
+        }
+      });
+      return;
+    }
+    if (name === 'platformLogo') {
+      const org = (ctx.page && ctx.page.org) || {};
+      ctx.openModal({
+        title: 'Platform logo',
+        description: 'Shown in the sidebar, on the sign-in screen, in browser tabs and in transactional email. A square PNG or WebP on a transparent or white background works best.',
+        endpoint: '/platform/settings',
+        method: 'PATCH',
+        submitLabel: 'Save logo',
+        successMessage: 'Platform logo updated',
+        fields: [
+          { name: 'logoUrl', label: 'Logo', type: 'media', kind: 'image', scope: 'branding', accept: 'image/png,image/jpeg,image/webp,image/gif,image/avif', value: org.logo_url || '', help: 'Upload a file or paste a hosted image URL. Leave empty to keep using the bundled Re-EL logo.' }
+        ],
+        transform(data) {
+          return { logoUrl: data.logoUrl || null };
+        }
+      });
+      return;
+    }
+    if (name === 'platformBranding') {
+      const theme = (ctx.page && ctx.page.theme) || R.PLATFORM_BRAND.theme;
+      ctx.openModal({
+        title: 'Platform brand colours',
+        description: 'These colours cascade across the platform console, the sign-in screen and platform email accents. Use Extract colours on the platform brand card to sample them from the logo.',
+        endpoint: '/platform/settings',
+        method: 'PATCH',
+        submitLabel: 'Apply palette',
+        successMessage: 'Platform palette updated',
+        size: 'wide',
+        fields: [
+          { name: 'primary', label: 'Primary', type: 'colour', required: true, value: theme.primary || '#0B534A' },
+          { name: 'secondary', label: 'Secondary', type: 'colour', required: true, value: theme.secondary || '#2B9A58' },
+          { name: 'accent', label: 'Accent', type: 'colour', required: true, value: theme.accent || '#6FC79B' },
+          { name: 'background', label: 'Background', type: 'colour', value: theme.background || '#F6F9F7' },
+          { name: 'surface', label: 'Surface', type: 'colour', value: theme.surface || '#FFFFFF' },
+          { name: 'text', label: 'Text', type: 'colour', value: theme.text || '#0E2B26' }
+        ],
+        transform(data) {
+          return {
+            primaryColour: data.primary,
+            secondaryColour: data.secondary,
+            accentColour: data.accent,
+            themeTokens: {
+              primary: data.primary,
+              secondary: data.secondary,
+              accent: data.accent,
+              background: data.background,
+              surface: data.surface,
+              text: data.text
             }
           };
         }

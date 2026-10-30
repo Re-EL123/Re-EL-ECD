@@ -425,7 +425,11 @@
 
     renderMembers(ctx, rows, canManage) {
       return R.filterBar(R.searchFilter(ctx, 'q', 'Search by name or email…')) +
-        R.table({ rows, columns: [
+        (canManage ? R.bulkBar([
+          { label: 'Activate access', icon: 'user-check', path: '/access/memberships/bulk', action: 'activate' },
+          { label: 'Suspend access', icon: 'user-x', path: '/access/memberships/bulk', action: 'suspend', tone: 'danger' }
+        ], { hint: 'Suspending signs the person out immediately.' }) : '') +
+        R.table({ rows, selectable: canManage, columns: [
           { label: 'Person', render: (m) => '<div class="row" style="gap:10px"><div class="avatar">' + R.esc(R.initials(m.display_name)) + '</div><div><span class="cell-strong">' + R.esc(m.display_name) + '</span><span class="cell-sub">' + R.esc(m.email) + '</span></div></div>' },
           { label: 'Roles', render: (m) => (m.roles || []).length ? (m.roles || []).map((r) => '<span class="badge badge-sky">' + R.esc(R.titleCase(r.role)) + '</span>' + (r.branchId ? '<span class="badge badge-muted">branch</span>' : '')).join(' ') : '<span class="muted">No role</span>' },
           { label: 'Status', render: (m) => R.badge(m.status) },
@@ -543,6 +547,63 @@
           '</div><div class="section"></div><h3>Metadata</h3><pre class="mono small" style="white-space:pre-wrap;background:var(--surface-2);padding:12px;border-radius:8px">' + R.esc(R.json(row.metadata || {})) + '</pre>';
         ctx.openDetail('Audit event', html);
       }
+    }
+  };
+
+  /**
+   * Media library: every picture, video, audio clip and document uploaded by
+   * this organisation. Uploads go straight to R2; this page lists the assets
+   * and supports bulk cleanup.
+   */
+  V.mediaLibrary = {
+    async load(ctx) {
+      const query = new URLSearchParams({ page: ctx.filters.page || '1', pageSize: '24' });
+      if (ctx.filters.scope) query.set('scope', ctx.filters.scope);
+      const [assets, config] = await Promise.all([
+        R.api('GET', '/media/assets?' + query).catch(() => ({ data: [], meta: {} })),
+        R.api('GET', '/media/config').catch(() => ({ data: {} }))
+      ]);
+      return { rows: assets.data || [], meta: assets.meta || {}, config: config.data || {} };
+    },
+
+    render(ctx, params, page) {
+      const rows = page.rows || [];
+      const config = page.config || {};
+      const configured = config.configured === true;
+      const canManage = ctx.has('media.manage.daycare');
+      const canUpload = ctx.has('media.upload.daycare');
+      const scopes = config.scopes || [];
+      const scopeOptions = scopes.map((scope) => ({ value: scope, label: R.titleCase(scope) }));
+      const bytes = (value) => {
+        const size = Number(value || 0);
+        if (!size) return '—';
+        if (size >= 1024 * 1024) return (size / (1024 * 1024)).toFixed(1) + ' MB';
+        if (size >= 1024) return Math.round(size / 1024) + ' KB';
+        return size + ' B';
+      };
+      const card = (asset) => '<div class="media-card">' +
+        R.mediaHtml(asset.url, asset.kind, { alt: asset.original_filename }) +
+        '<div class="media-card-body">' +
+        '<div class="row" style="justify-content:space-between;align-items:flex-start;gap:8px">' +
+        '<div style="min-width:0"><div class="cell-strong" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + R.esc(asset.original_filename) + '</div>' +
+        '<div class="cell-sub">' + R.esc(R.titleCase(asset.scope)) + ' · ' + R.esc(R.titleCase(asset.kind)) + ' · ' + bytes(asset.size_bytes) + '</div></div>' +
+        (canManage ? '<label class="check" style="gap:6px"><input type="checkbox" :checked="isSelected(' + R.attr(JSON.stringify(String(asset.id))) + ')" @change="toggleSelect(' + R.attr(JSON.stringify(String(asset.id))) + ', $event.target.checked)" aria-label="Select file"><span class="muted small">Select</span></label>' : '') +
+        '</div>' +
+        '<div class="cell-sub">' + R.date(asset.created_at) + '</div>' +
+        '</div></div>';
+      return R.pageHead('Media library', 'Every photo, video, audio clip and document stored for this organisation.',
+        (canUpload && configured ? '<label class="btn btn-primary btn-sm" :class="{ disabled: libraryBusy }">' + R.icon('upload') + ' Upload files' +
+          '<input type="file" multiple style="display:none" accept="image/*,video/*,audio/*,application/pdf" @change="uploadLibraryFiles($event)" :disabled="libraryBusy"></label>' : '') +
+        (canUpload ? '<a class="btn btn-secondary btn-sm" href="#/app/website">' + R.icon('globe') + ' Website media</a>' : '')) +
+        (configured ? '' : '<div class="alert alert-warn section">' + R.icon('alert-triangle') + '<span>File storage is not configured yet. Add the R2 environment variables, then upload media here. Existing links still work.</span></div>') +
+        R.filterBar(R.selectFilter(ctx, 'scope', scopeOptions, 'All scopes')) +
+        (canManage ? R.bulkBar([
+          { label: 'Delete selected', icon: 'trash-2', path: '/media/assets/bulk', action: 'delete', tone: 'danger' }
+        ], { hint: 'Deleting removes the file from storage and marks the record as deleted. Audit history is kept.' }) : '') +
+        (rows.length
+          ? '<div class="media-grid section">' + rows.map(card).join('') + '</div>'
+          : R.emptyState('No media yet', configured ? 'Upload a file to see it here.' : 'Configure file storage to start uploading.', '', 'images')) +
+        R.pager(page.meta, "setFilter('page', " + Math.max(1, ((page.meta || {}).page || 1) - 1) + ")", "setFilter('page', " + Math.min(((page.meta || {}).totalPages || 1), ((page.meta || {}).page || 1) + 1) + ")");
     }
   };
 })();

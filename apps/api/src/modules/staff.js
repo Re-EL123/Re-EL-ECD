@@ -6,6 +6,7 @@ const { recordAudit } = require('../services/audit-service');
 const { createNotification } = require('../services/notification-service');
 const { sendTemplate } = require('../services/email-service');
 const { parsePagination } = require('../utils/http');
+const bulk = require('../services/bulk-service');
 const { has, today } = require('./helpers');
 
 async function currentStaff(ctx, required = true) {
@@ -239,6 +240,30 @@ function register(router) {
       action: 'staff.updated', resourceType: 'staff_profile', resourceId: staff.id, metadata: { fields: Object.keys(body) }
     });
     return ctx.db.one('SELECT * FROM staff_profiles WHERE id = $1', [staff.id]);
+  }, { permission: 'staff.manage.daycare' });
+
+  router.post('/staff/bulk', async (ctx) => {
+    const body = bulk.parse(ctx.body, ['activate', 'suspend', 'end']);
+    const target = { activate: 'active', suspend: 'suspended', end: 'ended' }[body.action];
+    return bulk.run(ctx, {
+      ids: body.ids,
+      action: body.action,
+      resourceType: 'staff_profile',
+      auditAction: 'staff.employment_status_changed',
+      handler: async (id) => {
+        const staff = await ctx.db.one(
+          'SELECT * FROM staff_profiles WHERE id = $1 AND organisation_id = $2', [id, ctx.organisationId]
+        );
+        if (!staff) return { ok: false, reason: 'not found' };
+        if (staff.employment_status === target) return { ok: false, reason: 'already ' + target };
+        if (staff.user_id === ctx.user.id) return { ok: false, reason: 'you cannot change your own employment status' };
+        await ctx.db.query(
+          `UPDATE staff_profiles SET employment_status = $1, end_date = CASE WHEN $1 = 'ended' THEN COALESCE(end_date, CURRENT_DATE) ELSE end_date END,
+             updated_at = now() WHERE id = $2`, [target, id]
+        );
+        return { ok: true, metadata: { employmentStatus: target } };
+      }
+    });
   }, { permission: 'staff.manage.daycare' });
 
   router.post('/staff/:id/classrooms', async (ctx) => {

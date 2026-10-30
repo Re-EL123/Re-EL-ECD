@@ -580,6 +580,58 @@ table.table { width: 100%; border-collapse: collapse; font-size: 0.86rem; min-wi
 .logo-placeholder { width: 92px; height: 92px; border-radius: var(--radius-md); display: grid; place-items: center; background: var(--surface-2); border: 1px dashed var(--border-strong); color: var(--text-muted); }
 .public-brand-logo { width: 42px; height: 42px; border-radius: 10px; object-fit: contain; background: var(--surface-2); padding: 4px; }
 
+/* Brand chip in the sidebar: shows the tenant or platform logo, or the
+   initial of the organisation name while no logo has been uploaded. */
+.brand-logo {
+  width: 40px; height: 40px; flex: 0 0 40px;
+  border-radius: 12px; overflow: hidden;
+  display: grid; place-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-sm);
+}
+.brand-logo img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.brand-logo-fallback {
+  background: linear-gradient(135deg, var(--reel-green-600), var(--reel-green-800));
+  border-color: transparent;
+  color: #fff; font-family: var(--font-display); font-size: 18px; font-weight: 700;
+}
+.auth-brand-logo {
+  width: 46px; height: 46px; flex: 0 0 46px;
+  border-radius: 13px; overflow: hidden;
+  display: grid; place-items: center;
+  background: rgba(255, 255, 255, 0.94);
+  padding: 5px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+}
+.auth-brand-logo img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.platform-logo-card { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.platform-logo-card .logo-preview, .platform-logo-card .logo-placeholder { width: 110px; height: 110px; }
+
+/* Bulk selection -------------------------------------------------------- */
+.select-col { width: 42px; text-align: center; padding-left: 14px !important; padding-right: 4px !important; }
+.select-col input { width: 16px; height: 16px; accent-color: var(--reel-green-600); cursor: pointer; }
+.bulk-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 9px 12px; margin-bottom: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--reel-green-300, var(--border-subtle));
+  background: var(--reel-green-100, var(--surface-2));
+  box-shadow: var(--shadow-sm);
+}
+.bulk-bar .row-end { margin-left: auto; }
+.bulk-count { font-size: 0.82rem; color: var(--text-strong); margin-right: 4px; }
+.bulk-count strong { font-weight: 700; }
+
+/* Subscription plans ---------------------------------------------------- */
+.plan-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.plan-card { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 16px; background: var(--surface-1); display: flex; flex-direction: column; gap: 10px; }
+.plan-card.archived { opacity: 0.72; border-style: dashed; }
+.plan-card .plan-price { font-family: var(--font-display); font-size: 1.5rem; font-weight: 700; color: var(--text-strong); }
+.plan-card .plan-price span { font-family: var(--font-body); font-size: 0.76rem; font-weight: 500; color: var(--text-muted); }
+.plan-card .plan-features { display: flex; flex-wrap: wrap; gap: 5px; }
+.plan-card .plan-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; }
+
 /* --- Responsive --------------------------------------------------------- */
 @media (max-width: 1180px) {
   .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -37,7 +37,12 @@
         R.filterBar(R.searchFilter(ctx, 'q', 'Search name, role or reference…') +
           R.selectFilter(ctx, 'status', EMPLOYMENT.map((s) => ({ value: s, label: R.titleCase(s) })), 'All employment statuses') +
           R.selectFilter(ctx, 'branchId', R.branchOptions(ctx), 'All branches')) +
-        R.table({ rows: page.rows || [], columns: [
+        (ctx.has('staff.manage.daycare') ? R.bulkBar([
+          { label: 'Activate', icon: 'user-check', path: '/staff/bulk', action: 'activate' },
+          { label: 'Suspend', icon: 'user-x', path: '/staff/bulk', action: 'suspend', tone: 'danger' },
+          { label: 'End employment', icon: 'log-out', path: '/staff/bulk', action: 'end', tone: 'danger' }
+        ], { hint: 'Ending employment keeps the record and closes future shifts.' }) : '') +
+        R.table({ rows: page.rows || [], selectable: ctx.has('staff.manage.daycare'), columns: [
           { label: 'Staff member', render: (s) => '<div class="row" style="gap:10px">' + R.mediaThumb(s.avatar_url, s.display_name) + '<div><a class="cell-strong" href="#/app/staff/' + R.attr(s.id) + '">' + R.esc(s.display_name) + '</a><span class="cell-sub mono">' + R.esc(s.employee_reference) + '</span></div></div>' },
           { label: 'Role', render: (s) => R.esc(s.job_title) },
           { label: 'Classrooms', render: (s) => (s.classrooms || []).map((c) => '<span class="badge badge-muted">' + R.esc(c.name) + '</span>').join(' ') || '<span class="muted">Unassigned</span>' },

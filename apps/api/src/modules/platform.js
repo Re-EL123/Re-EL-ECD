@@ -9,9 +9,30 @@ const { invalidateAccess } = require('../services/access-service');
 const { sendTemplate, isConfigured: emailConfigured, fromAddress } = require('../services/email-service');
 const payfast = require('../services/payfast-service');
 const storage = require('../services/storage-service');
+const branding = require('../services/branding-service');
 const { parsePagination } = require('../utils/http');
 
 function register(router) {
+  router.get('/public/platform', async (ctx) => {
+    const organisation = await ctx.db.one(
+      "SELECT * FROM organisations WHERE slug = 're-el-platform' ORDER BY created_at LIMIT 1"
+    );
+    const plans = await ctx.db.many(
+      `SELECT name, plan_key, description, monthly_price, currency, max_learners, max_staff, features
+       FROM subscription_plans WHERE status = 'active' ORDER BY monthly_price, name`
+    );
+    return {
+      organisation: {
+        name: organisation ? organisation.name : 'Re-EL ECD',
+        slug: organisation ? organisation.slug : 're-el-platform',
+        logoUrl: organisation ? organisation.logo_url : null,
+        currency: organisation ? organisation.currency : 'ZAR'
+      },
+      branding: branding.themeFromOrganisation(organisation || {}),
+      plans
+    };
+  }, { public: true });
+
   router.get('/platform/overview', async (ctx) => {
     const orgs = await ctx.db.one(
       `SELECT COUNT(*)::int AS total,
@@ -93,6 +114,48 @@ function register(router) {
     ctx.meta.totalPages = Math.max(1, Math.ceil(total.total / pageSize));
     return rows;
   }, { platformOnly: true, permission: 'platform.organisations.read' });
+
+  router.post('/platform/organisations/bulk', async (ctx) => {
+    const body = validate(ctx.body, {
+      ids: { type: 'array', of: 'uuid', max: 200 },
+      action: { type: 'string', enum: ['suspend', 'restore'] },
+      reason: { type: 'string', min: 5, max: 500, optional: true }
+    });
+    if (!body.ids.length) fail('VALIDATION', [{ field: 'ids', message: 'Select at least one organisation.' }]);
+    if (body.action === 'suspend' && !body.reason) {
+      fail('VALIDATION', [{ field: 'reason', message: 'A suspension reason is required.' }]);
+    }
+    const updated = [];
+    const skipped = [];
+    for (const id of body.ids) {
+      const organisation = await ctx.db.one("SELECT * FROM organisations WHERE id = $1 AND slug <> 're-el-platform'", [id]);
+      if (!organisation) { skipped.push({ id, reason: 'not found' }); continue; }
+      if (body.action === 'suspend') {
+        if (organisation.status === 'suspended') { skipped.push({ id, reason: 'already suspended' }); continue; }
+        await ctx.db.query(
+          `UPDATE organisations SET status = 'suspended', suspended_reason = $1, suspended_at = now(), updated_at = now()
+           WHERE id = $2`, [body.reason, id]
+        );
+        await ctx.db.query(
+          'UPDATE sessions SET revoked_at = now() WHERE user_id IN (SELECT user_id FROM memberships WHERE organisation_id = $1)',
+          [id]
+        );
+      } else {
+        if (organisation.status !== 'suspended') { skipped.push({ id, reason: 'not suspended' }); continue; }
+        await ctx.db.query(
+          `UPDATE organisations SET status = 'active', suspended_reason = NULL, suspended_at = NULL, updated_at = now()
+           WHERE id = $1`, [id]
+        );
+      }
+      await recordAudit(ctx.db, ctx, {
+        action: body.action === 'suspend' ? 'platform.organisation_suspended' : 'platform.organisation_restored',
+        resourceType: 'organisation', resourceId: id, organisationId: id,
+        metadata: { bulk: true, reason: body.reason || null }
+      });
+      updated.push(id);
+    }
+    return { action: body.action, updated: updated.length, skipped };
+  }, { platformOnly: true, permission: 'platform.organisations.manage' });
 
   router.get('/platform/organisations/:id', async (ctx) => {
     const organisation = await ctx.db.one('SELECT * FROM organisations WHERE id = $1', [ctx.params.id]);
@@ -330,13 +393,19 @@ function register(router) {
   }, { platformOnly: true, permission: 'platform.health.read' });
 
   router.get('/platform/subscriptions', async (ctx) => {
-    const plans = await ctx.db.many('SELECT * FROM subscription_plans ORDER BY monthly_price');
+    const plans = await ctx.db.many(
+      `SELECT sp.*,
+              (SELECT COUNT(*)::int FROM platform_subscriptions ps
+                WHERE ps.plan_id = sp.id AND ps.status IN ('trial','active','past_due')) AS tenant_count
+       FROM subscription_plans sp ORDER BY sp.monthly_price, sp.name`
+    );
     const subscriptions = await ctx.db.many(
-      `SELECT ps.*, o.name AS organisation_name, o.status AS organisation_status, sp.name AS plan_name,
-              sp.monthly_price
+      `SELECT ps.*, o.name AS organisation_name, o.status AS organisation_status, o.currency AS organisation_currency,
+              sp.name AS plan_name, sp.monthly_price, sp.plan_key
        FROM platform_subscriptions ps
        JOIN organisations o ON o.id = ps.organisation_id
        LEFT JOIN subscription_plans sp ON sp.id = ps.plan_id
+       WHERE o.slug <> 're-el-platform'
        ORDER BY ps.created_at DESC`
     );
     const mrr = subscriptions
@@ -344,6 +413,136 @@ function register(router) {
       .reduce((sum, s) => sum + Number(s.monthly_price || 0), 0);
     return { plans, subscriptions, mrr };
   }, { platformOnly: true, permission: 'platform.subscriptions.read' });
+
+  router.get('/platform/plans', async (ctx) => {
+    return ctx.db.many(
+      `SELECT sp.*,
+              (SELECT COUNT(*)::int FROM platform_subscriptions ps
+                WHERE ps.plan_id = sp.id AND ps.status IN ('trial','active','past_due')) AS tenant_count
+       FROM subscription_plans sp
+       ORDER BY CASE WHEN sp.status = 'active' THEN 0 ELSE 1 END, sp.monthly_price, sp.name`
+    );
+  }, { platformOnly: true, permission: 'platform.subscriptions.read' });
+
+  router.post('/platform/plans', async (ctx) => {
+    const body = validate(ctx.body, {
+      name: { type: 'string', min: 2, max: 120 },
+      planKey: { type: 'string', min: 2, max: 60, regex: /^[a-z0-9][a-z0-9-]*$/ },
+      description: { type: 'string', max: 500, optional: true },
+      monthlyPrice: { type: 'number', min: 0, max: 1000000, default: 0 },
+      currency: { type: 'string', min: 3, max: 3, default: 'ZAR' },
+      maxLearners: { type: 'integer', min: 0, max: 100000, default: 50 },
+      maxStaff: { type: 'integer', min: 0, max: 10000, default: 10 },
+      features: { type: 'array', of: 'string', max: 40, optional: true }
+    });
+    const existing = await ctx.db.one('SELECT id FROM subscription_plans WHERE plan_key = $1', [body.planKey]);
+    if (existing) fail('CONFLICT', null, 'That plan key is already in use.');
+    const plan = await ctx.db.one(
+      `INSERT INTO subscription_plans (name, plan_key, description, monthly_price, currency, max_learners, max_staff, features, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'active') RETURNING *`,
+      [body.name, body.planKey, body.description || null, body.monthlyPrice, body.currency.toUpperCase(),
+        body.maxLearners, body.maxStaff, JSON.stringify(body.features || [])]
+    );
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.plan_created', resourceType: 'subscription_plan', resourceId: plan.id,
+      metadata: { planKey: plan.plan_key, monthlyPrice: plan.monthly_price }
+    });
+    ctx.status = 201;
+    return plan;
+  }, { platformOnly: true, permission: 'platform.subscriptions.manage' });
+
+  router.patch('/platform/plans/:id', async (ctx) => {
+    const body = validate(ctx.body, {
+      name: { type: 'string', min: 2, max: 120, optional: true },
+      planKey: { type: 'string', min: 2, max: 60, regex: /^[a-z0-9][a-z0-9-]*$/, optional: true },
+      description: { type: 'string', max: 500, optional: true },
+      monthlyPrice: { type: 'number', min: 0, max: 1000000, optional: true },
+      currency: { type: 'string', min: 3, max: 3, optional: true },
+      maxLearners: { type: 'integer', min: 0, max: 100000, optional: true },
+      maxStaff: { type: 'integer', min: 0, max: 10000, optional: true },
+      features: { type: 'array', of: 'string', max: 40, optional: true },
+      status: { type: 'string', enum: ['active', 'archived'], optional: true }
+    });
+    const plan = await ctx.db.one('SELECT * FROM subscription_plans WHERE id = $1', [ctx.params.id]);
+    if (!plan) throw new AppError('NOT_FOUND');
+    if (body.planKey && body.planKey !== plan.plan_key) {
+      const clash = await ctx.db.one('SELECT id FROM subscription_plans WHERE plan_key = $1 AND id <> $2', [body.planKey, plan.id]);
+      if (clash) fail('CONFLICT', null, 'That plan key is already in use.');
+    }
+    const sets = [];
+    const params = [];
+    const set = (column, value) => { params.push(value); sets.push(`${column} = $${params.length}`); };
+    if ('name' in body) set('name', body.name);
+    if ('planKey' in body) set('plan_key', body.planKey);
+    if ('description' in body) set('description', body.description);
+    if ('monthlyPrice' in body) set('monthly_price', body.monthlyPrice);
+    if ('currency' in body) set('currency', String(body.currency).toUpperCase());
+    if ('maxLearners' in body) set('max_learners', body.maxLearners);
+    if ('maxStaff' in body) set('max_staff', body.maxStaff);
+    if ('features' in body) set('features', JSON.stringify(body.features || []));
+    if ('status' in body) {
+      set('status', body.status);
+      set('archived_at', body.status === 'archived' ? new Date().toISOString() : null);
+    }
+    if (!sets.length) fail('VALIDATION', [{ field: '_', message: 'Nothing to update.' }]);
+    params.push(plan.id);
+    const updated = await ctx.db.one(
+      `UPDATE subscription_plans SET ${sets.join(', ')}, updated_at = now() WHERE id = $${params.length} RETURNING *`,
+      params
+    );
+    await recordAudit(ctx.db, ctx, {
+      action: body.status === 'archived' ? 'platform.plan_archived'
+        : body.status === 'active' ? 'platform.plan_restored' : 'platform.plan_updated',
+      resourceType: 'subscription_plan', resourceId: plan.id,
+      metadata: { fields: Object.keys(body) }
+    });
+    return updated;
+  }, { platformOnly: true, permission: 'platform.subscriptions.manage' });
+
+  router.post('/platform/organisations/:id/subscription', async (ctx) => {
+    const body = validate(ctx.body, {
+      planId: { type: 'string', uuid: true },
+      status: { type: 'string', enum: ['trial', 'active', 'past_due', 'cancelled'], default: 'active' },
+      billingPeriod: { type: 'string', enum: ['monthly', 'annual'], default: 'monthly' },
+      currentPeriodStart: { type: 'string', date: true, optional: true },
+      currentPeriodEnd: { type: 'string', date: true, optional: true }
+    });
+    const organisation = await ctx.db.one("SELECT * FROM organisations WHERE id = $1 AND slug <> 're-el-platform'", [ctx.params.id]);
+    if (!organisation) throw new AppError('NOT_FOUND');
+    const plan = await ctx.db.one('SELECT * FROM subscription_plans WHERE id = $1', [body.planId]);
+    if (!plan) fail('VALIDATION', [{ field: 'planId', message: 'Unknown plan.' }]);
+    if (plan.status === 'archived' && body.status !== 'cancelled') {
+      fail('VALIDATION', [{ field: 'planId', message: 'That plan is archived. Choose an active plan.' }],
+        'That plan is archived. Choose an active plan.');
+    }
+    const subscription = await ctx.db.withTransaction(async (client) => {
+      await client.query(
+        `UPDATE platform_subscriptions SET status = 'cancelled'
+         WHERE organisation_id = $1 AND status IN ('trial','active','past_due')`, [organisation.id]
+      );
+      const row = (await client.query(
+        `INSERT INTO platform_subscriptions
+           (organisation_id, plan_id, status, billing_period, current_period_start, current_period_end)
+         VALUES ($1,$2,$3,$4, COALESCE($5::date, CURRENT_DATE), COALESCE($6::date, CURRENT_DATE + 30))
+         RETURNING *`,
+        [organisation.id, plan.id, body.status, body.billingPeriod,
+          body.currentPeriodStart || null, body.currentPeriodEnd || null]
+      )).rows[0];
+      await client.query(
+        'UPDATE organisations SET subscription_status = $1, updated_at = now() WHERE id = $2',
+        [body.status, organisation.id]
+      );
+      return row;
+    });
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.subscription_assigned', resourceType: 'platform_subscription', resourceId: subscription.id,
+      organisationId: organisation.id,
+      metadata: { planKey: plan.plan_key, status: body.status, billingPeriod: body.billingPeriod }
+    });
+    ctx.status = 201;
+    return { ...subscription, plan_name: plan.name, monthly_price: plan.monthly_price };
+  }, { platformOnly: true, permission: 'platform.subscriptions.manage' });
+
 
   router.get('/platform/features', async (ctx) => {
     return ctx.db.many('SELECT * FROM feature_flags ORDER BY flag_key');
@@ -367,6 +566,7 @@ function register(router) {
     );
     return {
       organisation,
+      theme: branding.themeFromOrganisation(organisation),
       settings: settings ? settings.settings : {},
       platformOrganisationId: ctx.organisationId
     };
@@ -377,22 +577,33 @@ function register(router) {
       name: { type: 'string', min: 2, max: 200, optional: true },
       legalName: { type: 'string', max: 200, optional: true },
       registrationNumber: { type: 'string', max: 100, optional: true },
-      logoUrl: { type: 'string', max: 500, optional: true },
-      primaryColour: { type: 'string', max: 9, optional: true },
+      logoUrl: { type: 'string', max: 1000, optional: true },
+      primaryColour: { type: 'string', max: 9, optional: true, regex: /^#[0-9a-fA-F]{6}$/ },
+      secondaryColour: { type: 'string', max: 9, optional: true, regex: /^#[0-9a-fA-F]{6}$/ },
+      accentColour: { type: 'string', max: 9, optional: true, regex: /^#[0-9a-fA-F]{6}$/ },
+      themeTokens: { type: 'object', optional: true },
       timezone: { type: 'string', max: 64, optional: true },
       currency: { type: 'string', min: 3, max: 3, optional: true },
       locale: { type: 'string', max: 10, optional: true },
       settings: { type: 'object', optional: true }
     });
+    const tokens = body.themeTokens ? branding.normalizeTokens(body.themeTokens) : null;
+    if (body.themeTokens && !Object.keys(tokens).length) {
+      fail('VALIDATION', [{ field: 'themeTokens', message: 'Provide at least one six-digit hex colour.' }]);
+    }
+    if (tokens) tokens.onPrimary = branding.onColour(tokens.primary || body.primaryColour || '#0B534A');
     await ctx.db.query(
       `UPDATE organisations SET name = COALESCE($1,name), legal_name = COALESCE($2,legal_name),
         registration_number = COALESCE($3,registration_number), logo_url = COALESCE($4,logo_url),
-        primary_colour = COALESCE($5,primary_colour), timezone = COALESCE($6,timezone),
-        currency = COALESCE($7,currency), locale = COALESCE($8,locale), updated_at = now()
-       WHERE id = $9`,
+        primary_colour = COALESCE($5,primary_colour), secondary_colour = COALESCE($6,secondary_colour),
+        accent_colour = COALESCE($7,accent_colour), theme_tokens = COALESCE($8::jsonb,theme_tokens),
+        timezone = COALESCE($9,timezone), currency = COALESCE($10,currency), locale = COALESCE($11,locale),
+        updated_at = now()
+       WHERE id = $12`,
       [body.name || null, body.legalName || null, body.registrationNumber || null, body.logoUrl || null,
-        body.primaryColour || null, body.timezone || null, body.currency || null, body.locale || null,
-        ctx.organisationId]
+        body.primaryColour || null, body.secondaryColour || null, body.accentColour || null,
+        tokens ? JSON.stringify(tokens) : null,
+        body.timezone || null, body.currency || null, body.locale || null, ctx.organisationId]
     );
     if (body.settings) {
       const existing = await ctx.db.one(
@@ -419,7 +630,11 @@ function register(router) {
     const settings = await ctx.db.one(
       'SELECT settings FROM organisation_settings WHERE organisation_id = $1', [ctx.organisationId]
     );
-    return { organisation, settings: settings ? settings.settings : {} };
+    return {
+      organisation,
+      theme: branding.themeFromOrganisation(organisation),
+      settings: settings ? settings.settings : {}
+    };
   }, { platformOnly: true, permission: 'platform.settings.manage' });
 
   router.get('/platform/support-cases', async (ctx) => {

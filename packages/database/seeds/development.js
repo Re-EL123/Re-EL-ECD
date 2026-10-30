@@ -72,15 +72,15 @@ async function seedCatalog() {
 
 async function seedPlatformDefaults(pool) {
   const plans = [
-    ['Seedling', 'seedling', 499, 50, 5],
-    ['Sapling', 'sapling', 999, 120, 15],
-    ['Evergreen', 'evergreen', 1899, 300, 40]
+    ['Seedling', 'seedling', 499, 50, 5, 'A single classroom starting out: attendance, learning notes and the parent portal.'],
+    ['Sapling', 'sapling', 999, 120, 15, 'A growing centre: adds finance, assessments and the public website builder.'],
+    ['Evergreen', 'evergreen', 1899, 300, 40, 'Multi-branch operations with advanced reporting, inventory and priority support.']
   ];
-  for (const [name, key, price, learnersMax, staffMax] of plans) {
+  for (const [name, key, price, learnersMax, staffMax, description] of plans) {
     await pool.query(
-      `INSERT INTO subscription_plans (name, plan_key, monthly_price, max_learners, max_staff, features)
-       VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (plan_key) DO NOTHING`,
-      [name, key, price, learnersMax, staffMax, JSON.stringify(['attendance', 'assessments', 'parent_portal', 'finance'])]
+      `INSERT INTO subscription_plans (name, plan_key, monthly_price, max_learners, max_staff, features, description)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (plan_key) DO NOTHING`,
+      [name, key, price, learnersMax, staffMax, JSON.stringify(['attendance', 'assessments', 'parent_portal', 'finance']), description]
     );
   }
   for (const [key, description, enabled] of [
@@ -138,8 +138,11 @@ async function seedDevelopment({ force = false } = {}) {
     userIds[email] = row.rows[0].id;
   }
   const platformId = (await pool.query(
-    `INSERT INTO organisations (name, slug, legal_name, registration_number, status, subscription_status)
-     VALUES ('Re-EL Platform','re-el-platform','Re-EL ECD Technologies (Pty) Ltd','2026/000001/07','active','active')
+    `INSERT INTO organisations (name, slug, legal_name, registration_number, status, subscription_status,
+       primary_colour, secondary_colour, accent_colour, theme_tokens)
+     VALUES ('Re-EL Platform','re-el-platform','Re-EL ECD Technologies (Pty) Ltd','2026/000001/07','active','active',
+       '#0B534A','#2B9A58','#6FC79B',
+       '{"primary":"#0B534A","secondary":"#2B9A58","accent":"#6FC79B","background":"#F6F9F7","surface":"#FFFFFF","text":"#0E2B26","onPrimary":"#FFFFFF"}'::jsonb)
      RETURNING id`
   )).rows[0].id;
   const orgId = (await pool.query(

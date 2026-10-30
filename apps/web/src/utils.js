@@ -216,12 +216,43 @@
     const columns = opts.columns || [];
     const rows = opts.rows || [];
     if (!rows.length) return emptyState(opts.emptyTitle || 'Nothing here yet', opts.emptyMessage || 'Records will appear here once they are created.', opts.emptyAction || '', opts.emptyIcon);
-    const head = columns.map((c) => '<th' + (c.align ? ' style="text-align:' + c.align + '"' : '') + '>' + esc(c.label) + '</th>').join('');
-    const body = rows.map((row) => '<tr>' + columns.map((c) => {
+    const selectable = opts.selectable === true;
+    const idKey = opts.idKey || 'id';
+    const ids = selectable ? rows.map((row) => row[idKey]).filter(Boolean) : [];
+    const selectHead = selectable
+      ? '<th class="select-col"><input type="checkbox" aria-label="Select every row on this page" @change="toggleSelectAll($event.target.checked, ' + attr(JSON.stringify(ids)) + ')"></th>'
+      : '';
+    const head = selectHead + columns.map((c) => '<th' + (c.align ? ' style="text-align:' + c.align + '"' : '') + '>' + esc(c.label) + '</th>').join('');
+    const body = rows.map((row) => '<tr>' + (selectable
+      ? '<td class="select-col"><input type="checkbox" :checked="isSelected(' + attr(JSON.stringify(String(row[idKey]))) + ')" @change="toggleSelect(' + attr(JSON.stringify(String(row[idKey]))) + ', $event.target.checked)" aria-label="Select row"></td>'
+      : '') + columns.map((c) => {
       const value = c.render ? c.render(row) : esc(row[c.key]);
       return '<td' + (c.align ? ' class="' + (c.align === 'right' ? 'num' : '') + '"' : '') + '>' + (value === undefined || value === null || value === '' ? '<span class="muted">—</span>' : value) + '</td>';
     }).join('') + '</tr>').join('');
     return '<div class="table-wrap"><table class="table ' + (opts.compact ? 'compact' : '') + '"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+  }
+
+  /**
+   * Bulk action bar shown above a selectable table. `actions` entries are
+   * `{ label, icon, path, action, extra, tone, successMessage }` and call the
+   * shared `runBulk` helper, or `{ label, icon, modal }` to open a form first.
+   */
+  function bulkBar(actions, options) {
+    const opts = options || {};
+    return '<div class="bulk-bar" x-show="selectedCount > 0" x-cloak>' +
+      '<span class="bulk-count"><strong x-text="selectedCount"></strong> selected</span>' +
+      (actions || []).map((entry) => {
+        if (entry.modal) {
+          return '<button type="button" class="btn btn-sm ' + (entry.tone === 'danger' ? 'btn-danger' : 'btn-secondary') + '" @click="openNamedModal(\'' + attr(entry.modal) + '\')">' +
+            icon(entry.icon || 'check') + ' ' + esc(entry.label) + '</button>';
+        }
+        return '<button type="button" class="btn btn-sm ' + (entry.tone === 'danger' ? 'btn-danger' : 'btn-secondary') + '" @click="runBulk(' +
+          attr(JSON.stringify(entry.path)) + ', ' + attr(JSON.stringify(entry.action)) + ', ' + attr(JSON.stringify(entry.extra || {})) + ', ' +
+          attr(JSON.stringify({ successMessage: entry.successMessage || '' })) + ')">' +
+          icon(entry.icon || 'check') + ' ' + esc(entry.label) + '</button>';
+      }).join('') +
+      (opts.hint ? '<span class="muted small">' + esc(opts.hint) + '</span>' : '') +
+      '<button type="button" class="btn btn-sm btn-ghost row-end" @click="clearSelection()">Clear</button></div>';
   }
 
   function detailItem(label, value) {
@@ -269,6 +300,27 @@
     surface: '#FFFFFF',
     text: '#1C2A1E',
     onPrimary: '#FFFFFF'
+  };
+
+  /**
+   * The platform's own brand, sampled from the Re-EL ECD logo. It is used for
+   * the platform console, the sign-in screen and as the fallback whenever an
+   * organisation has not uploaded a logo of its own.
+   */
+  const PLATFORM_BRAND = {
+    name: 'Re-EL ECD',
+    tagline: 'Early childhood, elevated',
+    logo: 'assets/branding/logo-re-el-ecd.png',
+    mark: 'assets/branding/logo-re-el-ecd-mark.png',
+    theme: {
+      primary: '#0B534A',
+      secondary: '#2B9A58',
+      accent: '#6FC79B',
+      background: '#F6F9F7',
+      surface: '#FFFFFF',
+      text: '#0E2B26',
+      onPrimary: '#FFFFFF'
+    }
   };
 
   function isHex(value) {
@@ -580,6 +632,7 @@
   Reel.pageHead = pageHead;
   Reel.card = card;
   Reel.table = table;
+  Reel.bulkBar = bulkBar;
   Reel.detailItem = detailItem;
   Reel.tabs = tabs;
   Reel.filterBar = filterBar;
@@ -589,6 +642,8 @@
   Reel.debounce = debounce;
   Reel.readCookie = readCookie;
   Reel.DEFAULT_THEME = DEFAULT_THEME;
+  Reel.PLATFORM_BRAND = PLATFORM_BRAND;
+  Reel.PLATFORM_LOGO = PLATFORM_BRAND.logo;
   Reel.isHex = isHex;
   Reel.mix = mix;
   Reel.shade = shade;

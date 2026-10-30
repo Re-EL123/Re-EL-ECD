@@ -512,9 +512,14 @@
         const invoice = payload.data || {};
         const items = invoice.items || [];
         const payments = invoice.payments || [];
+        const parentOrg = invoice.organisation || {};
+        const orgLogo = parentOrg.logoUrl
+          ? '<span class="brand-logo" style="width:34px;height:34px;flex:0 0 34px"><img src="' + R.attr(parentOrg.logoUrl) + '" alt=""></span>'
+          : '';
         const html = '<div class="row" style="justify-content:space-between;align-items:flex-start">' +
+          '<div class="row" style="gap:10px">' + orgLogo +
           '<div><div class="mono cell-strong" style="font-size:1.05rem">' + R.esc(invoice.invoice_number) + '</div>' +
-          '<div class="muted small">Issued ' + R.date(invoice.issued_at) + '</div></div>' +
+          '<div class="muted small">' + R.esc(parentOrg.name || '') + ' · Issued ' + R.date(invoice.issued_at) + '</div></div></div>' +
           '<div style="text-align:right">' + R.badge(invoice.status) + '<div class="muted small">Due ' + R.date(invoice.due_at) + '</div></div></div>' +
           '<div class="section"></div>' + R.table({ rows: items, compact: true, columns: [
             { label: 'Description', render: (x) => R.esc(x.description) },

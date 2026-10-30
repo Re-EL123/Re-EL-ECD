@@ -53,6 +53,7 @@
     route('/app/reports', 'app', 'reports', ['reports.read.daycare', 'reports.read.assigned'], 'Reports'),
     route('/app/settings', 'app', 'settings', 'organisation.read.daycare', 'Settings'),
     route('/app/website', 'app', 'website', 'website.read.daycare', 'Public website'),
+    route('/app/media', 'app', 'mediaLibrary', 'media.read.daycare', 'Media library'),
     route('/app/access', 'app', 'access', 'access.read.daycare', 'Users and access'),
     route('/app/audit', 'app', 'audit', 'audit.read.daycare', 'Audit log'),
     route('/app/automation', 'app', 'automation', 'organisation.settings.manage', 'Automation'),
@@ -143,6 +144,7 @@
       { label: 'Configuration', items: [
         { path: '/app/settings', label: 'Organisation', icon: 'settings', permission: 'organisation.read.daycare' },
         { path: '/app/website', label: 'Public website', icon: 'globe', permission: 'website.read.daycare' },
+        { path: '/app/media', label: 'Media library', icon: 'images', permission: 'media.read.daycare' },
         { path: '/app/access', label: 'Users and access', icon: 'shield-check', permission: 'access.read.daycare' },
         { path: '/app/audit', label: 'Audit log', icon: 'scroll-text', permission: 'audit.read.daycare' },
         { path: '/app/automation', label: 'Automation', icon: 'workflow', permission: 'organisation.settings.manage' }
@@ -205,11 +207,34 @@
       _searchSeq: 0,
       _lastHash: null,
       activeOrganisationId: null,
+      platformBrand: null,
+      selectedIds: [],
+      libraryBusy: false,
 
       get activeMembership() {
         if (!this.session || !this.session.memberships) return null;
         return this.session.memberships.find((m) => m.organisation.id === this.activeOrganisationId) || this.session.memberships[0] || null;
       },
+      get activeOrganisation() { return (this.activeMembership && this.activeMembership.organisation) || null; },
+      get isPlatformOrg() { return Boolean(this.activeOrganisation && this.activeOrganisation.slug === 're-el-platform'); },
+      get brandLogo() {
+        const org = this.activeOrganisation;
+        if (org && org.logoUrl) return org.logoUrl;
+        if (this.area === 'platform' || this.isPlatformOrg || !this.session) return Reel.PLATFORM_LOGO;
+        return null;
+      },
+      get brandName() {
+        if (this.area === 'platform') return Reel.PLATFORM_BRAND.name;
+        const org = this.activeOrganisation;
+        return (org && org.name) || Reel.PLATFORM_BRAND.name;
+      },
+      get brandTagline() {
+        if (this.area === 'platform') return 'Platform console';
+        if (this.area === 'parent') return 'Family portal';
+        return 'Daycare workspace';
+      },
+      get brandInitial() { return String(this.brandName || 'R').trim().charAt(0).toUpperCase(); },
+      get selectedCount() { return this.selectedIds.length; },
       get permissions() { return (this.activeMembership && this.activeMembership.permissions) || []; },
       get branches() { return (this.activeMembership && this.activeMembership.branches) || []; },
       get organisationTheme() { return (this.activeMembership && this.activeMembership.organisation && this.activeMembership.organisation.theme) || null; },
@@ -252,6 +277,7 @@
         } catch (error) {
           this.session = null;
         }
+        if (!this.session) await this.loadPlatformBranding();
         if (!location.hash) {
           // replaceState avoids a second hashchange-driven navigate on boot.
           history.replaceState(null, '', '#' + (this.session ? this.defaultRoute() : '/login'));
@@ -294,6 +320,23 @@
         }
       },
 
+      /**
+       * Public platform branding for the sign-in screen and any signed-out
+       * surface. Falls back to the bundled logo when the platform logo has not
+       * been uploaded yet, so the brand is never missing.
+       */
+      async loadPlatformBranding() {
+        try {
+          const payload = await Reel.api('GET', '/public/platform', null, { organisationId: null });
+          this.platformBrand = payload.data || null;
+          if (this.platformBrand && this.platformBrand.branding && Reel.applyTheme) {
+            Reel.applyTheme(this.platformBrand.branding);
+          }
+        } catch (error) {
+          this.platformBrand = null;
+        }
+      },
+
       async applyOrganisationTheme(id) {
         try {
           await Reel.api('POST', '/organisation/themes/' + encodeURIComponent(id) + '/apply', {});
@@ -308,8 +351,10 @@
       async extractLogoPalette() {
         const membership = this.activeMembership;
         const pageOrg = this.page && this.page.organisation;
+        const platform = this.area === 'platform';
         const logo = (membership && membership.organisation && membership.organisation.logoUrl)
-          || (pageOrg && pageOrg.logo_url);
+          || (pageOrg && (pageOrg.logo_url || pageOrg.logoUrl))
+          || (platform ? Reel.PLATFORM_LOGO : null);
         if (!logo) { this.toast('Upload a logo first, then extract its colours.', 'warn'); return; }
         this.toast('Reading colours from your logo…', 'info');
         try {
@@ -320,6 +365,39 @@
           const accent = picked.accent;
           const background = Reel.mix(primary, '#FFFFFF', 0.93);
           const text = Reel.onColour(background);
+          const tokens = {
+            primary, secondary, accent, background,
+            surface: '#FFFFFF', text, onPrimary: Reel.onColour(primary)
+          };
+          if (platform) {
+            this.openModal({
+              title: 'Apply the Re-EL palette',
+              endpoint: '/platform/settings',
+              method: 'PATCH',
+              submitLabel: 'Apply colours',
+              size: 'wide',
+              description: 'We sampled the strongest colours from the Re-EL ECD logo. Adjust anything before applying it across the platform.',
+              fields: [
+                { name: 'primary', label: 'Primary', type: 'colour', value: primary, required: true },
+                { name: 'secondary', label: 'Secondary', type: 'colour', value: secondary, required: true },
+                { name: 'accent', label: 'Accent', type: 'colour', value: accent, required: true },
+                { name: 'background', label: 'Background', type: 'colour', value: background },
+                { name: 'surface', label: 'Surface', type: 'colour', value: '#FFFFFF' },
+                { name: 'text', label: 'Text', type: 'colour', value: text }
+              ],
+              transform: (data) => ({
+                primaryColour: data.primary,
+                secondaryColour: data.secondary,
+                accentColour: data.accent,
+                themeTokens: {
+                  primary: data.primary, secondary: data.secondary, accent: data.accent,
+                  background: data.background, surface: data.surface, text: data.text,
+                  onPrimary: Reel.onColour(data.primary)
+                }
+              })
+            });
+            return;
+          }
           this.openModal({
             title: 'Create a theme from your logo',
             endpoint: '/organisation/themes',
@@ -395,6 +473,7 @@
 
       async navigateInner(force, seq) {
         const { path, query } = this.parseHash();
+        this.selectedIds = [];
         this.query = query;
         const matched = matchRoute(path);
         if (!matched) {
@@ -649,6 +728,54 @@
         return this.apiAction(method, path, body, options);
       },
 
+      // -----------------------------------------------------------------------
+      // Bulk selection
+      // -----------------------------------------------------------------------
+
+      isSelected(id) { return this.selectedIds.indexOf(id) !== -1; },
+
+      toggleSelect(id, checked) {
+        const next = new Set(this.selectedIds);
+        if (checked) next.add(id); else next.delete(id);
+        this.selectedIds = Array.from(next);
+      },
+
+      toggleSelectAll(checked, ids) {
+        this.selectedIds = checked ? (ids || []).slice() : [];
+      },
+
+      clearSelection() { this.selectedIds = []; },
+
+      /**
+       * Run a bulk action against the current selection. The API contract is
+       * `{ ids, action, ...extra }` and every endpoint answers with
+       * `{ updated, skipped }`, which is reported back honestly: a partial
+       * result says how many records were skipped and why.
+       */
+      async runBulk(path, action, extra, options) {
+        if (!this.selectedIds.length) {
+          this.toast('Select at least one record first.', 'warn');
+          return null;
+        }
+        const opts = options || {};
+        try {
+          const result = await Reel.api('POST', path, Object.assign({ ids: this.selectedIds.slice(), action }, extra || {}));
+          const data = (result && result.data) || {};
+          const skipped = Array.isArray(data.skipped) ? data.skipped : [];
+          const base = opts.successMessage || ('Updated ' + Number(data.updated || 0) + ' record' + (Number(data.updated || 0) === 1 ? '' : 's') + '.');
+          if (!opts.silent) {
+            this.toast(base + (skipped.length ? ' ' + skipped.length + ' skipped: ' + skipped.slice(0, 2).map((s) => s.reason).join(', ') + (skipped.length > 2 ? '…' : '') : ''),
+              skipped.length && !Number(data.updated) ? 'warn' : 'success');
+          }
+          this.clearSelection();
+          if (opts.reload !== false) await this.navigate(true);
+          return data;
+        } catch (error) {
+          this.toast(error.message || 'The bulk action failed.', 'error');
+          return null;
+        }
+      },
+
       async toggleChecklist(taskId, itemId, completed) {
         try {
           await Reel.api('PATCH', '/tasks/' + taskId + '/checklist/' + itemId, { completed: !completed });
@@ -782,6 +909,30 @@
         }
       },
 
+      /**
+       * Upload one or more files chosen on the media library page. The bytes go
+       * straight to R2 via a presigned URL; the library then reloads so the new
+       * assets appear in the grid.
+       */
+      async uploadLibraryFiles(event) {
+        const input = event && event.target;
+        const files = input && input.files ? Array.from(input.files) : [];
+        if (!files.length) return;
+        this.libraryBusy = true;
+        try {
+          for (const file of files) {
+            await Reel.uploadMedia(file, { scope: (this.filters && this.filters.scope) || 'general' });
+          }
+          this.toast(files.length > 1 ? files.length + ' files uploaded.' : 'File uploaded.');
+          await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'The file could not be uploaded.', 'error');
+        } finally {
+          this.libraryBusy = false;
+          if (input) input.value = '';
+        }
+      },
+
       addModalMediaUrl(field) {
         if (!this.modal) return;
         const draft = ((this.modal.mediaDraft || {})[field.name] || '').trim();
@@ -829,7 +980,7 @@
           else await Reel.api(this.modal.method, this.modal.endpoint, body);
           const message = this.modal.successMessage || 'Saved successfully.';
           this.modal = null;
-          if (/^\/organisations\/current$/.test(endpoint)) await this.refreshSession();
+          if (/^\/organisations\/current$/.test(endpoint) || /^\/platform\/settings$/.test(endpoint)) await this.refreshSession();
           this.toast(message);
           await this.navigate(true);
         } catch (error) {
