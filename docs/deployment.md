@@ -146,6 +146,13 @@ static output. Configure these environment variables in Vercel:
 | `PAYFAST_SANDBOX` | No | `true` uses `sandbox.payfast.co.za`. |
 | `PAYFAST_IP_ALLOWLIST` | No | Comma-separated IPs allowed to post ITNs. |
 | `PAYFAST_VALIDATE` | No | Defaults to `true` (server-to-server ITN confirmation). |
+| `R2_ACCOUNT_ID` | For media | Cloudflare account id. Used to derive the R2 S3 endpoint. |
+| `R2_ACCESS_KEY_ID` | For media | R2 S3 access key id. |
+| `R2_SECRET_ACCESS_KEY` | For media | R2 S3 secret access key. |
+| `R2_BUCKET` | For media | Bucket name that receives uploads. |
+| `R2_PUBLIC_BASE_URL` | For media | Public bucket origin, for example `https://media.re-el.co.za`. |
+| `R2_ENDPOINT` | No | Overrides the endpoint derived from `R2_ACCOUNT_ID`. |
+| `R2_REGION` | No | Defaults to `auto`, which is what R2 expects. |
 
 ### Email (Resend)
 
@@ -168,6 +175,49 @@ To enable it:
 
 `GET /api/v1/platform/health` reports whether email is configured and which
 sender is in use.
+
+### Media storage (Cloudflare R2)
+
+Photos, videos, audio and documents are uploaded straight from the browser to
+Cloudflare R2 using a short-lived presigned `PUT` URL. The API only signs the
+URL and records metadata; file bytes never pass through a serverless function.
+The database stores the public URL, the object key, MIME type, size and scope.
+
+1. Create an R2 bucket and an R2 API token with object read/write access.
+2. Enable public access for the bucket (a custom domain such as
+   `media.re-el.co.za`, or the `r2.dev` development URL) and set
+   `R2_PUBLIC_BASE_URL` to that origin.
+3. Set `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` and
+   `R2_BUCKET` in Vercel for Production.
+4. Allow the web origin to upload and read objects. A suitable bucket CORS
+   policy is:
+
+```json
+[
+  {
+    "AllowedOrigins": ["https://ecd.re-el.co.za", "http://localhost:8080"],
+    "AllowedMethods": ["GET", "HEAD", "PUT"],
+    "AllowedHeaders": ["content-type"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+The browser needs `GET` for images, video, audio and the logo colour picker
+(canvas reads), and `PUT` for uploads. Without CORS the upload request fails
+before it reaches R2, and logo colour extraction reports that the image could
+not be read.
+
+Uploads are restricted to a MIME whitelist (JPEG, PNG, WEBP, GIF, AVIF, MP4,
+WEBM, MOV, MP3, M4A, WEBA, PDF, TXT, CSV, DOCX, XLSX) with per-type size
+limits. SVG is deliberately refused because it can carry script. Object keys
+are tenant-scoped (`org/<organisationId>/<scope>/<random>.<ext>`) so one
+daycare can never overwrite another's media.
+
+`GET /api/v1/platform/health` reports whether storage is configured and which
+bucket is in use. `GET /api/v1/media/config` returns the scopes and limits the
+frontend uses.
 
 ### Payments (PayFast)
 
@@ -309,3 +359,7 @@ the CI check before merging.
 | PayFast ITNs never arrive | PayFast must reach the public API; set `API_BASE_URL` to the deployed API origin. `GET /api/v1/platform/health` reports the PayFast mode. |
 | PayFast ITN returns `INVALID` | The passphrase or merchant id does not match the PayFast account, or a proxy reordered the form fields. ITNs are signed in posted order. |
 | PayFast ITN returns `REJECTED` | The signed amount did not match the intent amount; the invoice is intentionally left open and the mismatch is logged. |
+| "File storage is not configured" | `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` and `R2_PUBLIC_BASE_URL` must all be set (plus `R2_ACCOUNT_ID` or `R2_ENDPOINT`). `GET /api/v1/platform/health` reports the storage state. |
+| Upload fails immediately with a CORS error | The bucket CORS policy does not allow the web origin or the `content-type` header. Allow `GET`, `HEAD` and `PUT` from the exact site origin. |
+| Images upload but do not render | `R2_PUBLIC_BASE_URL` points at a private bucket or the wrong custom domain. Public reads must be enabled for the bucket. |
+| "The logo could not be read" when extracting colours | The bucket must allow the site origin to read images (`GET` plus CORS) because the palette is sampled in the browser canvas. |
