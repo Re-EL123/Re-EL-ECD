@@ -558,6 +558,10 @@ table.table { width: 100%; border-collapse: collapse; font-size: 0.86rem; min-wi
 .media-list { display: flex; flex-direction: column; gap: 8px; }
 .media-img { display: block; width: 100%; max-height: 220px; object-fit: cover; border-radius: var(--radius-sm); background: var(--surface-3); }
 .media-img.media-compact { width: 44px; height: 44px; max-height: none; border-radius: 50%; object-fit: cover; }
+.media-missing { display: grid; place-items: center; min-height: 120px; padding: 12px; background: var(--surface-2); border: 1px dashed var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-muted); text-decoration: none; }
+.media-missing::after { content: 'Preview unavailable'; font-size: 0.76rem; letter-spacing: 0.02em; }
+.avatar-img .media-missing { min-height: 0; width: 100%; height: 100%; border: 0; border-radius: 50%; }
+.avatar-img .media-missing::after { content: '?'; font-size: 0.9rem; }
 .media-video { display: block; width: 100%; max-height: 280px; border-radius: var(--radius-sm); background: #000; }
 .media-video.media-compact { width: 120px; max-height: 80px; }
 .media-audio { width: 100%; }

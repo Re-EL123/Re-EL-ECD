@@ -558,7 +558,7 @@
     if (type === 'document') {
       return '<a class="btn btn-sm btn-secondary" href="' + safe + '" target="_blank" rel="noopener">' + icon('file-text') + ' Open file</a>';
     }
-    return '<a href="' + safe + '" target="_blank" rel="noopener"><img class="media-img' + (opts.compact ? ' media-compact' : '') + '" loading="lazy" src="' + safe + '" alt="' + attr(opts.alt || '') + '"></a>';
+    return '<a href="' + safe + '" target="_blank" rel="noopener"><img class="media-img' + (opts.compact ? ' media-compact' : '') + '" loading="lazy" src="' + safe + '" alt="' + attr(opts.alt || '') + '" onerror="this.parentElement.classList.add(\'media-missing\'); this.remove();"></a>';
   }
 
   function mediaThumb(url, label, kind) {
