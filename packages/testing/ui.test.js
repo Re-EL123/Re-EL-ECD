@@ -38,11 +38,17 @@ test('every referenced local script exists', () => {
 
 test('Alpine loads after the application scripts', () => {
   const scripts = Array.from(indexHtml.matchAll(/<script src="([^"]+)"/g)).map((m) => m[1]);
-  const alpine = scripts.findIndex((src) => src.includes('alpinejs'));
+  const alpine = scripts.findIndex((src) => src.includes('alpine'));
   const app = scripts.findIndex((src) => src.includes('src/app.js'));
   assert.ok(alpine > -1, 'Alpine must be loaded');
   assert.ok(app > -1, 'app.js must be loaded');
   assert.ok(app < alpine, 'app.js must load before Alpine so window.reelApp exists at init');
+});
+
+test('third-party scripts are self-hosted', () => {
+  const scripts = Array.from(indexHtml.matchAll(/<script src="([^"]+)"/g)).map((m) => m[1]);
+  const remote = scripts.filter((src) => /^https?:\/\//.test(src));
+  assert.deepEqual(remote, [], 'scripts must be served from the site so a CDN outage cannot block boot');
 });
 
 test('Alpine boolean bindings use strict booleans', () => {
