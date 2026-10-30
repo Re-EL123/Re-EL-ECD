@@ -323,6 +323,35 @@
     return { red, green, blue, lightness, saturation, vividness };
   }
 
+  /**
+   * Turn a frequency-ranked logo palette into a usable brand palette.
+   *
+   * The most common chromatic colour wins as primary (logos usually sit on a
+   * large pale background, which is ignored), then the most vivid remaining
+   * colours become secondary and accent.
+   */
+  function brandPalette(colours) {
+    const list = (Array.isArray(colours) ? colours : []).filter(isHex);
+    if (!list.length) {
+      return {
+        primary: DEFAULT_THEME.primary,
+        secondary: shade(DEFAULT_THEME.primary, -0.2),
+        accent: shade(DEFAULT_THEME.primary, 0.2)
+      };
+    }
+    const stats = list.map((hex) => Object.assign({ hex }, colourStats(hex)));
+    const chromatic = stats.filter((entry) => entry.saturation > 0.12 && entry.lightness > 0.12 && entry.lightness < 0.88);
+    const pool = chromatic.length ? chromatic : stats;
+    const primary = pool[0].hex;
+    const rest = pool.filter((entry) => entry.hex !== primary)
+      .sort((left, right) => right.vividness - left.vividness);
+    return {
+      primary,
+      secondary: rest[0] ? rest[0].hex : shade(primary, -0.2),
+      accent: rest[1] ? rest[1].hex : shade(primary, 0.2)
+    };
+  }
+
   function rgba(hex, alpha) {
     const channels = rgb(hex);
     return 'rgba(' + channels.join(', ') + ', ' + alpha + ')';
@@ -569,6 +598,7 @@
   Reel.applyTheme = applyTheme;
   Reel.paletteFromImage = paletteFromImage;
   Reel.colourStats = colourStats;
+  Reel.brandPalette = brandPalette;
   Reel.kindForUrl = kindForUrl;
   Reel.mediaHtml = mediaHtml;
   Reel.mediaThumb = mediaThumb;

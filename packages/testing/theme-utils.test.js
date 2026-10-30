@@ -27,6 +27,20 @@ test('colourStats ranks a mid-tone brand colour above a pale background', () => 
   assert.ok(brand.lightness < pale.lightness);
 });
 
+test('brandPalette ignores a dominant pale background and keeps the brand colour', () => {
+  const picked = Reel.brandPalette(['#E6F4E8', '#4F9A58', '#A8D5AE', '#E89A2B']);
+  assert.equal(picked.primary, '#4F9A58');
+  assert.equal(picked.secondary, '#E89A2B');
+  assert.equal(picked.accent, '#A8D5AE');
+});
+
+test('brandPalette falls back to the default palette for empty input', () => {
+  const picked = Reel.brandPalette([]);
+  assert.match(picked.primary, /^#[0-9A-F]{6}$/);
+  assert.match(picked.secondary, /^#[0-9A-F]{6}$/);
+  assert.match(picked.accent, /^#[0-9A-F]{6}$/);
+});
+
 test('colourStats handles greys without dividing by zero', () => {
   const grey = Reel.colourStats('#808080');
   assert.equal(grey.saturation, 0);

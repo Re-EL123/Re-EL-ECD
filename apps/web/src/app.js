@@ -311,15 +311,10 @@
         this.toast('Reading colours from your logo…', 'info');
         try {
           const palette = await Reel.paletteFromImage(logo, 8);
-          // Frequency alone picks the logo's pale background; rank by vividness
-          // so the primary colour is the brand's actual signature colour.
-          const ranked = palette
-            .map((hex) => ({ hex, vividness: Reel.colourStats(hex).vividness }))
-            .sort((left, right) => right.vividness - left.vividness)
-            .map((entry) => entry.hex);
-          const primary = ranked[0] || '#3A7D44';
-          const secondary = ranked[1] || Reel.shade(primary, -0.2);
-          const accent = ranked[2] || Reel.shade(primary, 0.2);
+          const picked = Reel.brandPalette(palette);
+          const primary = picked.primary;
+          const secondary = picked.secondary;
+          const accent = picked.accent;
           const background = Reel.mix(primary, '#FFFFFF', 0.93);
           const text = Reel.onColour(background);
           this.openModal({
