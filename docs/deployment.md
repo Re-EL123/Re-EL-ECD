@@ -188,7 +188,10 @@ The database stores the public URL, the object key, MIME type, size and scope.
    `media.re-el.co.za`, or the `r2.dev` development URL) and set
    `R2_PUBLIC_BASE_URL` to that origin.
 3. Set `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` and
-   `R2_BUCKET` in Vercel for Production.
+   `R2_BUCKET` in Vercel for Production. From a linked checkout,
+   `./scripts/setup-production-secrets.sh` prompts for these and the Resend key
+   without echoing them, then redeploys. It replaces existing values, so it is
+   also the rotation path.
 4. Allow the web origin to upload and read objects. A suitable bucket CORS
    policy is:
 
@@ -213,7 +216,10 @@ Uploads are restricted to a MIME whitelist (JPEG, PNG, WEBP, GIF, AVIF, MP4,
 WEBM, MOV, MP3, M4A, WEBA, PDF, TXT, CSV, DOCX, XLSX) with per-type size
 limits. SVG is deliberately refused because it can carry script. Object keys
 are tenant-scoped (`org/<organisationId>/<scope>/<random>.<ext>`) so one
-daycare can never overwrite another's media.
+daycare can never overwrite another's media. The extension comes from the
+validated MIME type, not the uploaded filename, and `Content-Type` is part of
+the presigned `PUT` signature, so an object cannot be stored under a different
+type than the one the API approved.
 
 `GET /api/v1/platform/health` reports whether storage is configured and which
 bucket is in use. `GET /api/v1/media/config` returns the scopes and limits the
