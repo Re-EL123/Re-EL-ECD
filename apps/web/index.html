@@ -11,9 +11,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/styles.css?v=20261042">
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.js" defer></script>
-  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js" defer></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
+  <!-- Vendor libraries are self-hosted: a blocked CDN must not stop the app booting. -->
+  <script src="vendor/lucide.js?v=20261042" defer></script>
+  <script src="vendor/gsap.min.js?v=20261042" defer></script>
+  <script src="vendor/chart.umd.min.js?v=20261042" defer></script>
   <script src="config.js?v=20261042"></script>
   <script src="src/utils.js?v=20261042" defer></script>
   <script src="src/views/public.js?v=20261042" defer></script>
@@ -33,7 +34,7 @@
   <script src="src/views/settings.js?v=20261042" defer></script>
   <script src="src/views/parent.js?v=20261042" defer></script>
   <script src="src/app.js?v=20261042" defer></script>
-  <script src="https://unpkg.com/alpinejs@3.14.9/dist/cdn.min.js" defer></script>
+  <script src="vendor/alpine.min.js?v=20261042" defer></script>
 </head>
 <body x-data="reelApp()" x-init="boot()" @keydown.window.escape="closeOverlays()" @keydown.window.k="if (($event.metaKey || $event.ctrlKey) && !$event.shiftKey) { $event.preventDefault(); openCommand(); }">
 
