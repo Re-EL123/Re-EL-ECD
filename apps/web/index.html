@@ -206,7 +206,7 @@
                   <textarea class="textarea" :id="'modal-' + field.name" :name="field.name" :required="field.required === true" :placeholder="field.placeholder || ''" x-model="modal.data[field.name]"></textarea>
                 </template>
                 <template x-if="field.type === 'select'">
-                  <select class="select" :id="'modal-' + field.name" :name="field.name" :required="field.required === true" x-model="modal.data[field.name]">
+                  <select class="select" :id="'modal-' + field.name" :name="field.name" :required="field.required === true" x-model="modal.data[field.name]" x-init="$nextTick(() => { const want = modal.data[field.name]; $el.value = want === undefined || want === null ? '' : String(want); })">
                     <option value="">Select…</option>
                     <template x-for="option in (field.options || [])" :key="option.value !== undefined ? option.value : option">
                       <option :value="option.value !== undefined ? option.value : option" x-text="option.label !== undefined ? option.label : option"></option>
