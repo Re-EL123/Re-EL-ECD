@@ -12,7 +12,8 @@
   <link rel="stylesheet" href="assets/styles.css?v=20261042">
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
   <!-- Vendor libraries are self-hosted: a blocked CDN must not stop the app booting. -->
-  <script src="vendor/lucide.js?v=20261042" defer></script>
+  <!-- Icons are cosmetic: load them async so a slow request never delays boot. -->
+  <script src="vendor/lucide.min.js?v=20261042" async onload="if (window.lucide) window.lucide.createIcons()"></script>
   <script src="vendor/gsap.min.js?v=20261042" defer></script>
   <script src="vendor/chart.umd.min.js?v=20261042" defer></script>
   <script src="config.js?v=20261042"></script>
