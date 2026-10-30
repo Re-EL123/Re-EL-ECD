@@ -252,7 +252,10 @@
         } catch (error) {
           this.session = null;
         }
-        if (!location.hash) location.hash = this.session ? this.defaultRoute() : '/login';
+        if (!location.hash) {
+          // replaceState avoids a second hashchange-driven navigate on boot.
+          history.replaceState(null, '', '#' + (this.session ? this.defaultRoute() : '/login'));
+        }
         await this.navigate();
       },
 
@@ -371,6 +374,10 @@
       },
 
       async navigate(force) {
+        // Two navigations can overlap (for example a hash change plus a direct
+        // call). Only the newest one may render, otherwise stale data and
+        // duplicate charts leak onto the screen.
+        const seq = (this._navSeq = (this._navSeq || 0) + 1);
         const { path, query } = this.parseHash();
         this.query = query;
         const matched = matchRoute(path);
@@ -394,7 +401,7 @@
         if (matched.route.area === 'public') {
           this.mode = 'public';
           this.loading = false;
-          await this.renderPublic(matched.route, matched.params);
+          await this.renderPublic(matched.route, matched.params, seq);
           return;
         }
 
@@ -445,13 +452,16 @@
         try {
           const view = V[matched.route.view];
           if (!view) throw new Error('This screen has not been implemented.');
-          this.page = (view.load ? await view.load(this, matched.params) : {}) || {};
+          const page = (view.load ? await view.load(this, matched.params) : {}) || {};
+          if (seq !== this._navSeq) return;
+          this.page = page;
           const html = view.render ? view.render(this, matched.params, this.page) : '';
           this.renderHtml(html);
           this.loading = false;
           await this.$nextTick();
           this.afterRender();
         } catch (error) {
+          if (seq !== this._navSeq) return;
           this.loading = false;
           if (error instanceof Reel.ApiError && (error.code === 'FORBIDDEN' || error.status === 403)) {
             this.denied = true;
@@ -501,6 +511,12 @@
           const canvas = document.getElementById(spec.id);
           if (!canvas) continue;
           try {
+            // A previous render may still own this canvas; reuse would throw
+            // "Canvas is already in use" and leave the chart blank.
+            if (window.Chart.getChart) {
+              const previous = window.Chart.getChart(canvas);
+              if (previous) previous.destroy();
+            }
             const chart = new window.Chart(canvas, {
               type: spec.type,
               data: spec.data,
@@ -963,12 +979,13 @@
         if (window.Alpine && window.Alpine.initTree) window.Alpine.initTree(root);
       },
 
-      async renderPublic(route, params) {
+      async renderPublic(route, params, seq) {
         const root = document.getElementById('public-root');
         if (!root) return;
         const view = V[route.view];
         try {
           const page = view && view.load ? await view.load(this, params) : {};
+          if (seq && seq !== this._navSeq) return;
           root.innerHTML = view.render(this, params, page);
           if (window.Alpine && window.Alpine.initTree) window.Alpine.initTree(root);
           if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
@@ -986,7 +1003,9 @@
         try {
           const payload = await Reel.api('POST', '/auth/login', { email, password });
           this.applySession(payload.data);
-          location.hash = this.defaultRoute();
+          // replaceState keeps the hashchange handler from starting a second
+          // navigation while this one is still loading the first screen.
+          history.replaceState(null, '', '#' + this.defaultRoute());
           await this.navigate(true);
         } catch (error) {
           this.loginError = error.message || 'Sign in failed.';
