@@ -26,7 +26,7 @@
       const organisation = (brand && brand.organisation) || {};
       const name = organisation.name || 'Re-EL ECD';
       const logo = organisation.logoUrl || R.PLATFORM_LOGO;
-      const style = brand && brand.branding ? R.themeStyle(brand.branding) : '';
+      const style = R.themeStyle((brand && brand.branding) || R.PLATFORM_BRAND.theme);
       const logoMark = '<span class="auth-brand-logo"><img src="' + R.attr(logo) + '" alt="' + R.attr(name) + '"></span>';
       return '' +
         '<div class="auth-screen" ' + style + '>' +

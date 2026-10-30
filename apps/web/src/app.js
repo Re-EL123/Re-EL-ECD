@@ -503,6 +503,7 @@
         if (!this.session) {
           this.mode = 'login';
           this.loading = false;
+          if (!this.platformBrand) await this.loadPlatformBranding();
           this.renderAuth();
           return;
         }
@@ -689,6 +690,11 @@
         this.session = null;
         this.mode = 'login';
         location.hash = '/login';
+        // The sign-in screen belongs to the platform, not to the tenant that
+        // just signed out. Reload the platform palette and logo so the next
+        // person never sees the previous organisation's colours.
+        this.platformBrand = null;
+        await this.loadPlatformBranding();
         this.renderAuth();
       },
 
