@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **271 routes** across 17 modules.
+Generated from the router: **284 routes** across 17 modules.
 
 ## Access
 
@@ -28,6 +28,7 @@ Generated from the router: **271 routes** across 17 modules.
 | PATCH | `/access/memberships/:id` | access.manage.daycare |
 | POST | `/access/memberships/:id/roles` | access.manage.daycare |
 | DELETE | `/access/memberships/:id/roles/:roleId` | access.manage.daycare |
+| POST | `/access/memberships/bulk` | access.manage.daycare |
 | GET | `/access/permissions` | access.read.daycare |
 | GET | `/access/roles` | access.read.daycare |
 
@@ -56,6 +57,7 @@ Generated from the router: **271 routes** across 17 modules.
 | PATCH | `/announcements/:id` | announcements.manage.daycare |
 | POST | `/announcements/:id/archive` | announcements.manage.daycare |
 | POST | `/announcements/:id/publish` | announcements.manage.daycare |
+| POST | `/announcements/bulk` | announcements.manage.daycare |
 
 ## Assessments
 
@@ -254,6 +256,7 @@ Generated from the router: **271 routes** across 17 modules.
 | POST | `/invoices/:id/issue` | finance.invoice.issue.daycare |
 | POST | `/invoices/:id/payfast-link` | finance.payment.record.daycare |
 | POST | `/invoices/:id/write-off` | finance.manage.daycare |
+| POST | `/invoices/bulk` | finance.invoice.issue.daycare |
 | POST | `/invoices/generate` | finance.invoice.create.daycare |
 
 ## Learner Attendance
@@ -297,6 +300,7 @@ Generated from the router: **271 routes** across 17 modules.
 | POST | `/learners/:id/portfolio` | portfolio.manage.assigned OR learners.update.daycare |
 | GET | `/learners/:id/progress` | assessments.read.daycare OR assessments.read.assigned OR parent.read.own |
 | GET | `/learners/:id/timeline` | learners.read.daycare OR learners.read.assigned |
+| POST | `/learners/bulk` | learners.archive.daycare OR learners.update.daycare |
 
 ## Leave
 
@@ -313,6 +317,7 @@ Generated from the router: **271 routes** across 17 modules.
 | GET | `/media/assets` | media.read.daycare |
 | DELETE | `/media/assets/:id` | media.manage.daycare |
 | POST | `/media/assets/:id/complete` | media.upload.daycare |
+| POST | `/media/assets/bulk` | media.manage.daycare |
 | GET | `/media/config` | media.read.daycare |
 | POST | `/media/uploads` | media.upload.daycare |
 
@@ -393,8 +398,13 @@ Generated from the router: **271 routes** across 17 modules.
 | GET | `/platform/organisations/:id` | Platform only · platform.organisations.read |
 | PATCH | `/platform/organisations/:id` | Platform only · platform.organisations.manage |
 | POST | `/platform/organisations/:id/restore` | Platform only · platform.organisations.manage |
+| POST | `/platform/organisations/:id/subscription` | Platform only · platform.subscriptions.manage |
 | POST | `/platform/organisations/:id/suspend` | Platform only · platform.organisations.manage |
+| POST | `/platform/organisations/bulk` | Platform only · platform.organisations.manage |
 | GET | `/platform/overview` | Platform only · platform.organisations.read |
+| GET | `/platform/plans` | Platform only · platform.subscriptions.read |
+| POST | `/platform/plans` | Platform only · platform.subscriptions.manage |
+| PATCH | `/platform/plans/:id` | Platform only · platform.subscriptions.manage |
 | GET | `/platform/settings` | Platform only · platform.organisations.read |
 | PATCH | `/platform/settings` | Platform only · platform.settings.manage |
 | GET | `/platform/subscriptions` | Platform only · platform.subscriptions.read |
@@ -412,6 +422,7 @@ Generated from the router: **271 routes** across 17 modules.
 | POST | `/public/forms/:orgSlug/:formSlug/submit` | Public |
 | POST | `/public/payfast/itn` | Public |
 | GET | `/public/payfast/return` | Public |
+| GET | `/public/platform` | Public |
 
 ## Reports
 
@@ -457,6 +468,7 @@ Generated from the router: **271 routes** across 17 modules.
 | POST | `/staff/:id/documents` | staff.manage.daycare |
 | POST | `/staff/:id/documents/:documentId/verify` | staff.manage.daycare |
 | POST | `/staff/:id/training` | staff.manage.daycare |
+| POST | `/staff/bulk` | staff.manage.daycare |
 | GET | `/staff/overview` | staff.read.daycare OR tasks.read.own |
 
 ## Staff Attendance
@@ -491,6 +503,7 @@ Generated from the router: **271 routes** across 17 modules.
 | DELETE | `/tasks/:id/checklist/:itemId` | tasks.read.own OR tasks.manage.daycare |
 | PATCH | `/tasks/:id/checklist/:itemId` | tasks.read.own OR tasks.manage.daycare |
 | POST | `/tasks/:id/comments` | tasks.read.own OR tasks.read.daycare |
+| POST | `/tasks/bulk` | tasks.manage.daycare |
 | GET | `/tasks/overview/counts` | tasks.read.own OR tasks.read.daycare |
 
 ## Timesheets
