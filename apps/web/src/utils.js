@@ -307,6 +307,22 @@
     return luminance > 0.55 ? '#142016' : '#FFFFFF';
   }
 
+  /**
+   * Lightness/saturation summary used when choosing a brand colour from a
+   * logo. `vividness` favours saturated mid-tone colours, so a pale background
+   * does not win just because it covers the most pixels.
+   */
+  function colourStats(hex) {
+    const [red, green, blue] = rgb(hex).map((channel) => channel / 255);
+    const max = Math.max(red, green, blue);
+    const min = Math.min(red, green, blue);
+    const lightness = (max + min) / 2;
+    const delta = max - min;
+    const saturation = delta === 0 ? 0 : delta / (1 - Math.abs(2 * lightness - 1));
+    const vividness = saturation * Math.max(0, 1 - Math.abs(lightness - 0.45) * 1.4);
+    return { red, green, blue, lightness, saturation, vividness };
+  }
+
   function rgba(hex, alpha) {
     const channels = rgb(hex);
     return 'rgba(' + channels.join(', ') + ', ' + alpha + ')';
@@ -552,6 +568,7 @@
   Reel.themeStyle = themeStyle;
   Reel.applyTheme = applyTheme;
   Reel.paletteFromImage = paletteFromImage;
+  Reel.colourStats = colourStats;
   Reel.kindForUrl = kindForUrl;
   Reel.mediaHtml = mediaHtml;
   Reel.mediaThumb = mediaThumb;

@@ -310,10 +310,16 @@
         if (!logo) { this.toast('Upload a logo first, then extract its colours.', 'warn'); return; }
         this.toast('Reading colours from your logo…', 'info');
         try {
-          const palette = await Reel.paletteFromImage(logo, 6);
-          const primary = palette[0] || '#3A7D44';
-          const secondary = palette[1] || Reel.shade(primary, -0.2);
-          const accent = palette[2] || Reel.shade(primary, 0.2);
+          const palette = await Reel.paletteFromImage(logo, 8);
+          // Frequency alone picks the logo's pale background; rank by vividness
+          // so the primary colour is the brand's actual signature colour.
+          const ranked = palette
+            .map((hex) => ({ hex, vividness: Reel.colourStats(hex).vividness }))
+            .sort((left, right) => right.vividness - left.vividness)
+            .map((entry) => entry.hex);
+          const primary = ranked[0] || '#3A7D44';
+          const secondary = ranked[1] || Reel.shade(primary, -0.2);
+          const accent = ranked[2] || Reel.shade(primary, 0.2);
           const background = Reel.mix(primary, '#FFFFFF', 0.93);
           const text = Reel.onColour(background);
           this.openModal({
