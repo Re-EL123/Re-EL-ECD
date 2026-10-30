@@ -176,6 +176,50 @@ test('incident and announcement attachments round-trip through JSONB', async () 
   assert.deepEqual(found.attachment_urls, [file]);
 });
 
+test('learner, portfolio, daily report and staff media URLs round-trip', async () => {
+  const { client, organisationId } = await principal();
+  const branches = await client.get('/branches', { organisationId });
+  const branchId = branches.data[0].id;
+  const photo = 'https://media.example.com/org/demo/learner-photo/child.jpg';
+  const portfolioPhoto = 'https://media.example.com/org/demo/portfolio/painting.jpg';
+  const reportPhoto = 'https://media.example.com/org/demo/daily-report/play.jpg';
+  const avatar = 'https://media.example.com/org/demo/staff-avatar/teacher.jpg';
+
+  const learner = await client.post('/learners', {
+    firstName: 'Media', lastName: 'Child', dateOfBirth: '2021-04-05',
+    branchId, profileImageUrl: photo
+  }, { organisationId });
+  assert.equal(learner.status, 201);
+  assert.equal(learner.data.profile_image_url, photo);
+
+  const detail = await client.get(`/learners/${learner.data.id}`, { organisationId });
+  assert.equal(detail.data.profile_image_url, photo);
+
+  const portfolio = await client.post(`/learners/${learner.data.id}/portfolio`, {
+    title: 'Painting', mediaType: 'photo', mediaUrl: portfolioPhoto, sharingStatus: 'guardians'
+  }, { organisationId });
+  assert.equal(portfolio.status, 201);
+  assert.equal(portfolio.data.media_url, portfolioPhoto);
+  const portfolioList = await client.get(`/learners/${learner.data.id}/portfolio`, { organisationId });
+  assert.equal(portfolioList.data[0].media_url, portfolioPhoto);
+
+  const report = await client.post(`/learners/${learner.data.id}/daily-reports`, {
+    reportDate: '2026-10-29', mood: 'happy', photoUrl: reportPhoto, sharedWithGuardians: true
+  }, { organisationId });
+  assert.equal(report.status, 201);
+  assert.deepEqual(report.data.photo_urls, [reportPhoto]);
+  const reports = await client.get(`/learners/${learner.data.id}/daily-reports`, { organisationId });
+  assert.deepEqual(reports.data[0].photo_urls, [reportPhoto]);
+
+  const staff = await client.get('/staff', { organisationId });
+  const member = staff.data.find((row) => row.user_id);
+  assert.ok(member);
+  const updated = await client.patch(`/staff/${member.id}`, { avatarUrl: avatar }, { organisationId });
+  assert.equal(updated.status, 200);
+  const staffDetail = await client.get(`/staff/${member.id}`, { organisationId });
+  assert.equal(staffDetail.data.user.avatarUrl, avatar);
+});
+
 test('editing brand colours rejects invalid hex and keeps tokens in sync', async () => {
   const { client, organisationId } = await principal();
 
