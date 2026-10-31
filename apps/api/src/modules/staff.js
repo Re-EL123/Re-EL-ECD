@@ -521,7 +521,7 @@ function register(router) {
         return { ok: true, branchId: shift.branch_id, metadata: { status: body.action } };
       }
     });
-  }, { permission: 'shifts.read.daycare' });
+  }, { permission: ['shifts.create.daycare', 'shifts.approve.daycare'], permissionMode: 'any' });
 
   // --- Staff attendance ---------------------------------------------------
 

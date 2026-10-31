@@ -462,7 +462,7 @@ Generated from the router: **293 routes** across 17 modules.
 | PATCH | `/shifts/:id` | shifts.create.daycare |
 | POST | `/shifts/:id/approve` | shifts.approve.daycare |
 | POST | `/shifts/:id/cancel` | shifts.create.daycare |
-| POST | `/shifts/bulk` | shifts.read.daycare |
+| POST | `/shifts/bulk` | shifts.create.daycare OR shifts.approve.daycare |
 
 ## Staff
 
