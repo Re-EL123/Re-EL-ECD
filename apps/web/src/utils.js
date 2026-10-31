@@ -599,7 +599,15 @@
       body: file
     });
     if (!response.ok) {
-      throw new ApiError('The file could not be uploaded to storage. Check the bucket CORS settings.', 'UPLOAD_FAILED', response.status);
+      // A rejected upload has no object behind it, so drop the pending row
+      // rather than leaving an orphan in the library.
+      try { await api('DELETE', '/media/assets/' + encodeURIComponent(payload.asset.id)); } catch { /* best effort */ }
+      const detail = response.status === 401 || response.status === 403
+        ? 'The storage service rejected the upload credentials. An administrator must check the R2 access key and secret.'
+        : response.status === 404
+          ? 'The storage bucket was not found. Check the R2 bucket name and public base URL.'
+          : 'The file could not be uploaded to storage. Check the bucket CORS settings and try again.';
+      throw new ApiError(detail, 'UPLOAD_FAILED', response.status);
     }
     const completed = await api('POST', '/media/assets/' + encodeURIComponent(payload.asset.id) + '/complete', {});
     return completed.data;

@@ -30,6 +30,7 @@
       const o = page.overview || {};
       const capacityRows = Array.isArray(o.capacity) ? o.capacity : [];
       const totalCapacity = capacityRows.reduce((sum, c) => sum + Number(c.configured_capacity || 0), 0);
+      const totalEnrolled = capacityRows.reduce((sum, c) => sum + Number(c.enrolled || 0), 0);
       const tab = ctx.tab || 'enquiries';
       const enquiries = page.enquiries || [];
       const applications = page.applications || [];
@@ -40,7 +41,7 @@
         R.statCard({ label: 'New enquiries', value: R.number(o.new_enquiries), icon: 'inbox', tone: 'sky', foot: 'Awaiting first contact' }) +
         R.statCard({ label: 'Pending review', value: R.number(o.pending_applications), icon: 'clipboard-list', tone: 'sun', foot: 'Applications to assess' }) +
         R.statCard({ label: 'Approved', value: R.number(o.approved_applications), icon: 'check-circle', foot: 'Ready to enrol' }) +
-        R.statCard({ label: 'Capacity', value: R.number(totalCapacity), icon: 'door-open', tone: 'clay', foot: (o.waitlisted || 0) + ' waitlisted · ' + (o.enrolled || 0) + ' enrolled' }) +
+        R.statCard({ label: 'Capacity', value: R.number(totalCapacity), icon: 'door-open', tone: 'clay', foot: (o.waitlisted || 0) + ' waitlisted · ' + totalEnrolled + ' enrolled' }) +
         '</div>' +
         R.tabs([{ key: 'enquiries', label: 'Enquiries (' + enquiries.length + ')' }, { key: 'applications', label: 'Applications (' + applications.length + ')' }], tab) +
         (tab === 'enquiries' ? this.renderEnquiries(ctx, page) : this.renderApplications(ctx, page));
