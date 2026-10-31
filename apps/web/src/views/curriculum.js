@@ -41,11 +41,21 @@
           { key: 'plans', label: 'Lesson plans' }, { key: 'frameworks', label: 'Frameworks' },
           { key: 'objectives', label: 'Objectives' }, { key: 'periods', label: 'Periods' }
         ], tab) +
-        (tab === 'plans' ? this.renderPlans(page) : tab === 'frameworks' ? this.renderFrameworks(page) : tab === 'objectives' ? this.renderObjectives(page) : this.renderPeriods(page));
+        (tab === 'plans' ? this.renderPlans(ctx, page) : tab === 'frameworks' ? this.renderFrameworks(page) : tab === 'objectives' ? this.renderObjectives(page) : this.renderPeriods(page));
     },
 
-    renderPlans(page) {
-      return R.table({ rows: page.plans || [], columns: [
+    renderPlans(ctx, page) {
+      const canCreate = ctx.has('curriculum.create.daycare');
+      const canPublish = ctx.has('curriculum.publish.daycare');
+      const actions = [];
+      if (canCreate) {
+        actions.push({ label: 'Submit for review', icon: 'send', path: '/curriculum/lesson-plans/bulk', action: 'submit' });
+        actions.push({ label: 'Approve', icon: 'check-circle', path: '/curriculum/lesson-plans/bulk', action: 'approve' });
+      }
+      if (canCreate && canPublish) actions.push({ label: 'Publish', icon: 'upload', path: '/curriculum/lesson-plans/bulk', action: 'publish' });
+      if (canCreate) actions.push({ label: 'Cancel', icon: 'x', path: '/curriculum/lesson-plans/bulk', action: 'cancel', tone: 'danger' });
+      return (actions.length ? R.bulkBar(actions, { hint: 'Plans that cannot make the move are skipped and reported.' }) : '') +
+        R.table({ rows: page.plans || [], selectable: actions.length > 0, columns: [
         { label: 'Plan', render: (p) => '<span class="cell-strong">' + R.esc(p.title) + '</span><span class="cell-sub">' + R.esc(p.theme || '') + '</span>' },
         { label: 'Classroom', render: (p) => R.esc(p.classroom_name || '—') },
         { label: 'Objectives', render: (p) => '<span class="badge badge-muted">' + ((p.objective_ids || []).length) + '</span>' },

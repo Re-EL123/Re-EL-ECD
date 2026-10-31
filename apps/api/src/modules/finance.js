@@ -749,17 +749,44 @@ function register(router) {
     return ctx.db.one('SELECT * FROM expenses WHERE id = $1', [expense.id]);
   }, { permission: 'finance.manage.daycare' });
 
+  router.post('/expenses/bulk', async (ctx) => {
+    const body = bulk.parse(ctx.body, ['approve', 'reject', 'paid']);
+    const decision = { approve: 'approved', reject: 'rejected', paid: 'paid' }[body.action];
+    return bulk.run(ctx, {
+      ids: body.ids,
+      action: body.action,
+      resourceType: 'expense',
+      auditAction: `finance.expense_${decision}`,
+      handler: async (id) => {
+        const expense = await ctx.db.one(
+          'SELECT * FROM expenses WHERE id = $1 AND organisation_id = $2', [id, ctx.organisationId]
+        );
+        if (!expense) return { ok: false, reason: 'not found' };
+        if (['paid', 'rejected'].includes(expense.approval_status)) {
+          return { ok: false, reason: 'already closed' };
+        }
+        if (expense.approval_status === decision) return { ok: false, reason: 'already ' + decision };
+        await ctx.db.query(
+          'UPDATE expenses SET approval_status = $1, approved_by = $2 WHERE id = $3',
+          [decision, ctx.user.id, expense.id]
+        );
+        return { ok: true, branchId: expense.branch_id, metadata: { status: decision } };
+      }
+    });
+  }, { permission: 'finance.manage.daycare' });
+
   // --- Inventory ----------------------------------------------------------
 
   router.get('/inventory', async (ctx) => {
     const branchId = ctx.query.branchId || null;
     const lowOnly = ctx.query.low === 'true';
+    const status = ctx.query.status === 'archived' ? 'archived' : 'active';
     const rows = await ctx.db.many(
       `SELECT i.*, b.name AS branch_name FROM inventory_items i
        LEFT JOIN branches b ON b.id = i.branch_id
-       WHERE i.organisation_id = $1 AND i.status = 'active'
+       WHERE i.organisation_id = $1 AND i.status = $3
          AND ($2::uuid IS NULL OR i.branch_id = $2::uuid)
-       ORDER BY i.name`, [ctx.organisationId, branchId]
+       ORDER BY i.name`, [ctx.organisationId, branchId, status]
     );
     const mapped = rows.map((r) => ({ ...r, is_low: Number(r.quantity_on_hand) <= Number(r.minimum_quantity) }));
     return lowOnly ? mapped.filter((r) => r.is_low) : mapped;
@@ -810,6 +837,28 @@ function register(router) {
         body.storageLocation || null, body.status || null, item.id]
     );
     return ctx.db.one('SELECT * FROM inventory_items WHERE id = $1', [item.id]);
+  }, { permission: 'inventory.manage.daycare' });
+
+  router.post('/inventory/bulk', async (ctx) => {
+    const body = bulk.parse(ctx.body, ['archive', 'restore']);
+    const status = body.action === 'archive' ? 'archived' : 'active';
+    return bulk.run(ctx, {
+      ids: body.ids,
+      action: body.action,
+      resourceType: 'inventory_item',
+      auditAction: body.action === 'archive' ? 'inventory.item_archived' : 'inventory.item_restored',
+      handler: async (id) => {
+        const item = await ctx.db.one(
+          'SELECT * FROM inventory_items WHERE id = $1 AND organisation_id = $2', [id, ctx.organisationId]
+        );
+        if (!item) return { ok: false, reason: 'not found' };
+        if (item.status === status) return { ok: false, reason: 'already ' + status };
+        await ctx.db.query(
+          'UPDATE inventory_items SET status = $1, updated_at = now() WHERE id = $2', [status, item.id]
+        );
+        return { ok: true, branchId: item.branch_id, metadata: { status } };
+      }
+    });
   }, { permission: 'inventory.manage.daycare' });
 
   router.post('/inventory/:id/transactions', async (ctx) => {

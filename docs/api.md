@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **284 routes** across 17 modules.
+Generated from the router: **293 routes** across 17 modules.
 
 ## Access
 
@@ -41,11 +41,13 @@ Generated from the router: **284 routes** across 17 modules.
 | GET | `/admissions/applications/:id` | admissions.read.daycare |
 | POST | `/admissions/applications/:id/enrol` | admissions.enrol.daycare |
 | POST | `/admissions/applications/:id/review` | admissions.manage.daycare |
+| POST | `/admissions/applications/bulk` | admissions.manage.daycare |
 | GET | `/admissions/enquiries` | admissions.read.daycare |
 | POST | `/admissions/enquiries` | admissions.manage.daycare |
 | GET | `/admissions/enquiries/:id` | admissions.read.daycare |
 | PATCH | `/admissions/enquiries/:id` | admissions.manage.daycare |
 | POST | `/admissions/enquiries/:id/convert` | admissions.manage.daycare |
+| POST | `/admissions/enquiries/bulk` | admissions.manage.daycare |
 | GET | `/admissions/overview` | admissions.read.daycare |
 
 ## Announcements
@@ -160,6 +162,7 @@ Generated from the router: **284 routes** across 17 modules.
 | GET | `/curriculum/lesson-plans/:id` | curriculum.read.daycare |
 | PATCH | `/curriculum/lesson-plans/:id` | curriculum.create.daycare |
 | POST | `/curriculum/lesson-plans/:id/transition` | curriculum.create.daycare |
+| POST | `/curriculum/lesson-plans/bulk` | curriculum.create.daycare |
 | GET | `/curriculum/objectives` | curriculum.read.daycare |
 | POST | `/curriculum/objectives` | curriculum.create.daycare |
 | GET | `/curriculum/overview` | curriculum.read.daycare |
@@ -186,6 +189,7 @@ Generated from the router: **284 routes** across 17 modules.
 | GET | `/expenses` | expenses.read.daycare |
 | POST | `/expenses` | expenses.manage.daycare |
 | POST | `/expenses/:id/review` | finance.manage.daycare |
+| POST | `/expenses/bulk` | finance.manage.daycare |
 
 ## Fee Plans
 
@@ -216,6 +220,7 @@ Generated from the router: **284 routes** across 17 modules.
 | GET | `/forms/:id/submissions` | forms.submissions.review.daycare |
 | POST | `/forms/:id/submit` | parent.forms.submit.own OR forms.read.daycare OR guardians.manage.daycare |
 | POST | `/forms/:id/versions` | forms.manage.daycare |
+| POST | `/forms/bulk` | forms.manage.daycare |
 | POST | `/forms/submissions/:id/review` | forms.submissions.review.daycare |
 
 ## Incident Actions
@@ -234,6 +239,7 @@ Generated from the router: **284 routes** across 17 modules.
 | PATCH | `/incidents/:id` | safety.manage.daycare |
 | POST | `/incidents/:id/actions` | safety.manage.daycare |
 | POST | `/incidents/:id/notify-guardians` | safety.manage.daycare |
+| POST | `/incidents/bulk` | safety.manage.daycare |
 
 ## Inventory
 
@@ -244,6 +250,7 @@ Generated from the router: **284 routes** across 17 modules.
 | PATCH | `/inventory/:id` | inventory.manage.daycare |
 | GET | `/inventory/:id/transactions` | inventory.read.daycare |
 | POST | `/inventory/:id/transactions` | inventory.manage.daycare |
+| POST | `/inventory/bulk` | inventory.manage.daycare |
 
 ## Invoices
 
@@ -309,6 +316,7 @@ Generated from the router: **284 routes** across 17 modules.
 | GET | `/leave` | leave.read.daycare OR leave.request.own |
 | POST | `/leave` | leave.request.own OR leave.manage.daycare |
 | POST | `/leave/:id/review` | leave.manage.daycare |
+| POST | `/leave/bulk` | leave.manage.daycare |
 
 ## Media
 
@@ -454,6 +462,7 @@ Generated from the router: **284 routes** across 17 modules.
 | PATCH | `/shifts/:id` | shifts.create.daycare |
 | POST | `/shifts/:id/approve` | shifts.approve.daycare |
 | POST | `/shifts/:id/cancel` | shifts.create.daycare |
+| POST | `/shifts/bulk` | shifts.read.daycare |
 
 ## Staff
 

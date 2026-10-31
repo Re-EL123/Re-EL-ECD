@@ -6,6 +6,7 @@ const { recordAudit } = require('../services/audit-service');
 const { createNotification } = require('../services/notification-service');
 const { sendTemplate } = require('../services/email-service');
 const { parsePagination } = require('../utils/http');
+const bulk = require('../services/bulk-service');
 const { has } = require('./helpers');
 
 const STATUS_FLOW = {
@@ -269,6 +270,41 @@ function register(router) {
       metadata: { status: body.status || null }
     });
     return ctx.db.one('SELECT * FROM incidents WHERE id = $1', [incident.id]);
+  }, { permission: 'safety.manage.daycare' });
+
+  router.post('/incidents/bulk', async (ctx) => {
+    const body = bulk.parse(ctx.body, ['review', 'close']);
+    const status = body.action === 'review' ? 'reviewed' : 'closed';
+    return bulk.run(ctx, {
+      ids: body.ids,
+      action: body.action,
+      resourceType: 'incident',
+      auditAction: 'safety.incident_updated',
+      handler: async (id) => {
+        const incident = await ctx.db.one(
+          'SELECT * FROM incidents WHERE id = $1 AND organisation_id = $2', [id, ctx.organisationId]
+        );
+        if (!incident) return { ok: false, reason: 'not found' };
+        if (!(STATUS_FLOW[incident.status] || []).includes(status)) {
+          return { ok: false, reason: `cannot move from ${incident.status} to ${status}` };
+        }
+        if (status === 'closed') {
+          const openActions = await ctx.db.one(
+            `SELECT COUNT(*)::int AS total FROM incident_actions WHERE incident_id = $1 AND status IN ('open','in_progress')`,
+            [incident.id]
+          );
+          if (openActions.total > 0) return { ok: false, reason: 'open corrective actions' };
+        }
+        await ctx.db.query(
+          `UPDATE incidents SET status = $1,
+            reviewed_by = CASE WHEN $2 = 'reviewed' THEN $3 ELSE reviewed_by END,
+            closed_at = CASE WHEN $2 = 'closed' THEN now() ELSE closed_at END,
+            updated_at = now() WHERE id = $4`,
+          [status, status, ctx.user.id, incident.id]
+        );
+        return { ok: true, branchId: incident.branch_id, metadata: { status } };
+      }
+    });
   }, { permission: 'safety.manage.daycare' });
 
   router.post('/incidents/:id/actions', async (ctx) => {

@@ -37,8 +37,13 @@
 
     renderForms(ctx, page) {
       const forms = page.rows || [];
-      return '<div class="split"><div class="stack">' +
-        R.card('Form library', R.table({ rows: forms, columns: [
+      const canManage = ctx.has('forms.manage.daycare');
+      return (canManage ? R.bulkBar([
+        { label: 'Publish selected', icon: 'upload', path: '/forms/bulk', action: 'publish' },
+        { label: 'Archive selected', icon: 'archive', path: '/forms/bulk', action: 'archive', tone: 'danger' }
+      ], { hint: 'Forms without a version cannot be published.' }) : '') +
+        '<div class="split"><div class="stack">' +
+        R.card('Form library', R.table({ rows: forms, selectable: canManage, columns: [
           { label: 'Form', render: (f) => '<span class="cell-strong">' + R.esc(f.name) + '</span><span class="cell-sub mono">/' + R.esc(f.slug) + '</span>' },
           { label: 'Type', render: (f) => '<span class="badge badge-muted">' + R.esc(R.titleCase(f.form_type)) + '</span>' },
           { label: 'Version', render: (f) => 'v' + R.number(f.version_number) },

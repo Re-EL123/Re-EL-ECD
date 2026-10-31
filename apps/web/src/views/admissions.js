@@ -45,9 +45,16 @@
     },
 
     renderEnquiries(ctx, page) {
+      const canManage = ctx.has('admissions.manage.daycare');
       return R.filterBar(R.searchFilter(ctx, 'q', 'Search guardian or child…') +
         R.selectFilter(ctx, 'status', ENQUIRY_STATUSES.map((s) => ({ value: s, label: R.titleCase(s) })), 'All enquiry statuses')) +
-        R.table({ rows: page.enquiries || [], columns: [
+        (canManage ? R.bulkBar([
+          { label: 'Mark contacted', icon: 'phone', path: '/admissions/enquiries/bulk', action: 'contacted' },
+          { label: 'Close', icon: 'check-circle', path: '/admissions/enquiries/bulk', action: 'close' },
+          { label: 'Reopen', icon: 'rotate-ccw', path: '/admissions/enquiries/bulk', action: 'reopen' },
+          { label: 'Mark spam', icon: 'shield', path: '/admissions/enquiries/bulk', action: 'spam', tone: 'danger' }
+        ], { hint: 'Converted enquiries cannot be reopened.' }) : '') +
+        R.table({ rows: page.enquiries || [], selectable: canManage, columns: [
           { label: 'Enquiry', render: (e) => '<span class="cell-strong">' + R.esc(e.guardian_name) + '</span><span class="cell-sub">' + R.esc(e.guardian_email || e.guardian_phone || '') + '</span>' },
           { label: 'Child', render: (e) => R.esc(e.child_name || '—') + '<span class="cell-sub">' + (e.child_date_of_birth ? 'Born ' + R.date(e.child_date_of_birth) : '') + '</span>' },
           { label: 'Age group', render: (e) => R.esc(e.requested_age_group || '—') + '<span class="cell-sub">' + R.esc(e.branch_name || '') + '</span>' },
@@ -62,9 +69,16 @@
     },
 
     renderApplications(ctx, page) {
+      const canManage = ctx.has('admissions.manage.daycare');
       return R.filterBar(R.searchFilter(ctx, 'q', 'Search child or guardian…') +
         R.selectFilter(ctx, 'status', APPLICATION_STATUSES.map((s) => ({ value: s, label: R.titleCase(s) })), 'All application statuses')) +
-        R.table({ rows: page.applications || [], columns: [
+        (canManage ? R.bulkBar([
+          { label: 'Approve', icon: 'check-circle', path: '/admissions/applications/bulk', action: 'approve' },
+          { label: 'Waitlist', icon: 'clock', path: '/admissions/applications/bulk', action: 'waitlist' },
+          { label: 'Send for review', icon: 'clipboard-list', path: '/admissions/applications/bulk', action: 'review' },
+          { label: 'Reject', icon: 'x', path: '/admissions/applications/bulk', action: 'reject', tone: 'danger' }
+        ], { hint: 'Enrolled applications are left untouched. Guardians are notified of the decision.' }) : '') +
+        R.table({ rows: page.applications || [], selectable: canManage, columns: [
           { label: 'Applicant', render: (a) => '<span class="cell-strong">' + R.esc(a.child_first_name + ' ' + a.child_last_name) + '</span><span class="cell-sub mono">' + R.esc(a.application_reference) + '</span>' },
           { label: 'Guardian', render: (a) => R.esc(a.guardian_name) + '<span class="cell-sub">' + R.esc(a.guardian_email || '') + '</span>' },
           { label: 'Classroom', render: (a) => R.esc(a.requested_classroom_name || '—') + '<span class="cell-sub">' + R.esc(a.branch_name || '') + '</span>' },

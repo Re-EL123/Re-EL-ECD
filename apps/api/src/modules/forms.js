@@ -8,6 +8,7 @@ const { sendTemplate } = require('../services/email-service');
 const { rateLimit } = require('../middleware/rate-limit');
 const { parsePagination } = require('../utils/http');
 const branding = require('../services/branding-service');
+const bulk = require('../services/bulk-service');
 const { has, guardianLearnerIds, getLearner } = require('./helpers');
 
 const FIELD_TYPES = ['text', 'textarea', 'email', 'phone', 'number', 'date', 'select', 'checkbox', 'radio', 'file', 'signature'];
@@ -205,6 +206,48 @@ function register(router) {
     await ctx.db.query("UPDATE form_definitions SET status = 'archived' WHERE id = $1", [form.id]);
     await recordAudit(ctx.db, ctx, { action: 'form.archived', resourceType: 'form_definition', resourceId: form.id });
     return { success: true };
+  }, { permission: 'forms.manage.daycare' });
+
+  router.post('/forms/bulk', async (ctx) => {
+    const body = bulk.parse(ctx.body, ['publish', 'archive']);
+    return bulk.run(ctx, {
+      ids: body.ids,
+      action: body.action,
+      resourceType: 'form_definition',
+      auditAction: body.action === 'publish' ? 'form.published' : 'form.archived',
+      handler: async (id) => {
+        const form = await ctx.db.one(
+          'SELECT * FROM form_definitions WHERE id = $1 AND organisation_id = $2', [id, ctx.organisationId]
+        );
+        if (!form) return { ok: false, reason: 'not found' };
+        if (body.action === 'archive') {
+          if (form.status === 'archived') return { ok: false, reason: 'already archived' };
+          await ctx.db.query("UPDATE form_definitions SET status = 'archived' WHERE id = $1", [form.id]);
+          return { ok: true, metadata: { status: 'archived' } };
+        }
+        let versionId = form.current_version_id;
+        if (!versionId) {
+          const latest = await ctx.db.one(
+            'SELECT id FROM form_versions WHERE form_definition_id = $1 ORDER BY version_number DESC LIMIT 1', [form.id]
+          );
+          if (!latest) return { ok: false, reason: 'no version to publish' };
+          versionId = latest.id;
+        }
+        if (form.status === 'published' && form.current_version_id === versionId) {
+          return { ok: false, reason: 'already published' };
+        }
+        await ctx.db.withTransaction(async (client) => {
+          await client.query(
+            'UPDATE form_versions SET published_at = now(), published_by = $1 WHERE id = $2', [ctx.user.id, versionId]
+          );
+          await client.query(
+            "UPDATE form_definitions SET status = 'published', current_version_id = $1 WHERE id = $2",
+            [versionId, form.id]
+          );
+        });
+        return { ok: true, metadata: { versionId } };
+      }
+    });
   }, { permission: 'forms.manage.daycare' });
 
   router.get('/forms/:id/submissions', async (ctx) => {

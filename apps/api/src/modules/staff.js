@@ -7,7 +7,7 @@ const { createNotification } = require('../services/notification-service');
 const { sendTemplate } = require('../services/email-service');
 const { parsePagination } = require('../utils/http');
 const bulk = require('../services/bulk-service');
-const { has, today } = require('./helpers');
+const { has, today, assertPermission } = require('./helpers');
 
 async function currentStaff(ctx, required = true) {
   const staff = await ctx.db.one(
@@ -493,6 +493,36 @@ function register(router) {
     return { success: true };
   }, { permission: 'shifts.create.daycare' });
 
+  router.post('/shifts/bulk', async (ctx) => {
+    const body = bulk.parse(ctx.body, ['approve', 'cancel']);
+    if (body.action === 'approve') assertPermission(ctx, 'shifts.approve.daycare');
+    else assertPermission(ctx, 'shifts.create.daycare');
+    return bulk.run(ctx, {
+      ids: body.ids,
+      action: body.action,
+      resourceType: 'staff_shift',
+      auditAction: body.action === 'approve' ? 'shift.approved' : 'shift.cancelled',
+      handler: async (id) => {
+        const shift = await ctx.db.one(
+          'SELECT * FROM staff_shifts WHERE id = $1 AND organisation_id = $2', [id, ctx.organisationId]
+        );
+        if (!shift) return { ok: false, reason: 'not found' };
+        if (body.action === 'approve') {
+          if (shift.status === 'cancelled') return { ok: false, reason: 'cancelled' };
+          if (shift.status === 'approved') return { ok: false, reason: 'already approved' };
+          await ctx.db.query(
+            "UPDATE staff_shifts SET status = 'approved', approved_by = $1 WHERE id = $2", [ctx.user.id, shift.id]
+          );
+        } else {
+          if (shift.status === 'completed') return { ok: false, reason: 'completed' };
+          if (shift.status === 'cancelled') return { ok: false, reason: 'already cancelled' };
+          await ctx.db.query("UPDATE staff_shifts SET status = 'cancelled' WHERE id = $1", [shift.id]);
+        }
+        return { ok: true, branchId: shift.branch_id, metadata: { status: body.action } };
+      }
+    });
+  }, { permission: 'shifts.read.daycare' });
+
   // --- Staff attendance ---------------------------------------------------
 
   router.get('/staff-attendance/me', async (ctx) => {
@@ -833,6 +863,61 @@ function register(router) {
     ctx.status = 201;
     return leave;
   }, { permission: ['leave.request.own', 'leave.manage.daycare'], permissionMode: 'any' });
+
+  router.post('/leave/bulk', async (ctx) => {
+    const body = bulk.parse(ctx.body, ['approve', 'reject']);
+    const decision = body.action === 'approve' ? 'approved' : 'rejected';
+    return bulk.run(ctx, {
+      ids: body.ids,
+      action: body.action,
+      resourceType: 'leave_request',
+      auditAction: `leave.${decision}`,
+      handler: async (id) => {
+        const leave = await ctx.db.one(
+          'SELECT * FROM leave_requests WHERE id = $1 AND organisation_id = $2', [id, ctx.organisationId]
+        );
+        if (!leave) return { ok: false, reason: 'not found' };
+        if (leave.status !== 'pending') return { ok: false, reason: 'already reviewed' };
+        await ctx.db.query(
+          'UPDATE leave_requests SET status = $1, reviewed_by = $2, reviewed_at = now() WHERE id = $3',
+          [decision, ctx.user.id, leave.id]
+        );
+        if (decision === 'approved') {
+          await ctx.db.query(
+            "UPDATE staff_profiles SET employment_status = 'on_leave', updated_at = now() WHERE id = $1 AND employment_status = 'active'",
+            [leave.staff_id]
+          );
+        }
+        const staff = await ctx.db.one(
+          `SELECT sp.user_id, u.email, u.display_name FROM staff_profiles sp
+           LEFT JOIN users u ON u.id = sp.user_id WHERE sp.id = $1`, [leave.staff_id]
+        );
+        if (staff && staff.user_id) {
+          await createNotification(ctx.db, ctx, {
+            recipientUserIds: [staff.user_id], type: 'leave_decision',
+            title: `Leave ${decision}`, body: `Your leave request was ${decision}.`,
+            resourceType: 'leave_request', resourceId: leave.id
+          });
+        }
+        if (staff && staff.email) {
+          await sendTemplate(ctx.db, 'leaveDecision', {
+            to: staff.email,
+            organisationId: ctx.organisationId,
+            metadata: { leaveRequestId: leave.id, bulk: true },
+            data: {
+              staffName: staff.display_name,
+              status: decision,
+              leaveType: leave.leave_type,
+              dates: `${leave.starts_on} to ${leave.ends_on}`,
+              reviewer: ctx.user.display_name,
+              note: null
+            }
+          });
+        }
+        return { ok: true, metadata: { status: decision } };
+      }
+    });
+  }, { permission: 'leave.manage.daycare' });
 
   router.post('/leave/:id/review', async (ctx) => {
     const body = validate(ctx.body, {

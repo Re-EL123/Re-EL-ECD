@@ -61,7 +61,11 @@
         R.selectFilter(ctx, 'branchId', R.branchOptions(ctx), 'All branches') +
         '<label class="small muted">From</label><input class="input" type="date" value="' + R.attr(ctx.filters.from || '') + '" @change="setFilter(\'from\',$event.target.value)">' +
         '<label class="small muted">To</label><input class="input" type="date" value="' + R.attr(ctx.filters.to || '') + '" @change="setFilter(\'to\',$event.target.value)">') +
-        R.table({ rows: page.rows || [], columns: [
+        (canManage ? R.bulkBar([
+          { label: 'Mark reviewed', icon: 'check-circle', path: '/incidents/bulk', action: 'review' },
+          { label: 'Close', icon: 'archive', path: '/incidents/bulk', action: 'close', tone: 'danger' }
+        ], { hint: 'Incidents with open corrective actions cannot be closed.' }) : '') +
+        R.table({ rows: page.rows || [], selectable: canManage, columns: [
           { label: 'When', render: (i) => '<span class="cell-strong">' + R.dateTime(i.occurred_at) + '</span><span class="cell-sub">' + R.esc(i.branch_name || '') + '</span>' },
           { label: 'Incident', render: (i) => '<span class="cell-strong">' + R.esc(R.titleCase(i.incident_type)) + '</span><span class="cell-sub">' + R.esc(R.truncate(i.description, 70)) + '</span>' },
           { label: 'Severity', render: (i) => R.badge(i.severity) },

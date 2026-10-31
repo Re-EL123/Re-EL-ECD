@@ -4,6 +4,7 @@ const { validate } = require('../../../../packages/contracts/validate');
 const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
 const { parsePagination } = require('../utils/http');
+const bulk = require('../services/bulk-service');
 const { has } = require('./helpers');
 
 const PLAN_TRANSITIONS = {
@@ -217,6 +218,35 @@ function register(router) {
       action: `curriculum.lesson_plan_${body.status}`, resourceType: 'lesson_plan', resourceId: plan.id
     });
     return ctx.db.one('SELECT * FROM lesson_plans WHERE id = $1', [plan.id]);
+  }, { permission: 'curriculum.create.daycare' });
+
+  router.post('/curriculum/lesson-plans/bulk', async (ctx) => {
+    const body = bulk.parse(ctx.body, ['submit', 'approve', 'publish', 'cancel']);
+    const status = { submit: 'submitted', approve: 'approved', publish: 'published', cancel: 'cancelled' }[body.action];
+    if (status === 'published' && !has(ctx, 'curriculum.publish.daycare')) throw new AppError('FORBIDDEN');
+    return bulk.run(ctx, {
+      ids: body.ids,
+      action: body.action,
+      resourceType: 'lesson_plan',
+      auditAction: `curriculum.lesson_plan_${status}`,
+      handler: async (id) => {
+        const plan = await ctx.db.one(
+          'SELECT * FROM lesson_plans WHERE id = $1 AND organisation_id = $2', [id, ctx.organisationId]
+        );
+        if (!plan) return { ok: false, reason: 'not found' };
+        if (!(PLAN_TRANSITIONS[plan.status] || []).includes(status)) {
+          return { ok: false, reason: `cannot move from ${plan.status} to ${status}` };
+        }
+        await ctx.db.query(
+          `UPDATE lesson_plans SET status = $1,
+            approved_by = CASE WHEN $2 = 'approved' THEN $3 ELSE approved_by END,
+            published_at = CASE WHEN $2 = 'published' THEN now() ELSE published_at END,
+            updated_at = now() WHERE id = $4`,
+          [status, status, ctx.user.id, plan.id]
+        );
+        return { ok: true, metadata: { status } };
+      }
+    });
   }, { permission: 'curriculum.create.daycare' });
 
   router.get('/curriculum/activities', async (ctx) => {

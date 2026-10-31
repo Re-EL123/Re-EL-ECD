@@ -183,9 +183,15 @@
       return { rows: shifts.data, staff: staff.data || [], classrooms: classrooms.data || [] };
     },
     render(ctx, params, page) {
+      const canApprove = ctx.has('shifts.approve.daycare');
+      const canCancel = ctx.has('shifts.create.daycare');
+      const shiftActions = [];
+      if (canApprove) shiftActions.push({ label: 'Approve selected', icon: 'check-circle', path: '/shifts/bulk', action: 'approve' });
+      if (canCancel) shiftActions.push({ label: 'Cancel selected', icon: 'x', path: '/shifts/bulk', action: 'cancel', tone: 'danger' });
       return R.pageHead('Shift calendar', 'Plan cover, spot clashes before they happen and approve the week.',
         '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'shift\')">' + R.icon('calendar-plus') + ' Add shift</button>') +
-        R.table({ rows: page.rows || [], columns: [
+        (shiftActions.length ? R.bulkBar(shiftActions, { hint: 'Completed and cancelled shifts are left untouched.' }) : '') +
+        R.table({ rows: page.rows || [], selectable: shiftActions.length > 0, columns: [
           { label: 'Date', render: (s) => '<span class="cell-strong">' + R.date(s.shift_date) + '</span>' },
           { label: 'Staff', render: (s) => R.esc(s.staff_name || '—') + '<span class="cell-sub">' + R.esc(s.job_title || '') + '</span>' },
           { label: 'Hours', render: (s) => R.time(s.starts_at) + ' – ' + R.time(s.ends_at) + '<span class="cell-sub">' + R.number(s.break_minutes) + ' min break</span>' },
@@ -333,7 +339,11 @@
       const canReview = ctx.has('leave.approve.daycare');
       return R.pageHead('Leave', 'Requests, approvals and who is away when.',
         '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'leave\')">' + R.icon('plane') + ' Request leave</button>') +
-        R.table({ rows: page.rows || [], columns: [
+        (canReview ? R.bulkBar([
+          { label: 'Approve selected', icon: 'check-circle', path: '/leave/bulk', action: 'approve' },
+          { label: 'Reject selected', icon: 'x', path: '/leave/bulk', action: 'reject', tone: 'danger' }
+        ], { hint: 'Only requests still pending are reviewed. Staff are notified.' }) : '') +
+        R.table({ rows: page.rows || [], selectable: canReview, columns: [
           { label: 'Staff', render: (l) => '<span class="cell-strong">' + R.esc(l.staff_name) + '</span><span class="cell-sub">' + R.esc(l.job_title || '') + '</span>' },
           { label: 'Type', render: (l) => '<span class="badge badge-muted">' + R.esc(R.titleCase(l.leave_type)) + '</span>' },
           { label: 'Dates', render: (l) => R.date(l.starts_on) + ' – ' + R.date(l.ends_on) },

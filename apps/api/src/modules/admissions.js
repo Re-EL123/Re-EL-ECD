@@ -8,7 +8,11 @@ const { createNotification } = require('../services/notification-service');
 const { sendTemplate } = require('../services/email-service');
 const { parsePagination } = require('../utils/http');
 const branding = require('../services/branding-service');
+const bulk = require('../services/bulk-service');
 const { has } = require('./helpers');
+
+const ENQUIRY_BULK_STATUS = { contacted: 'contacted', close: 'closed', spam: 'spam', reopen: 'new' };
+const APPLICATION_BULK_STATUS = { approve: 'approved', waitlist: 'waitlisted', reject: 'rejected', review: 'under_review' };
 
 function register(router) {
   router.get('/public/daycares/:slug', async (ctx) => {
@@ -410,6 +414,73 @@ function register(router) {
     ctx.status = 201;
     return result.learner;
   }, { permission: 'admissions.enrol.daycare' });
+
+  router.post('/admissions/enquiries/bulk', async (ctx) => {
+    const body = bulk.parse(ctx.body, Object.keys(ENQUIRY_BULK_STATUS));
+    const status = ENQUIRY_BULK_STATUS[body.action];
+    return bulk.run(ctx, {
+      ids: body.ids,
+      action: body.action,
+      resourceType: 'admission_enquiry',
+      auditAction: 'admission.enquiry_updated',
+      handler: async (id) => {
+        const enquiry = await ctx.db.one(
+          'SELECT * FROM admission_enquiries WHERE id = $1 AND organisation_id = $2',
+          [id, ctx.organisationId]
+        );
+        if (!enquiry) return { ok: false, reason: 'not found' };
+        if (enquiry.status === status) return { ok: false, reason: 'already ' + status };
+        if (enquiry.status === 'converted' && body.action !== 'close') {
+          return { ok: false, reason: 'already converted' };
+        }
+        await ctx.db.query(
+          'UPDATE admission_enquiries SET status = $1, updated_at = now() WHERE id = $2',
+          [status, enquiry.id]
+        );
+        return { ok: true, branchId: enquiry.branch_id, metadata: { status } };
+      }
+    });
+  }, { permission: 'admissions.manage.daycare' });
+
+  router.post('/admissions/applications/bulk', async (ctx) => {
+    const body = bulk.parse(ctx.body, Object.keys(APPLICATION_BULK_STATUS));
+    const status = APPLICATION_BULK_STATUS[body.action];
+    return bulk.run(ctx, {
+      ids: body.ids,
+      action: body.action,
+      resourceType: 'admission_application',
+      auditAction: `admission.application_${status}`,
+      handler: async (id) => {
+        const application = await ctx.db.one(
+          'SELECT * FROM admission_applications WHERE id = $1 AND organisation_id = $2',
+          [id, ctx.organisationId]
+        );
+        if (!application) return { ok: false, reason: 'not found' };
+        if (application.status === 'enrolled') return { ok: false, reason: 'already enrolled' };
+        if (application.status === status) return { ok: false, reason: 'already ' + status };
+        await ctx.db.query(
+          `UPDATE admission_applications SET status = $1, reviewed_by = $2, reviewed_at = now()
+           WHERE id = $3`,
+          [status, ctx.user.id, application.id]
+        );
+        if (application.guardian_email) {
+          const recipient = await ctx.db.one(
+            'SELECT id FROM users WHERE email_normalized = $1',
+            [String(application.guardian_email).toLowerCase()]
+          );
+          if (recipient) {
+            await createNotification(ctx.db, ctx, {
+              recipientUserIds: [recipient.id], type: 'admission_decision',
+              title: `Application ${status}`,
+              body: `Your application for ${application.child_first_name} has been marked ${status}.`,
+              resourceType: 'admission_application', resourceId: application.id
+            });
+          }
+        }
+        return { ok: true, branchId: application.branch_id, metadata: { status } };
+      }
+    });
+  }, { permission: 'admissions.manage.daycare' });
 
   router.get('/admissions/overview', async (ctx) => {
     const counts = await ctx.db.one(

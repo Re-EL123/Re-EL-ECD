@@ -381,7 +381,12 @@
         statusFilter(ctx, 'status', EXPENSE_STATUSES, 'All statuses') +
         '<label class="small muted">From</label><input class="input" type="date" value="' + R.attr(ctx.filters.from || '') + '" @change="setFilter(\'from\',$event.target.value)">' +
         '<label class="small muted">To</label><input class="input" type="date" value="' + R.attr(ctx.filters.to || '') + '" @change="setFilter(\'to\',$event.target.value)">') +
-        R.table({ rows: page.rows || [], columns: [
+        (canReview ? R.bulkBar([
+          { label: 'Approve selected', icon: 'check-circle', path: '/expenses/bulk', action: 'approve' },
+          { label: 'Mark paid', icon: 'banknote', path: '/expenses/bulk', action: 'paid' },
+          { label: 'Reject selected', icon: 'x', path: '/expenses/bulk', action: 'reject', tone: 'danger' }
+        ], { hint: 'Paid and rejected expenses are left untouched.' }) : '') +
+        R.table({ rows: page.rows || [], selectable: canReview, columns: [
           { label: 'Date', render: (e) => R.date(e.expense_date) },
           { label: 'Description', render: (e) => '<span class="cell-strong">' + R.esc(e.description) + '</span><span class="cell-sub">' + R.esc(e.category_name || 'Uncategorised') + '</span>' },
           { label: 'Supplier', render: (e) => R.esc(e.supplier_name || '—') },
@@ -457,6 +462,7 @@
       const query = new URLSearchParams();
       if (ctx.filters.branchId) query.set('branchId', ctx.filters.branchId);
       if (ctx.filters.low === 'true') query.set('low', 'true');
+      if (ctx.filters.status) query.set('status', ctx.filters.status);
       const [items, branches] = await Promise.all([
         R.api('GET', '/inventory' + (query.toString() ? '?' + query : '')).then((p) => p.data).catch(() => []),
         ctx.has('organisation.read.daycare') ? R.api('GET', '/branches').then((p) => p.data).catch(() => []) : Promise.resolve([])
@@ -483,9 +489,14 @@
         R.statCard({ label: 'Branches', value: R.number(new Set(rows.map((r) => r.branch_id)).size), icon: 'building-2', tone: 'sky' }) +
         R.statCard({ label: 'Units on hand', value: R.number(rows.reduce((s, r) => s + Number(r.quantity_on_hand || 0), 0)), icon: 'boxes', tone: 'plum' }) +
         '</div>' +
-        R.filterBar(R.selectFilter(ctx, 'branchId', R.branchOptions(ctx), 'All branches')) +
+        R.filterBar(R.selectFilter(ctx, 'branchId', R.branchOptions(ctx), 'All branches') +
+          R.selectFilter(ctx, 'status', [{ value: 'archived', label: 'Archived' }], 'Active stock')) +
+        (ctx.has('inventory.manage.daycare') ? R.bulkBar([
+          { label: 'Archive selected', icon: 'archive', path: '/inventory/bulk', action: 'archive', tone: 'danger' },
+          { label: 'Restore selected', icon: 'rotate-ccw', path: '/inventory/bulk', action: 'restore' }
+        ], { hint: 'Archived items keep their history but drop off the stock register.' }) : '') +
         '<div class="split"><div class="stack">' +
-        R.card('Stock register', R.table({ rows, columns: [
+        R.card('Stock register', R.table({ rows, selectable: ctx.has('inventory.manage.daycare'), columns: [
           { label: 'Item', render: (i) => '<button class="link-strong" @click="setFilter(\'itemId\',\'' + R.attr(i.id) + '\')">' + R.esc(i.name) + '</button><span class="cell-sub">' + R.esc(R.titleCase(i.category)) + '</span>' },
           { label: 'Branch', render: (i) => R.esc(i.branch_name || '—') },
           { label: 'On hand', align: 'right', render: (i) => R.number(i.quantity_on_hand) + ' <span class="muted small">' + R.esc(i.unit) + '</span>' },
