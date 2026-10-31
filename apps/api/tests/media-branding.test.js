@@ -65,6 +65,18 @@ test('media assets are scoped to the organisation that owns them', async () => {
   assert.equal(own.status, 200);
   assert.ok(own.data.some((asset) => asset.id === inserted.id));
 
+  // An upload that never completed has no object behind it, so the library
+  // must not offer it as a file.
+  const pending = await db.one(
+    `INSERT INTO media_assets (organisation_id, scope, original_filename, storage_key, url, mime_type, size_bytes, kind, status)
+     VALUES ($1,'branding','half-uploaded.png',$2,'https://media.example.com/pending.png','image/png',2048,'image','pending')
+     RETURNING *`,
+    [organisationId, `org/${organisationId}/branding/pending-${Date.now()}.png`]
+  );
+  const afterPending = await client.get('/media/assets', { organisationId });
+  assert.equal(afterPending.data.some((asset) => asset.id === pending.id), false);
+  await db.query('DELETE FROM media_assets WHERE id = $1', [pending.id]);
+
   const other = await sunrise.get('/media/assets', { organisationId: sunriseOrganisationId });
   assert.equal(other.status, 200);
   assert.equal(other.data.some((asset) => asset.id === inserted.id), false);

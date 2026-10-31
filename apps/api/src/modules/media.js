@@ -30,7 +30,7 @@ function register(router) {
     const ownerId = ctx.query.ownerId || null;
     const rows = await ctx.db.many(
       `SELECT * FROM media_assets
-       WHERE organisation_id = $1 AND status <> 'deleted'
+       WHERE organisation_id = $1 AND status = 'ready'
          AND ($2::text IS NULL OR scope = $2)
          AND ($3::text IS NULL OR owner_type = $3)
          AND ($4::uuid IS NULL OR owner_id = $4::uuid)

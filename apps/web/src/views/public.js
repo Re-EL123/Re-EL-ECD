@@ -24,7 +24,9 @@
     render(ctx) {
       const brand = (ctx && ctx.platformBrand) || null;
       const organisation = (brand && brand.organisation) || {};
-      const name = organisation.name || 'Re-EL ECD';
+      // The product is always Re-EL ECD; the platform organisation record is an
+      // internal tenant and may carry a different administrative name.
+      const name = R.PLATFORM_BRAND.name;
       const logo = organisation.logoUrl || R.PLATFORM_LOGO;
       const style = R.themeStyle((brand && brand.branding) || R.PLATFORM_BRAND.theme);
       const logoMark = '<span class="auth-brand-logo"><img src="' + R.attr(logo) + '" alt="' + R.attr(name) + '"></span>';
