@@ -336,7 +336,7 @@
       return { rows: leave.data, staff: staff.data || [] };
     },
     render(ctx, params, page) {
-      const canReview = ctx.has('leave.approve.daycare');
+      const canReview = ctx.has('leave.manage.daycare');
       return R.pageHead('Leave', 'Requests, approvals and who is away when.',
         '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'leave\')">' + R.icon('plane') + ' Request leave</button>') +
         (canReview ? R.bulkBar([
