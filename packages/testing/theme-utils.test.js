@@ -54,3 +54,18 @@ test('themeVars cascades brand colours onto the design tokens', () => {
   assert.equal(vars['--reel-sky-500'], '#9C528B');
   assert.equal(vars['--brand-on-primary'], Reel.onColour('#1F6F8B'));
 });
+
+test('dark mode overrides the surface and text tokens it set in light mode', () => {
+  const light = Reel.themeVars({ primary: '#1F6F8B' }, 'light');
+  const dark = Reel.themeVars({ primary: '#1F6F8B' }, 'dark');
+  // applyTheme writes these as inline custom properties. If dark omits them,
+  // the light values win over the [data-theme="dark"] stylesheet and the
+  // theme toggle looks broken.
+  assert.equal(dark['--surface-0'], '#121A14');
+  assert.equal(dark['--surface-1'], '#18221A');
+  assert.equal(dark['--text'], '#D3E2D5');
+  assert.notEqual(dark['--surface-0'], light['--surface-0']);
+  assert.notEqual(dark['--text'], light['--text']);
+  assert.equal(light['--text-muted'], '#6A776C');
+  assert.equal(light['--text-inverse'], '#F7FBF7');
+});

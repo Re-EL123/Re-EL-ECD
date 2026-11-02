@@ -453,6 +453,22 @@
         vars['--text-strong'] = shade(tokens.text, -0.08);
         vars['--text'] = tokens.text;
       }
+      // These two are also written inline in dark mode, so light mode must
+      // restore them or the first toggle back leaves muted text too pale.
+      vars['--text-muted'] = '#6A776C';
+      vars['--text-inverse'] = '#F7FBF7';
+    } else {
+      // Dark mode needs its own surface and text tokens. Without them the
+      // inline light values set on :root win over the [data-theme="dark"]
+      // stylesheet rules, so toggling the theme appears to do nothing.
+      vars['--surface-0'] = '#121A14';
+      vars['--surface-1'] = '#18221A';
+      vars['--surface-2'] = '#1F2C21';
+      vars['--surface-3'] = '#28382A';
+      vars['--text-strong'] = '#EEF7EF';
+      vars['--text'] = '#D3E2D5';
+      vars['--text-muted'] = '#9AAE9D';
+      vars['--text-inverse'] = '#121A14';
     }
     return vars;
   }

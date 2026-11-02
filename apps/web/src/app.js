@@ -196,6 +196,11 @@
       tab: null,
       filters: {},
       sidebarOpen: false,
+      sidebarCollapsed: true,
+      navFlyout: null,
+      notifOpen: false,
+      notifications: [],
+      notifLoading: false,
       theme: 'light',
       commandOpen: false,
       commandQuery: '',
@@ -280,6 +285,7 @@
 
       async boot() {
         try { this.theme = localStorage.getItem('reel.theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch { this.theme = 'light'; }
+        try { this.sidebarCollapsed = localStorage.getItem('reel.sidebar') !== 'expanded'; } catch { this.sidebarCollapsed = true; }
         document.documentElement.dataset.theme = this.theme;
         this.installIconObserver();
         window.addEventListener('hashchange', () => this.navigate());
@@ -707,6 +713,84 @@
 
       initials(name) { return Reel.initials(name); },
 
+      toggleSidebar() {
+        if (window.innerWidth < 960) {
+          this.sidebarOpen = !this.sidebarOpen;
+          return;
+        }
+        this.sidebarCollapsed = !this.sidebarCollapsed;
+        this.navFlyout = null;
+        try { localStorage.setItem('reel.sidebar', this.sidebarCollapsed ? 'collapsed' : 'expanded'); } catch { /* ignore */ }
+      },
+
+      showNavFlyout(event, group) {
+        if (!this.sidebarCollapsed || window.innerWidth < 960) return;
+        this.cancelHideFlyout();
+        const rect = event.currentTarget.getBoundingClientRect();
+        this.navFlyout = {
+          label: group.label,
+          items: group.items,
+          top: Math.max(10, Math.min(rect.top, window.innerHeight - 360)),
+          left: Math.max(rect.right + 14, 88)
+        };
+      },
+
+      cancelHideFlyout() {
+        if (this._flyoutTimer) {
+          clearTimeout(this._flyoutTimer);
+          this._flyoutTimer = null;
+        }
+      },
+
+      scheduleHideFlyout() {
+        this.cancelHideFlyout();
+        this._flyoutTimer = setTimeout(() => {
+          this.navFlyout = null;
+          this._flyoutTimer = null;
+        }, 180);
+      },
+
+      async toggleNotifications() {
+        this.notifOpen = !this.notifOpen;
+        if (this.notifOpen) await this.loadNotifications();
+      },
+
+      async loadNotifications() {
+        this.notifLoading = true;
+        try {
+          const payload = await Reel.api('GET', '/notifications?pageSize=8');
+          this.notifications = (payload.data || []).map((item) => Object.assign({}, item, {
+            when: Reel.relative(item.created_at)
+          }));
+          if (payload.meta && typeof payload.meta.unread === 'number') this.unread = payload.meta.unread;
+        } catch {
+          this.notifications = [];
+        } finally {
+          this.notifLoading = false;
+        }
+      },
+
+      async markNotificationRead(item) {
+        if (!item || item.read_at) return;
+        try {
+          await Reel.api('POST', '/notifications/' + encodeURIComponent(item.id) + '/read', {});
+          item.read_at = new Date().toISOString();
+          this.unread = Math.max(0, this.unread - 1);
+        } catch { /* the panel still closes on escape */ }
+      },
+
+      async markAllNotificationsRead() {
+        if (!this.unread) return;
+        try {
+          await Reel.api('POST', '/notifications/read-all', {});
+          const now = new Date().toISOString();
+          this.notifications = this.notifications.map((item) => Object.assign({}, item, {
+            read_at: item.read_at || now
+          }));
+          this.unread = 0;
+        } catch { /* leave the badge untouched on failure */ }
+      },
+
       toggleTheme() {
         this.theme = this.theme === 'dark' ? 'light' : 'dark';
         document.documentElement.dataset.theme = this.theme;
@@ -750,6 +834,8 @@
       closeOverlays() {
         this.commandOpen = false;
         this.quickOpen = false;
+        this.notifOpen = false;
+        this.navFlyout = null;
         if (this.modal && !this.modal.saving) this.closeModal();
       },
 
