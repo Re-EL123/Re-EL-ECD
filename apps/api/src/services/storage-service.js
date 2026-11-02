@@ -230,6 +230,162 @@ async function deleteObject(key) {
   }
 }
 
+/**
+ * Explain an S3/R2 status code in the words an operator needs. R2 answers an
+ * authentication failure with 401 and omits CORS headers, which is why a bad
+ * key surfaces in the browser as "blocked by CORS policy" rather than a login
+ * error. Naming the real cause here stops that wild goose chase.
+ */
+function diagnose(status) {
+  if (status === 401) {
+    return {
+      code: 'credentials',
+      message: 'Cloudflare rejected the access key. R2_ACCESS_KEY_ID must be the R2 API token key, not the account ID.',
+      fix: 'Create an R2 API token with Object Read & Write on the bucket, then update R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY in Vercel and redeploy.'
+    };
+  }
+  if (status === 403) {
+    return {
+      code: 'permissions',
+      message: 'The access key is valid but the token is not allowed to write this bucket.',
+      fix: 'Give the R2 API token Object Read & Write permission and confirm it is scoped to the bucket in R2_BUCKET.'
+    };
+  }
+  if (status === 404) {
+    return {
+      code: 'bucket',
+      message: 'The bucket was not found. R2_BUCKET does not match a bucket in this account.',
+      fix: 'Check the bucket name in Cloudflare R2 and update R2_BUCKET.'
+    };
+  }
+  if (status === 400) {
+    return {
+      code: 'request',
+      message: 'Cloudflare rejected the signed request. This is usually a key from a different account than R2_ACCOUNT_ID.',
+      fix: 'Confirm the token, the account ID and the endpoint all belong to the same Cloudflare account.'
+    };
+  }
+  return {
+    code: 'unknown',
+    message: `Cloudflare returned ${status}.`,
+    fix: 'Check the R2 token, bucket name and account ID, then run the check again.'
+  };
+}
+
+/**
+ * Round-trip a tiny object through R2 from the server.
+ *
+ * This deliberately does not use the browser, so a failure here is always
+ * credentials, bucket or public-access configuration — never CORS. When the
+ * upload works but the public read does not, the bucket has no public URL
+ * (or R2_PUBLIC_BASE_URL points at a different bucket).
+ */
+async function check() {
+  const cfg = config();
+  const steps = [];
+  const configured = isConfigured();
+  steps.push({
+    step: 'configuration',
+    label: 'Configuration',
+    ok: configured,
+    detail: configured
+      ? `Bucket ${cfg.bucket} on ${cfg.host}`
+      : 'R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET and R2_PUBLIC_BASE_URL must all be set.'
+  });
+  if (!configured) {
+    return { ok: false, steps, diagnosis: { code: 'unconfigured', message: 'Object storage is not configured.', fix: 'Set the R2 variables in Vercel and redeploy.' } };
+  }
+
+  const accountId = process.env.R2_ACCOUNT_ID || '';
+  if (accountId && cfg.accessKeyId === accountId) {
+    steps.push({
+      step: 'credentials',
+      label: 'Access key',
+      ok: false,
+      detail: 'R2_ACCESS_KEY_ID is the Cloudflare account ID. R2 access keys start with a different value.'
+    });
+    return {
+      ok: false,
+      steps,
+      diagnosis: {
+        code: 'credentials',
+        message: 'R2_ACCESS_KEY_ID is set to the account ID instead of an R2 API token key.',
+        fix: 'Create an R2 API token with Object Read & Write, then set R2_ACCESS_KEY_ID to the token key and R2_SECRET_ACCESS_KEY to its secret.'
+      }
+    };
+  }
+
+  const key = `diagnostics/${Date.now().toString(36)}-${crypto.randomBytes(6).toString('hex')}.txt`;
+  const body = 're-el-ecd storage check ' + new Date().toISOString();
+  const contentType = 'text/plain';
+  const timeout = Number(process.env.R2_TIMEOUT_MS || 10000);
+
+  try {
+    const signed = presignPut(key, { contentType });
+    const response = await fetch(signed.url, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType },
+      body,
+      signal: AbortSignal.timeout(timeout)
+    });
+    const detail = response.ok ? 'Test object written.' : (await response.text()).slice(0, 300);
+    steps.push({ step: 'upload', label: 'Write to bucket', ok: response.ok, status: response.status, detail });
+    if (!response.ok) {
+      return { ok: false, steps, key, diagnosis: diagnose(response.status) };
+    }
+  } catch (error) {
+    steps.push({ step: 'upload', label: 'Write to bucket', ok: false, detail: error.message });
+    return {
+      ok: false,
+      steps,
+      key,
+      diagnosis: { code: 'network', message: 'The API could not reach Cloudflare R2.', fix: 'Check R2_ENDPOINT and outbound network access, then try again.' }
+    };
+  }
+
+  const url = publicUrl(key);
+  let publicOk = false;
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(timeout) });
+    const text = response.ok ? await response.text() : '';
+    publicOk = response.ok && text === body;
+    steps.push({
+      step: 'public-read',
+      label: 'Read the public URL',
+      ok: publicOk,
+      status: response.status,
+      detail: publicOk ? 'The public URL serves the uploaded object.' : `Public URL returned ${response.status}.`
+    });
+  } catch (error) {
+    steps.push({ step: 'public-read', label: 'Read the public URL', ok: false, detail: error.message });
+  }
+
+  const deleted = await deleteObject(key);
+  steps.push({
+    step: 'delete',
+    label: 'Remove the test object',
+    ok: deleted,
+    detail: deleted ? 'Cleaned up.' : 'The test object could not be removed.'
+  });
+
+  const ok = steps.every((step) => step.ok);
+  return {
+    ok,
+    steps,
+    key,
+    publicUrl: url,
+    diagnosis: ok ? null : {
+      code: publicOk ? 'delete' : 'public-access',
+      message: publicOk
+        ? 'Uploads and public reads work, but the test object could not be deleted.'
+        : 'Uploads work but the public URL does not. The bucket needs public access enabled, or R2_PUBLIC_BASE_URL points at another bucket.',
+      fix: publicOk
+        ? 'Give the token Object Read & Write so it can delete objects too.'
+        : 'Enable the R2 public bucket URL (or a custom domain) and set R2_PUBLIC_BASE_URL to it.'
+    }
+  };
+}
+
 function safeSegment(value, fallback = 'file') {
   const cleaned = String(value || '')
     .toLowerCase()
@@ -285,6 +441,7 @@ module.exports = {
   presignPut,
   presignGet,
   publicUrl,
+  check,
   deleteObject,
   buildKey,
   describeUpload,

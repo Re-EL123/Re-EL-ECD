@@ -454,14 +454,19 @@
   };
 
   V.platformSettings = {
-    async load() {
+    async load(ctx) {
       const [features, config] = await Promise.all([
         R.api('GET', '/platform/features'),
         R.api('GET', '/platform/settings')
       ]);
       const payload = config.data || {};
+      let health = null;
+      if (ctx.has('platform.health.read')) {
+        health = await R.api('GET', '/platform/health').then((result) => result.data).catch(() => null);
+      }
       return {
         features: features.data,
+        health,
         org: Object.assign({}, payload.organisation || {}, { settings: payload.settings || {} }),
         theme: payload.theme || R.PLATFORM_BRAND.theme
       };
@@ -471,6 +476,7 @@
       const theme = page.theme || R.PLATFORM_BRAND.theme;
       const logo = org.logo_url || R.PLATFORM_LOGO;
       const canManage = ctx.has('platform.settings.manage');
+      const storage = (page.health && page.health.storage) || {};
       const swatch = (label, value) => '<div style="text-align:center"><span class="swatch" style="display:inline-block;background:' + R.attr(value) + '"></span><div class="muted small mono">' + R.esc(value) + '</div><div class="muted small">' + R.esc(label) + '</div></div>';
       return R.pageHead('Platform configuration', 'The Re-EL ECD brand, the platform organisation profile and global switches.',
         (canManage ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'platformBranding\')">' + R.icon('palette') + ' Edit brand colours</button>' : '') +
@@ -504,6 +510,24 @@
           { label: '', align: 'right', render: (f) => '<button class="btn btn-sm btn-secondary" @click="act(\'PATCH\',\'/platform/features/' + R.attr(f.flag_key) + '\',{enabled:' + (!f.enabled) + '},{successMessage:\'Feature updated\'})">Toggle</button>' }
         ] })) +
         '</div><div class="stack">' +
+        R.card('Media storage',
+          '<div class="kpi-list">' +
+          '<div class="kpi-row"><span class="kpi-label">Provider</span><span class="kpi-value">Cloudflare R2</span></div>' +
+          '<div class="kpi-row"><span class="kpi-label">Configured</span><span class="kpi-value">' + R.badge(storage.configured ? 'enabled' : 'disabled') + '</span></div>' +
+          '<div class="kpi-row"><span class="kpi-label">Bucket</span><span class="kpi-value mono small">' + R.esc(storage.bucket || 'not set') + '</span></div>' +
+          '<div class="kpi-row"><span class="kpi-label">Public URL</span><span class="kpi-value">' + R.badge(storage.publicBase ? 'enabled' : 'disabled') + '</span></div>' +
+          '</div>' +
+          (storage.accessKeyLooksLikeAccountId ? '<div class="alert alert-danger" style="margin-top:12px"><i data-lucide="alert-triangle"></i><span>R2_ACCESS_KEY_ID is set to the account ID. Create an R2 API token and use its key instead.</span></div>' : '') +
+          '<p class="muted small" style="margin-top:10px">Logo, photo and video uploads go straight from the browser to R2. This check runs on the server, so it separates credentials from CORS.</p>' +
+          (canManage ? '<div class="btn-group"><button class="btn btn-secondary btn-sm" @click="checkStorage()" :disabled="storageChecking"><span class="spinner" x-show="storageChecking" style="width:14px;height:14px"></span> ' + R.icon('plug-zap') + ' Test storage</button></div>' : '') +
+          '<div x-show="storageCheck" x-cloak style="margin-top:12px">' +
+          '<template x-for="step in (storageCheck && storageCheck.steps) || []" :key="step.step"><div class="storage-check-row">' +
+          '<span class="storage-check-dot" :class="step.ok ? \'is-ok\' : \'is-bad\'"></span>' +
+          '<div style="flex:1;min-width:0"><div class="strong small" x-text="step.label"></div><div class="muted small" x-text="step.detail"></div></div>' +
+          '<span class="mono small muted" x-text="step.status || \'\'"></span></div></template>' +
+          '<div class="alert alert-danger" x-show="storageCheck && storageCheck.diagnosis" style="margin-top:8px"><i data-lucide="alert-circle"></i><span><strong x-text="storageCheck && storageCheck.diagnosis ? storageCheck.diagnosis.message : \'\'"></strong><br><span x-text="storageCheck && storageCheck.diagnosis ? storageCheck.diagnosis.fix : \'\'"></span></span></div>' +
+          '<div class="alert alert-success" x-show="storageCheck && storageCheck.ok" style="margin-top:8px"><i data-lucide="check-circle"></i><span>Uploads, public reads and deletes all work.</span></div>' +
+          '</div>') +
         R.card('Environment', '<div class="kpi-list">' +
           '<div class="kpi-row"><span class="kpi-label">Public website</span><span class="kpi-value">' + R.badge((org.settings || {}).publicWebsite === false ? 'disabled' : 'enabled') + '</span></div>' +
           '<div class="kpi-row"><span class="kpi-label">Data retention</span><span class="kpi-value">' + R.esc(((org.settings || {}).dataRetention || {}).years || 7) + ' years</span></div>' +

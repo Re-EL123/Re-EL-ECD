@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **293 routes** across 17 modules.
+Generated from the router: **294 routes** across 17 modules.
 
 ## Access
 
@@ -415,6 +415,7 @@ Generated from the router: **293 routes** across 17 modules.
 | PATCH | `/platform/plans/:id` | Platform only · platform.subscriptions.manage |
 | GET | `/platform/settings` | Platform only · platform.organisations.read |
 | PATCH | `/platform/settings` | Platform only · platform.settings.manage |
+| POST | `/platform/storage/check` | Platform only · platform.settings.manage |
 | GET | `/platform/subscriptions` | Platform only · platform.subscriptions.read |
 | GET | `/platform/support-cases` | Platform only · platform.support.manage |
 | POST | `/platform/support-cases` | Platform only · platform.support.manage |

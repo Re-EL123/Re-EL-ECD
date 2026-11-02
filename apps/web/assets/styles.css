@@ -865,3 +865,10 @@ table.table { width: 100%; border-collapse: collapse; font-size: 0.86rem; min-wi
   .site-cta-inner { flex-direction: column; align-items: flex-start; }
   .site-hero-media, .site-split-media { min-height: 260px; }
 }
+
+/* Storage check results */
+.storage-check-row { display: flex; align-items: flex-start; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border-subtle); }
+.storage-check-row:last-of-type { border-bottom: 0; }
+.storage-check-dot { width: 10px; height: 10px; flex: 0 0 10px; margin-top: 5px; border-radius: 50%; background: var(--border-strong); }
+.storage-check-dot.is-ok { background: var(--reel-green-600); box-shadow: 0 0 0 3px var(--reel-green-100); }
+.storage-check-dot.is-bad { background: var(--reel-clay-600, #b4451f); box-shadow: 0 0 0 3px var(--reel-clay-100, #fbe8e0); }

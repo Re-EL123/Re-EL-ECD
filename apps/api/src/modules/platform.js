@@ -386,11 +386,28 @@ function register(router) {
         provider: 'cloudflare-r2',
         configured: storage.isConfigured(),
         bucket: process.env.R2_BUCKET || null,
-        publicBase: Boolean(process.env.R2_PUBLIC_BASE_URL)
+        publicBase: Boolean(process.env.R2_PUBLIC_BASE_URL),
+        accessKeyLooksLikeAccountId: Boolean(process.env.R2_ACCOUNT_ID)
+          && process.env.R2_ACCESS_KEY_ID === process.env.R2_ACCOUNT_ID
       },
       checkedAt: new Date().toISOString()
     };
   }, { platformOnly: true, permission: 'platform.health.read' });
+
+  router.post('/platform/storage/check', async (ctx) => {
+    const result = await storage.check();
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.storage_checked',
+      resourceType: 'platform',
+      resourceId: ctx.organisationId,
+      metadata: {
+        ok: result.ok,
+        diagnosis: result.diagnosis ? result.diagnosis.code : null,
+        steps: result.steps.map((step) => ({ step: step.step, ok: step.ok, status: step.status || null }))
+      }
+    });
+    return result;
+  }, { platformOnly: true, permission: 'platform.settings.manage' });
 
   router.get('/platform/subscriptions', async (ctx) => {
     const plans = await ctx.db.many(

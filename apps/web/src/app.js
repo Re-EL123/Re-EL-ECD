@@ -217,6 +217,8 @@
       siteTab: 'home',
       siteMenuOpen: false,
       siteBusy: null,
+      storageCheck: null,
+      storageChecking: false,
       siteSaving: false,
       siteError: null,
       siteSavedAt: null,
@@ -355,6 +357,28 @@
           await this.navigate(true);
         } catch (error) {
           this.toast(error.message || 'The theme could not be applied.', 'error');
+        }
+      },
+
+      /**
+       * Run the server-side R2 round trip. This is the honest answer to "why
+       * does my logo upload fail?" — a 401 here is credentials, not CORS.
+       */
+      async checkStorage() {
+        this.storageChecking = true;
+        this.storageCheck = null;
+        try {
+          const payload = await Reel.api('POST', '/platform/storage/check', {});
+          this.storageCheck = payload.data;
+          const diagnosis = payload.data && payload.data.diagnosis;
+          this.toast(payload.data && payload.data.ok
+            ? 'Object storage is working end to end.'
+            : (diagnosis ? diagnosis.message : 'The storage check failed.'),
+          payload.data && payload.data.ok ? 'success' : 'error');
+        } catch (error) {
+          this.toast(error.message || 'The storage check could not run.', 'error');
+        } finally {
+          this.storageChecking = false;
         }
       },
 
