@@ -66,112 +66,482 @@
     }
   };
 
+  const SITE_PAGES = [
+    { key: 'home', label: 'Home', path: '' },
+    { key: 'about', label: 'About', path: 'about' },
+    { key: 'programmes', label: 'Programmes', path: 'programmes' },
+    { key: 'admissions', label: 'Admissions', path: 'admissions' },
+    { key: 'gallery', label: 'Gallery', path: 'gallery' },
+    { key: 'contact', label: 'Contact', path: 'contact' }
+  ];
+
+  function sitePage(key) {
+    return SITE_PAGES.find((page) => page.key === key) || null;
+  }
+
+  function siteHref(slug, key) {
+    const page = sitePage(key);
+    return '#/site/' + encodeURIComponent(slug) + (page && page.path ? '/' + page.path : '');
+  }
+
+  /** Only absolute http(s) URLs and same-site paths reach an attribute. */
+  function safeImageUrl(value) {
+    const text = String(value || '').trim();
+    if (!text) return '';
+    if (/^https?:\/\//i.test(text)) return text;
+    if (/^\/(?!\/)/.test(text)) return text;
+    if (/^assets\//i.test(text)) return text;
+    return '';
+  }
+
+  function imgTag(url, alt, className) {
+    const source = safeImageUrl(url);
+    if (!source) return '';
+    return '<img class="' + R.attr(className || 'site-image') + '" src="' + R.attr(source) + '" alt="' +
+      R.attr(alt || '') + '" loading="lazy" decoding="async">';
+  }
+
+  function socialLinks(social) {
+    const labels = { facebook: 'Facebook', instagram: 'Instagram', whatsapp: 'WhatsApp', youtube: 'YouTube', tiktok: 'TikTok', x: 'X' };
+    const links = Object.keys(labels).filter((key) => safeImageUrl(social && social[key]))
+      .map((key) => '<a class="site-social" href="' + R.attr(social[key]) + '" target="_blank" rel="noopener">' +
+        R.esc(labels[key]) + '</a>');
+    return links.length ? '<div class="site-socials">' + links.join('') + '</div>' : '';
+  }
+
+  function siteNav(slug, current, org) {
+    const links = SITE_PAGES.map((page) => '<a class="' + (page.key === current ? 'active' : '') + '" href="' +
+      R.attr(siteHref(slug, page.key)) + '">' + R.esc(page.label) + '</a>').join('');
+    return '<nav class="public-nav site-nav">' +
+      '<a class="site-brand" href="' + R.attr(siteHref(slug, 'home')) + '">' + logoMark(org, 42) +
+      '<span><span class="brand-name">' + R.esc(org.name || 'Early learning centre') + '</span>' +
+      '<span class="brand-sub">Early learning centre</span></span></a>' +
+      '<button type="button" class="site-nav-toggle" aria-label="Open menu" @click="siteMenuOpen = !siteMenuOpen">' + R.icon('menu') + '</button>' +
+      '<div class="links" :class="siteMenuOpen ? \'open\' : \'\'">' + links +
+      '<a class="btn btn-primary btn-sm" href="#/site/' + R.attr(slug) + '/apply">Enquire</a>' +
+      '<a class="muted site-staff-link" href="#/login">Staff</a></div>' +
+      '</nav>';
+  }
+
+  function siteFooter(slug, org, content) {
+    const contact = (content && content.contact) || {};
+    const social = (content && content.social) || {};
+    const links = SITE_PAGES.map((page) => '<a href="' + R.attr(siteHref(slug, page.key)) + '">' +
+      R.esc(page.label) + '</a>').join('');
+    return '<footer class="public-footer site-footer">' +
+      '<div class="site-wrap site-footer-grid">' +
+      '<div class="site-footer-brand">' + logoMark(org, 46) +
+      '<div><div class="strong">' + R.esc(org.name || 'Early learning centre') + '</div>' +
+      '<p class="muted small">' + R.esc((content && content.hero && content.hero.subheadline) || 'Play-based early learning, caring educators and a community where every child belongs.') + '</p>' +
+      socialLinks(social) + '</div></div>' +
+      '<div><div class="site-footer-title">Explore</div><div class="site-footer-links">' + links + '</div></div>' +
+      '<div><div class="site-footer-title">Contact</div><div class="site-footer-links">' +
+      (contact.address ? '<span>' + R.esc(contact.address) + '</span>' : '') +
+      (contact.phone ? '<a href="tel:' + R.attr(String(contact.phone).replace(/[^\d+]/g, '')) + '">' + R.esc(contact.phone) + '</a>' : '') +
+      (contact.email ? '<a href="mailto:' + R.attr(contact.email) + '">' + R.esc(contact.email) + '</a>' : '') +
+      (contact.hours ? '<span>' + R.esc(contact.hours) + '</span>' : '') +
+      '</div></div></div>' +
+      '<div class="site-wrap site-footer-base"><span>© ' + new Date().getFullYear() + ' ' + R.esc(org.name || '') + '. All rights reserved.</span>' +
+      '<span class="spacer"></span><a href="#/site/' + R.attr(slug) + '/apply">Enquire about a place</a>' +
+      '<a href="#/login">Staff sign in</a></div>' +
+      '</footer>';
+  }
+
+  function sectionHead(eyebrow, title, lede) {
+    return '<div class="site-section-head">' + (eyebrow ? '<div class="site-eyebrow">' + R.esc(eyebrow) + '</div>' : '') +
+      '<h2>' + R.esc(title || '') + '</h2>' + (lede ? '<p class="lede">' + R.esc(lede) + '</p>' : '') + '</div>';
+  }
+
+  function pageHero(title, lede, image, eyebrow) {
+    return '<header class="site-page-hero' + (safeImageUrl(image) ? ' has-image' : '') + '">' +
+      (safeImageUrl(image) ? imgTag(image, '', 'site-page-hero-image') : '') +
+      '<div class="site-wrap site-page-hero-inner">' +
+      (eyebrow ? '<div class="site-eyebrow">' + R.esc(eyebrow) + '</div>' : '') +
+      '<h1>' + R.esc(title || '') + '</h1>' + (lede ? '<p class="lede">' + R.esc(lede) + '</p>' : '') +
+      '</div></header>';
+  }
+
+  function programmeCards(programmes, limit) {
+    const rows = (programmes || []).slice(0, limit || 99);
+    if (!rows.length) {
+      return '<div class="site-empty">Programme details are being updated. Please contact the centre for the current offering.</div>';
+    }
+    return '<div class="site-card-grid">' + rows.map((programme) =>
+      '<article class="site-card site-programme-card">' +
+      (safeImageUrl(programme.image) ? '<div class="site-card-media">' + imgTag(programme.image, programme.name, 'site-card-image') + '</div>' : '') +
+      '<div class="site-card-body">' +
+      (programme.ages ? '<div class="site-pill">' + R.esc(programme.ages) + '</div>' : '') +
+      '<h3>' + R.esc(programme.name) + '</h3>' +
+      (programme.description ? '<p>' + R.esc(programme.description) + '</p>' : '') +
+      (programme.price ? '<div class="site-price">' + R.esc(programme.price) + '</div>' : '') +
+      '</div></article>').join('') + '</div>';
+  }
+
+  function galleryGrid(gallery, limit) {
+    const rows = (gallery || []).filter((item) => safeImageUrl(item.url)).slice(0, limit || 99);
+    if (!rows.length) return '';
+    return '<div class="site-gallery">' + rows.map((item) =>
+      '<figure class="site-gallery-item">' + imgTag(item.url, item.caption || 'Centre photo', 'site-gallery-image') +
+      (item.caption ? '<figcaption>' + R.esc(item.caption) + '</figcaption>' : '') + '</figure>').join('') + '</div>';
+  }
+
+  function valueCards(values) {
+    if (!values || !values.length) return '';
+    return '<div class="site-card-grid site-values">' + values.map((value) =>
+      '<article class="site-value"><div class="site-value-mark">' + R.icon('sparkles') + '</div>' +
+      '<h3>' + R.esc(value.title) + '</h3><p>' + R.esc(value.description) + '</p></article>').join('') + '</div>';
+  }
+
+  function contactCards(contact) {
+    const cards = [
+      { label: 'Email', value: contact.email, href: contact.email ? 'mailto:' + contact.email : '', icon: 'mail' },
+      { label: 'Phone', value: contact.phone, href: contact.phone ? 'tel:' + String(contact.phone).replace(/[^\d+]/g, '') : '', icon: 'phone' },
+      { label: 'Visit', value: contact.address, href: contact.mapUrl, icon: 'map-pin' },
+      { label: 'Hours', value: contact.hours, href: '', icon: 'clock' }
+    ].filter((card) => card.value);
+    if (!cards.length) return '';
+    return '<div class="site-contact-grid">' + cards.map((card) =>
+      '<div class="site-contact-card"><div class="site-contact-icon">' + R.icon(card.icon) + '</div>' +
+      '<div class="site-contact-label">' + R.esc(card.label) + '</div>' +
+      (card.href ? '<a href="' + R.attr(card.href) + '"' + (/^https?:/i.test(card.href) ? ' target="_blank" rel="noopener"' : '') + '>' + R.esc(card.value) + '</a>' : '<div class="strong">' + R.esc(card.value) + '</div>') +
+      '</div>').join('') + '</div>';
+  }
+
+  function branchCards(branches) {
+    if (!branches || !branches.length) return '';
+    return '<div class="site-card-grid">' + branches.map((branch) =>
+      '<article class="site-card">' +
+      (safeImageUrl(branch.image_url) ? '<div class="site-card-media">' + imgTag(branch.image_url, branch.name, 'site-card-image') + '</div>' : '') +
+      '<div class="site-card-body"><h3>' + R.esc(branch.name) + '</h3>' +
+      (branch.address ? '<p>' + R.esc(branch.address) + '</p>' : '') +
+      (branch.contact_phone ? '<p class="small"><a href="tel:' + R.attr(String(branch.contact_phone).replace(/[^\d+]/g, '')) + '">' + R.esc(branch.contact_phone) + '</a></p>' : '') +
+      (branch.contact_email ? '<p class="small"><a href="mailto:' + R.attr(branch.contact_email) + '">' + R.esc(branch.contact_email) + '</a></p>' : '') +
+      '</div></article>').join('') + '</div>';
+  }
+
+  function enquiryForm(slug, branches) {
+    return '<div class="card glass site-form-card">' +
+      '<h3>Send an enquiry</h3><p class="muted small">Share a few details and the admissions team will reply by email. There is no obligation.</p>' +
+      '<div class="alert alert-success" x-show="publicResult" style="margin-bottom:12px"><i data-lucide="check-circle"></i><span x-text="publicResult"></span></div>' +
+      '<div class="alert alert-danger" x-show="publicError" style="margin-bottom:12px"><i data-lucide="alert-circle"></i><span x-text="publicError"></span></div>' +
+      '<form @submit.prevent="submitPublicEnquiry($event, \'' + R.attr(slug) + '\')">' +
+      '<div class="form-grid">' +
+      '<div class="field"><label>Your name *</label><input class="input" name="guardianName" required x-model="publicEnquiry.guardianName"></div>' +
+      '<div class="field"><label>Email *</label><input class="input" type="email" name="guardianEmail" required x-model="publicEnquiry.guardianEmail"></div>' +
+      '<div class="field"><label>Phone</label><input class="input" type="tel" name="guardianPhone" x-model="publicEnquiry.guardianPhone"></div>' +
+      '<div class="field"><label>Child\'s name</label><input class="input" name="childName" x-model="publicEnquiry.childName"></div>' +
+      (branches && branches.length ? '<div class="field"><label>Preferred centre</label><select class="select" x-model="publicEnquiry.branchId"><option value="">Any centre</option>' +
+        branches.map((branch) => '<option value="' + R.attr(branch.id) + '">' + R.esc(branch.name) + '</option>').join('') + '</select></div>' : '') +
+      '<div class="field"><label>Child\'s date of birth</label><input class="input" type="date" name="childDateOfBirth" x-model="publicEnquiry.childDateOfBirth"></div>' +
+      '<div class="field"><label>Preferred start</label><input class="input" type="date" name="preferredStartDate" x-model="publicEnquiry.preferredStartDate"></div>' +
+      '<div class="field span-2"><label>Message</label><textarea class="textarea" name="message" x-model="publicEnquiry.message" placeholder="Tell us a little about your family and what you are looking for."></textarea></div>' +
+      '<div class="field span-2" style="position:absolute;left:-9999px" aria-hidden="true"><label>Website</label><input class="input" name="website" tabindex="-1" autocomplete="off" x-model="publicEnquiry.website"></div>' +
+      '</div><button class="btn btn-primary" type="submit">Send enquiry</button></form></div>';
+  }
+
+  function ctaBand(slug, admissions, org) {
+    const title = (admissions && admissions.cta) || 'Come and see us';
+    return '<section class="site-cta"><div class="site-wrap site-cta-inner">' +
+      '<div><div class="site-eyebrow">Admissions</div><h2>' + R.esc(title) + '</h2>' +
+      '<p>' + R.esc((admissions && admissions.intro) || ('Enquire about a place at ' + (org.name || 'our centre') + '. We will reply by email and arrange a visit.')) + '</p></div>' +
+      '<div class="site-actions"><a class="btn btn-primary" href="#/site/' + R.attr(slug) + '/apply">Enquire about a place</a>' +
+      '<a class="btn btn-secondary" href="' + R.attr(siteHref(slug, 'contact')) + '">Contact us</a></div>' +
+      '</div></section>';
+  }
+
   V.publicSite = {
     async load(ctx, params) {
       const slug = params.slug || 'little-sprouts';
       ctx.publicSlug = slug;
-      ctx.publicEnquiry = { guardianName: '', guardianEmail: '', guardianPhone: '', childName: '', childDateOfBirth: '', requestedAgeGroup: '', preferredStartDate: '', message: '', website: '' };
+      ctx.publicEnquiry = {
+        guardianName: '', guardianEmail: '', guardianPhone: '', childName: '', childDateOfBirth: '',
+        requestedAgeGroup: '', preferredStartDate: '', message: '', website: '', branchId: ''
+      };
       ctx.publicResult = null;
       ctx.publicError = null;
+      ctx.siteMenuOpen = false;
       const payload = await R.api('GET', '/public/daycares/' + encodeURIComponent(slug));
       return payload.data;
     },
 
     render(ctx, params, page) {
       const content = (page && page.content) || {};
-      const org = (page && page.organisation) || { name: R.titleCase(params.slug || 'Little Sprouts') };
+      const org = (page && page.organisation) || { name: R.titleCase(params.slug || 'Early learning centre') };
       const branches = (page && page.branches) || [];
+      const branding = (page && page.branding) || {};
+      const slug = params.slug || org.slug || 'little-sprouts';
+      const current = sitePage(params.page || 'home');
+      const theme = (page && page.theme) || 'nature';
+      const banner = page && page.published === false
+        ? '<div class="site-banner">This daycare website is being prepared. Staff can sign in to manage it.</div>'
+        : '';
+
+      const wrapper = (body) => '<div class="public site" data-site-theme="' + R.attr(theme) + '" ' + R.themeStyle(branding) + '>' +
+        banner + siteNav(slug, current ? current.key : 'home', org) + body + siteFooter(slug, org, content) + '</div>';
+
+      if (!current) {
+        return wrapper('<section class="site-section"><div class="site-wrap site-narrow site-empty-page">' +
+          '<div class="site-eyebrow">404</div><h1>We could not find that page</h1>' +
+          '<p class="lede">The page you followed may have moved. Use the menu above, or start again from the home page.</p>' +
+          '<a class="btn btn-primary" href="' + R.attr(siteHref(slug, 'home')) + '">Back to home</a></div></section>');
+      }
+
+      if (page && page.published === false) {
+        return wrapper('<section class="site-section"><div class="site-wrap site-narrow site-coming-soon">' +
+          logoMark(org, 72) + '<div class="site-eyebrow">Coming soon</div><h1>' + R.esc(org.name) + '</h1>' +
+          '<p class="lede">' + R.esc(content.hero.subheadline) + '</p>' +
+          contactCards(content.contact) +
+          '<div class="site-actions"><a class="btn btn-primary" href="#/site/' + R.attr(slug) + '/apply">Send an enquiry</a>' +
+          '<a class="btn btn-secondary" href="#/login">Staff sign in</a></div></div></section>');
+      }
+
+      const renderer = {
+        home: this.renderHome,
+        about: this.renderAbout,
+        programmes: this.renderProgrammes,
+        admissions: this.renderAdmissions,
+        gallery: this.renderGallery,
+        contact: this.renderContact
+      }[current.key];
+      return wrapper(renderer.call(this, slug, org, content, branches));
+    },
+
+    renderHome(slug, org, content, branches) {
       const hero = content.hero || {};
+      const about = content.about || {};
+      const admissions = content.admissions || {};
       const programmes = content.programmes || [];
+      const gallery = content.gallery || [];
+      const testimonials = content.testimonials || [];
+      const stats = hero.stats || [];
+      const heroImage = safeImageUrl(hero.image) || safeImageUrl(content.images && content.images.hero);
+
+      const heroBlock = '<header class="site-hero">' +
+        (content.announcement ? '<div class="site-wrap"><div class="site-notice">' + R.icon('megaphone') + '<span>' + R.esc(content.announcement) + '</span></div></div>' : '') +
+        '<div class="site-wrap site-hero-grid">' +
+        '<div class="site-hero-copy">' +
+        '<div class="site-eyebrow">' + R.icon('sprout') + ' ' + R.esc(hero.badge || 'Registered ECD centre') + '</div>' +
+        '<h1>' + R.esc(hero.headline) + '</h1>' +
+        '<p class="lede">' + R.esc(hero.subheadline) + '</p>' +
+        '<div class="site-actions">' +
+        '<a class="btn btn-primary" href="#/site/' + R.attr(slug) + '/apply">' + R.esc(hero.cta || 'Book a visit') + '</a>' +
+        '<a class="btn btn-secondary" href="' + R.attr(siteHref(slug, 'programmes')) + '">' + R.esc(hero.secondaryCta || 'Explore programmes') + '</a>' +
+        '</div>' +
+        (stats.length ? '<div class="site-stats">' + stats.map((stat) =>
+          '<div><div class="site-stat-value">' + R.esc(stat.value) + '</div><div class="site-stat-label">' + R.esc(stat.label) + '</div></div>').join('') + '</div>' : '') +
+        '</div>' +
+        '<div class="site-hero-media' + (heroImage ? '' : ' is-empty') + '">' +
+        (heroImage ? imgTag(heroImage, hero.headline || org.name, 'site-hero-image') : '<div class="site-hero-pattern"></div>') +
+        '<div class="site-hero-float"><div class="site-float-mark">' + R.icon('heart-handshake') + '</div>' +
+        '<div><div class="strong">Our promise</div><div class="muted small">Safety, belonging and joyful discovery every single day.</div></div></div>' +
+        '</div></div></header>';
+
+      const aboutBlock = '<section class="site-section"><div class="site-wrap site-split">' +
+        '<div class="site-split-media' + (safeImageUrl(about.image) ? '' : ' is-empty') + '">' +
+        (safeImageUrl(about.image) ? imgTag(about.image, about.heading || org.name, 'site-split-image') : '<div class="site-hero-pattern"></div>') +
+        '</div><div class="site-split-copy">' + sectionHead('About us', about.heading || ('About ' + org.name), '') +
+        '<p>' + R.esc(about.body) + '</p>' +
+        (about.approach ? '<div class="site-quote"><p>' + R.esc(about.approach) + '</p></div>' : '') +
+        '<a class="btn btn-secondary" href="' + R.attr(siteHref(slug, 'about')) + '">More about our centre</a>' +
+        '</div></div></section>';
+
+      const valuesBlock = about.values && about.values.length
+        ? '<section class="site-section site-section-tint"><div class="site-wrap">' +
+          sectionHead('Why families choose us', 'Care you can see, every day', 'The small things that make a centre feel like home.') +
+          valueCards(about.values) + '</div></section>'
+        : '';
+
+      const programmeBlock = '<section class="site-section"><div class="site-wrap">' +
+        sectionHead('Programmes', 'Rooms that grow with your child', 'Age-appropriate routines, caring educators and space to explore.') +
+        programmeCards(programmes, 3) +
+        '<div class="site-section-foot"><a class="btn btn-secondary" href="' + R.attr(siteHref(slug, 'programmes')) + '">See all programmes</a></div>' +
+        '</div></section>';
+
+      const galleryBlock = galleryGrid(gallery, 6)
+        ? '<section class="site-section site-section-tint"><div class="site-wrap">' +
+          sectionHead('Life at our centre', 'A little look around', 'Real rooms, real play and the everyday moments families tell us about.') +
+          galleryGrid(gallery, 6) +
+          '<div class="site-section-foot"><a class="btn btn-secondary" href="' + R.attr(siteHref(slug, 'gallery')) + '">Open the gallery</a></div>' +
+          '</div></section>'
+        : '';
+
+      const testimonialBlock = testimonials.length
+        ? '<section class="site-section"><div class="site-wrap">' +
+          sectionHead('From our families', 'What parents tell us', '') +
+          '<div class="site-card-grid site-testimonials">' + testimonials.map((item) =>
+            '<blockquote class="site-testimonial"><p>“' + R.esc(item.quote) + '”</p>' +
+            '<footer><span class="strong">' + R.esc(item.author) + '</span>' +
+            (item.role ? '<span class="muted small">' + R.esc(item.role) + '</span>' : '') + '</footer></blockquote>').join('') +
+          '</div></div></section>'
+        : '';
+
+      const contactBlock = '<section class="site-section site-section-tint"><div class="site-wrap site-split site-contact-split">' +
+        '<div>' + sectionHead('Contact', 'Come and see us', 'Book a visit or ask a question. We will reply by email.') +
+        contactCards(content.contact || {}) +
+        (branches.length ? '<div class="site-branch-list">' + branchCards(branches) + '</div>' : '') +
+        '</div><div>' + enquiryForm(slug, branches) + '</div>' +
+        '</div></section>';
+
+      return heroBlock + valuesBlock + aboutBlock + programmeBlock + galleryBlock + testimonialBlock + ctaBand(slug, admissions, org) + contactBlock;
+    },
+
+    renderAbout(slug, org, content) {
+      const about = content.about || {};
       const facilities = content.facilities || [];
       const routine = content.routine || [];
+      return pageHero(about.heading || ('About ' + org.name), 'A registered early learning centre built around play, relationships and the first six years.', about.image, 'About us') +
+        '<section class="site-section"><div class="site-wrap site-split">' +
+        '<div class="site-split-copy">' + sectionHead('Our story', 'A warm start for curious minds', '') +
+        '<p>' + R.esc(about.body) + '</p>' +
+        (about.mission ? '<p>' + R.esc(about.mission) + '</p>' : '') +
+        '</div><div class="site-split-media' + (safeImageUrl(about.image) ? '' : ' is-empty') + '">' +
+        (safeImageUrl(about.image) ? imgTag(about.image, about.heading || org.name, 'site-split-image') : '<div class="site-hero-pattern"></div>') +
+        '</div></div></section>' +
+        (about.approach ? '<section class="site-section site-section-tint"><div class="site-wrap site-narrow">' +
+          sectionHead('Our approach', 'Learning through play, held with care', '') +
+          '<p class="site-large-copy">' + R.esc(about.approach) + '</p></div></section>' : '') +
+        (about.values && about.values.length ? '<section class="site-section"><div class="site-wrap">' +
+          sectionHead('What we value', 'The things we never compromise on', '') + valueCards(about.values) +
+          '</div></section>' : '') +
+        (facilities.length ? '<section class="site-section site-section-tint"><div class="site-wrap">' +
+          sectionHead('Our spaces', 'Room to learn, play and rest', '') +
+          '<div class="site-facility-grid">' + facilities.map((facility) =>
+            '<div class="site-facility"><div class="site-facility-mark">' + R.icon('check') + '</div>' +
+            '<div><div class="strong">' + R.esc(facility.name) + '</div>' +
+            (facility.description ? '<p class="muted small">' + R.esc(facility.description) + '</p>' : '') + '</div></div>').join('') +
+          '</div></div></section>' : '') +
+        (routine.length ? '<section class="site-section"><div class="site-wrap site-narrow">' +
+          sectionHead('Our day', 'A rhythm children can trust', '') +
+          '<div class="site-routine">' + routine.map((row) =>
+            '<div class="site-routine-row"><span class="site-routine-time">' + R.esc(row.time) + '</span>' +
+            '<span>' + R.esc(row.activity) + '</span></div>').join('') + '</div></div></section>' : '') +
+        ctaBand(slug, content.admissions || {}, org);
+    },
+
+    renderProgrammes(slug, org, content) {
+      const programmes = content.programmes || [];
+      const fees = content.fees || {};
       const faqs = content.faqs || [];
-      const theme = (page && page.theme) || 'nature';
-      const branding = (page && page.branding) || {};
-      const logo = logoMark(org, 38);
+      return pageHero('Programmes', 'Age-appropriate rooms and routines that grow with your child.', (programmes[0] && programmes[0].image) || (content.images && content.images.hero), 'Learning') +
+        '<section class="site-section"><div class="site-wrap">' +
+        programmeCards(programmes) + '</div></section>' +
+        '<section class="site-section site-section-tint"><div class="site-wrap site-narrow">' +
+        sectionHead('Fees', 'Simple, transparent fees', '') +
+        (fees.summary ? '<p class="site-large-copy">' + R.esc(fees.summary) + '</p>' : '') +
+        (fees.items && fees.items.length ? '<div class="site-fee-table">' + fees.items.map((item) =>
+          '<div class="site-fee-row"><div><div class="strong">' + R.esc(item.label) + '</div>' +
+          (item.note ? '<div class="muted small">' + R.esc(item.note) + '</div>' : '') + '</div>' +
+          '<div class="site-fee-amount">' + R.esc(item.amount) + '</div></div>').join('') + '</div>' : '') +
+        (fees.note ? '<p class="muted small">' + R.esc(fees.note) + '</p>' : '') +
+        '</div></section>' +
+        (faqs.length ? '<section class="site-section"><div class="site-wrap site-narrow">' +
+          sectionHead('Questions', 'What families ask us', '') +
+          '<div class="site-faqs">' + faqs.map((faq) =>
+            '<details class="site-faq"><summary>' + R.esc(faq.question) + '</summary><p>' + R.esc(faq.answer) + '</p></details>').join('') +
+          '</div></div></section>' : '') +
+        ctaBand(slug, content.admissions || {}, org);
+    },
 
-      const section = (id, title, body, alt) => '<section class="public-section ' + (alt ? 'alt' : '') + '" id="' + id + '"><h2>' + R.esc(title) + '</h2>' + body + '</section>';
+    renderAdmissions(slug, org, content) {
+      const admissions = content.admissions || {};
+      const contact = content.contact || {};
+      const steps = admissions.steps || [];
+      return pageHero(admissions.heading || 'Joining our centre', admissions.intro || 'A simple, personal admissions process.', '', 'Admissions') +
+        '<section class="site-section"><div class="site-wrap">' +
+        sectionHead('How it works', 'Three calm steps to a place', '') +
+        '<div class="site-steps">' + steps.map((step, index) =>
+          '<article class="site-step"><div class="site-step-number">' + (index + 1) + '</div>' +
+          '<h3>' + R.esc(step.title) + '</h3><p>' + R.esc(step.description) + '</p></article>').join('') + '</div>' +
+        '</div></section>' +
+        (admissions.checklist && admissions.checklist.length ? '<section class="site-section site-section-tint"><div class="site-wrap site-split">' +
+          '<div>' + sectionHead('Before you start', 'What to have ready', 'You do not need everything on day one. We will guide you through the forms.') +
+          '<ul class="site-checklist">' + admissions.checklist.map((item) =>
+            '<li>' + R.icon('check-circle') + '<span>' + R.esc(item) + '</span></li>').join('') + '</ul></div>' +
+          '<div class="site-callout"><div class="site-eyebrow">Open days</div><h3>' + R.esc(admissions.openDays || 'Book a personal visit') + '</h3>' +
+          '<p>Meet the educators, see the rooms and ask anything. Visits are booked directly with the centre.</p>' +
+          '<a class="btn btn-primary" href="#/site/' + R.attr(slug) + '/apply">Book a visit</a></div>' +
+          '</div></section>' : '') +
+        '<section class="site-section"><div class="site-wrap site-split site-contact-split">' +
+        '<div>' + sectionHead('Talk to us', 'Questions about a place?', 'The admissions team replies by email, usually within one working day.') +
+        contactCards(contact) + '</div><div>' + enquiryForm(slug, []) + '</div></div></section>' +
+        ctaBand(slug, admissions, org);
+    },
 
-      return '' +
-        '<div class="public" data-site-theme="' + R.attr(theme) + '" ' + R.themeStyle(branding) + '>' +
-        (!page || !page.published ? '<div class="site-banner">This daycare website is being prepared. Staff can sign in to manage it.</div>' : '') +
-        '<nav class="public-nav">' +
-        '<div class="row" style="gap:10px">' + logo + '<div><div class="brand-name">' + R.esc(org.name) + '</div><div class="brand-sub">Early learning centre</div></div></div>' +
-        '<div class="links"><a href="#about">About</a><a href="#programmes">Programmes</a><a href="#routine">Our day</a><a href="#contact">Contact</a><a class="btn btn-primary btn-sm" href="#/site/' + R.attr(params.slug || 'little-sprouts') + '/apply">Enquire</a><a href="#/login" class="muted">Staff</a></div>' +
-        '</nav>' +
-        '<header class="hero">' +
-        '<div><div class="badge badge-green" style="margin-bottom:14px">' + R.icon('sprout') + ' Registered ECD centre</div>' +
-        '<h1>' + R.esc(hero.headline || 'A warm start for curious minds') + '</h1>' +
-        '<p>' + R.esc(hero.subheadline || 'Play-based early learning, caring educators and a community where every child belongs.') + '</p>' +
-        '<div class="row" style="margin-top:22px"><a class="btn btn-primary" href="#/site/' + R.attr(params.slug || 'little-sprouts') + '/apply">' + R.esc(hero.cta || 'Book a visit') + '</a><a class="btn btn-secondary" href="#programmes">Explore programmes</a></div>' +
-        '<div class="row" style="margin-top:26px;gap:18px"><div><div class="strong">' + (branches.length || 1) + '</div><div class="muted small">' + (branches.length === 1 ? 'Campus' : 'Campuses') + '</div></div><div><div class="strong">18m – 6y</div><div class="muted small">Ages welcomed</div></div><div><div class="strong">Play-based</div><div class="muted small">Learning approach</div></div></div>' +
-        '</div>' +
-        '<div class="hero-art"><div class="hero-badge">' + R.icon('sun') + ' Learning through play</div><div class="hero-caption"><strong>Our promise</strong><div class="muted small">Safety, belonging and joyful discovery every single day.</div></div></div>' +
-        '</header>' +
-        section('about', 'About ' + org.name, '<p class="lede">' + R.esc(content.about || 'We are a registered early childhood development centre dedicated to the first six years of a child\'s life.') + '</p>' +
-          '<div class="public-grid"><div class="public-card"><h3>Our approach</h3><p>' + R.esc(content.approach || 'Children learn through play, relationships and purposeful routines.') + '</p></div>' +
-          '<div class="public-card"><h3>Qualified educators</h3><p>Our team is trained in early childhood development and first aid, with ongoing professional learning.</p></div>' +
-          '<div class="public-card"><h3>Safe and secure</h3><p>Access control, supervised drop-off and collection, and clear health and safety routines.</p></div></div>', false) +
-        section('programmes', 'Programmes', '<p class="lede">Age-appropriate rooms and routines that grow with your child.</p><div class="public-grid">' +
-          (programmes.length ? programmes.map((p) => '<article class="public-card"><div class="age">' + R.esc(p.ages || '') + '</div><h3>' + R.esc(p.name) + '</h3><p>' + R.esc(p.description || '') + '</p></article>').join('') : '<div class="public-card"><h3>Programmes</h3><p>Contact us for the current programme offering.</p></div>') +
-          '</div>', true) +
-        section('routine', 'A day at our centre', '<div class="split"><div class="routine">' +
-          (routine.length ? routine.map((r) => '<div class="routine-row"><span class="time">' + R.esc(r.time) + '</span><span>' + R.esc(r.activity) + '</span></div>').join('') : '<div class="routine-row"><span class="time">08:00</span><span>Morning ring, play and learning</span></div>') +
-          '</div><div class="stack"><div class="public-card"><h3>What is included</h3><ul class="list-clean">' +
-          (facilities.length ? facilities.map((f) => '<li>' + R.icon('check') + '<span>' + R.esc(f) + '</span></li>').join('') : '<li>' + R.icon('check') + '<span>Qualified educators</span></li>') +
-          '</ul></div><div class="public-card"><h3>Fees</h3><p>' + R.esc(content.fees || 'Please contact us for current fee information.') + '</p></div></div></div>', false) +
-        (faqs.length ? section('faqs', 'Questions families ask', '<div class="public-grid">' + faqs.map((f) => '<div class="public-card"><h3>' + R.esc(f.question) + '</h3><p>' + R.esc(f.answer) + '</p></div>').join('') + '</div>', true) : '') +
-        '<section class="public-section" id="contact"><div class="split"><div><h2>Come and see us</h2><p class="lede">Book a visit or ask a question. We will reply by email.</p>' +
-          '<div class="stack">' + (branches.length ? branches.map((b) => '<div class="public-card">' + (b.image_url ? '<img class="cover-image" src="' + R.attr(b.image_url) + '" alt="' + R.attr(b.name) + '" style="margin-bottom:10px">' : '') + '<h3>' + R.esc(b.name) + '</h3><p>' + R.esc(b.address || '') + '</p><p class="small"><strong>' + R.esc(b.contact_phone || '') + '</strong><br>' + R.esc(b.contact_email || '') + '</p></div>').join('') : '<div class="public-card"><h3>Contact</h3><p>Use the enquiry form and we will be in touch.</p></div>') + '</div></div>' +
-          '<div class="card glass"><h3>Send an enquiry</h3><div class="alert alert-success" x-show="publicResult" style="margin-bottom:12px"><i data-lucide="check-circle"></i><span x-text="publicResult"></span></div>' +
-          '<div class="alert alert-danger" x-show="publicError" style="margin-bottom:12px"><i data-lucide="alert-circle"></i><span x-text="publicError"></span></div>' +
-          '<form @submit.prevent="submitPublicEnquiry($event, \'' + R.attr(params.slug || 'little-sprouts') + '\')">' +
-          '<div class="form-grid"><div class="field"><label>Your name *</label><input class="input" name="guardianName" required x-model="publicEnquiry.guardianName"></div>' +
-          '<div class="field"><label>Email *</label><input class="input" type="email" name="guardianEmail" required x-model="publicEnquiry.guardianEmail"></div>' +
-          '<div class="field"><label>Phone</label><input class="input" name="guardianPhone" x-model="publicEnquiry.guardianPhone"></div>' +
-          '<div class="field"><label>Child\'s name</label><input class="input" name="childName" x-model="publicEnquiry.childName"></div>' +
-          '<div class="field"><label>Child\'s date of birth</label><input class="input" type="date" name="childDateOfBirth" x-model="publicEnquiry.childDateOfBirth"></div>' +
-          '<div class="field"><label>Preferred start</label><input class="input" type="date" name="preferredStartDate" x-model="publicEnquiry.preferredStartDate"></div>' +
-          '<div class="field span-2"><label>Message</label><textarea class="textarea" name="message" x-model="publicEnquiry.message" placeholder="Tell us a little about your family and what you are looking for."></textarea></div>' +
-          '<div class="field span-2" style="position:absolute;left:-9999px" aria-hidden="true"><label>Website</label><input class="input" name="website" tabindex="-1" autocomplete="off" x-model="publicEnquiry.website"></div></div>' +
-          '<button class="btn btn-primary" type="submit">Send enquiry</button></form></div></div></section>' +
-        '<footer class="public-footer"><span>© ' + new Date().getFullYear() + ' ' + R.esc(org.name) + '</span><span class="spacer"></span><a href="#/login">Staff sign in</a><a href="#/site/' + R.attr(params.slug || 'little-sprouts') + '/apply">Enquire</a></footer>' +
-        '</div>';
+    renderGallery(slug, org, content) {
+      const gallery = content.gallery || [];
+      return pageHero('Gallery', 'A little look at the rooms, the garden and the everyday joy of learning through play.', (gallery[0] && gallery[0].url) || '', 'Life at our centre') +
+        '<section class="site-section"><div class="site-wrap">' +
+        (galleryGrid(gallery) || '<div class="site-empty">Photos are on their way. In the meantime, book a visit and see the centre for yourself.</div>') +
+        '<div class="site-section-foot"><a class="btn btn-primary" href="#/site/' + R.attr(slug) + '/apply">Book a visit</a></div>' +
+        '</div></section>' + ctaBand(slug, content.admissions || {}, org);
+    },
+
+    renderContact(slug, org, content, branches) {
+      const contact = content.contact || {};
+      return pageHero('Contact us', 'Book a visit, ask a question or start an enquiry. We would love to meet your family.', '', 'Get in touch') +
+        '<section class="site-section"><div class="site-wrap">' +
+        contactCards(contact) +
+        (branches.length ? '<div class="site-section-head" style="margin-top:32px"><h2>Our centres</h2></div>' + branchCards(branches) : '') +
+        '</div></section>' +
+        '<section class="site-section site-section-tint"><div class="site-wrap site-split site-contact-split">' +
+        '<div>' + sectionHead('Send a message', 'Tell us about your family', 'We reply by email. If you would rather talk, call the centre during office hours.') +
+        socialLinks(content.social || {}) +
+        (contact.mapUrl ? '<div class="site-section-foot"><a class="btn btn-secondary" href="' + R.attr(contact.mapUrl) + '" target="_blank" rel="noopener">Open directions</a></div>' : '') +
+        '</div><div>' + enquiryForm(slug, branches) + '</div></div></section>' +
+        ctaBand(slug, content.admissions || {}, org);
     }
   };
 
   V.publicApply = {
     async load(ctx, params) {
       ctx.publicSlug = params.slug;
-      ctx.publicEnquiry = { guardianName: '', guardianEmail: '', guardianPhone: '', childName: '', childDateOfBirth: '', requestedAgeGroup: '', preferredStartDate: '', message: '', website: '' };
+      ctx.publicEnquiry = {
+        guardianName: '', guardianEmail: '', guardianPhone: '', childName: '', childDateOfBirth: '',
+        requestedAgeGroup: '', preferredStartDate: '', message: '', website: '', branchId: ''
+      };
       ctx.publicResult = null;
       ctx.publicError = null;
+      ctx.siteMenuOpen = false;
       const payload = await R.api('GET', '/public/daycares/' + encodeURIComponent(params.slug));
       const form = await R.api('GET', '/public/daycares/' + encodeURIComponent(params.slug) + '/enquiry-form');
       return { site: payload.data, form: form.data };
     },
+
     render(ctx, params, page) {
-      const org = page.site.organisation;
-      const branding = page.site.branding || {};
-      const branches = page.form.branches || [];
-      const logo = logoMark(org, 36);
-      return '<div class="public" ' + R.themeStyle(branding) + '><nav class="public-nav"><div class="row" style="gap:10px"><a href="#/site/' + R.attr(params.slug) + '" class="row" style="gap:10px;text-decoration:none">' + logo + '<div class="brand-name">' + R.esc(org.name) + '</div></a></div><div class="links"><a href="#/site/' + R.attr(params.slug) + '">Back to website</a><a href="#/login">Staff</a></div></nav>' +
-        '<section class="public-section" style="max-width:760px;margin:0 auto"><a href="#/site/' + R.attr(params.slug) + '" class="muted small">← Back to website</a><h1 style="margin-top:14px">Enquire about a place</h1><p class="lede">Share a few details and the admissions team will be in touch. There is no obligation.</p>' +
-        '<div class="alert alert-success" x-show="publicResult"><i data-lucide="check-circle"></i><span x-text="publicResult"></span></div>' +
-        '<div class="alert alert-danger" x-show="publicError" style="margin-top:10px"><i data-lucide="alert-circle"></i><span x-text="publicError"></span></div>' +
-        '<div class="card glass" style="margin-top:16px"><form @submit.prevent="submitPublicEnquiry($event, \'' + R.attr(params.slug) + '\')"><div class="form-grid">' +
+      const site = page.site || {};
+      const org = site.organisation || {};
+      const branding = site.branding || {};
+      const content = site.content || {};
+      const branches = (page.form && page.form.branches) || [];
+      const ageGroups = (page.form && page.form.ageGroups) || [];
+      return '<div class="public site" ' + R.themeStyle(branding) + '>' +
+        siteNav(params.slug, 'admissions', org) +
+        '<section class="site-section"><div class="site-wrap site-narrow">' +
+        '<a href="' + R.attr(siteHref(params.slug, 'home')) + '" class="muted small">← Back to website</a>' +
+        '<div class="site-eyebrow" style="margin-top:20px">Admissions</div>' +
+        '<h1>Enquire about a place</h1>' +
+        '<p class="lede">Share a few details and the admissions team will be in touch. There is no obligation.</p>' +
+        '<div class="alert alert-success" x-show="publicResult" style="margin-top:12px"><i data-lucide="check-circle"></i><span x-text="publicResult"></span></div>' +
+        '<div class="alert alert-danger" x-show="publicError" style="margin-top:12px"><i data-lucide="alert-circle"></i><span x-text="publicError"></span></div>' +
+        '<div class="card glass site-form-card" style="margin-top:16px">' +
+        '<form @submit.prevent="submitPublicEnquiry($event, \'' + R.attr(params.slug) + '\')"><div class="form-grid">' +
         '<div class="field"><label>Your name *</label><input class="input" name="guardianName" required x-model="publicEnquiry.guardianName"></div>' +
         '<div class="field"><label>Email *</label><input class="input" type="email" name="guardianEmail" required x-model="publicEnquiry.guardianEmail"></div>' +
-        '<div class="field"><label>Phone</label><input class="input" name="guardianPhone" x-model="publicEnquiry.guardianPhone"></div>' +
+        '<div class="field"><label>Phone</label><input class="input" type="tel" name="guardianPhone" x-model="publicEnquiry.guardianPhone"></div>' +
         '<div class="field"><label>Child\'s name</label><input class="input" name="childName" x-model="publicEnquiry.childName"></div>' +
         '<div class="field"><label>Child\'s date of birth</label><input class="input" type="date" name="childDateOfBirth" x-model="publicEnquiry.childDateOfBirth"></div>' +
-        '<div class="field"><label>Preferred branch</label><select class="select" x-model="publicEnquiry.branchId"><option value="">Any branch</option>' + branches.map((b) => '<option value="' + R.attr(b.id) + '">' + R.esc(b.name) + '</option>').join('') + '</select></div>' +
-        '<div class="field"><label>Age group</label><select class="select" x-model="publicEnquiry.requestedAgeGroup"><option value="">Select…</option>' + (page.form.ageGroups || []).map((g) => '<option value="' + R.attr(g) + '">' + R.esc(g) + '</option>').join('') + '</select></div>' +
+        (branches.length ? '<div class="field"><label>Preferred centre</label><select class="select" x-model="publicEnquiry.branchId"><option value="">Any centre</option>' +
+          branches.map((branch) => '<option value="' + R.attr(branch.id) + '">' + R.esc(branch.name) + '</option>').join('') + '</select></div>' : '') +
+        (ageGroups.length ? '<div class="field"><label>Age group</label><select class="select" x-model="publicEnquiry.requestedAgeGroup"><option value="">Select…</option>' +
+          ageGroups.map((group) => '<option value="' + R.attr(group) + '">' + R.esc(group) + '</option>').join('') + '</select></div>' : '') +
         '<div class="field"><label>Preferred start date</label><input class="input" type="date" x-model="publicEnquiry.preferredStartDate"></div>' +
-        '<div class="field span-2"><label>Message</label><textarea class="textarea" x-model="publicEnquiry.message"></textarea></div>' +
-        '<div class="field span-2" style="position:absolute;left:-9999px" aria-hidden="true"><label>Website</label><input class="input" tabindex="-1" autocomplete="off" x-model="publicEnquiry.website"></div></div>' +
-        '<button class="btn btn-primary" type="submit">Send enquiry</button></form></div></section>' +
-        '<footer class="public-footer"><span>© ' + new Date().getFullYear() + ' ' + R.esc(org.name) + '</span></footer></div>';
+        '<div class="field span-2"><label>Message</label><textarea class="textarea" x-model="publicEnquiry.message" placeholder="Tell us a little about your family and what you are looking for."></textarea></div>' +
+        '<div class="field span-2" style="position:absolute;left:-9999px" aria-hidden="true"><label>Website</label><input class="input" tabindex="-1" autocomplete="off" x-model="publicEnquiry.website"></div>' +
+        '</div><button class="btn btn-primary" type="submit">Send enquiry</button></form></div>' +
+        (content.contact && content.contact.phone ? '<p class="muted small" style="margin-top:14px">Prefer to talk? Call <a href="tel:' +
+          R.attr(String(content.contact.phone).replace(/[^\d+]/g, '')) + '">' + R.esc(content.contact.phone) + '</a>.</p>' : '') +
+        '</div></section>' +
+        siteFooter(params.slug, org, content) + '</div>';
     }
   };
 
@@ -182,13 +552,13 @@
       (payload.data.form.schema_json.fields || []).forEach((f) => { ctx.publicFormData[f.key] = f.type === 'checkbox' ? false : ''; });
       ctx.publicResult = null;
       ctx.publicError = null;
+      ctx.siteMenuOpen = false;
       return payload.data;
     },
     render(ctx, params, page) {
       const fields = (page.form.schema_json && page.form.schema_json.fields) || [];
       const branding = page.branding || {};
       const org = page.organisation || {};
-      const logo = logoMark(org, 38);
       const input = (field) => {
         const model = 'publicFormData.' + field.key;
         if (field.type === 'textarea') return '<textarea class="textarea" x-model="' + model + '" ' + (field.required ? 'required' : '') + '></textarea>';
@@ -200,13 +570,18 @@
         if (field.type === 'phone') return '<input class="input" type="tel" x-model="' + model + '" ' + (field.required ? 'required' : '') + '>';
         return '<input class="input" type="text" x-model="' + model + '" ' + (field.required ? 'required' : '') + '>';
       };
-      return '<div class="public" ' + R.themeStyle(branding) + '><nav class="public-nav"><div class="row" style="gap:10px">' + logo + '<div class="brand-name">' + R.esc(page.organisation.name) + '</div></div><div class="links"><a href="#/site/' + R.attr(params.slug) + '">Back to website</a></div></nav>' +
-        '<section class="public-section" style="max-width:720px;margin:0 auto"><h1>' + R.esc(page.form.name) + '</h1><p class="lede">' + R.esc(page.form.description || '') + '</p>' +
-        '<div class="alert alert-success" x-show="publicResult"><i data-lucide="check-circle"></i><span x-text="publicResult"></span></div>' +
-        '<div class="alert alert-danger" x-show="publicError" style="margin-top:10px"><i data-lucide="alert-circle"></i><span x-text="publicError"></span></div>' +
-        '<div class="card glass" style="margin-top:16px"><form @submit.prevent="submitPublicForm($event, \'' + R.attr(params.slug) + '\', \'' + R.attr(params.formSlug) + '\')">' +
+      return '<div class="public site" ' + R.themeStyle(branding) + '>' +
+        siteNav(params.slug, null, org) +
+        '<section class="site-section"><div class="site-wrap site-narrow">' +
+        '<a href="' + R.attr(siteHref(params.slug, 'home')) + '" class="muted small">← Back to website</a>' +
+        '<div class="site-eyebrow" style="margin-top:20px">Form</div>' +
+        '<h1>' + R.esc(page.form.name) + '</h1><p class="lede">' + R.esc(page.form.description || '') + '</p>' +
+        '<div class="alert alert-success" x-show="publicResult" style="margin-top:12px"><i data-lucide="check-circle"></i><span x-text="publicResult"></span></div>' +
+        '<div class="alert alert-danger" x-show="publicError" style="margin-top:12px"><i data-lucide="alert-circle"></i><span x-text="publicError"></span></div>' +
+        '<div class="card glass site-form-card" style="margin-top:16px"><form @submit.prevent="submitPublicForm($event, \'' + R.attr(params.slug) + '\', \'' + R.attr(params.formSlug) + '\')">' +
         (fields.length ? fields.map((f) => '<div class="field"><label>' + R.esc(f.label) + (f.required ? ' *' : '') + '</label>' + input(f) + (f.helpText ? '<div class="hint">' + R.esc(f.helpText) + '</div>' : '') + '</div>').join('') : '<p class="muted">This form has no fields yet.</p>') +
-        '<button class="btn btn-primary" type="submit">Submit</button></form></div></section></div>';
+        '<button class="btn btn-primary" type="submit">Submit</button></form></div>' +
+        '</div></section>' + siteFooter(params.slug, org, {}) + '</div>';
     }
   };
 

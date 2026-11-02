@@ -9,6 +9,7 @@ const { sendTemplate } = require('../services/email-service');
 const { parsePagination } = require('../utils/http');
 const branding = require('../services/branding-service');
 const bulk = require('../services/bulk-service');
+const websiteContent = require('../services/website-content');
 const { has } = require('./helpers');
 
 const ENQUIRY_BULK_STATUS = { contacted: 'contacted', close: 'closed', spam: 'spam', reopen: 'new' };
@@ -23,14 +24,37 @@ function register(router) {
       `SELECT * FROM website_configs WHERE organisation_id = $1 AND status = 'published' ORDER BY published_at DESC LIMIT 1`,
       [org.id]
     );
-    if (!website) return { organisation: { name: org.name, slug: org.slug, logoUrl: org.logo_url }, branding: theme, published: false, content: null };
-    const branches = await ctx.db.many("SELECT id, name, address, contact_email, contact_phone, image_url FROM branches WHERE organisation_id = $1 AND status = 'active'", [org.id]);
+    const organisation = { name: org.name, slug: org.slug, logoUrl: org.logo_url, currency: org.currency };
+    if (!website) {
+      const empty = websiteContent.normalise({}, org);
+      return {
+        organisation,
+        branding: theme,
+        published: false,
+        content: null,
+        seo: Object.assign({}, empty.seo, {
+          canonical: websiteContent.canonicalUrl(org.slug, 'home')
+        }),
+        pages: websiteContent.pages(),
+        updatedAt: null
+      };
+    }
+    const branches = await ctx.db.many(
+      "SELECT id, name, address, contact_email, contact_phone, image_url FROM branches WHERE organisation_id = $1 AND status = 'active'",
+      [org.id]
+    );
+    const content = websiteContent.normalise(website.published_content, org);
     return {
-      organisation: { name: org.name, slug: org.slug, logoUrl: org.logo_url, currency: org.currency },
+      organisation,
       branding: theme,
       published: true,
       theme: website.theme,
-      content: website.published_content,
+      content,
+      seo: Object.assign({}, content.seo, {
+        canonical: websiteContent.canonicalUrl(org.slug, 'home')
+      }),
+      pages: websiteContent.pages(),
+      updatedAt: website.published_at || website.updated_at,
       branches
     };
   }, { public: true });

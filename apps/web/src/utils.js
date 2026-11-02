@@ -668,6 +668,147 @@
   Reel.mediaList = mediaList;
   Reel.uploadMedia = uploadMedia;
 
+  // -------------------------------------------------------------------------
+  // Per-tenant SEO
+  // -------------------------------------------------------------------------
+
+  const DEFAULT_DOCUMENT_TITLE = 'Re-EL ECD';
+  let originalDocumentTitle = null;
+
+  function seoMeta(name, content, property) {
+    const selector = property ? 'meta[property="' + name + '"]' : 'meta[name="' + name + '"]';
+    let element = document.head.querySelector(selector) || document.head.querySelector('meta[data-reel-seo="' + name + '"]');
+    if (!element) {
+      if (!content) return null;
+      element = document.createElement('meta');
+      if (property) element.setAttribute('property', name);
+      else element.setAttribute('name', name);
+      element.setAttribute('data-reel-seo', name);
+      document.head.appendChild(element);
+    }
+    // Remember the product's own value so leaving the tenant site restores it.
+    if (!element.hasAttribute('data-reel-seo')) {
+      element.setAttribute('data-reel-seo', name);
+      element.setAttribute('data-reel-original', element.getAttribute('content') || '');
+    }
+    element.setAttribute('content', content === null || content === undefined ? '' : String(content));
+    return element;
+  }
+
+  function seoLink(rel, href, id) {
+    let element = document.getElementById(id);
+    if (!href) { if (element) element.remove(); return; }
+    if (!element) {
+      element = document.createElement('link');
+      element.id = id;
+      element.rel = rel;
+      document.head.appendChild(element);
+    }
+    element.setAttribute('href', href);
+  }
+
+  /**
+   * Apply the organisation's own title, description, keywords, Open Graph and
+   * Twitter cards, canonical address and ChildCare structured data. Everything
+   * is tagged so resetSeo can put the shell back exactly as it was.
+   */
+  function applySeo(seo, options) {
+    if (typeof document === 'undefined') return;
+    const opts = options || {};
+    const meta = seo || {};
+    const title = meta.title || DEFAULT_DOCUMENT_TITLE;
+    const description = meta.description || '';
+    const keywords = Array.isArray(meta.keywords) ? meta.keywords.join(', ') : (meta.keywords || '');
+    const image = meta.image || '';
+    const canonical = meta.canonical || '';
+    const siteName = meta.organisationName || opts.organisationName || DEFAULT_DOCUMENT_TITLE;
+
+    if (originalDocumentTitle === null) originalDocumentTitle = document.title || DEFAULT_DOCUMENT_TITLE;
+    document.title = title;
+    seoMeta('description', description);
+    seoMeta('keywords', keywords);
+    seoMeta('author', siteName);
+    seoMeta('robots', opts.robots || 'index, follow');
+    seoMeta('og:type', 'website', true);
+    seoMeta('og:site_name', siteName, true);
+    seoMeta('og:locale', 'en_ZA', true);
+    seoMeta('og:title', title, true);
+    seoMeta('og:description', description, true);
+    seoMeta('og:image', image, true);
+    seoMeta('og:url', canonical, true);
+    seoMeta('twitter:card', image ? 'summary_large_image' : 'summary');
+    seoMeta('twitter:title', title);
+    seoMeta('twitter:description', description);
+    seoMeta('twitter:image', image);
+    if (meta.twitterHandle) seoMeta('twitter:site', meta.twitterHandle);
+
+    seoLink('canonical', canonical, 'reel-seo-canonical');
+
+    const logo = opts.logo || '';
+    if (logo) {
+      let icon = document.head.querySelector('link[data-reel-favicon="true"]');
+      if (!icon) {
+        icon = document.createElement('link');
+        icon.rel = 'icon';
+        icon.setAttribute('data-reel-favicon', 'true');
+        document.head.appendChild(icon);
+      }
+      icon.setAttribute('href', logo);
+    }
+
+    const structured = {
+      '@context': 'https://schema.org',
+      '@type': 'ChildCare',
+      name: siteName,
+      description,
+      url: canonical || undefined,
+      image: image || undefined,
+      telephone: meta.telephone || undefined,
+      email: meta.email || undefined,
+      address: meta.address ? { '@type': 'PostalAddress', streetAddress: meta.address } : undefined,
+      sameAs: Array.isArray(meta.sameAs) && meta.sameAs.length ? meta.sameAs : undefined
+    };
+    let script = document.getElementById('reel-seo-jsonld');
+    if (!script) {
+      script = document.createElement('script');
+      script.id = 'reel-seo-jsonld';
+      script.type = 'application/ld+json';
+      document.head.appendChild(script);
+    }
+    script.textContent = JSON.stringify(structured);
+  }
+
+  /** Put the product shell's metadata back after leaving a tenant site. */
+  function resetSeo() {
+    if (typeof document === 'undefined') return;
+    document.title = originalDocumentTitle || DEFAULT_DOCUMENT_TITLE;
+    document.head.querySelectorAll('meta[data-reel-seo]').forEach((element) => {
+      if (element.hasAttribute('data-reel-original')) {
+        element.setAttribute('content', element.getAttribute('data-reel-original'));
+        element.removeAttribute('data-reel-original');
+        element.removeAttribute('data-reel-seo');
+      } else {
+        element.remove();
+      }
+    });
+    const canonical = document.getElementById('reel-seo-canonical');
+    if (canonical) canonical.remove();
+    const structured = document.getElementById('reel-seo-jsonld');
+    if (structured) structured.remove();
+    const icon = document.head.querySelector('link[data-reel-favicon="true"]');
+    if (icon) icon.remove();
+  }
+
+  /** Canonical address for a specific public page. */
+  function siteUrl(slug, pagePath) {
+    const base = (window.REEL_SITE_BASE || 'https://ecd.re-el.co.za').replace(/\/+$/, '');
+    return base + '/#/site/' + encodeURIComponent(slug || '') + (pagePath ? '/' + String(pagePath).replace(/^\/+/, '') : '');
+  }
+
+  Reel.applySeo = applySeo;
+  Reel.resetSeo = resetSeo;
+  Reel.siteUrl = siteUrl;
+
   /** Fetches a list endpoint and normalises { rows, meta }. */
   async function list(path) {
     const payload = await api('GET', path);

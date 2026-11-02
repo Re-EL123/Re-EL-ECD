@@ -6,6 +6,8 @@ const { recordAudit } = require('../services/audit-service');
 const { createNotification } = require('../services/notification-service');
 const { parsePagination, sendText } = require('../utils/http');
 const bulk = require('../services/bulk-service');
+const branding = require('../services/branding-service');
+const websiteContent = require('../services/website-content');
 const { has, today, roundMoney } = require('./helpers');
 
 const REPORT_CATALOGUE = [
@@ -287,9 +289,23 @@ function register(router) {
     const config = await ctx.db.one(
       'SELECT * FROM website_configs WHERE organisation_id = $1 ORDER BY created_at LIMIT 1', [ctx.organisationId]
     );
-    if (!config) return { config: null, domains: [] };
     const domains = await ctx.db.many('SELECT * FROM domains WHERE organisation_id = $1', [ctx.organisationId]);
-    return { config, domains };
+    const content = websiteContent.normalise(config ? config.draft_content : null, ctx.organisation);
+    return {
+      config,
+      domains,
+      content,
+      seo: content.seo,
+      pages: websiteContent.pages(),
+      branding: branding.themeFromOrganisation(ctx.organisation),
+      organisation: {
+        id: ctx.organisation.id,
+        name: ctx.organisation.name,
+        slug: ctx.organisation.slug,
+        logoUrl: ctx.organisation.logo_url || null,
+        currency: ctx.organisation.currency || 'ZAR'
+      }
+    };
   }, { permission: 'website.read.daycare' });
 
   router.patch('/website', async (ctx) => {
@@ -300,6 +316,19 @@ function register(router) {
     let config = await ctx.db.one(
       'SELECT * FROM website_configs WHERE organisation_id = $1 ORDER BY created_at LIMIT 1', [ctx.organisationId]
     );
+    const current = websiteContent.normalise(config ? config.draft_content : null, ctx.organisation);
+    // Deep-merge so an editor tab that saves one section never wipes another.
+    const mergedRaw = websiteContent.deepMerge(current, body.draftContent);
+    // SEO title/description are optional overrides. The editor pre-fills them
+    // with the derived values, so if the incoming value still matches what the
+    // previous content derived, blank it and let it follow the new copy.
+    const derivedBefore = websiteContent.deriveSeo(Object.assign({}, current, { seo: {} }), ctx.organisation);
+    const incomingSeo = (body.draftContent && body.draftContent.seo) || {};
+    const mergedSeo = Object.assign({}, mergedRaw.seo);
+    if (incomingSeo.title === undefined || incomingSeo.title === derivedBefore.title) mergedSeo.title = '';
+    if (incomingSeo.description === undefined || incomingSeo.description === derivedBefore.description) mergedSeo.description = '';
+    mergedRaw.seo = mergedSeo;
+    const merged = websiteContent.normalise(mergedRaw, ctx.organisation);
     if (!config) {
       const branch = await ctx.db.one('SELECT id FROM branches WHERE organisation_id = $1 ORDER BY created_at LIMIT 1',
         [ctx.organisationId]);
@@ -307,10 +336,9 @@ function register(router) {
         `INSERT INTO website_configs (organisation_id, branch_id, slug, theme, draft_content)
          VALUES ($1,$2,$3,$4,$5) RETURNING *`,
         [ctx.organisationId, branch ? branch.id : null, ctx.organisation.slug,
-          body.theme || 'nature', JSON.stringify(body.draftContent)]
+          body.theme || 'nature', JSON.stringify(merged)]
       );
     } else {
-      const merged = { ...(config.draft_content || {}), ...body.draftContent };
       await ctx.db.query(
         'UPDATE website_configs SET theme = COALESCE($1,theme), draft_content = $2, updated_at = now() WHERE id = $3',
         [body.theme || null, JSON.stringify(merged), config.id]
@@ -320,7 +348,11 @@ function register(router) {
     await recordAudit(ctx.db, ctx, {
       action: 'website.draft_updated', resourceType: 'website_config', resourceId: config.id
     });
-    return config;
+    return Object.assign({}, config, {
+      content: merged,
+      seo: merged.seo,
+      pages: websiteContent.pages()
+    });
   }, { permission: 'website.manage.daycare' });
 
   router.post('/website/publish', async (ctx) => {
@@ -328,13 +360,16 @@ function register(router) {
       'SELECT * FROM website_configs WHERE organisation_id = $1 ORDER BY created_at LIMIT 1', [ctx.organisationId]
     );
     if (!config) fail('CONFLICT', null, 'Configure the website before publishing.');
-    const content = config.draft_content || {};
-    if (!content.hero || !content.hero.headline) {
+    const content = websiteContent.normalise(config.draft_content, ctx.organisation);
+    if (!content.hero.headline) {
       fail('VALIDATION', null, 'Add a hero headline before publishing.');
     }
+    if (!content.about.body) {
+      fail('VALIDATION', null, 'Add an introduction before publishing.');
+    }
     await ctx.db.query(
-      `UPDATE website_configs SET published_content = draft_content, status = 'published', published_at = now(),
-        updated_at = now() WHERE id = $1`, [config.id]
+      `UPDATE website_configs SET published_content = $1, status = 'published', published_at = now(),
+        updated_at = now() WHERE id = $2`, [JSON.stringify(content), config.id]
     );
     await recordAudit(ctx.db, ctx, {
       action: 'website.published', resourceType: 'website_config', resourceId: config.id

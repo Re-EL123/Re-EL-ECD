@@ -15,6 +15,9 @@
     route('/site/:slug', 'public', 'publicSite', null, 'Daycare website'),
     route('/site/:slug/apply', 'public', 'publicApply', null, 'Enquire'),
     route('/site/:slug/forms/:formSlug', 'public', 'publicForm', null, 'Form'),
+    // Catch-all for the tenant's own pages (about, programmes, admissions,
+    // gallery, contact). It must stay after the more specific routes above.
+    route('/site/:slug/:page', 'public', 'publicSite', null, 'Daycare website'),
     route('/reset-password', 'public', 'resetPassword', null, 'Reset password'),
     route('/accept-invite', 'public', 'acceptInvite', null, 'Accept invitation'),
 
@@ -210,6 +213,13 @@
       platformBrand: null,
       selectedIds: [],
       libraryBusy: false,
+      siteDraft: null,
+      siteTab: 'home',
+      siteMenuOpen: false,
+      siteBusy: null,
+      siteSaving: false,
+      siteError: null,
+      siteSavedAt: null,
 
       get activeMembership() {
         if (!this.session || !this.session.memberships) return null;
@@ -477,6 +487,7 @@
         this.query = query;
         const matched = matchRoute(path);
         if (!matched) {
+          if (Reel.resetSeo) Reel.resetSeo();
           this.mode = this.session ? 'app' : 'login';
           if (this.session) {
             this.area = this.isPlatformAdmin ? 'platform' : (this.isParentOnly ? 'parent' : 'app');
@@ -499,6 +510,10 @@
           await this.renderPublic(matched.route, matched.params, seq);
           return;
         }
+
+        // Leaving a tenant website: restore the product's own title, meta tags
+        // and favicon so the workspace never inherits a tenant's SEO.
+        if (Reel.resetSeo) Reel.resetSeo();
 
         if (!this.session) {
           this.mode = 'login';
@@ -939,6 +954,116 @@
         }
       },
 
+      // -----------------------------------------------------------------------
+      // Public website editor
+      // -----------------------------------------------------------------------
+
+      /** Read a nested value such as `hero.headline` from the draft. */
+      siteValue(path) {
+        return String(path || '').split('.').reduce((value, key) => (value && value[key] !== undefined ? value[key] : ''), this.siteDraft);
+      },
+
+      /** Write a nested value such as `hero.image` without losing siblings. */
+      setSiteValue(path, value) {
+        if (!this.siteDraft) return;
+        const keys = String(path || '').split('.');
+        let target = this.siteDraft;
+        for (let index = 0; index < keys.length - 1; index += 1) {
+          const key = keys[index];
+          if (!target[key] || typeof target[key] !== 'object') target[key] = {};
+          target = target[key];
+        }
+        target[keys[keys.length - 1]] = value;
+      },
+
+      siteAdd(path, value) {
+        if (!this.siteDraft) return;
+        const current = this.siteValue(path);
+        const next = Array.isArray(current) ? current.slice() : [];
+        next.push(value);
+        this.setSiteValue(path, next);
+      },
+
+      siteRemove(path, index) {
+        const current = this.siteValue(path);
+        if (!Array.isArray(current)) return;
+        const next = current.slice();
+        next.splice(index, 1);
+        this.setSiteValue(path, next);
+      },
+
+      siteMove(path, index, direction) {
+        const current = this.siteValue(path);
+        if (!Array.isArray(current)) return;
+        const target = index + direction;
+        if (target < 0 || target >= current.length) return;
+        const next = current.slice();
+        const [item] = next.splice(index, 1);
+        next.splice(target, 0, item);
+        this.setSiteValue(path, next);
+      },
+
+      /** Upload one website image and place its URL at the given draft path. */
+      async uploadSiteImage(path, event) {
+        const input = event && event.target;
+        const file = input && input.files ? input.files[0] : null;
+        if (!file) return;
+        this.siteBusy = path;
+        this.siteError = null;
+        try {
+          const asset = await Reel.uploadMedia(file, { scope: 'website' });
+          this.setSiteValue(path, asset.url);
+          this.toast('Image uploaded. Save the draft to keep it.');
+        } catch (error) {
+          this.siteError = error.message || 'The image could not be uploaded.';
+          this.toast(this.siteError, 'error');
+        } finally {
+          this.siteBusy = null;
+          if (input) input.value = '';
+        }
+      },
+
+      async saveSiteDraft(options) {
+        if (!this.siteDraft) return null;
+        const opts = options || {};
+        this.siteSaving = true;
+        this.siteError = null;
+        try {
+          const content = Object.assign({}, this.siteDraft);
+          delete content.theme;
+          const payload = await Reel.api('PATCH', '/website', {
+            theme: this.siteDraft.theme || undefined,
+            draftContent: content
+          });
+          this.siteSavedAt = new Date().toISOString();
+          if (!opts.silent) this.toast('Website draft saved.');
+          if (opts.reload !== false) await this.navigate(true);
+          return payload;
+        } catch (error) {
+          this.siteError = error.message || 'The website draft could not be saved.';
+          this.toast(this.siteError, 'error');
+          return null;
+        } finally {
+          this.siteSaving = false;
+        }
+      },
+
+      /** Save the current editor values, then ask for confirmation to publish. */
+      async publishSite() {
+        const saved = await this.saveSiteDraft({ reload: false, silent: true });
+        if (!saved) return;
+        this.openConfirm('Publish website',
+          'The saved draft replaces the live website immediately. Families will see these pages at your public address.',
+          {
+            endpoint: '/website/publish',
+            method: 'POST',
+            body: {},
+            submitLabel: 'Publish',
+            successMessage: 'Website published.',
+            danger: false
+          });
+      },
+
       addModalMediaUrl(field) {
         if (!this.modal) return;
         const draft = ((this.modal.mediaDraft || {})[field.name] || '').trim();
@@ -1160,6 +1285,27 @@
           const page = view && view.load ? await view.load(this, params) : {};
           if (seq && seq !== this._navSeq) return;
           root.innerHTML = view.render(this, params, page);
+          if (Reel.applySeo) {
+            const site = (page && page.site) || page || {};
+            const org = site.organisation || (page && page.organisation) || {};
+            const baseSeo = (page && page.seo) || site.seo || null;
+            const form = page && page.form;
+            const seo = baseSeo || (form ? {
+              title: form.name + ' | ' + (org.name || 'Re-EL ECD'),
+              description: form.description || '',
+              keywords: [org.name, form.name, 'form', 'early childhood development'].filter(Boolean),
+              image: org.logoUrl || '',
+              organisationName: org.name || 'Re-EL ECD'
+            } : null);
+            if (seo) {
+              const pagePath = route.view === 'publicApply'
+                ? 'apply'
+                : route.view === 'publicForm'
+                  ? 'forms/' + (params.formSlug || '')
+                  : (params.page || '');
+              Reel.applySeo(Object.assign({}, seo, { canonical: Reel.siteUrl(params.slug, pagePath) }), { logo: org.logoUrl || '' });
+            }
+          }
           if (window.Alpine && window.Alpine.initTree) window.Alpine.initTree(root);
           if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
         } catch (error) {

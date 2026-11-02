@@ -239,70 +239,341 @@
     }
   };
 
+  function editorField(label, model, options) {
+    const opts = options || {};
+    const control = opts.textarea
+      ? '<textarea class="textarea" rows="' + (opts.rows || 3) + '" x-model="' + model + '"' +
+        (opts.placeholder ? ' placeholder="' + R.attr(opts.placeholder) + '"' : '') + '></textarea>'
+      : '<input class="input" type="' + (opts.type || 'text') + '" x-model="' + model + '"' +
+        (opts.placeholder ? ' placeholder="' + R.attr(opts.placeholder) + '"' : '') + '>';
+    return '<div class="field' + (opts.span ? ' span-2' : '') + '"><label>' + R.esc(label) + '</label>' +
+      control + (opts.help ? '<div class="hint">' + R.esc(opts.help) + '</div>' : '') + '</div>';
+  }
+
+  function editorImage(label, model, pathExpression, help) {
+    return '<div class="field span-2"><label>' + R.esc(label) + '</label>' +
+      '<div class="site-image-row">' +
+      '<input class="input" type="url" x-model="' + model + '" placeholder="https://… or /assets/…">' +
+      '<label class="btn btn-secondary btn-sm site-file-btn">' + R.icon('upload') + ' Upload' +
+      '<input type="file" accept="image/*" @change="uploadSiteImage(' + pathExpression + ', $event)"></label>' +
+      '<button type="button" class="btn btn-ghost btn-sm" x-show="' + model + '" @click="setSiteValue(' + pathExpression + ', \'\')" aria-label="Remove image">' + R.icon('x') + '</button>' +
+      '</div>' +
+      '<div class="hint" x-show="siteBusy === ' + pathExpression + '">Uploading…</div>' +
+      '<div class="hint">' + R.esc(help || 'Upload a photo or paste a direct image URL.') + '</div>' +
+      '<template x-if="' + model + '"><img class="site-edit-thumb" :src="' + model + '" alt=""></template>' +
+      '</div>';
+  }
+
+  function repeatHead(title, path, indexExpression) {
+    return '<div class="site-repeat-head"><strong>' + R.esc(title) + '</strong><div class="row" style="gap:4px">' +
+      '<button type="button" class="btn btn-ghost btn-sm" @click="siteMove(\'' + path + '\', ' + indexExpression + ', -1)" aria-label="Move up">' + R.icon('arrow-up') + '</button>' +
+      '<button type="button" class="btn btn-ghost btn-sm" @click="siteMove(\'' + path + '\', ' + indexExpression + ', 1)" aria-label="Move down">' + R.icon('arrow-down') + '</button>' +
+      '<button type="button" class="btn btn-ghost btn-sm" @click="siteRemove(\'' + path + '\', ' + indexExpression + ')" aria-label="Remove">' + R.icon('trash-2') + '</button>' +
+      '</div></div>';
+  }
+
+  function repeatAdd(label, expression) {
+    return '<button type="button" class="btn btn-secondary btn-sm" @click="' + expression + '">' + R.icon('plus') + ' ' + R.esc(label) + '</button>';
+  }
+
+  function editorCard(title, body, actions) {
+    return '<div class="card site-editor-card"><div class="card-head"><h3>' + R.esc(title) + '</h3>' +
+      (actions ? '<div class="card-actions">' + actions + '</div>' : '') + '</div>' + body + '</div>';
+  }
+
+  function pagePreview(slug, key) {
+    const page = SITE_PAGE_LINKS.find((entry) => entry.key === key);
+    return '<a class="btn btn-ghost btn-sm" href="#/site/' + R.attr(slug) + (page && page.path ? '/' + page.path : '') + '" target="_blank" rel="noopener">' + R.icon('external-link') + ' Preview</a>';
+  }
+
+  const SITE_PAGE_LINKS = [
+    { key: 'home', path: '' },
+    { key: 'about', path: 'about' },
+    { key: 'programmes', path: 'programmes' },
+    { key: 'admissions', path: 'admissions' },
+    { key: 'gallery', path: 'gallery' },
+    { key: 'contact', path: 'contact' }
+  ];
+
   V.website = {
     async load(ctx) {
-      const payload = await R.api('GET', '/website').then((p) => p.data).catch(() => ({ config: null, domains: [] }));
-      return { config: payload.config, domains: payload.domains || [] };
+      const payload = await R.api('GET', '/website').then((p) => p.data).catch(() => ({
+        config: null, domains: [], content: null, seo: null, pages: [], branding: {}, organisation: null
+      }));
+      const config = payload.config;
+      const content = payload.content || {};
+      const seo = content.seo || payload.seo || {};
+      // The editor works on one local draft object. Keywords are a comma list
+      // in the input and are normalised back into an array by the API.
+      const draft = Object.assign({}, content, {
+        theme: (config && config.theme) || 'nature',
+        seo: Object.assign({}, seo, {
+          keywords: Array.isArray(seo.keywords) ? seo.keywords.join(', ') : (seo.keywords || '')
+        })
+      });
+      ctx.siteDraft = draft;
+      ctx.siteTab = ctx.siteTab || 'home';
+      ctx.siteBusy = null;
+      ctx.siteSaving = false;
+      ctx.siteError = null;
+      ctx.siteSavedAt = (config && (config.updated_at || config.published_at)) || null;
+      return {
+        config,
+        domains: payload.domains || [],
+        content,
+        seo: payload.seo || seo,
+        pages: payload.pages || SITE_PAGE_LINKS.map((entry) => ({ key: entry.key, label: R.titleCase(entry.key), path: entry.path })),
+        branding: payload.branding || {},
+        organisation: payload.organisation || (ctx.activeMembership && ctx.activeMembership.organisation) || {}
+      };
     },
 
     render(ctx, params, page) {
       const config = page.config;
-      const draft = (config && config.draft_content) || {};
-      const published = (config && config.published_content) || {};
-      const hero = draft.hero || {};
-      const contact = draft.contact || {};
-      const domains = page.domains || [];
-      const slug = (config && config.slug) || ctx.activeMembership.organisation.slug;
+      const organisation = page.organisation || {};
+      const slug = organisation.slug || (config && config.slug) || (ctx.activeMembership && ctx.activeMembership.organisation.slug) || '';
       const canManage = ctx.has('website.manage.daycare');
-      const tab = ctx.tab || 'content';
+      const branding = page.branding || {};
+      const seo = page.seo || {};
       const status = config ? config.status : 'not_configured';
+      const keywords = Array.isArray(seo.keywords) ? seo.keywords.length : 0;
+      const tabs = [
+        { key: 'home', label: 'Home' },
+        { key: 'about', label: 'About' },
+        { key: 'programmes', label: 'Programmes' },
+        { key: 'admissions', label: 'Admissions' },
+        { key: 'gallery', label: 'Gallery' },
+        { key: 'contact', label: 'Contact' },
+        { key: 'seo', label: 'SEO' },
+        { key: 'domains', label: 'Domains' }
+      ];
+      const tabButtons = tabs.map((tab) => '<button type="button" class="tab" :class="siteTab === \'' + tab.key + '\' ? \'tab active\' : \'tab\'" @click="siteTab = \'' + tab.key + '\'">' + R.esc(tab.label) + '</button>').join('');
+
       return R.pageHead('Public website', 'The shopfront families see before they ever walk through the door.',
-        (config ? '<a class="btn btn-secondary btn-sm" href="#/site/' + R.attr(slug) + '" target="_blank" rel="noopener">' + R.icon('external-link') + ' Preview</a>' : '') +
-        (canManage ? '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'websiteContent\')">' + R.icon('pencil') + ' Edit content</button>' : '')) +
+        (config ? '<a class="btn btn-secondary btn-sm" href="#/site/' + R.attr(slug) + '" target="_blank" rel="noopener">' + R.icon('external-link') + ' Open site</a>' : '') +
+        (canManage ? '<button class="btn btn-secondary btn-sm" @click="saveSiteDraft()" :disabled="siteSaving"><span class="spinner" x-show="siteSaving" style="width:14px;height:14px"></span> Save draft</button>' : '') +
+        (canManage ? '<button class="btn btn-primary btn-sm" @click="publishSite()" :disabled="siteSaving">' + R.icon('rocket') + ' Publish</button>' : '')) +
         '<div class="grid grid-4 section">' +
         R.statCard({ label: 'Status', value: R.titleCase(status), icon: 'globe', tone: status === 'published' ? 'green' : 'sun', foot: config && config.published_at ? 'Published ' + R.relative(config.published_at) : 'Not published yet' }) +
-        R.statCard({ label: 'Theme', value: R.titleCase((config && config.theme) || 'nature'), icon: 'palette', tone: 'sky', foot: 'Look and feel' }) +
-        R.statCard({ label: 'Custom domains', value: R.number(domains.length), icon: 'link', tone: 'plum', foot: 'Verified addresses' }) +
-        R.statCard({ label: 'Public address', value: '/' + slug, icon: 'at-sign', tone: 'clay', foot: 'Share this link with families' }) +
+        R.statCard({ label: 'Pages', value: R.number((page.pages || []).length || 6), icon: 'files', tone: 'sky', foot: 'Home, about, programmes, admissions, gallery, contact' }) +
+        R.statCard({ label: 'SEO keywords', value: R.number(keywords), icon: 'search', tone: 'plum', foot: 'Used in the page meta tags' }) +
+        R.statCard({ label: 'Last saved', value: ctx.siteSavedAt ? R.relative(ctx.siteSavedAt) : 'Not yet', icon: 'save', tone: 'clay', foot: 'Draft changes' }) +
         '</div>' +
-        R.tabs([{ key: 'content', label: 'Content' }, { key: 'published', label: 'Published copy' }, { key: 'domains', label: 'Domains' }], tab) +
-        (tab === 'domains' ? this.renderDomains(ctx, page) : tab === 'published' ? this.renderPublished(published, slug) : this.renderContent(ctx, page, draft, hero, contact, slug, canManage));
+        '<div class="alert alert-danger" x-show="siteError" x-cloak style="margin-bottom:12px"><i data-lucide="alert-circle"></i><span x-text="siteError"></span></div>' +
+        editorCard('Branding',
+          '<div class="site-branding-strip">' +
+          '<div class="site-branding-logo">' + (organisation.logoUrl ? '<img src="' + R.attr(organisation.logoUrl) + '" alt="' + R.attr(organisation.name || '') + '">' : '<span class="brand-logo-fallback">' + R.esc(String(organisation.name || 'R').charAt(0).toUpperCase()) + '</span>') + '</div>' +
+          '<div class="site-branding-copy"><div class="strong">' + R.esc(organisation.name || 'Your centre') + '</div>' +
+          '<p class="muted small">Your website automatically uses your organisation logo, colours and typography. Update them once in Organisation settings and every page follows.</p>' +
+          '<div class="swatch-row">' + ['primary', 'secondary', 'accent', 'background', 'surface', 'text'].map((token) =>
+            '<span class="swatch" style="background:' + R.attr(branding[token] || '#cccccc') + '" title="' + R.esc(token) + '"></span>').join('') + '</div></div>' +
+          '<a class="btn btn-secondary btn-sm" href="#/app/settings">' + R.icon('palette') + ' Manage branding</a>' +
+          '</div>', pagePreview(slug, 'home')) +
+        '<div class="site-tabs section">' + tabButtons + '</div>' +
+        this.renderHomePanel(ctx, slug, canManage, config) +
+        this.renderAboutPanel(ctx, slug, canManage) +
+        this.renderProgrammesPanel(ctx, slug, canManage) +
+        this.renderAdmissionsPanel(ctx, slug, canManage) +
+        this.renderGalleryPanel(ctx, slug, canManage) +
+        this.renderContactPanel(ctx, slug, canManage) +
+        this.renderSeoPanel(ctx, slug, canManage) +
+        '<div class="site-editor-panel" x-show="siteTab === \'domains\'" x-cloak>' + this.renderDomains(ctx, page) + '</div>' +
+        (canManage ? '<div class="site-save-bar"><span class="muted small">Changes stay private until you publish.</span><span class="spacer"></span>' +
+          '<button type="button" class="btn btn-secondary" @click="saveSiteDraft()" :disabled="siteSaving">Save draft</button>' +
+          '<button type="button" class="btn btn-primary" @click="publishSite()" :disabled="siteSaving">Publish website</button></div>' : '');
     },
 
-    renderContent(ctx, page, draft, hero, contact, slug, canManage) {
-      const routine = draft.routine || [];
-      const faqs = draft.faqs || [];
-      return '<div class="split"><div class="stack">' +
-        R.card('Hero', '<div class="hero-panel"><div class="muted small" style="opacity:.8">' + R.esc((contact.address || 'Your centre')) + '</div><h2 style="margin:6px 0">' + R.esc(hero.headline || 'Add a headline') + '</h2><p style="margin:0">' + R.esc(hero.subheadline || 'Add a subheadline') + '</p><span class="btn btn-sm" style="margin-top:12px;background:#fff;color:#1f4d27">' + R.esc(hero.cta || 'Enquire now') + '</span></div>',
-          canManage ? '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'websiteContent\')">Edit</button>' : '') +
-        R.card('About the centre', '<p class="muted" style="white-space:pre-wrap">' + R.esc(draft.about || 'No description yet.') + '</p>' +
-          '<div class="detail-list" style="margin-top:12px">' +
-          R.detailItem('Fees', R.esc(draft.fees || 'Not set')) +
-          R.detailItem('Email', R.esc(contact.email || 'Not set')) +
-          R.detailItem('Phone', R.esc(contact.phone || 'Not set')) +
-          R.detailItem('Address', R.esc(contact.address || 'Not set')) +
+    renderHomePanel(ctx, slug, canManage) {
+      return '<div class="site-editor-panel" x-show="siteTab === \'home\'" x-cloak>' +
+        editorCard('Hero', '<div class="form-grid">' +
+          editorField('Badge', 'siteDraft.hero.badge', { placeholder: 'Registered ECD centre' }) +
+          editorField('Headline', 'siteDraft.hero.headline', { span: true, placeholder: 'Where little minds grow' }) +
+          editorField('Subheadline', 'siteDraft.hero.subheadline', { span: true, textarea: true, rows: 3, placeholder: 'A warm, play-based early learning home.' }) +
+          editorField('Button label', 'siteDraft.hero.cta', { placeholder: 'Book a visit' }) +
+          editorField('Second button label', 'siteDraft.hero.secondaryCta', { placeholder: 'Explore programmes' }) +
+          editorImage('Hero image', 'siteDraft.hero.image', '\'hero.image\'', 'A bright, welcoming photo works best. It appears beside the headline on the home page.') +
+          editorField('Announcement', 'siteDraft.announcement', { span: true, textarea: true, rows: 2, placeholder: 'Optional notice shown at the top of the home page' }) +
+          '</div>', pagePreview(slug, 'home')) +
+        editorCard('Hero statistics', '<p class="muted small">Short facts shown under the hero buttons.</p>' +
+          '<template x-for="(stat, index) in siteDraft.hero.stats" :key="index"><div class="site-repeat">' +
+          repeatHead('Fact', 'hero.stats', 'index') +
+          '<div class="form-grid">' +
+          '<div class="field"><label>Label</label><input class="input" x-model="stat.label" placeholder="Ages welcomed"></div>' +
+          '<div class="field"><label>Value</label><input class="input" x-model="stat.value" placeholder="18m – 6y"></div>' +
+          '</div></div></template>' +
+          repeatAdd('Add a fact', 'siteAdd(\'hero.stats\', { label: \'\', value: \'\' })')) +
+        editorCard('What families value', '<p class="muted small">The three or four promises shown on the home page and About page.</p>' +
+          '<template x-for="(value, index) in siteDraft.about.values" :key="index"><div class="site-repeat">' +
+          repeatHead('Value', 'about.values', 'index') +
+          '<div class="form-grid">' +
+          '<div class="field"><label>Title</label><input class="input" x-model="value.title"></div>' +
+          '<div class="field span-2"><label>Description</label><textarea class="textarea" rows="2" x-model="value.description"></textarea></div>' +
+          '</div></div></template>' +
+          repeatAdd('Add a value', 'siteAdd(\'about.values\', { title: \'\', description: \'\' })')) +
+        editorCard('About teaser', '<div class="form-grid">' +
+          editorField('Heading', 'siteDraft.about.heading', { span: true }) +
+          editorField('Introduction', 'siteDraft.about.body', { span: true, textarea: true, rows: 4 }) +
+          editorField('Approach', 'siteDraft.about.approach', { span: true, textarea: true, rows: 3, help: 'A short statement about how children learn at your centre.' }) +
+          editorImage('About image', 'siteDraft.about.image', '\'about.image\'') +
           '</div>') +
-        R.card('Daily routine', routine.length ? R.table({ rows: routine, compact: true, columns: [
-          { label: 'Time', render: (r) => '<span class="mono">' + R.esc(r.time) + '</span>' },
-          { label: 'Activity', render: (r) => R.esc(r.activity) }
-        ] }) : '<p class="muted small">No routine added.</p>') +
-        '</div><div class="stack">' +
-        R.card('Publish', '<p class="muted small">Publishing copies the draft to the live website. Editing afterwards never changes the live copy until you publish again.</p>' +
-          '<div class="btn-group" style="margin-top:10px">' +
-          (canManage ? '<button class="btn btn-primary" @click="confirmAction(\'Publish website\',\'The draft content will replace the live website immediately.\',\'/website/publish\',{submitLabel:\'Publish\',successMessage:\'Website published\',danger:false})">' + R.icon('rocket') + ' Publish</button>' : '') +
-          (canManage && page.config && page.config.status === 'published' ? '<button class="btn btn-secondary" @click="confirmAction(\'Unpublish website\',\'The public site will stop accepting visitors until you publish again.\',\'/website/unpublish\',{submitLabel:\'Unpublish\',successMessage:\'Website unpublished\'})">Unpublish</button>' : '') +
-          '</div>') +
-        R.card('Frequently asked questions', faqs.length ? '<div class="stack">' + faqs.map((f) => '<div><div class="strong" style="font-size:0.88rem">' + R.esc(f.question) + '</div><div class="muted small">' + R.esc(f.answer) + '</div></div>').join('') + '</div>' : '<p class="muted small">No questions added yet.</p>') +
-        R.card('Share your page', '<div class="detail-item"><div class="d-label">Public link</div><div class="d-value mono">#/site/' + R.esc(slug) + '</div></div>') +
-        '</div></div>';
+        editorCard('Family testimonials', '<p class="muted small">Optional quotes from families. Leave empty to hide the section.</p>' +
+          '<template x-for="(item, index) in siteDraft.testimonials" :key="index"><div class="site-repeat">' +
+          repeatHead('Testimonial', 'testimonials', 'index') +
+          '<div class="form-grid">' +
+          '<div class="field span-2"><label>Quote</label><textarea class="textarea" rows="2" x-model="item.quote"></textarea></div>' +
+          '<div class="field"><label>Author</label><input class="input" x-model="item.author" placeholder="A parent"></div>' +
+          '<div class="field"><label>Relationship</label><input class="input" x-model="item.role" placeholder="Parent of a 3-year-old"></div>' +
+          '</div></div></template>' +
+          repeatAdd('Add a testimonial', 'siteAdd(\'testimonials\', { quote: \'\', author: \'\', role: \'\' })')) +
+        '</div>';
     },
 
-    renderPublished(published, slug) {
-      const hero = published.hero || {};
-      return R.card('Live website copy',
-        '<div class="hero-panel" style="margin-bottom:14px"><h2 style="margin:0 0 6px">' + R.esc(hero.headline || 'Nothing published yet') + '</h2><p style="margin:0">' + R.esc(hero.subheadline || '') + '</p></div>' +
-        '<p class="muted" style="white-space:pre-wrap">' + R.esc(published.about || '') + '</p>' +
-        '<div class="section"></div><a class="btn btn-secondary btn-sm" href="#/site/' + R.attr(slug) + '" target="_blank" rel="noopener">' + R.icon('external-link') + ' Open live site</a>');
+    renderAboutPanel(ctx, slug, canManage) {
+      return '<div class="site-editor-panel" x-show="siteTab === \'about\'" x-cloak>' +
+        editorCard('About page', '<div class="form-grid">' +
+          editorField('Page heading', 'siteDraft.about.heading', { span: true }) +
+          editorField('Your story', 'siteDraft.about.body', { span: true, textarea: true, rows: 6 }) +
+          editorField('Mission', 'siteDraft.about.mission', { span: true, textarea: true, rows: 3 }) +
+          editorField('Our approach', 'siteDraft.about.approach', { span: true, textarea: true, rows: 4 }) +
+          editorImage('About page image', 'siteDraft.about.image', '\'about.image\'') +
+          '</div>', pagePreview(slug, 'about')) +
+        editorCard('Our spaces and facilities', '<p class="muted small">Rooms, outdoor space, meals, security and anything else families should know.</p>' +
+          '<template x-for="(facility, index) in siteDraft.facilities" :key="index"><div class="site-repeat">' +
+          repeatHead('Facility', 'facilities', 'index') +
+          '<div class="form-grid">' +
+          '<div class="field"><label>Name</label><input class="input" x-model="facility.name" placeholder="Outdoor play garden"></div>' +
+          '<div class="field span-2"><label>Description</label><textarea class="textarea" rows="2" x-model="facility.description"></textarea></div>' +
+          '</div></div></template>' +
+          repeatAdd('Add a facility', 'siteAdd(\'facilities\', { name: \'\', description: \'\' })')) +
+        editorCard('A day at the centre', '<p class="muted small">The routine shown on the About page.</p>' +
+          '<template x-for="(row, index) in siteDraft.routine" :key="index"><div class="site-repeat">' +
+          repeatHead('Routine item', 'routine', 'index') +
+          '<div class="form-grid">' +
+          '<div class="field"><label>Time</label><input class="input" x-model="row.time" placeholder="08:00"></div>' +
+          '<div class="field"><label>Activity</label><input class="input" x-model="row.activity" placeholder="Morning ring and free play"></div>' +
+          '</div></div></template>' +
+          repeatAdd('Add a routine item', 'siteAdd(\'routine\', { time: \'\', activity: \'\' })')) +
+        '</div>';
+    },
+
+    renderProgrammesPanel(ctx, slug, canManage) {
+      return '<div class="site-editor-panel" x-show="siteTab === \'programmes\'" x-cloak>' +
+        editorCard('Programmes', '<p class="muted small">Each programme appears as a card with its age group, photo and fee note.</p>' +
+          '<template x-for="(programme, index) in siteDraft.programmes" :key="index"><div class="site-repeat">' +
+          repeatHead('Programme', 'programmes', 'index') +
+          '<div class="form-grid">' +
+          '<div class="field"><label>Name</label><input class="input" x-model="programme.name" placeholder="Toddler room"></div>' +
+          '<div class="field"><label>Age group</label><input class="input" x-model="programme.ages" placeholder="18 months – 3 years"></div>' +
+          '<div class="field"><label>Fee note</label><input class="input" x-model="programme.price" placeholder="From R4 200 per month"></div>' +
+          '<div class="field span-2"><label>Description</label><textarea class="textarea" rows="3" x-model="programme.description"></textarea></div>' +
+          editorImage('Programme image', 'programme.image', '\'programmes.\' + index + \'.image\'') +
+          '</div></div></template>' +
+          repeatAdd('Add a programme', 'siteAdd(\'programmes\', { name: \'\', ages: \'\', description: \'\', image: \'\', price: \'\' })'), pagePreview(slug, 'programmes')) +
+        editorCard('Fees', '<div class="form-grid">' +
+          editorField('Fee summary', 'siteDraft.fees.summary', { span: true, textarea: true, rows: 3, placeholder: 'Our fees include meals, nappies and all learning materials.' }) +
+          editorField('Fee note', 'siteDraft.fees.note', { span: true, textarea: true, rows: 2, placeholder: 'Sibling discounts and annual increases are explained in the enrolment pack.' }) +
+          '</div>' +
+          '<template x-for="(item, index) in siteDraft.fees.items" :key="index"><div class="site-repeat">' +
+          repeatHead('Fee line', 'fees.items', 'index') +
+          '<div class="form-grid">' +
+          '<div class="field"><label>Label</label><input class="input" x-model="item.label" placeholder="Full day (6:30 – 17:30)"></div>' +
+          '<div class="field"><label>Amount</label><input class="input" x-model="item.amount" placeholder="R4 500 per month"></div>' +
+          '<div class="field span-2"><label>Note</label><input class="input" x-model="item.note"></div>' +
+          '</div></div></template>' +
+          repeatAdd('Add a fee line', 'siteAdd(\'fees.items\', { label: \'\', amount: \'\', note: \'\' })')) +
+        editorCard('Frequently asked questions', '<template x-for="(faq, index) in siteDraft.faqs" :key="index"><div class="site-repeat">' +
+          repeatHead('Question', 'faqs', 'index') +
+          '<div class="form-grid">' +
+          '<div class="field span-2"><label>Question</label><input class="input" x-model="faq.question"></div>' +
+          '<div class="field span-2"><label>Answer</label><textarea class="textarea" rows="3" x-model="faq.answer"></textarea></div>' +
+          '</div></div></template>' +
+          repeatAdd('Add a question', 'siteAdd(\'faqs\', { question: \'\', answer: \'\' })')) +
+        '</div>';
+    },
+
+    renderAdmissionsPanel(ctx, slug, canManage) {
+      return '<div class="site-editor-panel" x-show="siteTab === \'admissions\'" x-cloak>' +
+        editorCard('Admissions page', '<div class="form-grid">' +
+          editorField('Page heading', 'siteDraft.admissions.heading', { span: true, placeholder: 'Joining our centre' }) +
+          editorField('Introduction', 'siteDraft.admissions.intro', { span: true, textarea: true, rows: 4 }) +
+          editorField('Open days', 'siteDraft.admissions.openDays', { span: true, placeholder: 'Open mornings every Tuesday, 09:00 – 11:00' }) +
+          editorField('Closing call to action', 'siteDraft.admissions.cta', { span: true, placeholder: 'Come and see us' }) +
+          '</div>', pagePreview(slug, 'admissions')) +
+        editorCard('Admissions steps', '<template x-for="(step, index) in siteDraft.admissions.steps" :key="index"><div class="site-repeat">' +
+          repeatHead('Step', 'admissions.steps', 'index') +
+          '<div class="form-grid">' +
+          '<div class="field span-2"><label>Title</label><input class="input" x-model="step.title"></div>' +
+          '<div class="field span-2"><label>Description</label><textarea class="textarea" rows="2" x-model="step.description"></textarea></div>' +
+          '</div></div></template>' +
+          repeatAdd('Add a step', 'siteAdd(\'admissions.steps\', { title: \'\', description: \'\' })')) +
+        editorCard('What to have ready', '<p class="muted small">A short checklist for families. Shown on the admissions page.</p>' +
+          '<template x-for="(item, index) in siteDraft.admissions.checklist" :key="index"><div class="site-checklist-edit">' +
+          '<input class="input" x-model="siteDraft.admissions.checklist[index]" placeholder="Your child\'s birth certificate">' +
+          '<button type="button" class="btn btn-ghost btn-sm" @click="siteRemove(\'admissions.checklist\', index)" aria-label="Remove">' + R.icon('x') + '</button>' +
+          '</div></template>' +
+          repeatAdd('Add a checklist item', 'siteAdd(\'admissions.checklist\', \'\')')) +
+        '</div>';
+    },
+
+    renderGalleryPanel(ctx, slug, canManage) {
+      return '<div class="site-editor-panel" x-show="siteTab === \'gallery\'" x-cloak>' +
+        editorCard('Gallery', '<p class="muted small">Upload as many photos as you like. The first photo is also used as the social sharing image when no dedicated image is set.</p>' +
+          '<div class="site-gallery-edit">' +
+          '<template x-for="(item, index) in siteDraft.gallery" :key="index"><div class="site-repeat">' +
+          repeatHead('Photo', 'gallery', 'index') +
+          '<div class="form-grid">' +
+          editorImage('Photo', 'item.url', '\'gallery.\' + index + \'.url\'') +
+          '<div class="field span-2"><label>Caption</label><input class="input" x-model="item.caption" placeholder="Our outdoor play garden"></div>' +
+          '</div></div></template>' +
+          '</div>' +
+          repeatAdd('Add a photo', 'siteAdd(\'gallery\', { url: \'\', caption: \'\' })'), pagePreview(slug, 'gallery')) +
+        '</div>';
+    },
+
+    renderContactPanel(ctx, slug, canManage) {
+      return '<div class="site-editor-panel" x-show="siteTab === \'contact\'" x-cloak>' +
+        editorCard('Contact details', '<div class="form-grid">' +
+          editorField('Heading', 'siteDraft.contact.heading', { span: true, placeholder: 'Come and see us' }) +
+          editorField('Email', 'siteDraft.contact.email', { type: 'email' }) +
+          editorField('Phone', 'siteDraft.contact.phone', { type: 'tel' }) +
+          editorField('WhatsApp', 'siteDraft.contact.whatsapp', { type: 'tel' }) +
+          editorField('Opening hours', 'siteDraft.contact.hours', { placeholder: 'Monday to Friday, 06:30 – 17:30' }) +
+          editorField('Address', 'siteDraft.contact.address', { span: true, textarea: true, rows: 2 }) +
+          editorField('Map link', 'siteDraft.contact.mapUrl', { span: true, type: 'url', placeholder: 'https://maps.google.com/…' }) +
+          '</div>', pagePreview(slug, 'contact')) +
+        editorCard('Social links', '<p class="muted small">Full profile URLs. Empty links are hidden from the website.</p><div class="form-grid">' +
+          editorField('Facebook', 'siteDraft.social.facebook', { type: 'url' }) +
+          editorField('Instagram', 'siteDraft.social.instagram', { type: 'url' }) +
+          editorField('WhatsApp', 'siteDraft.social.whatsapp', { type: 'url' }) +
+          editorField('YouTube', 'siteDraft.social.youtube', { type: 'url' }) +
+          editorField('TikTok', 'siteDraft.social.tiktok', { type: 'url' }) +
+          editorField('X', 'siteDraft.social.x', { type: 'url' }) +
+          '</div>') +
+        editorCard('Centre locations', '<p class="muted small">Branch names, addresses and photos are managed once in Organisation settings and appear on the contact page automatically.</p>' +
+          '<a class="btn btn-secondary btn-sm" href="#/app/settings">' + R.icon('building-2') + ' Manage branches</a>') +
+        '</div>';
+    },
+
+    renderSeoPanel(ctx, slug, canManage) {
+      return '<div class="site-editor-panel" x-show="siteTab === \'seo\'" x-cloak>' +
+        editorCard('Search and social sharing', '<div class="form-grid">' +
+          editorField('Page title', 'siteDraft.seo.title', { span: true, help: 'Shown in the browser tab and search results. Keep it under 60 characters.' }) +
+          editorField('Meta description', 'siteDraft.seo.description', { span: true, textarea: true, rows: 3, help: 'The sentence search engines show under your title.' }) +
+          editorField('Keywords', 'siteDraft.seo.keywords', { span: true, textarea: true, rows: 3, help: 'Comma-separated. We add your centre name, suburb and programme names automatically.' }) +
+          editorImage('Social sharing image', 'siteDraft.seo.image', '\'seo.image\'', 'Used for WhatsApp, Facebook and X previews. Landscape images work best.') +
+          editorField('X handle', 'siteDraft.seo.twitterHandle', { placeholder: '@yourcentre' }) +
+          '</div>' +
+          '<div class="site-seo-preview"><div class="site-seo-preview-label">Search preview</div>' +
+          '<div class="site-seo-title" x-text="siteDraft.seo.title || \'Your page title\'"></div>' +
+          '<div class="site-seo-url" x-text="siteDraft.seo.canonical || \'https://ecd.re-el.co.za/#/site/' + R.attr(slug) + '\'"></div>' +
+          '<div class="site-seo-description" x-text="siteDraft.seo.description || \'Your meta description\'"></div></div>', pagePreview(slug, 'home')) +
+        editorCard('Technical SEO', '<div class="detail-list">' +
+          R.detailItem('Canonical address', '<span class="mono small">' + R.esc(R.siteUrl(slug, '')) + '</span>') +
+          R.detailItem('Structured data', 'ChildCare schema with your name, address, phone and logo') +
+          R.detailItem('Social cards', 'Open Graph and Twitter cards generated from the fields above') +
+          R.detailItem('Sitemap', 'Each public page has its own canonical address') +
+          '</div>') +
+        '</div>';
     },
 
     renderDomains(ctx, page) {
@@ -318,36 +589,7 @@
     },
 
     openModal(ctx, name) {
-      const page = ctx.page || {};
-      const draft = (page.config && page.config.draft_content) || {};
-      if (name === 'websiteContent') {
-        const hero = draft.hero || {};
-        const contact = draft.contact || {};
-        ctx.openModal({
-          title: 'Edit website content', endpoint: '/website', method: 'PATCH', submitLabel: 'Save draft', size: 'wide',
-          description: 'Saving updates the draft only. Publish when you are ready for families to see it.',
-          fields: [
-            { name: 'headline', label: 'Hero headline', required: true, value: hero.headline || '', span: 2 },
-            { name: 'subheadline', label: 'Hero subheadline', value: hero.subheadline || '', span: 2 },
-            { name: 'cta', label: 'Call to action', value: hero.cta || 'Book a visit' },
-            { name: 'theme', label: 'Theme', type: 'select', value: (page.config && page.config.theme) || 'nature', options: ['nature', 'sunrise', 'ocean', 'berry'].map((t) => ({ value: t, label: R.titleCase(t) })) },
-            { name: 'about', label: 'About the centre', type: 'textarea', value: draft.about || '', span: 2 },
-            { name: 'fees', label: 'Fees summary', type: 'textarea', value: draft.fees || '', span: 2 },
-            { name: 'email', label: 'Contact email', type: 'email', value: contact.email || '' },
-            { name: 'phone', label: 'Contact phone', value: contact.phone || '' },
-            { name: 'address', label: 'Address', value: contact.address || '', span: 2 }
-          ],
-          transform: (data) => ({
-            theme: data.theme,
-            draftContent: {
-              hero: { headline: data.headline, subheadline: data.subheadline, cta: data.cta },
-              about: data.about,
-              fees: data.fees,
-              contact: { email: data.email, phone: data.phone, address: data.address }
-            }
-          })
-        });
-      } else if (name === 'domain') {
+      if (name === 'domain') {
         ctx.openModal({
           title: 'Add custom domain', endpoint: '/website/domains', submitLabel: 'Add domain',
           description: 'Enter the hostname without https:// — for example www.littlesprouts.co.za.',
