@@ -231,6 +231,32 @@ async function deleteObject(key) {
 }
 
 /**
+ * A credential problem that is certain without a network call. The classic
+ * case is using the Cloudflare account ID as the access key: R2 then answers
+ * 401 without CORS headers, so the browser reports a CORS failure and hides
+ * the real cause. Refusing the presign here keeps that message honest.
+ */
+function credentialProblem() {
+  const cfg = config();
+  if (!cfg.accessKeyId || !cfg.secretAccessKey || !cfg.bucket || !cfg.host) {
+    return {
+      code: 'unconfigured',
+      message: 'File storage is not configured.',
+      fix: 'Set R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET and R2_PUBLIC_BASE_URL, then redeploy.'
+    };
+  }
+  const accountId = process.env.R2_ACCOUNT_ID || '';
+  if (accountId && cfg.accessKeyId === accountId) {
+    return {
+      code: 'credentials',
+      message: 'Object storage is misconfigured: R2_ACCESS_KEY_ID is the Cloudflare account ID, not an R2 API token key.',
+      fix: 'Create an R2 API token with Object Read & Write, then update R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY in Vercel and redeploy.'
+    };
+  }
+  return null;
+}
+
+/**
  * Explain an S3/R2 status code in the words an operator needs. R2 answers an
  * authentication failure with 401 and omits CORS headers, which is why a bad
  * key surfaces in the browser as "blocked by CORS policy" rather than a login
@@ -296,23 +322,17 @@ async function check() {
     return { ok: false, steps, diagnosis: { code: 'unconfigured', message: 'Object storage is not configured.', fix: 'Set the R2 variables in Vercel and redeploy.' } };
   }
 
-  const accountId = process.env.R2_ACCOUNT_ID || '';
-  if (accountId && cfg.accessKeyId === accountId) {
+  const problem = credentialProblem();
+  if (problem) {
     steps.push({
       step: 'credentials',
       label: 'Access key',
       ok: false,
-      detail: 'R2_ACCESS_KEY_ID is the Cloudflare account ID. R2 access keys start with a different value.'
+      detail: problem.code === 'credentials'
+        ? 'R2_ACCESS_KEY_ID is the Cloudflare account ID. R2 access keys start with a different value.'
+        : problem.message
     });
-    return {
-      ok: false,
-      steps,
-      diagnosis: {
-        code: 'credentials',
-        message: 'R2_ACCESS_KEY_ID is set to the account ID instead of an R2 API token key.',
-        fix: 'Create an R2 API token with Object Read & Write, then set R2_ACCESS_KEY_ID to the token key and R2_SECRET_ACCESS_KEY to its secret.'
-      }
-    };
+    return { ok: false, steps, diagnosis: problem };
   }
 
   const key = `diagnostics/${Date.now().toString(36)}-${crypto.randomBytes(6).toString('hex')}.txt`;
@@ -435,6 +455,7 @@ module.exports = {
   MIME_KINDS,
   isConfigured,
   config,
+  credentialProblem,
   uriEncode,
   encodeKeyPath,
   presign,

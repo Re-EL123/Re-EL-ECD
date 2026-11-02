@@ -46,6 +46,13 @@ function register(router) {
     if (!storage.isConfigured()) {
       fail('CONFLICT', null, 'File storage is not configured. Set the R2_* environment variables.');
     }
+    // Fail before handing the browser a URL that R2 will reject with a 401
+    // and no CORS headers. That combination looks like a CORS bug and sends
+    // everyone hunting the bucket policy instead of the access key.
+    const credentialProblem = storage.credentialProblem();
+    if (credentialProblem) {
+      fail('CONFLICT', null, credentialProblem.message + ' ' + credentialProblem.fix);
+    }
     const body = validate(ctx.body, {
       filename: { type: 'string', min: 1, max: 255 },
       contentType: { type: 'string', min: 3, max: 150 },

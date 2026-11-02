@@ -46,6 +46,40 @@ test('an upload request is refused with a clear conflict when R2 is not configur
   assert.match(response.error.message, /storage is not configured/i);
 });
 
+test('an account ID used as the access key is reported before the browser uploads', async () => {
+  const saved = {
+    account: process.env.R2_ACCOUNT_ID,
+    key: process.env.R2_ACCESS_KEY_ID,
+    secret: process.env.R2_SECRET_ACCESS_KEY,
+    bucket: process.env.R2_BUCKET,
+    base: process.env.R2_PUBLIC_BASE_URL
+  };
+  process.env.R2_ACCOUNT_ID = 'ba15c3d0742444bc7f7ba1c19035247a';
+  process.env.R2_ACCESS_KEY_ID = 'ba15c3d0742444bc7f7ba1c19035247a';
+  process.env.R2_SECRET_ACCESS_KEY = 'secret';
+  process.env.R2_BUCKET = 're-el-media';
+  process.env.R2_PUBLIC_BASE_URL = 'https://media.example.com';
+  try {
+    const { client, organisationId } = await principal();
+    const response = await client.post('/media/uploads', {
+      filename: 'logo.png', contentType: 'image/png', size: 2048, scope: 'branding'
+    }, { organisationId });
+    assert.equal(response.status, 409);
+    assert.match(response.error.message, /account ID/i);
+    assert.match(response.error.message, /R2 API token/i);
+  } finally {
+    const restore = (name, value) => {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    };
+    restore('R2_ACCOUNT_ID', saved.account);
+    restore('R2_ACCESS_KEY_ID', saved.key);
+    restore('R2_SECRET_ACCESS_KEY', saved.secret);
+    restore('R2_BUCKET', saved.bucket);
+    restore('R2_PUBLIC_BASE_URL', saved.base);
+  }
+});
+
 test('media assets are scoped to the organisation that owns them', async () => {
   const { client, organisationId } = await principal();
   const sunrise = createClient();
