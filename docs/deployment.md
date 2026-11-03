@@ -134,9 +134,11 @@ static output. Configure these environment variables in Vercel:
 | `EMAIL_FROM` | No | Defaults to `Re-EL ECD <no-reply@re-el.co.za>`. Must be a verified Resend sender. |
 | `EMAIL_REPLY_TO` | No | Reply-to address for outbound mail. |
 | `APP_BASE_URL` | No | Web origin used in email links. Defaults to the first `FRONTEND_ORIGIN`. |
-| `WEBSITE_CNAME_TARGET` | No | Hostname tenants point a `CNAME` at. Defaults to `sites.re-el.co.za`. |
+| `WEBSITE_CNAME_TARGET` | No | Hostname tenants point a `CNAME` at. Must resolve, or verified domains are dead. Defaults to `cname.vercel-dns.com`. |
 | `WEBSITE_SUBDOMAIN_BASE` | No | Base domain for free `<slug>.<base>` addresses. Defaults to `re-el.co.za`. |
 | `WEBSITE_PLATFORM_HOSTS` | No | Comma-separated hosts that can never be claimed as tenant domains. Defaults to `ecd.re-el.co.za,www.re-el.co.za,re-el.co.za`. |
+| `WEBSITE_PROBE_TIMEOUT_MS` | No | Timeout for the DNS/TLS reachability probe. Defaults to 2500. |
+| `WEBSITE_PROBE_TTL_MS` | No | How long a probe result is cached. Defaults to 600000 (10 minutes). |
 | `API_BASE_URL` | No | API origin used for the PayFast ITN callback. Derived from the request when blank. |
 | `PAYFAST_MERCHANT_ID` | For card payments | PayFast merchant id. |
 | `PAYFAST_MERCHANT_KEY` | For card payments | PayFast merchant key. |
@@ -164,7 +166,7 @@ two records and the tenant publishes either one:
 
 | Record | Host | Value | Use |
 | --- | --- | --- | --- |
-| `CNAME` | the domain, for example `www.centre.co.za` | `WEBSITE_CNAME_TARGET` (`sites.re-el.co.za`) | Preferred for `www` and other subdomains. Marks TLS active immediately. |
+| `CNAME` | the domain, for example `www.centre.co.za` | `WEBSITE_CNAME_TARGET` (`cname.vercel-dns.com`) | Preferred for `www` and other subdomains. Marks TLS active immediately. |
 | `TXT` | `_reel-verify.<domain>` | `reel-verify=<token>` | Required for an apex domain, where a CNAME is not allowed. Proves ownership; TLS stays pending until the edge is attached. |
 
 Verification is server-side and only accepts a matching record. Pending or
@@ -198,6 +200,18 @@ only covers the platform host. A `CNAME` pointed at the GitHub Pages host
 `*.re-el.co.za` certificate, so tenant subdomains must be pointed at the edge
 provider that can. `ecd.re-el.co.za` is unaffected because it is a single host
 with its own certificate.
+
+**Migration follow-up.** Until the wildcard is attached, a free subdomain may
+not answer, so the editor must not promise "always on". The API exposes the
+truth through `GET /api/v1/website/addresses`, which probes the free subdomain
+and the CNAME target over DNS and TLS, and the domains card only offers an
+`Open`/copy link for an address that actually serves. Canonical URLs and SEO
+metadata point at `https://ecd.re-el.co.za/#/site/<slug>` — the platform host,
+which always resolves with a valid certificate — whenever a tenant address is
+not yet live. The `<slug>.re-el.co.za` subdomain becomes the canonical address
+automatically once its TLS probe passes. Wiring that up (wildcard certificate,
+`*.re-el.co.za` attached at the edge, and every tenant subdomain mapped to the
+same static frontend and API) is the remaining infrastructure step.
 
 ### Email (Resend)
 

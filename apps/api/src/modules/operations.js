@@ -313,6 +313,13 @@ function register(router) {
     };
   }, { permission: 'website.read.daycare' });
 
+  /**
+   * Whether the two addresses the editor advertises can actually be opened.
+   * Kept out of GET /website so a DNS/TLS probe never delays the editor itself.
+   */
+  router.get('/website/addresses', async (ctx) => domainService.addressReadiness(ctx.organisation),
+    { permission: 'website.read.daycare' });
+
   router.patch('/website', async (ctx) => {
     const body = validate(ctx.body, {
       theme: { type: 'string', max: 40, optional: true },

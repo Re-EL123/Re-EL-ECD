@@ -6,7 +6,7 @@
  * A tenant proves that it controls a hostname by publishing one of two DNS
  * records:
  *
- *   CNAME  www.example.co.za          -> sites.re-el.co.za
+ *   CNAME  www.example.co.za          -> cname.vercel-dns.com
  *   TXT    _reel-verify.example.co.za -> reel-verify=<token>
  *
  * The CNAME is the normal choice for `www` and other subdomains. A TXT record
@@ -15,19 +15,30 @@
  * sufficient; the CNAME additionally proves that traffic is pointed at the
  * Re-EL edge, so it is the only one that marks TLS as active immediately.
  *
+ * The default target is the edge provider's own CNAME host, which resolves for
+ * every tenant. A branded host such as `sites.re-el.co.za` is only safe as the
+ * target once its own DNS record exists — otherwise every tenant that follows
+ * the instructions points at a name that goes nowhere.
+ *
  * Verification is intentionally server-side: a browser cannot read CNAME or
  * TXT records, and the token must never be trusted from the client.
  */
 
 const crypto = require('node:crypto');
 const dns = require('node:dns');
+const https = require('node:https');
 
-const DEFAULT_CNAME_TARGET = 'sites.re-el.co.za';
+const DEFAULT_CNAME_TARGET = 'cname.vercel-dns.com';
 const DEFAULT_SUBDOMAIN_BASE = 're-el.co.za';
 const DEFAULT_PLATFORM_HOSTS = 'ecd.re-el.co.za,www.re-el.co.za,re-el.co.za';
 const RESERVED_LABELS = new Set(['www', 'api', 'app', 'sites', 'media', 'cdn', 'assets', 'static']);
 
+const DEFAULT_PROBE_TIMEOUT_MS = 2500;
+const DEFAULT_PROBE_TTL_MS = 10 * 60 * 1000;
+
 let resolver = dns.promises;
+let tlsProbe = defaultTlsProbe;
+const probeCache = new Map();
 
 function cnameTarget() {
   return String(process.env.WEBSITE_CNAME_TARGET || DEFAULT_CNAME_TARGET)
@@ -115,6 +126,95 @@ function flattenTxt(values) {
   return (Array.isArray(values) ? values : []).map((entry) =>
     Array.isArray(entry) ? entry.join('') : String(entry || '')
   ).map((entry) => entry.trim()).filter(Boolean);
+}
+
+function probeTimeout() {
+  const value = Number(process.env.WEBSITE_PROBE_TIMEOUT_MS);
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_PROBE_TIMEOUT_MS;
+}
+
+function probeTtl() {
+  const value = Number(process.env.WEBSITE_PROBE_TTL_MS);
+  return Number.isFinite(value) && value >= 0 ? value : DEFAULT_PROBE_TTL_MS;
+}
+
+/**
+ * A TLS handshake is the only honest test of "can a family open this address?".
+ * DNS can resolve while the certificate still covers a different host, which is
+ * exactly what produces SSL_ERROR_BAD_CERT_DOMAIN. `rejectUnauthorized` stays
+ * on, so a wrong or expired certificate fails the probe.
+ */
+function defaultTlsProbe(host, timeoutMs) {
+  return new Promise((resolve) => {
+    const request = https.request({
+      host, port: 443, path: '/', method: 'HEAD', servername: host,
+      timeout: timeoutMs, rejectUnauthorized: true
+    }, (response) => {
+      response.resume();
+      resolve({ ok: true, status: response.statusCode || 0 });
+    });
+    request.on('timeout', () => { request.destroy(); resolve({ ok: false, error: 'TIMEOUT' }); });
+    request.on('error', (error) => resolve({ ok: false, error: (error && error.code) || 'TLS_ERROR' }));
+    request.end();
+  });
+}
+
+/**
+ * Resolve and TLS-check one host, memoised for a short window so a page load
+ * never pays for the same handshake twice.
+ */
+async function probeHost(host, options) {
+  const opts = options || {};
+  const target = normaliseHost(host);
+  const checkedAt = new Date().toISOString();
+  if (!target) {
+    return { host: null, resolves: false, tlsValid: false, reason: 'INVALID_HOST', checkedAt };
+  }
+  const cached = probeCache.get(target);
+  if (cached && (Date.now() - cached.at) < probeTtl()) {
+    return Object.assign({}, cached.value, { checkedAt });
+  }
+  const [ipv4, ipv6] = await Promise.all([
+    safeResolve('resolve4', target),
+    safeResolve('resolve6', target)
+  ]);
+  const resolves = ipv4.values.length > 0 || ipv6.values.length > 0;
+  const handshake = resolves
+    ? await (opts.tlsProbe || tlsProbe)(target, probeTimeout())
+    : { ok: false, error: 'NO_DNS' };
+  const value = {
+    host: target,
+    resolves,
+    tlsValid: Boolean(resolves && handshake && handshake.ok),
+    reason: !resolves ? 'NO_DNS' : ((handshake && handshake.ok) ? null : ((handshake && handshake.error) || 'TLS_ERROR')),
+    checkedAt
+  };
+  probeCache.set(target, { at: Date.now(), value });
+  return value;
+}
+
+/**
+ * The facts the website editor needs to tell an owner the truth about the two
+ * addresses it advertises: the platform-managed free subdomain, and the CNAME
+ * target every custom domain is told to publish.
+ */
+async function addressReadiness(organisation) {
+  const slug = organisation && organisation.slug;
+  const freeHost = slug ? freeSubdomain(slug) : null;
+  const target = cnameTarget();
+  const [free, cname] = await Promise.all([
+    freeHost ? probeHost(freeHost) : Promise.resolve(null),
+    probeHost(target)
+  ]);
+  return {
+    freeSubdomain: freeHost,
+    freeSubdomainReady: Boolean(free && free.tlsValid),
+    freeSubdomainReason: free ? free.reason : 'NO_SLUG',
+    cnameTarget: target,
+    cnameTargetResolves: Boolean(cname && cname.resolves),
+    cnameTargetTlsValid: Boolean(cname && cname.tlsValid),
+    checkedAt: new Date().toISOString()
+  };
 }
 
 /**
@@ -233,6 +333,15 @@ function resetResolverForTesting() {
   resolver = dns.promises;
 }
 
+function setTlsProbeForTesting(next) {
+  tlsProbe = next || defaultTlsProbe;
+  probeCache.clear();
+}
+
+function resetProbeCacheForTesting() {
+  probeCache.clear();
+}
+
 module.exports = {
   normaliseHost,
   generateToken,
@@ -241,8 +350,12 @@ module.exports = {
   freeSubdomain,
   slugFromFreeSubdomain,
   present,
+  probeHost,
+  addressReadiness,
   cnameTarget,
   subdomainBase,
   setResolverForTesting,
-  resetResolverForTesting
+  resetResolverForTesting,
+  setTlsProbeForTesting,
+  resetProbeCacheForTesting
 };

@@ -300,6 +300,10 @@
       const payload = await R.api('GET', '/website').then((p) => p.data).catch(() => ({
         config: null, domains: [], content: null, seo: null, pages: [], branding: {}, organisation: null
       }));
+      // Reachability is a separate probe so a slow DNS/TLS lookup never delays
+      // the editor. A failure leaves `addresses` null and the card stays honest
+      // by not claiming an address is live.
+      const addresses = await R.api('GET', '/website/addresses').then((p) => p.data).catch(() => null);
       const config = payload.config;
       const content = payload.content || {};
       const seo = content.seo || payload.seo || {};
@@ -324,6 +328,7 @@
         seo: payload.seo || seo,
         pages: payload.pages || SITE_PAGE_LINKS.map((entry) => ({ key: entry.key, label: R.titleCase(entry.key), path: entry.path })),
         branding: payload.branding || {},
+        addresses,
         organisation: payload.organisation || (ctx.activeMembership && ctx.activeMembership.organisation) || {}
       };
     },
@@ -565,7 +570,7 @@
           '</div>' +
           '<div class="site-seo-preview"><div class="site-seo-preview-label">Search preview</div>' +
           '<div class="site-seo-title" x-text="siteDraft.seo.title || \'Your page title\'"></div>' +
-          '<div class="site-seo-url" x-text="siteDraft.seo.canonical || \'https://ecd.re-el.co.za/#/site/' + R.attr(slug) + '\'"></div>' +
+          '<div class="site-seo-url" x-text="siteDraft.seo.canonical || ' + R.attr(JSON.stringify(R.siteUrl(slug, ''))) + '"></div>' +
           '<div class="site-seo-description" x-text="siteDraft.seo.description || \'Your meta description\'"></div></div>', pagePreview(slug, 'home')) +
         editorCard('Technical SEO', '<div class="detail-list">' +
           R.detailItem('Canonical address', '<span class="mono small">' + R.esc(R.siteUrl(slug, '')) + '</span>') +
@@ -580,8 +585,16 @@
       const canManage = ctx.has('website.manage.daycare');
       const domains = page.domains || [];
       const organisation = page.organisation || {};
+      const slug = organisation.slug || '';
+      const addresses = page.addresses || {};
       const freeHost = organisation.freeSubdomain || '';
       const freeUrl = freeHost ? 'https://' + freeHost : '';
+      // The platform address always resolves with a valid certificate, so it is
+      // the one link an owner can share the moment the site is published.
+      const platformUrl = slug ? R.siteUrl(slug, '') : '';
+      // Reachability comes from a real DNS/TLS probe. Until it says the free
+      // subdomain answers, the card must not call it "always on".
+      const freeReady = addresses.freeSubdomainReady === true;
 
       const statusBadge = (domain) => {
         if (domain.verification_status === 'verified' || domain.verified) return '<span class="badge badge-green">Verified</span>';
@@ -614,7 +627,7 @@
           (domain.verification_method ? '<span class="badge badge-muted">' + R.esc(String(domain.verification_method).toUpperCase()) + '</span>' : '') +
           '</div></div>' +
           '<div class="btn-group row-end">' +
-          (verified ? '<a class="btn btn-secondary btn-sm" href="https://' + R.attr(domain.domain_name) + '" target="_blank" rel="noopener">' + R.icon('external-link') + ' Open</a>' : '') +
+          (verified && domain.ssl_status === 'active' ? '<a class="btn btn-secondary btn-sm" href="https://' + R.attr(domain.domain_name) + '" target="_blank" rel="noopener">' + R.icon('external-link') + ' Open</a>' : '') +
           (canManage ? '<button type="button" class="btn btn-secondary btn-sm" @click="verifyDomain(' + R.attr(JSON.stringify(domain.id)) + ')" :disabled="domainBusy === ' + R.attr(JSON.stringify(domain.id)) + '">' +
             '<span class="spinner" x-show="domainBusy === ' + R.attr(JSON.stringify(domain.id)) + '" style="width:13px;height:13px"></span>' +
             R.icon('refresh-cw') + ' Check DNS</button>' : '') +
@@ -631,19 +644,30 @@
           '</div>';
       };
 
+      const freeStatus = freeReady
+        ? '<span class="badge badge-green">Live</span><span class="badge badge-muted">Platform managed</span>'
+        : '<span class="badge badge-sun">Not serving yet</span><span class="badge badge-muted">Platform managed</span>';
+      const freeNote = freeReady
+        ? 'This address answers over HTTPS and is safe to share.'
+        : 'This address is reserved for your centre, but it is not answering over HTTPS yet. Share the platform link below until it is live.';
+
       const freeCard = '<div class="domain-card domain-card-free">' +
         '<div class="domain-card-head"><div style="min-width:0">' +
         '<div class="strong mono domain-name">' + R.esc(freeHost || 'Not available') + '</div>' +
-        '<div class="row" style="gap:6px;margin-top:6px"><span class="badge badge-green">Always on</span><span class="badge badge-muted">Platform managed</span></div>' +
+        '<div class="row" style="gap:6px;margin-top:6px">' + freeStatus + '</div>' +
         '</div><div class="btn-group row-end">' +
-        (freeUrl ? '<a class="btn btn-secondary btn-sm" href="' + R.attr(freeUrl) + '" target="_blank" rel="noopener">' + R.icon('external-link') + ' Open</a>' : '') +
-        (freeHost ? copyButton(freeUrl, 'Website address') : '') + '</div></div>' +
-        '<p class="muted small" style="margin:12px 0 0">Every centre gets this address automatically. It keeps working even before a custom domain is verified, so you can share it straight away.</p>' +
+        (freeReady && freeUrl ? '<a class="btn btn-secondary btn-sm" href="' + R.attr(freeUrl) + '" target="_blank" rel="noopener">' + R.icon('external-link') + ' Open</a>' : '') +
+        (freeReady && freeHost ? copyButton(freeUrl, 'Website address') : '') + '</div></div>' +
+        '<p class="muted small" style="margin:12px 0 0">' + freeNote + '</p>' +
+        (platformUrl ? '<div class="domain-record" style="margin-top:12px"><div class="domain-record-head">' +
+          '<span class="badge badge-sky">Share now</span>' +
+          '<span class="mono small domain-record-host">' + R.esc(platformUrl) + '</span>' + copyButton(platformUrl, 'Platform address') + '</div>' +
+          '<div class="hint">This platform link always resolves with a valid certificate, so it is safe to share today.</div></div>' : '') +
         '</div>';
 
       const custom = domains.length
         ? '<div class="domain-list">' + domains.map(domainCard).join('') + '</div>'
-        : R.emptyState('No custom domain yet', 'Add a domain you own, publish the DNS records below, then run Check DNS. The free address above keeps working throughout.', '', 'globe');
+        : R.emptyState('No custom domain yet', 'Add a domain you own, publish the DNS records below, then run Check DNS. Your site stays reachable on the platform address throughout.', '', 'globe');
 
       return R.card('Your public addresses',
         freeCard +

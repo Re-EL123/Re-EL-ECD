@@ -10,7 +10,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const domainService = require('../../apps/api/src/services/domain-service');
 
-test.afterEach(() => domainService.resetResolverForTesting());
+test.afterEach(() => {
+  domainService.resetResolverForTesting();
+  domainService.setTlsProbeForTesting(null);
+});
 
 test('hosts are normalised from pasted URLs and rejected when unsafe', () => {
   assert.equal(domainService.normaliseHost('https://WWW.Example.co.za/hello?x=1'), 'www.example.co.za');
@@ -41,7 +44,7 @@ test('the editor receives both a CNAME and a TXT record', () => {
 
 test('a matching CNAME verifies the domain and activates TLS', async () => {
   domainService.setResolverForTesting({
-    resolveCname: async () => ['sites.re-el.co.za.'],
+    resolveCname: async () => [domainService.cnameTarget() + '.'],
     resolveTxt: async () => { throw Object.assign(new Error('not found'), { code: 'ENOTFOUND' }); }
   });
   const result = await domainService.verifyDomain({
@@ -82,7 +85,7 @@ test('a TXT record with the wrong token is not accepted', async () => {
 
 test('a domain without a token can never verify', async () => {
   domainService.setResolverForTesting({
-    resolveCname: async () => ['sites.re-el.co.za'],
+    resolveCname: async () => [domainService.cnameTarget()],
     resolveTxt: async () => [['reel-verify=']]
   });
   const result = await domainService.verifyDomain({

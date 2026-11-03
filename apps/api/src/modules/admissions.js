@@ -85,7 +85,7 @@ function register(router) {
     if (!host) throw new AppError('NOT_FOUND');
 
     const org = await ctx.db.one(
-      `SELECT o.*, d.domain_name AS matched_domain
+      `SELECT o.*, d.domain_name AS matched_domain, d.ssl_status AS matched_ssl_status
        FROM domains d
        JOIN organisations o ON o.id = d.organisation_id
        WHERE lower(d.domain_name) = $1
@@ -96,7 +96,14 @@ function register(router) {
       [host]
     );
     if (org) {
-      return publicSitePayload(ctx, org, { canonicalHost: host, matchedDomain: org.matched_domain });
+      // Only claim the tenant's own domain as canonical once its certificate is
+      // live. A TXT-verified domain proves ownership but not routing, and a
+      // canonical pointing at an unopenable address breaks every shared link.
+      const live = org.matched_ssl_status === 'active';
+      return publicSitePayload(ctx, org, {
+        canonicalHost: live ? host : null,
+        matchedDomain: org.matched_domain
+      });
     }
 
     // Every organisation also gets a platform-controlled free address. It is
@@ -106,7 +113,12 @@ function register(router) {
       const freeOrg = await ctx.db.one(
         "SELECT * FROM organisations WHERE slug = $1 AND status IN ('active','onboarding')", [slug]
       );
-      if (freeOrg) return publicSitePayload(ctx, freeOrg, { canonicalHost: host });
+      if (freeOrg) {
+        // The free address only serves valid TLS once the platform wildcard
+        // certificate exists, so the platform URL stays canonical until then.
+        const probe = await domainService.probeHost(host);
+        return publicSitePayload(ctx, freeOrg, { canonicalHost: probe.tlsValid ? host : null });
+      }
     }
     throw new AppError('NOT_FOUND');
   }, { public: true });

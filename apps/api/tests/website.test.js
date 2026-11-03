@@ -169,8 +169,11 @@ test('a custom domain is added, verified and then serves the public site', async
   // Prove control through a CNAME without touching the public DNS.
   domainService.setResolverForTesting({
     resolveCname: async () => [domainService.cnameTarget()],
-    resolveTxt: async () => { throw Object.assign(new Error('not found'), { code: 'ENOTFOUND' }); }
+    resolveTxt: async () => { throw Object.assign(new Error('not found'), { code: 'ENOTFOUND' }); },
+    resolve4: async () => ['76.76.21.21'],
+    resolve6: async () => { throw Object.assign(new Error('not found'), { code: 'ENOTFOUND' }); }
   });
+  domainService.setTlsProbeForTesting(async () => ({ ok: true, status: 200 }));
   const verified = await client.post('/website/domains/' + created.data.id + '/verify', {}, { organisationId });
   assert.equal(verified.status, 200);
   assert.equal(verified.data.verified, true);
@@ -195,6 +198,55 @@ test('a custom domain is added, verified and then serves the public site', async
   assert.equal(removed.status, 200);
   const gone = await client.get('/public/daycares/by-domain/www.example.co.za');
   assert.equal(gone.status, 404);
+});
+
+test('the free address is only canonical once it actually serves', async () => {
+  const client = createClient();
+
+  // Nothing published for that host: the platform address must not be
+  // advertised as canonical, or every shared link points at a dead address.
+  domainService.setResolverForTesting({
+    resolve4: async () => { throw Object.assign(new Error('not found'), { code: 'ENOTFOUND' }); },
+    resolve6: async () => { throw Object.assign(new Error('not found'), { code: 'ENOTFOUND' }); }
+  });
+  domainService.setTlsProbeForTesting(async () => ({ ok: true, status: 200 }));
+  const unreachable = await client.get('/public/daycares/by-domain/little-sprouts.re-el.co.za');
+  assert.equal(unreachable.status, 200);
+  assert.equal(unreachable.data.canonicalHost, null);
+  assert.ok(unreachable.data.seo.canonical.includes('ecd.re-el.co.za'));
+
+  // Resolves, but the certificate covers a different host — the exact shape of
+  // SSL_ERROR_BAD_CERT_DOMAIN. Still not good enough to be canonical.
+  domainService.setResolverForTesting({
+    resolve4: async () => ['185.199.108.153'],
+    resolve6: async () => { throw Object.assign(new Error('not found'), { code: 'ENOTFOUND' }); }
+  });
+  domainService.setTlsProbeForTesting(async () => ({ ok: false, error: 'ERR_TLS_CERT_ALTNAME_INVALID' }));
+  const badCert = await client.get('/public/daycares/by-domain/little-sprouts.re-el.co.za');
+  assert.equal(badCert.data.canonicalHost, null);
+
+  // Once the wildcard certificate serves the host, it becomes canonical.
+  domainService.setTlsProbeForTesting(async () => ({ ok: true, status: 200 }));
+  const live = await client.get('/public/daycares/by-domain/little-sprouts.re-el.co.za');
+  assert.equal(live.data.canonicalHost, 'little-sprouts.re-el.co.za');
+});
+
+test('address readiness reports the free address and the CNAME target', async () => {
+  const { client, organisationId } = await principal();
+  domainService.setResolverForTesting({
+    resolve4: async () => ['76.76.21.21'],
+    resolve6: async () => { throw Object.assign(new Error('not found'), { code: 'ENOTFOUND' }); }
+  });
+  domainService.setTlsProbeForTesting(async (name) => (
+    name === 'little-sprouts.re-el.co.za' ? { ok: true, status: 200 } : { ok: false, error: 'TIMEOUT' }
+  ));
+  const ready = await client.get('/website/addresses', { organisationId });
+  assert.equal(ready.status, 200);
+  assert.equal(ready.data.freeSubdomain, 'little-sprouts.re-el.co.za');
+  assert.equal(ready.data.freeSubdomainReady, true);
+  assert.equal(ready.data.cnameTarget, domainService.cnameTarget());
+  assert.equal(ready.data.cnameTargetResolves, true);
+  assert.equal(ready.data.cnameTargetTlsValid, false, 'resolving is not the same as answering');
 });
 
 test('custom domains require the website management permission', async () => {
@@ -225,4 +277,7 @@ test('a slug request only adopts a custom host that the organisation owns', asyn
   assert.ok(spoofed.data.seo.canonical.includes('ecd.re-el.co.za'));
 });
 
-test.after(() => domainService.resetResolverForTesting());
+test.after(() => {
+  domainService.resetResolverForTesting();
+  domainService.setTlsProbeForTesting(null);
+});
