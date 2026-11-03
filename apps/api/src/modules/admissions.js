@@ -6,6 +6,8 @@ const { recordAudit } = require('../services/audit-service');
 const { rateLimit } = require('../middleware/rate-limit');
 const { createNotification } = require('../services/notification-service');
 const { sendTemplate } = require('../services/email-service');
+const payfast = require('../services/payfast-service');
+const { createPaymentIntent } = require('../services/payment-intent-service');
 const { parsePagination } = require('../utils/http');
 const branding = require('../services/branding-service');
 const bulk = require('../services/bulk-service');
@@ -381,20 +383,24 @@ function register(router) {
       guardianPhone: { type: 'string', max: 50, optional: true },
       requestedClassroomId: { type: 'string', uuid: true, optional: true },
       preferredStartDate: { type: 'string', date: true, optional: true },
-      notes: { type: 'string', max: 2000, optional: true }
+      notes: { type: 'string', max: 2000, optional: true },
+      applicationFee: { type: 'number', min: 0, optional: true }
     });
     const branch = await ctx.db.one('SELECT id FROM branches WHERE id = $1 AND organisation_id = $2',
       [body.branchId, ctx.organisationId]);
     if (!branch) throw new AppError('NOT_FOUND');
     const reference = `APP-${new Date().getFullYear()}-${Math.floor(Math.random() * 9000 + 1000)}`;
+    const feeAmount = body.applicationFee ? Math.round(Number(body.applicationFee) * 100) / 100 : null;
     const application = await ctx.db.one(
       `INSERT INTO admission_applications (organisation_id, branch_id, application_reference, child_first_name,
         child_last_name, child_date_of_birth, guardian_name, guardian_email, guardian_phone,
-        requested_classroom_id, preferred_start_date, notes, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'submitted') RETURNING *`,
+        requested_classroom_id, preferred_start_date, notes, status, application_fee_amount,
+        application_fee_currency, application_fee_status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'submitted',$13,$14,$15) RETURNING *`,
       [ctx.organisationId, body.branchId, reference, body.childFirstName, body.childLastName, body.childDateOfBirth,
         body.guardianName, body.guardianEmail, body.guardianPhone || null, body.requestedClassroomId || null,
-        body.preferredStartDate || null, body.notes || null]
+        body.preferredStartDate || null, body.notes || null, feeAmount,
+        ctx.organisation.currency || 'ZAR', feeAmount > 0 ? 'due' : 'not_required']
     );
     ctx.status = 201;
     return application;
@@ -436,6 +442,18 @@ function register(router) {
         resourceType: 'admission_application', resourceId: application.id
       });
     }
+    await sendTemplate(ctx.db, 'admissionDecision', {
+      to: application.guardian_email,
+      organisationId: ctx.organisationId,
+      metadata: { applicationId: application.id, decision: body.decision },
+      data: {
+        guardianName: application.guardian_name,
+        childName: [application.child_first_name, application.child_last_name].filter(Boolean).join(' '),
+        organisationName: ctx.organisation.name,
+        decision: body.decision,
+        note: body.reason
+      }
+    });
     return ctx.db.one('SELECT * FROM admission_applications WHERE id = $1', [application.id]);
   }, { permission: 'admissions.manage.daycare' });
 
@@ -505,9 +523,94 @@ function register(router) {
       action: 'admission.application_enrolled', resourceType: 'admission_application', resourceId: application.id,
       metadata: { learnerId: result.learner.id }
     });
+    const classroom = classroomId
+      ? await ctx.db.one('SELECT name FROM classrooms WHERE id = $1', [classroomId])
+      : null;
+    await sendTemplate(ctx.db, 'enrolmentConfirmed', {
+      to: application.guardian_email,
+      organisationId: ctx.organisationId,
+      metadata: { applicationId: application.id, learnerId: result.learner.id },
+      data: {
+        guardianName: application.guardian_name,
+        childName: [result.learner.first_name, result.learner.last_name].filter(Boolean).join(' '),
+        organisationName: ctx.organisation.name,
+        classroomName: classroom ? classroom.name : null,
+        startDate
+      }
+    });
     ctx.status = 201;
     return result.learner;
   }, { permission: 'admissions.enrol.daycare' });
+
+  /**
+   * Request the application fee. Staff set or adjust the amount here and the
+   * family gets a PayFast checkout by email; the ITN marks the fee paid, so a
+   * browser that never returns cannot leave the fee open.
+   */
+  router.post('/admissions/applications/:id/fee-link', async (ctx) => {
+    if (!payfast.isConfigured()) {
+      fail('CONFLICT', null, 'Online payments are not configured. Set PAYFAST_MERCHANT_ID and PAYFAST_MERCHANT_KEY.');
+    }
+    const body = validate(ctx.body || {}, {
+      amount: { type: 'number', min: 0.01, optional: true },
+      sendEmail: { type: 'boolean', optional: true }
+    });
+    const application = await ctx.db.one('SELECT * FROM admission_applications WHERE id = $1 AND organisation_id = $2',
+      [ctx.params.id, ctx.organisationId]);
+    if (!application) throw new AppError('NOT_FOUND');
+    if (application.status === 'rejected') fail('CONFLICT', null, 'This application was rejected.');
+    if (application.application_fee_status === 'paid') fail('CONFLICT', null, 'The application fee has already been paid.');
+
+    const amount = body.amount
+      ? Math.round(Number(body.amount) * 100) / 100
+      : Number(application.application_fee_amount || 0);
+    if (!(amount > 0)) fail('CONFLICT', null, 'Set an application fee amount first.');
+    const currency = application.application_fee_currency || ctx.organisation.currency || 'ZAR';
+
+    await ctx.db.query(
+      `UPDATE admission_applications SET application_fee_amount = $1, application_fee_currency = $2,
+        application_fee_status = 'due' WHERE id = $3`,
+      [amount, currency, application.id]
+    );
+
+    const childName = [application.child_first_name, application.child_last_name].filter(Boolean).join(' ');
+    const { intent, checkout } = await createPaymentIntent(ctx.db, {
+      organisation: ctx.organisation,
+      amount,
+      purpose: 'application_fee',
+      metadata: { applicationId: application.id },
+      payer: { email: application.guardian_email, first_name: application.guardian_name, last_name: '' },
+      createdBy: ctx.user.id,
+      req: ctx.req,
+      scope: 'parent',
+      itemName: 'Application fee — ' + application.application_reference,
+      itemDescription: 'Application fee for ' + childName
+    });
+    const payUrl = checkout.action + '?' + checkout.query;
+
+    if (body.sendEmail !== false) {
+      await sendTemplate(ctx.db, 'applicationFee', {
+        to: application.guardian_email,
+        organisationId: ctx.organisationId,
+        metadata: { applicationId: application.id, intentId: intent.id },
+        data: {
+          guardianName: application.guardian_name,
+          childName,
+          organisationName: ctx.organisation.name,
+          reference: application.application_reference,
+          amount,
+          currency,
+          payUrl
+        }
+      });
+    }
+
+    await recordAudit(ctx.db, ctx, {
+      action: 'admission.application_fee_requested', resourceType: 'admission_application', resourceId: application.id,
+      metadata: { intentId: intent.id, amount, reference: intent.reference }
+    });
+    return { intent, checkout, amount, currency };
+  }, { permission: 'admissions.manage.daycare' });
 
   router.post('/admissions/enquiries/bulk', async (ctx) => {
     const body = bulk.parse(ctx.body, Object.keys(ENQUIRY_BULK_STATUS));

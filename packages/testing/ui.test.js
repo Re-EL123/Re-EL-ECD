@@ -78,6 +78,44 @@ test('view modules register themselves on the shared namespace', () => {
   }
 });
 
+test('binding handlers are defined on the Alpine root component', () => {
+  // Alpine evaluates `@click`/`@change`/`@submit` expressions with the root
+  // component as scope, so a handler declared on a view object (or a stray
+  // global) throws "ReferenceError: <name> is not defined" the moment the user
+  // interacts. Views only contribute load/render/openModal, so every handler
+  // they reference must be a member of reelApp() in app.js.
+  const app = fs.readFileSync(path.join(webRoot, 'src', 'app.js'), 'utf8');
+  const defined = new Set();
+  for (const match of app.matchAll(/^ {6}(?:async\s+)?(?:get\s+)?([a-zA-Z_$][\w$]*)\s*\(/gm)) {
+    defined.add(match[1]);
+  }
+
+  const ignored = new Set([
+    'if', 'for', 'while', 'switch', 'catch', 'return', 'typeof', 'new', 'function', 'delete', 'void', 'in', 'of', 'do', 'else', 'try', 'throw',
+    'Math', 'JSON', 'Number', 'String', 'Boolean', 'Array', 'Object', 'Date', 'Promise', 'RegExp', 'Error', 'Map', 'Set',
+    'parseInt', 'parseFloat', 'isNaN', 'encodeURIComponent', 'decodeURIComponent', 'setTimeout', 'clearTimeout', 'console'
+  ]);
+
+  const sources = [indexHtml];
+  const viewsDir = path.join(webRoot, 'src', 'views');
+  for (const file of fs.readdirSync(viewsDir).filter((name) => name.endsWith('.js'))) {
+    sources.push(fs.readFileSync(path.join(viewsDir, file), 'utf8'));
+  }
+
+  const directive = /@(?:click|change|submit|input|keydown|keyup|blur|focus)[^=\s]*="([^"]*)"/g;
+  const missing = new Set();
+  for (const source of sources) {
+    for (const [, value] of source.matchAll(directive)) {
+      for (const call of value.matchAll(/(?<![.\w$])([a-zA-Z_$][\w$]*)\s*\(/g)) {
+        const name = call[1];
+        if (!ignored.has(name) && !defined.has(name)) missing.add(name);
+      }
+    }
+  }
+  assert.deepEqual(Array.from(missing), [],
+    `binding handlers missing from reelApp(): ${Array.from(missing).join(', ')}`);
+});
+
 test('router routes point at registered views', () => {
   const app = fs.readFileSync(path.join(webRoot, 'src', 'app.js'), 'utf8');
   const registered = new Set();

@@ -220,7 +220,10 @@
           '<div class="kpi-row"><span class="kpi-label">Monthly price</span><span class="kpi-value">' + R.money(s.monthly_price, o.currency) + '</span></div>' +
           '<div class="kpi-row"><span class="kpi-label">Status</span><span class="kpi-value">' + R.badge(s.status) + '</span></div>' +
           '<div class="kpi-row"><span class="kpi-label">Period ends</span><span class="kpi-value">' + R.date(s.current_period_end) + '</span></div>' +
-          '</div>' : R.emptyState('No subscription', 'Attach a plan from the subscriptions page.', '', 'credit-card')) +
+          '</div>' : R.emptyState('No subscription', 'Attach a plan from the subscriptions page.', '', 'credit-card'),
+          s.id && Number(s.monthly_price) > 0
+            ? '<button class="btn btn-sm btn-primary" @click="billSubscription(\'' + R.attr(o.id) + '\')">' + R.icon('credit-card') + ' Bill via PayFast</button>'
+            : '') +
         R.card('Settings', Object.keys(o.settings || {}).length
           ? '<div class="detail-list">' + Object.entries(o.settings).map(([key, value]) =>
             R.detailItem(settingLabel(key), settingValue(value))).join('') + '</div>'

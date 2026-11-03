@@ -322,6 +322,25 @@ function register(router) {
         resourceType: 'form_submission', resourceId: submission.id
       });
     }
+    const submitter = submission.submitted_by_user_id
+      ? await ctx.db.one('SELECT email, display_name FROM users WHERE id = $1', [submission.submitted_by_user_id])
+      : null;
+    const submitterEmail = (submitter && submitter.email) || submission.submitter_email;
+    if (submitterEmail) {
+      const formRow = await ctx.db.one('SELECT name FROM form_definitions WHERE id = $1', [submission.form_definition_id]);
+      await sendTemplate(ctx.db, 'formReviewed', {
+        to: submitterEmail,
+        organisationId: ctx.organisationId,
+        metadata: { submissionId: submission.id, decision: body.decision },
+        data: {
+          recipientName: submitter ? submitter.display_name : null,
+          reviewerName: ctx.user.display_name,
+          formName: formRow ? formRow.name : 'Your form submission',
+          status: body.decision,
+          note: body.notes
+        }
+      });
+    }
     await recordAudit(ctx.db, ctx, {
       action: `form.submission_${body.decision}`, resourceType: 'form_submission', resourceId: submission.id
     });

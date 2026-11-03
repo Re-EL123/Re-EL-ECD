@@ -6,7 +6,7 @@ const { recordAudit } = require('../services/audit-service');
 const { createNotification } = require('../services/notification-service');
 const { sendTemplate, appLink } = require('../services/email-service');
 const payfast = require('../services/payfast-service');
-const { createInvoiceIntent, outstandingFor, isPayable, guardianForInvoice, learnerName } = require('../services/payment-intent-service');
+const { createInvoiceIntent, createStatementIntent, outstandingFor, isPayable, guardianForInvoice, learnerName } = require('../services/payment-intent-service');
 const { parsePagination, sendText } = require('../utils/http');
 const bulk = require('../services/bulk-service');
 const { has, nextInvoiceNumber, paging, roundMoney, today } = require('./helpers');
@@ -138,7 +138,7 @@ function register(router) {
 
   router.get('/finance/aging', async (ctx) => {
     const rows = await ctx.db.many(
-      `SELECT i.id, i.invoice_number, i.due_at, i.total_amount, i.amount_paid, i.status,
+      `SELECT i.id, i.invoice_number, i.due_at, i.total_amount, i.amount_paid, i.status, i.guardian_id, i.learner_id,
         l.first_name, l.last_name, g.first_name || ' ' || g.last_name AS guardian_name, g.email AS guardian_email
        FROM invoices i
        LEFT JOIN learners l ON l.id = i.learner_id
@@ -444,6 +444,116 @@ function register(router) {
     return { intent, checkout };
   }, { permission: 'finance.payment.record.daycare' });
 
+  /**
+   * Send a payment reminder for an open invoice. A PayFast checkout link is
+   * included when online payments are configured, so the family can settle the
+   * balance straight from the email.
+   */
+  router.post('/invoices/:id/remind', async (ctx) => {
+    const invoice = await ctx.db.one('SELECT * FROM invoices WHERE id = $1 AND organisation_id = $2',
+      [ctx.params.id, ctx.organisationId]);
+    if (!invoice) throw new AppError('NOT_FOUND');
+    if (!invoice.guardian_id) fail('CONFLICT', null, 'This invoice is not linked to a guardian.');
+    if (!isPayable(invoice)) fail('CONFLICT', null, 'This invoice is not open for payment.');
+    const guardian = await guardianForInvoice(ctx.db, invoice);
+    if (!guardian || !guardian.email) fail('CONFLICT', null, 'The guardian has no email address on file.');
+    const outstanding = outstandingFor(invoice);
+    let payUrl = null;
+    if (payfast.isConfigured() && outstanding > 0) {
+      const { checkout } = await createInvoiceIntent(ctx.db, {
+        organisation: ctx.organisation,
+        invoice,
+        guardian,
+        amount: outstanding,
+        createdBy: ctx.user.id,
+        req: ctx.req,
+        scope: 'staff',
+        itemName: 'Invoice ' + invoice.invoice_number
+      });
+      payUrl = checkout.action + '?' + checkout.query;
+    }
+    const daysOverdue = invoice.due_at
+      ? Math.max(0, Math.floor((Date.now() - new Date(invoice.due_at).getTime()) / 86400000))
+      : 0;
+    const delivery = await sendTemplate(ctx.db, 'invoiceReminder', {
+      to: guardian.email,
+      organisationId: ctx.organisationId,
+      metadata: { invoiceId: invoice.id },
+      data: {
+        guardianName: [guardian.first_name, guardian.last_name].filter(Boolean).join(' '),
+        learnerName: await learnerName(ctx.db, invoice),
+        organisationName: ctx.organisation.name,
+        invoiceNumber: invoice.invoice_number,
+        amount: outstanding,
+        currency: invoice.currency,
+        dueDate: invoice.due_at ? new Date(invoice.due_at).toLocaleDateString('en-ZA') : null,
+        daysOverdue,
+        payUrl
+      }
+    });
+    await recordAudit(ctx.db, ctx, {
+      action: 'finance.invoice_reminded', resourceType: 'invoice', resourceId: invoice.id,
+      metadata: { delivery: delivery.status, payUrl: Boolean(payUrl) }
+    });
+    if (delivery.status === 'failed') fail('CONFLICT', null, 'The reminder could not be sent. Check the email configuration.');
+    return { success: true, delivery: delivery.status, payUrl };
+  }, { permission: 'finance.invoice.issue.daycare' });
+
+  /**
+   * One hosted checkout for everything a guardian owes. Statements settle
+   * several invoices at once, so the family clears their whole balance with a
+   * single card payment instead of paying invoice by invoice.
+   */
+  router.post('/guardians/:id/statement-link', async (ctx) => {
+    if (!payfast.isConfigured()) {
+      fail('CONFLICT', null, 'Online payments are not configured. Set PAYFAST_MERCHANT_ID and PAYFAST_MERCHANT_KEY.');
+    }
+    const body = validate(ctx.body || {}, { sendEmail: { type: 'boolean', optional: true } });
+    const guardian = await ctx.db.one('SELECT * FROM guardians WHERE id = $1 AND organisation_id = $2',
+      [ctx.params.id, ctx.organisationId]);
+    if (!guardian) throw new AppError('NOT_FOUND');
+    const invoices = await ctx.db.many(
+      `SELECT * FROM invoices WHERE organisation_id = $1 AND guardian_id = $2
+         AND status IN ('issued','partially_paid','overdue')
+       ORDER BY COALESCE(due_at, CURRENT_DATE), created_at`,
+      [ctx.organisationId, guardian.id]
+    );
+    const payable = invoices.filter(isPayable);
+    if (!payable.length) fail('CONFLICT', null, 'This guardian has no open invoices.');
+
+    const { intent, checkout } = await createStatementIntent(ctx.db, {
+      organisation: ctx.organisation,
+      guardian,
+      invoices: payable,
+      createdBy: ctx.user.id,
+      req: ctx.req,
+      scope: 'staff'
+    });
+    const payUrl = checkout.action + '?' + checkout.query;
+
+    if (body.sendEmail !== false && guardian.email) {
+      await sendTemplate(ctx.db, 'statementReady', {
+        to: guardian.email,
+        organisationId: ctx.organisationId,
+        metadata: { intentId: intent.id, guardianId: guardian.id },
+        data: {
+          guardianName: [guardian.first_name, guardian.last_name].filter(Boolean).join(' '),
+          organisationName: ctx.organisation.name,
+          invoiceCount: payable.length,
+          amount: Number(intent.amount),
+          currency: intent.currency,
+          payUrl
+        }
+      });
+    }
+
+    await recordAudit(ctx.db, ctx, {
+      action: 'finance.statement_link_created', resourceType: 'guardian', resourceId: guardian.id,
+      metadata: { intentId: intent.id, amount: Number(intent.amount), invoiceCount: payable.length, reference: intent.reference }
+    });
+    return { intent, checkout, amount: Number(intent.amount), invoiceCount: payable.length };
+  }, { permission: 'finance.invoice.issue.daycare' });
+
   router.post('/invoices/generate', async (ctx) => {
     const body = validate(ctx.body, {
       branchId: { type: 'string', uuid: true, optional: true },
@@ -588,6 +698,33 @@ function register(router) {
       action: 'finance.payment_recorded', resourceType: 'payment', resourceId: result.payment.id,
       metadata: { amount: result.payment.amount, method: body.paymentMethod, allocations: result.allocations.length }
     });
+    if (result.payment.guardian_id) {
+      const guardian = await ctx.db.one('SELECT first_name, last_name, email FROM guardians WHERE id = $1',
+        [result.payment.guardian_id]);
+      if (guardian && guardian.email) {
+        const learner = result.allocations.length
+          ? await ctx.db.one(
+            'SELECT first_name, last_name FROM learners WHERE id = (SELECT learner_id FROM invoices WHERE id = $1)',
+            [result.allocations[0].invoice_id])
+          : null;
+        await sendTemplate(ctx.db, 'manualPaymentReceipt', {
+          to: guardian.email,
+          organisationId: ctx.organisationId,
+          metadata: { paymentId: result.payment.id },
+          data: {
+            payerName: [guardian.first_name, guardian.last_name].filter(Boolean).join(' '),
+            learnerName: learner ? [learner.first_name, learner.last_name].filter(Boolean).join(' ') : null,
+            organisationName: ctx.organisation.name,
+            amount: result.payment.amount,
+            currency: result.payment.currency,
+            method: result.payment.payment_method,
+            reference: result.payment.provider_reference,
+            recordedBy: ctx.user.display_name,
+            paidAt: result.payment.received_at ? new Date(result.payment.received_at).toLocaleDateString('en-ZA') : null
+          }
+        });
+      }
+    }
     ctx.status = 201;
     return result;
   }, { permission: 'finance.payment.record.daycare' });
@@ -1055,9 +1192,25 @@ function register(router) {
       return ack('ALREADY_PAID');
     }
 
-    const invoice = intent.invoice_id
-      ? await ctx.db.one('SELECT * FROM invoices WHERE id = $1', [intent.invoice_id])
-      : null;
+    // An intent settles either one invoice or, for a statement, every open
+    // invoice it recorded. Resolve the targets, then spread the payment across
+    // them oldest-first so a single checkout clears the whole balance.
+    const intentMetadata = intent.metadata || {};
+    const targetIds = [];
+    if (intent.invoice_id) targetIds.push(intent.invoice_id);
+    if (Array.isArray(intentMetadata.invoiceIds)) {
+      for (const id of intentMetadata.invoiceIds) {
+        if (id && !targetIds.includes(id)) targetIds.push(id);
+      }
+    }
+    const targets = targetIds.length
+      ? await ctx.db.many(
+        `SELECT * FROM invoices WHERE organisation_id = $1 AND id = ANY($2::uuid[])
+         ORDER BY COALESCE(due_at, CURRENT_DATE), created_at`,
+        [intent.organisation_id, targetIds]
+      )
+      : [];
+    const invoice = targets.length ? targets[0] : null;
 
     const result = await ctx.db.withTransaction(async (client) => {
       const payment = (await client.query(
@@ -1069,13 +1222,51 @@ function register(router) {
           'PayFast ' + (data.providerReference || intent.reference)]
       )).rows[0];
 
-      let allocations = [];
-      if (invoice) {
-        const outstanding = Math.max(0, Number(invoice.total_amount) - Number(invoice.amount_paid));
-        if (outstanding > 0) {
-          allocations = await allocatePayment({ organisationId: intent.organisation_id }, client, payment, [
-            { invoiceId: invoice.id, amount: Math.min(Number(intent.amount), outstanding) }
-          ]);
+      let remaining = roundMoney(Number(intent.amount));
+      const requested = [];
+      for (const target of targets) {
+        if (remaining <= 0) break;
+        const outstanding = roundMoney(Number(target.total_amount) - Number(target.amount_paid));
+        if (outstanding <= 0) continue;
+        const amount = roundMoney(Math.min(remaining, outstanding));
+        requested.push({ invoiceId: target.id, amount });
+        remaining = roundMoney(remaining - amount);
+      }
+      const allocations = requested.length
+        ? await allocatePayment({ organisationId: intent.organisation_id }, client, payment, requested)
+        : [];
+
+      // An application fee is not an invoice: settling it flips the admission
+      // application so the office can see the place is confirmed.
+      let application = null;
+      if (intent.purpose === 'application_fee' && intentMetadata.applicationId) {
+        application = (await client.query(
+          `UPDATE admission_applications SET application_fee_status = 'paid', application_fee_paid_at = now(),
+            application_fee_payment_id = $1 WHERE id = $2 AND organisation_id = $3 RETURNING *`,
+          [payment.id, intentMetadata.applicationId, intent.organisation_id]
+        )).rows[0] || null;
+      }
+
+      // A paid platform invoice buys the organisation another billing period.
+      let subscription = null;
+      if (intent.purpose === 'platform_subscription' && intentMetadata.subscriptionId) {
+        const period = (await client.query(
+          'SELECT billing_period, current_period_end FROM platform_subscriptions WHERE id = $1',
+          [intentMetadata.subscriptionId]
+        )).rows[0];
+        if (period) {
+          const days = period.billing_period === 'annual' ? 365 : 30;
+          subscription = (await client.query(
+            `UPDATE platform_subscriptions SET status = 'active',
+              current_period_start = COALESCE(current_period_end, CURRENT_DATE),
+              current_period_end = COALESCE(current_period_end, CURRENT_DATE) + ($1::int * INTERVAL '1 day')
+             WHERE id = $2 RETURNING *`,
+            [days, intentMetadata.subscriptionId]
+          )).rows[0] || null;
+          await client.query(
+            "UPDATE organisations SET subscription_status = 'active', updated_at = now() WHERE id = $1",
+            [intentMetadata.organisationId || intent.organisation_id]
+          );
         }
       }
 
@@ -1085,16 +1276,20 @@ function register(router) {
         [payment.id, data.providerReference || null, intent.id]
       );
       await client.query('UPDATE payment_webhook_events SET processed_at = now() WHERE id = $1', [event.id]);
-      return { payment, allocations };
+      return { payment, allocations, application, subscription };
     });
 
     const [guardian, organisation] = await Promise.all([
       intent.guardian_id ? ctx.db.one('SELECT * FROM guardians WHERE id = $1', [intent.guardian_id]) : null,
       ctx.db.one('SELECT * FROM organisations WHERE id = $1', [intent.organisation_id])
     ]);
-    if (guardian && guardian.email && organisation) {
+    const receiptTo = (guardian && guardian.email)
+      || (result.application && result.application.guardian_email)
+      || (intent.purpose === 'platform_subscription' ? intentMetadata.payerEmail : null)
+      || null;
+    if (receiptTo && organisation) {
       await sendTemplate(ctx.db, 'paymentReceipt', {
-        to: guardian.email,
+        to: receiptTo,
         organisationId: intent.organisation_id,
         metadata: { paymentId: result.payment.id, intentId: intent.id },
         data: {

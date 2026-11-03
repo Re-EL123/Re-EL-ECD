@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **298 routes** across 17 modules.
+Generated from the router: **303 routes** across 17 modules.
 
 ## Access
 
@@ -40,6 +40,7 @@ Generated from the router: **298 routes** across 17 modules.
 | POST | `/admissions/applications` | admissions.manage.daycare |
 | GET | `/admissions/applications/:id` | admissions.read.daycare |
 | POST | `/admissions/applications/:id/enrol` | admissions.enrol.daycare |
+| POST | `/admissions/applications/:id/fee-link` | admissions.manage.daycare |
 | POST | `/admissions/applications/:id/review` | admissions.manage.daycare |
 | POST | `/admissions/applications/bulk` | admissions.manage.daycare |
 | GET | `/admissions/enquiries` | admissions.read.daycare |
@@ -223,6 +224,12 @@ Generated from the router: **298 routes** across 17 modules.
 | POST | `/forms/bulk` | forms.manage.daycare |
 | POST | `/forms/submissions/:id/review` | forms.submissions.review.daycare |
 
+## Guardians
+
+| Method | Path | Access |
+| --- | --- | --- |
+| POST | `/guardians/:id/statement-link` | finance.invoice.issue.daycare |
+
 ## Incident Actions
 
 | Method | Path | Access |
@@ -262,6 +269,7 @@ Generated from the router: **298 routes** across 17 modules.
 | PATCH | `/invoices/:id` | finance.invoice.issue.daycare |
 | POST | `/invoices/:id/issue` | finance.invoice.issue.daycare |
 | POST | `/invoices/:id/payfast-link` | finance.payment.record.daycare |
+| POST | `/invoices/:id/remind` | finance.invoice.issue.daycare |
 | POST | `/invoices/:id/write-off` | finance.manage.daycare |
 | POST | `/invoices/bulk` | finance.invoice.issue.daycare |
 | POST | `/invoices/generate` | finance.invoice.create.daycare |
@@ -378,6 +386,7 @@ Generated from the router: **298 routes** across 17 modules.
 | GET | `/parent/children/:id/portfolio` | parent.read.own |
 | GET | `/parent/children/:id/progress` | parent.read.own |
 | GET | `/parent/consents` | parent.read.own |
+| POST | `/parent/finance/statement/pay` | parent.finance.read.own |
 | GET | `/parent/finance/summary` | parent.finance.read.own |
 | GET | `/parent/forms` | parent.forms.submit.own |
 | GET | `/parent/invoices/:id` | parent.finance.read.own |
@@ -407,6 +416,7 @@ Generated from the router: **298 routes** across 17 modules.
 | PATCH | `/platform/organisations/:id` | Platform only · platform.organisations.manage |
 | POST | `/platform/organisations/:id/restore` | Platform only · platform.organisations.manage |
 | POST | `/platform/organisations/:id/subscription` | Platform only · platform.subscriptions.manage |
+| POST | `/platform/organisations/:id/subscription/checkout` | Platform only · platform.subscriptions.manage |
 | POST | `/platform/organisations/:id/suspend` | Platform only · platform.organisations.manage |
 | POST | `/platform/organisations/bulk` | Platform only · platform.organisations.manage |
 | GET | `/platform/overview` | Platform only · platform.organisations.read |

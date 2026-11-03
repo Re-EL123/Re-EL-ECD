@@ -66,10 +66,15 @@
     }
     const org = opts.organisationId !== undefined ? opts.organisationId : activeOrg();
     if (org) headers['X-Organisation-Id'] = org;
+    // Public website endpoints are answered with `Access-Control-Allow-Origin: *`
+    // so any tenant domain can read them. A browser refuses to combine that
+    // wildcard with credentials, so those calls must not send the session
+    // cookie. They are unauthenticated and never need it.
+    const isPublicPath = /^\/public(\/|$)/.test(path);
     const response = await fetch(API_BASE + '/api/v1' + path, {
       method,
       headers,
-      credentials: API_BASE ? 'include' : 'same-origin',
+      credentials: API_BASE && !isPublicPath ? 'include' : 'same-origin',
       body: body === undefined || body === null ? undefined : JSON.stringify(body)
     });
     const contentType = response.headers.get('content-type') || '';

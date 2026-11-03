@@ -8,6 +8,7 @@ const { recordAudit } = require('../services/audit-service');
 const { invalidateAccess } = require('../services/access-service');
 const { sendTemplate, isConfigured: emailConfigured, fromAddress } = require('../services/email-service');
 const payfast = require('../services/payfast-service');
+const { createPaymentIntent } = require('../services/payment-intent-service');
 const storage = require('../services/storage-service');
 const branding = require('../services/branding-service');
 const { parsePagination } = require('../utils/http');
@@ -560,6 +561,75 @@ function register(router) {
     return { ...subscription, plan_name: plan.name, monthly_price: plan.monthly_price };
   }, { platformOnly: true, permission: 'platform.subscriptions.manage' });
 
+
+  /**
+   * Bill the organisation's plan through PayFast. The platform operator shares
+   * the returned checkout with the owner, and the ITN extends the subscription
+   * period, so billing never depends on the browser returning.
+   */
+  router.post('/platform/organisations/:id/subscription/checkout', async (ctx) => {
+    if (!payfast.isConfigured()) {
+      fail('CONFLICT', null, 'Online payments are not configured. Set PAYFAST_MERCHANT_ID and PAYFAST_MERCHANT_KEY.');
+    }
+    const body = validate(ctx.body || {}, {
+      billingPeriod: { type: 'string', enum: ['monthly', 'annual'], default: 'monthly' }
+    });
+    const organisation = await ctx.db.one("SELECT * FROM organisations WHERE id = $1 AND slug <> 're-el-platform'", [ctx.params.id]);
+    if (!organisation) throw new AppError('NOT_FOUND');
+    const subscription = await ctx.db.one(
+      `SELECT ps.*, sp.name AS plan_name, sp.monthly_price, sp.currency AS plan_currency
+       FROM platform_subscriptions ps JOIN subscription_plans sp ON sp.id = ps.plan_id
+       WHERE ps.organisation_id = $1 AND ps.status IN ('trial','active','past_due')
+       ORDER BY ps.created_at DESC LIMIT 1`,
+      [organisation.id]
+    );
+    if (!subscription) fail('CONFLICT', null, 'This organisation has no active plan to bill.');
+    const monthly = Number(subscription.monthly_price || 0);
+    if (!(monthly > 0)) fail('CONFLICT', null, 'That plan has no monthly price to charge.');
+    const annual = body.billingPeriod === 'annual';
+    const amount = annual ? Math.round(monthly * 12 * 100) / 100 : monthly;
+    const currency = subscription.plan_currency || organisation.currency || 'ZAR';
+
+    const owner = await ctx.db.one(
+      `SELECT u.email, u.display_name FROM memberships m
+       JOIN users u ON u.id = m.user_id
+       LEFT JOIN membership_roles mr ON mr.membership_id = m.id AND mr.status = 'active'
+       LEFT JOIN roles r ON r.id = mr.role_id
+       WHERE m.organisation_id = $1 AND m.status = 'active'
+       ORDER BY (r.role_key = 'organisation_owner') DESC NULLS LAST, m.created_at LIMIT 1`,
+      [organisation.id]
+    );
+    const payer = owner
+      ? { email: owner.email, first_name: owner.display_name || organisation.name, last_name: '' }
+      : null;
+
+    const { intent, checkout } = await createPaymentIntent(ctx.db, {
+      organisation,
+      amount,
+      currency,
+      purpose: 'platform_subscription',
+      metadata: {
+        subscriptionId: subscription.id,
+        organisationId: organisation.id,
+        payerEmail: payer ? payer.email : null,
+        planName: subscription.plan_name,
+        billingPeriod: body.billingPeriod
+      },
+      payer,
+      createdBy: ctx.user.id,
+      req: ctx.req,
+      scope: 'staff',
+      itemName: 'Re-EL ECD — ' + subscription.plan_name + ' (' + body.billingPeriod + ')',
+      itemDescription: organisation.name
+    });
+
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.subscription_checkout_created', resourceType: 'platform_subscription',
+      resourceId: subscription.id, organisationId: organisation.id,
+      metadata: { intentId: intent.id, amount, reference: intent.reference, billingPeriod: body.billingPeriod }
+    });
+    return { intent, checkout, amount, currency };
+  }, { platformOnly: true, permission: 'platform.subscriptions.manage' });
 
   router.get('/platform/features', async (ctx) => {
     return ctx.db.many('SELECT * FROM feature_flags ORDER BY flag_key');

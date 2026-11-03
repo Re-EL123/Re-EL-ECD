@@ -44,31 +44,38 @@ async function learnerName(db, invoice) {
 
 /**
  * Create the intent row and the signed checkout payload.
+ *
+ * A single hosted checkout can only carry one amount, so `purpose` records
+ * what the payment is for and `metadata` carries whatever the ITN needs to
+ * settle it (for a statement, the invoice ids it covers).
  */
-async function createInvoiceIntent(db, options) {
+async function createPaymentIntent(db, options) {
   const {
-    organisation, invoice, guardian, amount, createdBy, req, scope = 'parent', itemName
+    organisation, invoice = null, guardian = null, amount, createdBy, req, currency,
+    scope = 'parent', itemName, itemDescription, purpose = 'invoice', metadata = {}, payer = null
   } = options;
   const reference = payfast.newReference();
   const value = Math.round(Number(amount) * 100) / 100;
+  const contact = payer || guardian;
   const intent = await db.one(
     `INSERT INTO payment_intents (organisation_id, invoice_id, guardian_id, reference, amount, currency,
-      provider, status, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,'payfast','pending',$7) RETURNING *`,
-    [organisation.id, invoice.id, guardian ? guardian.id : null, reference, value,
-      invoice.currency || organisation.currency || 'ZAR', createdBy || null]
+      provider, status, created_by, purpose, metadata)
+     VALUES ($1,$2,$3,$4,$5,$6,'payfast','pending',$7,$8,$9::jsonb) RETURNING *`,
+    [organisation.id, invoice ? invoice.id : null, guardian ? guardian.id : null, reference, value,
+      currency || (invoice && invoice.currency) || organisation.currency || 'ZAR', createdBy || null,
+      purpose, JSON.stringify(metadata || {})]
   );
   const urls = payfast.checkoutUrls(req, reference, scope);
   const checkout = payfast.buildCheckout({
     amount: value,
-    itemName: itemName || ('School fees — ' + invoice.invoice_number),
-    itemDescription: invoice.description || null,
+    itemName: itemName || (invoice ? 'School fees — ' + invoice.invoice_number : 'Payment'),
+    itemDescription: itemDescription || (invoice ? invoice.description : null) || null,
     reference,
-    email: guardian ? guardian.email : null,
-    nameFirst: guardian ? guardian.first_name : 'Parent',
-    nameLast: guardian ? guardian.last_name : 'Guardian',
+    email: contact ? contact.email : null,
+    nameFirst: contact ? (contact.first_name || contact.display_name) : 'Parent',
+    nameLast: contact ? (contact.last_name || '') : 'Guardian',
     organisationId: organisation.id,
-    invoiceId: invoice.id,
+    invoiceId: invoice ? invoice.id : undefined,
     returnUrl: urls.returnUrl,
     cancelUrl: urls.cancelUrl,
     notifyUrl: urls.notifyUrl
@@ -76,4 +83,35 @@ async function createInvoiceIntent(db, options) {
   return { intent, checkout };
 }
 
-module.exports = { outstandingFor, isPayable, guardianForInvoice, learnerName, createInvoiceIntent };
+async function createInvoiceIntent(db, options) {
+  return createPaymentIntent(db, Object.assign({}, options, { purpose: 'invoice' }));
+}
+
+/**
+ * A statement payment covers every open invoice for one guardian, so the
+ * intent carries the invoice ids and the ITN allocates across them in order.
+ */
+async function createStatementIntent(db, options) {
+  const { invoices } = options;
+  const covered = (invoices || [])
+    .map((invoice) => ({ id: invoice.id, amount: outstandingFor(invoice) }))
+    .filter((entry) => entry.amount > 0);
+  const total = Math.round(covered.reduce((sum, entry) => sum + entry.amount, 0) * 100) / 100;
+  return createPaymentIntent(db, Object.assign({}, options, {
+    amount: total,
+    purpose: 'statement',
+    metadata: { invoiceIds: covered.map((entry) => entry.id) },
+    itemName: options.itemName || 'Account statement',
+    itemDescription: options.itemDescription || (covered.length + ' invoice(s)')
+  }));
+}
+
+module.exports = {
+  outstandingFor,
+  isPayable,
+  guardianForInvoice,
+  learnerName,
+  createPaymentIntent,
+  createInvoiceIntent,
+  createStatementIntent
+};

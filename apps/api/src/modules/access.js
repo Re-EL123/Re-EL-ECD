@@ -181,6 +181,23 @@ function register(router) {
       action: 'access.membership_updated', resourceType: 'membership', resourceId: membership.id,
       metadata: { status: body.status }
     });
+    if (body.status && body.status !== 'active' && membership.user_id !== ctx.user.id) {
+      const member = await ctx.db.one('SELECT email, display_name FROM users WHERE id = $1', [membership.user_id]);
+      if (member && member.email) {
+        await sendTemplate(ctx.db, 'accessRevoked', {
+          to: member.email,
+          organisationId: ctx.organisationId,
+          metadata: { membershipId: membership.id, status: body.status },
+          data: {
+            name: member.display_name,
+            organisationName: ctx.organisation.name,
+            status: body.status,
+            changedBy: ctx.user.display_name,
+            at: new Date().toLocaleString('en-ZA')
+          }
+        });
+      }
+    }
     return { success: true };
   }, { permission: 'access.manage.daycare' });
 
@@ -205,6 +222,21 @@ function register(router) {
           await ctx.db.query(
             'UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [membership.user_id]
           );
+          const member = await ctx.db.one('SELECT email, display_name FROM users WHERE id = $1', [membership.user_id]);
+          if (member && member.email) {
+            await sendTemplate(ctx.db, 'accessRevoked', {
+              to: member.email,
+              organisationId: ctx.organisationId,
+              metadata: { membershipId: membership.id, status: target, bulk: true },
+              data: {
+                name: member.display_name,
+                organisationName: ctx.organisation.name,
+                status: target,
+                changedBy: ctx.user.display_name,
+                at: new Date().toLocaleString('en-ZA')
+              }
+            });
+          }
         }
         return { ok: true, metadata: { status: target } };
       }

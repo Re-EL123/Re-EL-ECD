@@ -978,6 +978,140 @@
         }
       },
 
+      // -----------------------------------------------------------------------
+      // PayFast payment links
+      //
+      // Alpine evaluates a binding against the component scope, so handlers used
+      // from view markup must live here. Everything below builds its signed
+      // checkout server-side; the browser only ever shows the resulting link.
+      // -----------------------------------------------------------------------
+
+      /**
+       * Hand off to the PayFast hosted checkout with a real form POST. A form
+       * submit (rather than fetch) keeps the payer inside the hosted flow and
+       * carries the signed fields exactly as the provider issued them.
+       */
+      submitCheckout(checkout) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = checkout.action;
+        form.style.display = 'none';
+        Object.entries(checkout.fields || {}).forEach(([key, value]) => {
+          if (value === undefined || value === null || value === '') return;
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = key;
+          input.value = value;
+          form.appendChild(input);
+        });
+        document.body.appendChild(form);
+        form.submit();
+      },
+
+      async payInvoice(id) {
+        try {
+          const payload = await Reel.api('POST', '/parent/invoices/' + encodeURIComponent(id) + '/pay', {});
+          this.submitCheckout((payload.data && payload.data.checkout) || {});
+        } catch (error) {
+          this.toast(error.message || 'Online payment could not be started.', 'error');
+        }
+      },
+
+      async payStatement() {
+        try {
+          const payload = await Reel.api('POST', '/parent/finance/statement/pay', {});
+          this.submitCheckout((payload.data && payload.data.checkout) || {});
+        } catch (error) {
+          this.toast(error.message || 'Online payment could not be started.', 'error');
+        }
+      },
+
+      payLinkDetail(title, intro, url) {
+        this.openDetail(title,
+          '<p class="muted small">' + intro + '</p>' +
+          '<div class="field"><label class="label">Payment link</label>' +
+          '<input class="input mono" readonly value="' + Reel.attr(url) + '" onclick="this.select()"></div>' +
+          '<div class="row" style="margin-top:14px">' +
+          '<a class="btn btn-primary" href="' + Reel.attr(url) + '" target="_blank" rel="noopener">' + Reel.icon('external-link') + ' Open PayFast</a>' +
+          '</div>');
+      },
+
+      async paymentLink(id) {
+        try {
+          const payload = await Reel.api('POST', '/invoices/' + encodeURIComponent(id) + '/payfast-link', {});
+          const checkout = (payload.data && payload.data.checkout) || {};
+          this.payLinkDetail('PayFast payment link',
+            'Share this link with the guardian, or open it to pay now. The invoice is marked paid only when PayFast confirms the transaction.',
+            checkout.action + '?' + checkout.query);
+        } catch (error) {
+          this.toast(error.message || 'The payment link could not be created.', 'error');
+        }
+      },
+
+      async remindInvoice(id) {
+        try {
+          const payload = await Reel.api('POST', '/invoices/' + encodeURIComponent(id) + '/remind', {});
+          const result = payload.data || {};
+          this.toast(result.payUrl ? 'Reminder sent with a PayFast link.' : 'Reminder sent.');
+        } catch (error) {
+          this.toast(error.message || 'The reminder could not be sent.', 'error');
+        }
+      },
+
+      async statementLink(guardianId) {
+        try {
+          const payload = await Reel.api('POST', '/guardians/' + encodeURIComponent(guardianId) + '/statement-link', {});
+          const data = payload.data || {};
+          const checkout = data.checkout || {};
+          this.payLinkDetail('Statement payment link',
+            'One payment settles every open invoice for this guardian (' + Reel.number(data.invoiceCount) + ' invoice(s), ' +
+              Reel.money(data.amount) + '). The guardian also receives this by email.',
+            checkout.action + '?' + checkout.query);
+        } catch (error) {
+          this.toast(error.message || 'The statement link could not be created.', 'error');
+        }
+      },
+
+      async feeLink(applicationId) {
+        try {
+          const payload = await Reel.api('POST', '/admissions/applications/' + encodeURIComponent(applicationId) + '/fee-link', {});
+          const data = payload.data || {};
+          const checkout = data.checkout || {};
+          this.payLinkDetail('Application fee link',
+            'The guardian receives this link by email and pays ' + Reel.money(data.amount, data.currency) +
+              ' online. The fee is marked paid when PayFast confirms it.',
+            checkout.action + '?' + checkout.query);
+        } catch (error) {
+          this.toast(error.message || 'The fee link could not be created.', 'error');
+        }
+      },
+
+      billSubscription(organisationId) {
+        if (!organisationId) { this.toast('That organisation could not be found.', 'warn'); return; }
+        const id = Reel.attr(organisationId);
+        this.openDetail('Bill subscription',
+          '<p class="muted small">Create a PayFast checkout for this tenant\'s plan. The subscription is extended only when PayFast confirms the payment.</p>' +
+          '<div class="btn-group">' +
+          '<button class="btn btn-secondary" @click="createSubscriptionCheckout(\'' + id + '\',\'monthly\')">Monthly</button>' +
+          '<button class="btn btn-secondary" @click="createSubscriptionCheckout(\'' + id + '\',\'annual\')">Annual (12 months)</button>' +
+          '</div>');
+      },
+
+      async createSubscriptionCheckout(organisationId, period) {
+        const billingPeriod = period === 'annual' ? 'annual' : 'monthly';
+        try {
+          const payload = await Reel.api('POST', '/platform/organisations/' + encodeURIComponent(organisationId) + '/subscription/checkout', { billingPeriod });
+          const data = payload.data || {};
+          const checkout = data.checkout || {};
+          this.payLinkDetail('Subscription checkout',
+            Reel.titleCase(billingPeriod) + ' billing · ' + Reel.money(data.amount, data.currency) +
+              '. Share this link with the tenant or open it to pay now.',
+            checkout.action + '?' + checkout.query);
+        } catch (error) {
+          this.toast(error.message || 'The checkout could not be created.', 'error');
+        }
+      },
+
       confirmAction(title, message, endpoint, options) {
         const opts = options || {};
         this.openConfirm(title, message, {

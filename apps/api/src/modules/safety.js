@@ -374,28 +374,62 @@ function register(router) {
       [incident.id]
     );
     const recipients = [];
+    const emailTargets = [];
     for (const participant of participants) {
       const guardians = await ctx.db.many(
-        `SELECT g.user_id FROM learner_guardians lg JOIN guardians g ON g.id = lg.guardian_id
-         WHERE lg.learner_id = $1 AND g.user_id IS NOT NULL AND lg.can_receive_reports = true
-           AND lg.portal_access_status = 'active'`,
+        `SELECT g.user_id, g.email, g.first_name, lg.portal_access_status,
+                l.first_name AS learner_first_name, l.last_name AS learner_last_name
+         FROM learner_guardians lg
+         JOIN guardians g ON g.id = lg.guardian_id
+         JOIN learners l ON l.id = lg.learner_id
+         WHERE lg.learner_id = $1 AND lg.can_receive_reports = true`,
         [participant.participant_id]
       );
-      for (const guardian of guardians) if (!recipients.includes(guardian.user_id)) recipients.push(guardian.user_id);
+      for (const guardian of guardians) {
+        if (guardian.user_id && guardian.portal_access_status === 'active' && !recipients.includes(guardian.user_id)) {
+          recipients.push(guardian.user_id);
+        }
+        if (guardian.email) emailTargets.push(guardian);
+      }
     }
-    if (!recipients.length) fail('CONFLICT', null, 'No guardian portal recipients are available for this incident.');
-    await createNotification(ctx.db, ctx, {
-      recipientUserIds: recipients, type: 'incident_notification',
-      title: 'Incident notification',
-      body: body.message || 'An incident involving your child has been recorded. Please contact the centre for details.',
-      resourceType: 'incident', resourceId: incident.id
-    });
+    if (!recipients.length && !emailTargets.length) {
+      fail('CONFLICT', null, 'No guardian recipients are available for this incident.');
+    }
+    if (recipients.length) {
+      await createNotification(ctx.db, ctx, {
+        recipientUserIds: recipients, type: 'incident_notification',
+        title: 'Incident notification',
+        body: body.message || 'An incident involving your child has been recorded. Please contact the centre for details.',
+        resourceType: 'incident', resourceId: incident.id
+      });
+    }
+    const summary = body.message || incident.description;
+    const firstAction = await ctx.db.one(
+      'SELECT action_description FROM incident_actions WHERE incident_id = $1 ORDER BY created_at LIMIT 1',
+      [incident.id]
+    );
+    for (const guardian of emailTargets) {
+      await sendTemplate(ctx.db, 'incidentGuardianNotice', {
+        to: guardian.email,
+        organisationId: ctx.organisationId,
+        metadata: { incidentId: incident.id },
+        data: {
+          guardianName: guardian.first_name,
+          childName: [guardian.learner_first_name, guardian.learner_last_name].filter(Boolean).join(' '),
+          organisationName: ctx.organisation.name,
+          severity: incident.severity,
+          occurredAt: incident.occurred_at ? new Date(incident.occurred_at).toLocaleString('en-ZA') : null,
+          actions: firstAction ? firstAction.action_description : null,
+          summary
+        }
+      });
+    }
     await ctx.db.query('UPDATE incidents SET guardian_notified_at = now() WHERE id = $1', [incident.id]);
     await recordAudit(ctx.db, ctx, {
       action: 'safety.guardians_notified', resourceType: 'incident', resourceId: incident.id,
-      metadata: { recipients: recipients.length }
+      metadata: { recipients: recipients.length, emails: emailTargets.length }
     });
-    return { success: true, notified: recipients.length };
+    return { success: true, notified: recipients.length, emailed: emailTargets.length };
   }, { permission: 'safety.manage.daycare' });
 
   router.get('/safety/compliance', async (ctx) => {

@@ -31,9 +31,18 @@ function applyCors(req, res) {
   const allowed = allowedOrigins();
   // Public website endpoints are read by families on tenant-owned domains.
   // Those origins cannot be enumerated in FRONTEND_ORIGIN, and the endpoints
-  // never use the session cookie, so a wildcard is safe here.
+  // never use the session cookie. A browser refuses to combine the `*`
+  // wildcard with a credentialed request, so when an origin is present it is
+  // echoed back with credentials allowed; requests without an origin (curl,
+  // server-to-server) still receive `*`.
   if (isPublicRequest(req.url)) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Vary', 'Origin');
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
   } else if (allowed.includes('*')) {
     res.setHeader('Access-Control-Allow-Origin', origin || '*');
     res.setHeader('Access-Control-Allow-Credentials', 'true');

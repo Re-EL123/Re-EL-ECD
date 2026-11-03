@@ -404,7 +404,7 @@ function register(router) {
     });
     const staff = await staffById(ctx, body.staffId);
     if (staff.employment_status === 'ended') fail('VALIDATION', [{ field: 'staffId', message: 'This staff member has left employment.' }]);
-    const branch = await ctx.db.one('SELECT id FROM branches WHERE id = $1 AND organisation_id = $2',
+    const branch = await ctx.db.one('SELECT id, name FROM branches WHERE id = $1 AND organisation_id = $2',
       [body.branchId, ctx.organisationId]);
     if (!branch) fail('VALIDATION', [{ field: 'branchId', message: 'Unknown branch.' }]);
     if (new Date(body.endsAt) <= new Date(body.startsAt)) {
@@ -432,6 +432,27 @@ function register(router) {
         title: 'New shift scheduled', body: `A shift has been scheduled for ${body.shiftDate}.`,
         resourceType: 'staff_shift', resourceId: shift.id
       });
+      const staffUser = await ctx.db.one('SELECT email, display_name FROM users WHERE id = $1', [staff.user_id]);
+      if (staffUser && staffUser.email) {
+        const start = new Date(body.startsAt);
+        const end = new Date(body.endsAt);
+        const time = Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())
+          ? null
+          : start.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' }) + ' – ' +
+            end.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
+        await sendTemplate(ctx.db, 'shiftAssigned', {
+          to: staffUser.email,
+          organisationId: ctx.organisationId,
+          metadata: { shiftId: shift.id },
+          data: {
+            staffName: staffUser.display_name,
+            date: body.shiftDate,
+            role: staff.job_title,
+            time,
+            branchName: branch.name
+          }
+        });
+      }
     }
     await recordAudit(ctx.db, ctx, {
       action: 'shift.created', resourceType: 'staff_shift', resourceId: shift.id, branchId: body.branchId
@@ -844,7 +865,8 @@ function register(router) {
       [ctx.organisationId, staff.id, body.leaveType, body.startsOn, body.endsOn, body.reason || null]
     );
     const approvers = await ctx.db.many(
-      `SELECT DISTINCT m.user_id FROM memberships m
+      `SELECT DISTINCT m.user_id, u.email, u.display_name FROM memberships m
+       JOIN users u ON u.id = m.user_id
        JOIN membership_roles mr ON mr.membership_id = m.id
        JOIN roles r ON r.id = mr.role_id
        WHERE m.organisation_id = $1 AND m.status = 'active'
@@ -857,6 +879,25 @@ function register(router) {
         title: 'Leave request submitted',
         body: `A ${body.leaveType} leave request was submitted for ${body.startsOn} to ${body.endsOn}.`,
         resourceType: 'leave_request', resourceId: leave.id
+      });
+    }
+    const staffUser = staff.user_id
+      ? await ctx.db.one('SELECT display_name FROM users WHERE id = $1', [staff.user_id])
+      : null;
+    const staffName = (staffUser && staffUser.display_name) || staff.job_title || 'A staff member';
+    for (const approver of approvers) {
+      if (!approver.email) continue;
+      await sendTemplate(ctx.db, 'leaveRequested', {
+        to: approver.email,
+        organisationId: ctx.organisationId,
+        metadata: { leaveRequestId: leave.id },
+        data: {
+          approverName: approver.display_name,
+          staffName,
+          leaveType: body.leaveType,
+          dates: `${body.startsOn} to ${body.endsOn}`,
+          reason: body.reason
+        }
       });
     }
     await recordAudit(ctx.db, ctx, { action: 'leave.requested', resourceType: 'leave_request', resourceId: leave.id });

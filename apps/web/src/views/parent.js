@@ -459,7 +459,10 @@
         : paymentState === 'cancelled'
           ? '<div class="alert alert-warn section">' + R.icon('alert-circle') + '<span>Payment cancelled. Nothing has been charged. You can try again whenever you are ready.</span></div>'
           : '';
-      return R.pageHead('Fees', 'What has been billed, what has been paid and what is still open.') +
+      return R.pageHead('Fees', 'What has been billed, what has been paid and what is still open.',
+        overdue.length
+          ? '<button class="btn btn-primary btn-sm" @click="payStatement()">' + R.icon('credit-card') + ' Pay all open invoices</button>'
+          : '') +
         banner +
         '<div class="grid grid-4 section">' +
         R.statCard({ label: 'Outstanding', value: R.money(outstanding), icon: 'wallet', tone: outstanding ? 'clay' : 'green', foot: 'Across all invoices' }) +
@@ -480,29 +483,6 @@
             : '') }
         ], emptyTitle: 'No invoices', emptyMessage: 'Invoices issued to your family will appear here.' }) +
         '<div class="alert alert-info section">' + R.icon('info') + '<span>Contact the centre office if an invoice looks wrong. Payments are recorded against the invoice, never deleted.</span></div>';
-    },
-
-    async payInvoice(ctx, id) {
-      try {
-        const payload = await R.api('POST', '/parent/invoices/' + encodeURIComponent(id) + '/pay', {});
-        const checkout = (payload.data && payload.data.checkout) || {};
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = checkout.action;
-        form.style.display = 'none';
-        Object.entries(checkout.fields || {}).forEach(([key, value]) => {
-          if (value === undefined || value === null || value === '') return;
-          const input = document.createElement('input');
-          input.type = 'hidden';
-          input.name = key;
-          input.value = value;
-          form.appendChild(input);
-        });
-        document.body.appendChild(form);
-        form.submit();
-      } catch (error) {
-        ctx.toast(error.message || 'Online payment could not be started.', 'error');
-      }
     },
 
     async openModal(ctx, name, id) {

@@ -310,6 +310,30 @@ const templates = {
     };
   },
 
+  applicationFee(data) {
+    return {
+      subject: 'Application fee for ' + (data.childName || 'your child') + ' — ' + data.organisationName,
+      html: layout({
+        brand: data.brand,
+        heading: 'Application fee',
+        intro: 'Hello ' + (data.guardianName || 'there') + ', an application fee of ' +
+          money(data.amount, data.currency) + ' is due for ' + (data.childName || 'your application') + '.',
+        rows: [
+          { label: 'Reference', value: data.reference },
+          { label: 'Amount', value: money(data.amount, data.currency) }
+        ],
+        ctaLabel: 'Pay application fee',
+        ctaUrl: data.payUrl || appLink('/'),
+        footer: 'Online payments are processed securely by PayFast. Your place is confirmed once the fee clears.'
+      }),
+      text: plain([
+        'Application fee: ' + money(data.amount, data.currency),
+        'Reference: ' + data.reference,
+        data.payUrl || ''
+      ])
+    };
+  },
+
   incidentAlert(data) {
     return {
       subject: '[' + String(data.severity).toUpperCase() + '] Incident reported — ' + data.learnerName,
@@ -347,6 +371,304 @@ const templates = {
         ctaUrl: appLink('/#/app/leave')
       }),
       text: plain(['Leave request ' + data.status, data.dates])
+    };
+  },
+
+  admissionDecision(data) {
+    const decisionLabel = data.decision === 'approved' ? 'approved'
+      : data.decision === 'rejected' || data.decision === 'declined' ? 'declined'
+        : data.decision === 'waitlisted' ? 'waitlisted'
+          : data.decision === 'under_review' ? 'under review'
+            : String(data.decision || 'updated');
+    const subject = data.decision === 'under_review'
+      ? 'Update on your application for ' + (data.childName || 'your child')
+      : 'Your application for ' + (data.childName || 'your child') + ' was ' + decisionLabel;
+    return {
+      subject,
+      html: layout({
+        brand: data.brand,
+        heading: 'Application ' + decisionLabel,
+        intro: 'Hello ' + (data.guardianName || 'there') + ', the application for ' +
+          (data.childName || 'your child') + ' at ' + data.organisationName + ' has been ' + decisionLabel + '.',
+        rows: [
+          { label: 'Child', value: data.childName },
+          { label: 'Decision', value: decisionLabel },
+          { label: 'Note', value: data.note }
+        ],
+        ctaLabel: 'View admissions',
+        ctaUrl: appLink('/#/app/admissions'),
+        footer: data.decision === 'approved'
+          ? 'Reply to this email if you would like to confirm the place or arrange a visit.'
+          : 'Reply to this email if you have any questions about this decision.'
+      }),
+      text: plain(['Application ' + decisionLabel + ' for ' + (data.childName || 'your child'), data.note])
+    };
+  },
+
+  enrolmentConfirmed(data) {
+    return {
+      subject: 'Welcome to ' + data.organisationName + ' — ' + data.childName + ' is enrolled',
+      html: layout({
+        brand: data.brand,
+        heading: 'Enrolment confirmed',
+        intro: 'Hello ' + (data.guardianName || 'there') + ', ' + data.childName +
+          ' has been enrolled at ' + data.organisationName + '.',
+        rows: [
+          { label: 'Child', value: data.childName },
+          { label: 'Classroom', value: data.classroomName },
+          { label: 'Start date', value: data.startDate }
+        ],
+        ctaLabel: 'Open the family portal',
+        ctaUrl: appLink('/#/parent'),
+        footer: 'We look forward to welcoming your family.'
+      }),
+      text: plain(['Enrolment confirmed for ' + data.childName, data.startDate ? 'Start date: ' + data.startDate : ''])
+    };
+  },
+
+  progressPublished(data) {
+    return {
+      subject: 'New observation for ' + data.childName,
+      html: layout({
+        brand: data.brand,
+        heading: 'A new observation was shared',
+        intro: 'Hello ' + (data.guardianName || 'there') + ', ' + data.organisationName +
+          ' shared a learning update for ' + data.childName + '.',
+        rows: [
+          { label: 'Learning area', value: data.area },
+          { label: 'Recorded', value: data.observedAt },
+          { label: 'Note', value: data.summary }
+        ],
+        ctaLabel: 'View progress',
+        ctaUrl: appLink('/#/parent/progress'),
+        footer: 'Observations are private to your family and your centre.'
+      }),
+      text: plain(['New observation for ' + data.childName, data.summary])
+    };
+  },
+
+  incidentGuardianNotice(data) {
+    return {
+      subject: 'Update about ' + data.childName + ' — ' + data.organisationName,
+      html: layout({
+        brand: data.brand,
+        heading: 'A note about your child',
+        intro: 'Hello ' + (data.guardianName || 'there') + ', ' + data.organisationName +
+          ' recorded the following for ' + data.childName + '.',
+        rows: [
+          { label: 'Learner', value: data.childName },
+          { label: 'Severity', value: data.severity },
+          { label: 'Occurred', value: data.occurredAt },
+          { label: 'Action taken', value: data.actions }
+        ],
+        body: data.summary ? '<p style="white-space:pre-wrap">' + esc(data.summary) + '</p>' : '',
+        ctaLabel: 'Open the family portal',
+        ctaUrl: appLink('/#/parent'),
+        accent: '#B45309',
+        footer: 'Please reply to this email if you would like to speak with a member of our team.'
+      }),
+      text: plain(['Note about ' + data.childName, data.severity, data.summary])
+    };
+  },
+
+  leaveRequested(data) {
+    return {
+      subject: data.staffName + ' requested ' + data.leaveType + ' leave',
+      html: layout({
+        brand: data.brand,
+        heading: 'Leave request awaiting your review',
+        intro: 'Hello ' + (data.approverName || 'there') + ', ' + data.staffName +
+          ' submitted a ' + data.leaveType + ' leave request.',
+        rows: [
+          { label: 'Staff member', value: data.staffName },
+          { label: 'Dates', value: data.dates },
+          { label: 'Reason', value: data.reason }
+        ],
+        ctaLabel: 'Review request',
+        ctaUrl: appLink('/#/app/leave')
+      }),
+      text: plain([data.staffName + ' requested ' + data.leaveType + ' leave', data.dates])
+    };
+  },
+
+  shiftAssigned(data) {
+    return {
+      subject: 'You are rostered on ' + data.date,
+      html: layout({
+        brand: data.brand,
+        heading: 'New shift assigned',
+        intro: 'Hello ' + (data.staffName || 'there') + ', you have been added to the roster.',
+        rows: [
+          { label: 'Date', value: data.date },
+          { label: 'Role', value: data.role },
+          { label: 'Time', value: data.time },
+          { label: 'Branch', value: data.branchName }
+        ],
+        ctaLabel: 'View my shifts',
+        ctaUrl: appLink('/#/app/shifts')
+      }),
+      text: plain(['Shift on ' + data.date, data.time, data.role])
+    };
+  },
+
+  formReviewed(data) {
+    const statusLabel = data.status === 'approved' ? 'approved'
+      : data.status === 'rejected' ? 'rejected'
+        : data.status === 'needs_changes' ? 'sent back for changes'
+          : data.status === 'under_review' ? 'under review'
+            : String(data.status || 'reviewed');
+    return {
+      subject: data.status === 'under_review'
+        ? data.formName + ' is under review'
+        : data.formName + ' was ' + statusLabel,
+      html: layout({
+        brand: data.brand,
+        heading: 'Form ' + statusLabel,
+        intro: 'Hello ' + (data.recipientName || 'there') + ', ' + (data.reviewerName || 'Your centre') +
+          ' reviewed ' + data.formName + '.',
+        rows: [
+          { label: 'Form', value: data.formName },
+          { label: 'Status', value: statusLabel },
+          { label: 'Reviewed by', value: data.reviewerName },
+          { label: 'Note', value: data.note }
+        ],
+        ctaLabel: 'Open forms',
+        ctaUrl: appLink('/#/app/forms')
+      }),
+      text: plain([data.formName + ' was ' + statusLabel, data.note])
+    };
+  },
+
+  manualPaymentReceipt(data) {
+    return {
+      subject: 'Payment recorded — ' + data.organisationName,
+      html: layout({
+        brand: data.brand,
+        heading: 'Payment recorded',
+        intro: 'Hello ' + (data.payerName || 'there') + ', we recorded a payment' +
+          (data.learnerName ? ' for ' + data.learnerName : '') + '.',
+        rows: [
+          { label: 'Amount', value: money(data.amount, data.currency) },
+          { label: 'Method', value: data.method },
+          { label: 'Reference', value: data.reference },
+          { label: 'Recorded by', value: data.recordedBy },
+          { label: 'Date', value: data.paidAt }
+        ],
+        ctaLabel: 'View your account',
+        ctaUrl: appLink('/#/parent/finance'),
+        footer: 'Keep this email as your receipt.'
+      }),
+      text: plain(['Payment recorded: ' + money(data.amount, data.currency), 'Reference: ' + data.reference])
+    };
+  },
+
+  invoiceReminder(data) {
+    const overdue = Number(data.daysOverdue || 0) > 0;
+    return {
+      subject: (overdue ? 'Overdue: invoice ' : 'Reminder: invoice ') + data.invoiceNumber +
+        ' — ' + data.organisationName,
+      html: layout({
+        brand: data.brand,
+        heading: overdue ? 'Invoice overdue' : 'Friendly payment reminder',
+        intro: 'Hello ' + (data.guardianName || 'there') + ', invoice ' + data.invoiceNumber +
+          (data.learnerName ? ' for ' + data.learnerName : '') +
+          (overdue ? ' is now ' + data.daysOverdue + ' day(s) overdue.' : ' is due on ' + (data.dueDate || 'the due date') + '.'),
+        rows: [
+          { label: 'Invoice', value: data.invoiceNumber },
+          { label: 'Amount due', value: money(data.amount, data.currency) },
+          { label: 'Due date', value: data.dueDate }
+        ],
+        ctaLabel: data.payUrl ? 'Pay online' : 'View invoice',
+        ctaUrl: data.payUrl || appLink('/#/parent/finance'),
+        footer: 'Online payments are processed securely by PayFast.'
+      }),
+      text: plain(['Invoice ' + data.invoiceNumber, 'Amount due: ' + money(data.amount, data.currency), data.payUrl || ''])
+    };
+  },
+
+  statementReady(data) {
+    const count = Number(data.invoiceCount || 0);
+    return {
+      subject: 'Your account statement — ' + data.organisationName,
+      html: layout({
+        brand: data.brand,
+        heading: 'Your account statement',
+        intro: 'Hello ' + (data.guardianName || 'there') + ', you have ' + count +
+          ' open invoice' + (count === 1 ? '' : 's') + ' totalling ' +
+          money(data.amount, data.currency) + '.',
+        rows: [
+          { label: 'Invoices', value: String(count) },
+          { label: 'Amount due', value: money(data.amount, data.currency) }
+        ],
+        ctaLabel: data.payUrl ? 'Pay statement online' : 'View your account',
+        ctaUrl: data.payUrl || appLink('/#/parent/finance'),
+        footer: 'Online payments are processed securely by PayFast. One payment settles every invoice listed.'
+      }),
+      text: plain([
+        'Statement total: ' + money(data.amount, data.currency),
+        count + ' open invoice(s)',
+        data.payUrl || 'Sign in to view your account.'
+      ])
+    };
+  },
+
+  passwordChanged(data) {
+    return {
+      subject: 'Your Re-EL ECD password was changed',
+      html: layout({
+        brand: data.brand,
+        heading: 'Your password was changed',
+        intro: 'Hello ' + (data.name || 'there') + ', the password for your Re-EL ECD account was changed' +
+          (data.at ? ' on ' + data.at : '') + '.',
+        rows: [
+          { label: 'When', value: data.at },
+          { label: 'Device', value: data.device }
+        ],
+        ctaLabel: 'Sign in',
+        ctaUrl: appLink('/#/login'),
+        accent: '#B45309',
+        footer: 'If you did not make this change, reset your password immediately and contact your centre administrator.'
+      }),
+      text: plain(['Your Re-EL ECD password was changed.', data.at || ''])
+    };
+  },
+
+  invitationAccepted(data) {
+    return {
+      subject: (data.accepterName || data.accepterEmail) + ' joined ' + data.organisationName,
+      html: layout({
+        brand: data.brand,
+        heading: 'Invitation accepted',
+        intro: 'Hello ' + (data.inviterName || 'there') + ', ' +
+          (data.accepterName || data.accepterEmail) + ' accepted your invitation to ' + data.organisationName + '.',
+        rows: [
+          { label: 'Member', value: data.accepterName || data.accepterEmail },
+          { label: 'Email', value: data.accepterEmail },
+          { label: 'Role', value: data.roleLabel }
+        ],
+        ctaLabel: 'Open users and access',
+        ctaUrl: appLink('/#/app/access')
+      }),
+      text: plain([(data.accepterName || data.accepterEmail) + ' accepted the invitation to ' + data.organisationName])
+    };
+  },
+
+  accessRevoked(data) {
+    const statusLabel = data.status === 'suspended' ? 'suspended' : 'removed';
+    return {
+      subject: 'Your access to ' + data.organisationName + ' was ' + statusLabel,
+      html: layout({
+        brand: data.brand,
+        heading: 'Access ' + statusLabel,
+        intro: 'Hello ' + (data.name || 'there') + ', your access to ' + data.organisationName +
+          ' has been ' + statusLabel + '.',
+        rows: [
+          { label: 'Changed by', value: data.changedBy },
+          { label: 'When', value: data.at }
+        ],
+        footer: 'If you believe this is a mistake, contact your centre administrator.'
+      }),
+      text: plain(['Your access to ' + data.organisationName + ' was ' + statusLabel + '.'])
     };
   }
 };

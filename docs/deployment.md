@@ -176,6 +176,29 @@ The edge (reverse proxy or hosting provider) must map verified custom hostnames
 to the same static frontend and API. The frontend resolves the site from
 `location.hostname` through `GET /api/v1/public/daycares/by-domain/:host`.
 
+#### Free subdomains and the wildcard certificate
+
+`<slug>.re-el.co.za` is served by the same edge as the app, so it needs one
+wildcard certificate. Add these records to the `re-el.co.za` zone:
+
+| Type | Host | Value | Purpose |
+| --- | --- | --- | --- |
+| `A` | `*` | `76.76.21.21` | Wildcard apex for Vercel. |
+| `CNAME` | `*` | `cname.vercel-dns.com` | Wildcard alternative when a `CNAME` is preferred. |
+
+Then attach the wildcard in the hosting project: **Settings → Domains → Add**
+`*.re-el.co.za`, and `re-el.co.za` as well if the apex should resolve. The
+provider issues the certificate once the wildcard DNS record resolves.
+
+Without the wildcard, every tenant subdomain shows
+`SSL_ERROR_BAD_CERT_DOMAIN`: the host resolves, but the certificate presented
+only covers the platform host. A `CNAME` pointed at the GitHub Pages host
+(`<owner>.github.io`) causes exactly this, because the Pages certificate is
+`CN=*.github.io` and does not cover `*.re-el.co.za`. GitHub Pages cannot issue a
+`*.re-el.co.za` certificate, so tenant subdomains must be pointed at the edge
+provider that can. `ecd.re-el.co.za` is unaffected because it is a single host
+with its own certificate.
+
 ### Email (Resend)
 
 Transactional email is sent through the Resend HTTP API. Every attempt is
@@ -184,10 +207,14 @@ so "did the guardian receive the invoice?" is answerable from the database.
 Email is best-effort: a provider outage never fails an invitation, invoice or
 payment webhook.
 
-Wired templates: welcome (new tenant owner), staff invitation, password reset,
-website enquiry notification and acknowledgement, public form submission,
-announcement publication, invoice issued, payment receipt, high-severity
-incident alert and leave decision.
+Wired templates: welcome (new tenant owner); staff invitation and invitation
+accepted; password reset and password changed; website enquiry notification and
+acknowledgement; public form submission and form reviewed; announcement
+publication; invoice issued, invoice reminder and statement ready; payment
+receipt (PayFast) and manual payment receipt; application fee; admission
+decision and enrolment confirmed; progress published; high-severity incident
+alert and incident guardian notice; leave requested and leave decision; shift
+assigned; and access revoked.
 
 To enable it:
 
@@ -380,6 +407,7 @@ the CI check before merging.
 | The site shows the README text instead of the app | Pages is publishing the branch root. Set the Pages source to "GitHub Actions" and re-run `pages.yml`. |
 | Every API call returns 404 on the Pages domain | `REEL_API_BASE` is empty, so the SPA calls the static host. Set the repository variable and re-run `pages.yml`. |
 | Vercel preview URLs return 302 "Protected by Vercel Authentication" | Deployment protection applies to preview URLs; use the production alias. |
+| `SSL_ERROR_BAD_CERT_DOMAIN` on a `<slug>.re-el.co.za` tenant site | The wildcard certificate is missing. A `CNAME` to the GitHub Pages host presents `CN=*.github.io`, which does not cover `*.re-el.co.za`. Point `*.re-el.co.za` at the hosting provider and attach the wildcard domain there. |
 | Migrations did not run on Vercel | Check the function logs for the migration error; run `npm run migrate` manually against the database. |
 | Emails are not arriving | Check `email_deliveries` for the row: `skipped` means `RESEND_API_KEY` is unset or `EMAIL_ENABLED=false`; `failed` carries the Resend error. A verified sender domain is required for `EMAIL_FROM`. |
 | Password reset or invitation links point at the wrong host | Set `APP_BASE_URL` (or `FRONTEND_ORIGIN`) to the public web origin; links are built from it. |

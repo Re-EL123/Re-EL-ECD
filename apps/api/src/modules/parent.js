@@ -5,7 +5,7 @@ const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
 const { createNotification } = require('../services/notification-service');
 const payfast = require('../services/payfast-service');
-const { createInvoiceIntent, outstandingFor, isPayable, guardianForInvoice } = require('../services/payment-intent-service');
+const { createInvoiceIntent, createStatementIntent, outstandingFor, isPayable, guardianForInvoice } = require('../services/payment-intent-service');
 const { has, guardianLearnerIds, guardianForLearner, today, roundMoney } = require('./helpers');
 const { progressFor } = require('./assessments');
 
@@ -255,6 +255,47 @@ function register(router) {
       metadata: { intentId: intent.id, amount, reference: intent.reference, channel: 'parent' }
     });
     return { intent, checkout };
+  }, { permission: 'parent.finance.read.own' });
+
+  /**
+   * Pay every open invoice in one hosted checkout. Parents with several
+   * outstanding invoices settle the lot with a single card payment, and the
+   * ITN spreads it across the invoices oldest-first.
+   */
+  router.post('/parent/finance/statement/pay', async (ctx) => {
+    if (!payfast.isConfigured()) {
+      fail('CONFLICT', null, 'Online card payments are not available yet. Please pay by EFT and use the reference on your invoice.');
+    }
+    const guardian = await ctx.db.one(
+      'SELECT * FROM guardians WHERE user_id = $1 AND organisation_id = $2 ORDER BY created_at LIMIT 1',
+      [ctx.user.id, ctx.organisationId]
+    );
+    if (!guardian) throw new AppError('NOT_FOUND');
+    const ids = await guardianLearnerIds(ctx);
+    if (!ids.length) fail('CONFLICT', null, 'There are no children linked to your account.');
+    const invoices = await ctx.db.many(
+      `SELECT * FROM invoices WHERE organisation_id = $1 AND learner_id = ANY($2::uuid[])
+         AND status IN ('issued','partially_paid','overdue')
+       ORDER BY COALESCE(due_at, CURRENT_DATE), created_at`,
+      [ctx.organisationId, ids]
+    );
+    const payable = invoices.filter(isPayable);
+    if (!payable.length) fail('CONFLICT', null, 'You have no open invoices to pay.');
+
+    const { intent, checkout } = await createStatementIntent(ctx.db, {
+      organisation: ctx.organisation,
+      guardian,
+      invoices: payable,
+      createdBy: ctx.user.id,
+      req: ctx.req,
+      scope: 'parent'
+    });
+
+    await recordAudit(ctx.db, ctx, {
+      action: 'finance.statement_link_created', resourceType: 'guardian', resourceId: guardian.id,
+      metadata: { intentId: intent.id, amount: Number(intent.amount), invoiceCount: payable.length, reference: intent.reference, channel: 'parent' }
+    });
+    return { intent, checkout, amount: Number(intent.amount), invoiceCount: payable.length };
   }, { permission: 'parent.finance.read.own' });
 
   router.get('/parent/finance/summary', async (ctx) => {

@@ -167,7 +167,13 @@
         { label: 'Guardian', render: (i) => R.esc(i.guardian_name || '—') + '<span class="cell-sub">' + R.esc(i.guardian_email || '') + '</span>' },
         { label: 'Due', render: (i) => R.date(i.due_at) },
         { label: 'Days overdue', align: 'right', render: (i) => Number(i.days_overdue) > 0 ? '<span class="badge badge-danger">' + R.number(i.days_overdue) + '</span>' : '<span class="badge badge-green">Current</span>' },
-        { label: 'Outstanding', align: 'right', render: (i) => R.money(i.outstanding) }
+        { label: 'Outstanding', align: 'right', render: (i) => R.money(i.outstanding) },
+        { label: 'Actions', align: 'right', render: (i) =>
+          '<div class="btn-group">' +
+          '<button class="btn btn-sm btn-ghost" @click="remindInvoice(\'' + R.attr(i.id) + '\')">Remind</button>' +
+          '<button class="btn btn-sm btn-ghost" @click="paymentLink(\'' + R.attr(i.id) + '\')">Link</button>' +
+          (i.guardian_id ? '<button class="btn btn-sm btn-ghost" @click="statementLink(\'' + R.attr(i.guardian_id) + '\')">Statement</button>' : '') +
+          '</div>' }
       ], emptyTitle: 'Nothing outstanding', emptyMessage: 'Every issued invoice has been paid.' }), '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'payment\')">Record payment</button>');
     },
 
@@ -201,23 +207,6 @@
           { label: 'Total', align: 'right', render: (c) => R.money(c.total) }
         ], emptyTitle: 'No expenses' })) +
         '</div></div>';
-    },
-
-    async paymentLink(ctx, id) {
-      try {
-        const payload = await R.api('POST', '/invoices/' + encodeURIComponent(id) + '/payfast-link', {});
-        const checkout = payload.data.checkout || {};
-        const url = checkout.action + '?' + checkout.query;
-        ctx.openDetail('PayFast payment link',
-          '<p class="muted small">Share this link with the guardian, or open it to pay now. The invoice is marked paid only when PayFast confirms the transaction.</p>' +
-          '<div class="field"><label class="label">Payment link</label>' +
-          '<input class="input mono" readonly value="' + R.attr(url) + '" onclick="this.select()"></div>' +
-          '<div class="row" style="margin-top:14px">' +
-          '<a class="btn btn-primary" href="' + R.attr(url) + '" target="_blank" rel="noopener">' + R.icon('external-link') + ' Open PayFast</a>' +
-          '</div>');
-      } catch (error) {
-        ctx.toast(error.message || 'The payment link could not be created.', 'error');
-      }
     },
 
     async openModal(ctx, name, id) {

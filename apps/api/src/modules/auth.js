@@ -123,6 +123,15 @@ function register(router) {
     await ctx.db.query('UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2', [hash, user.id]);
     await revokeAllSessions(ctx.db, user.id, ctx.session.id);
     await recordAudit(ctx.db, ctx, { action: 'auth.password_changed', resourceType: 'user', resourceId: user.id });
+    await sendTemplate(ctx.db, 'passwordChanged', {
+      to: user.email,
+      metadata: { userId: user.id, source: 'change_password' },
+      data: {
+        name: user.display_name,
+        at: new Date().toLocaleString('en-ZA'),
+        device: String(ctx.req.headers['user-agent'] || '').slice(0, 120)
+      }
+    });
     return { success: true };
   }, { authenticated: true });
 
@@ -162,6 +171,18 @@ function register(router) {
     await ctx.db.query('UPDATE password_resets SET used_at = now() WHERE id = $1', [reset.id]);
     await revokeAllSessions(ctx.db, reset.user_id);
     await recordAudit(ctx.db, ctx, { action: 'auth.password_reset_completed', resourceType: 'user', resourceId: reset.user_id });
+    const resetUser = await ctx.db.one('SELECT email, display_name FROM users WHERE id = $1', [reset.user_id]);
+    if (resetUser) {
+      await sendTemplate(ctx.db, 'passwordChanged', {
+        to: resetUser.email,
+        metadata: { userId: reset.user_id, source: 'reset_password' },
+        data: {
+          name: resetUser.display_name,
+          at: new Date().toLocaleString('en-ZA'),
+          device: String(ctx.req.headers['user-agent'] || '').slice(0, 120)
+        }
+      });
+    }
     return { success: true };
   }, { public: true, skipCsrf: true });
 
@@ -207,7 +228,7 @@ function register(router) {
     } else if (membership.status !== 'active') {
       await ctx.db.query("UPDATE memberships SET status = 'active', joined_at = now() WHERE id = $1", [membership.id]);
     }
-    const role = await ctx.db.one('SELECT id FROM roles WHERE role_key = $1', [invitation.role_key]);
+    const role = await ctx.db.one('SELECT id, name FROM roles WHERE role_key = $1', [invitation.role_key]);
     if (role) {
       await ctx.db.query(
         `INSERT INTO membership_roles (membership_id, role_id, branch_id, status) VALUES ($1,$2,$3,'active')`,
@@ -224,6 +245,24 @@ function register(router) {
       action: 'access.invitation_accepted', resourceType: 'membership', resourceId: membership.id,
       organisationId: invitation.organisation_id
     });
+    if (invitation.invited_by && invitation.invited_by !== user.id) {
+      const inviter = await ctx.db.one('SELECT email, display_name FROM users WHERE id = $1', [invitation.invited_by]);
+      const organisation = await ctx.db.one('SELECT name FROM organisations WHERE id = $1', [invitation.organisation_id]);
+      if (inviter && inviter.email) {
+        await sendTemplate(ctx.db, 'invitationAccepted', {
+          to: inviter.email,
+          organisationId: invitation.organisation_id,
+          metadata: { invitationId: invitation.id, membershipId: membership.id },
+          data: {
+            inviterName: inviter.display_name,
+            accepterName: user.display_name,
+            accepterEmail: user.email,
+            organisationName: organisation ? organisation.name : '',
+            roleLabel: role ? role.name : invitation.role_key
+          }
+        });
+      }
+    }
     return { success: true, organisationId: invitation.organisation_id };
   }, { public: true, skipCsrf: true });
 }

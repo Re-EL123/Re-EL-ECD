@@ -89,6 +89,8 @@
           { label: 'Status', render: (a) => R.badge(a.status) },
           { label: '', align: 'right', render: (a) => '<div class="btn-group">' +
             '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'review\',\'' + R.attr(a.id) + '\')">Review</button>' +
+            (Number(a.application_fee_amount) > 0 && a.application_fee_status !== 'paid'
+              ? '<button class="btn btn-sm btn-ghost" @click="feeLink(\'' + R.attr(a.id) + '\')">Fee link</button>' : '') +
             (a.status === 'approved' ? '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'enrol\',\'' + R.attr(a.id) + '\')">Enrol</button>' : '') +
             '</div>' }
         ], emptyTitle: 'No applications', emptyMessage: 'Convert an enquiry to start an application.' });
@@ -120,6 +122,7 @@
           { name: 'guardianEmail', label: 'Guardian email', type: 'email' },
           { name: 'guardianPhone', label: 'Guardian phone' },
           { name: 'preferredStartDate', label: 'Preferred start', type: 'date' },
+          { name: 'applicationFee', label: 'Application fee', type: 'number', min: 0, help: 'Optional. Leave blank if no fee is charged.' },
           { name: 'notes', label: 'Notes', type: 'textarea', span: 2 }
         ] });
       } else if (name === 'convert' && id) {
@@ -134,7 +137,12 @@
         ] });
       } else if (name === 'review' && id) {
         ctx.openModal({ title: 'Review application', endpoint: '/admissions/applications/' + id + '/review', submitLabel: 'Record decision', fields: [
-          { name: 'decision', label: 'Decision', type: 'select', required: true, options: ['approve', 'waitlist', 'reject'] },
+          { name: 'decision', label: 'Decision', type: 'select', required: true, options: [
+            { value: 'approved', label: 'Approve' },
+            { value: 'waitlisted', label: 'Waitlist' },
+            { value: 'rejected', label: 'Reject' },
+            { value: 'under_review', label: 'Send for review' }
+          ] },
           { name: 'reason', label: 'Reason', type: 'textarea', span: 2 }
         ] });
       } else if (name === 'enrol' && id) {

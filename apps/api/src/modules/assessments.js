@@ -4,6 +4,7 @@ const { validate } = require('../../../../packages/contracts/validate');
 const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
 const { createNotification } = require('../services/notification-service');
+const { sendTemplate } = require('../services/email-service');
 const { parsePagination } = require('../utils/http');
 const { getLearner, has, assignedClassroomIds } = require('./helpers');
 
@@ -329,21 +330,43 @@ function register(router) {
 
 async function notifyGuardians(ctx, learnerId, observation) {
   const guardians = await ctx.db.many(
-    `SELECT g.user_id FROM learner_guardians lg JOIN guardians g ON g.id = lg.guardian_id
-     WHERE lg.learner_id = $1 AND lg.can_receive_reports = true AND g.user_id IS NOT NULL
-       AND lg.portal_access_status = 'active'`,
+    `SELECT g.user_id, g.email, g.first_name, lg.portal_access_status
+     FROM learner_guardians lg JOIN guardians g ON g.id = lg.guardian_id
+     WHERE lg.learner_id = $1 AND lg.can_receive_reports = true`,
     [learnerId]
   );
   if (!guardians.length) return;
-  const learner = await ctx.db.one('SELECT first_name FROM learners WHERE id = $1', [learnerId]);
-  await createNotification(ctx.db, ctx, {
-    recipientUserIds: guardians.map((g) => g.user_id),
-    type: 'progress_published',
-    title: 'New progress update',
-    body: `A new observation for ${learner.first_name} has been published to your portal.`,
-    resourceType: 'learner_observation',
-    resourceId: observation.id
-  });
+  const learner = await ctx.db.one('SELECT first_name, last_name FROM learners WHERE id = $1', [learnerId]);
+  const portalGuardians = guardians.filter((g) => g.user_id && g.portal_access_status === 'active');
+  if (portalGuardians.length) {
+    await createNotification(ctx.db, ctx, {
+      recipientUserIds: portalGuardians.map((g) => g.user_id),
+      type: 'progress_published',
+      title: 'New progress update',
+      body: `A new observation for ${learner.first_name} has been published to your portal.`,
+      resourceType: 'learner_observation',
+      resourceId: observation.id
+    });
+  }
+  const text = String(observation.observation_text || '');
+  const summary = text.length > 300 ? text.slice(0, 297) + '…' : text;
+  const childName = [learner.first_name, learner.last_name].filter(Boolean).join(' ');
+  for (const guardian of guardians) {
+    if (!guardian.email) continue;
+    await sendTemplate(ctx.db, 'progressPublished', {
+      to: guardian.email,
+      organisationId: ctx.organisationId,
+      metadata: { observationId: observation.id, learnerId },
+      data: {
+        guardianName: guardian.first_name,
+        childName,
+        organisationName: ctx.organisation.name,
+        area: observation.context,
+        observedAt: dayOf(observation.observation_date),
+        summary
+      }
+    });
+  }
 }
 
 async function progressFor(ctx, learner) {

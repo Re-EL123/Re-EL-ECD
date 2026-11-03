@@ -8,7 +8,7 @@
  * diverge between environments.
  */
 
-const { handle } = require('../apps/api/src/app');
+const { handle, applyCors } = require('../apps/api/src/app');
 const db = require('../packages/database');
 const { seedCatalog } = require('../packages/database/seeds/development');
 
@@ -51,6 +51,27 @@ module.exports = async function handler(req, res) {
     res.end(JSON.stringify({ status: 'ok', uptime: Math.floor(process.uptime()) }));
     return;
   }
-  await ensureBootstrapped();
+  // Apply CORS before any work. A cold start that fails (for example a
+  // database that is still waking) must still answer the browser with a
+  // readable, CORS-enabled error. Without these headers the browser reports
+  // an opaque "CORS request did not succeed" with a null status and hides the
+  // real cause.
+  applyCors(req, res);
+  try {
+    await ensureBootstrapped();
+  } catch (error) {
+    console.error(JSON.stringify({ level: 'error', message: 'api bootstrap failed', error: error.message }));
+    if (res.headersSent) return;
+    res.statusCode = 503;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.end(JSON.stringify({
+      error: {
+        code: 'BOOTSTRAP_FAILED',
+        message: 'The API could not start. Check the database configuration and try again.',
+        requestId: req.headers['x-request-id'] || null
+      }
+    }));
+    return;
+  }
   return handle(req, res);
 };
