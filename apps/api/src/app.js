@@ -20,10 +20,21 @@ function allowedOrigins() {
   return [];
 }
 
+function isPublicRequest(url) {
+  const path = String(url || '').split('?')[0];
+  return path === '/api/v1/public' || path.startsWith('/api/v1/public/')
+    || path === '/api/public' || path.startsWith('/api/public/');
+}
+
 function applyCors(req, res) {
   const origin = req.headers.origin;
   const allowed = allowedOrigins();
-  if (allowed.includes('*')) {
+  // Public website endpoints are read by families on tenant-owned domains.
+  // Those origins cannot be enumerated in FRONTEND_ORIGIN, and the endpoints
+  // never use the session cookie, so a wildcard is safe here.
+  if (isPublicRequest(req.url)) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  } else if (allowed.includes('*')) {
     res.setHeader('Access-Control-Allow-Origin', origin || '*');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
   } else if (origin && allowed.includes(origin)) {

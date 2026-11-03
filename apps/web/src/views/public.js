@@ -48,14 +48,6 @@
         '<div class="field"><label for="login-password">Password</label><input class="input" id="login-password" name="password" type="password" autocomplete="current-password" required x-model="loginPassword" placeholder="Your password"></div>' +
         '<button class="btn btn-primary btn-block" type="submit" :disabled="loginBusy"><span class="spinner" x-show="loginBusy" style="width:15px;height:15px"></span><span x-text="loginBusy ? \'Signing in…\' : \'Sign in\'"></span></button>' +
         '</form>' +
-        '<div class="demo-logins">' +
-        '<button type="button" @click="fillDemo(\'principal@littlesprouts.local\')">Principal</button>' +
-        '<button type="button" @click="fillDemo(\'teacher@littlesprouts.local\')">Teacher</button>' +
-        '<button type="button" @click="fillDemo(\'parent@littlesprouts.local\')">Parent</button>' +
-        '<button type="button" @click="fillDemo(\'finance@littlesprouts.local\')">Finance</button>' +
-        '<button type="button" @click="fillDemo(\'platform@re-el-ecd.local\')">Platform admin</button>' +
-        '</div>' +
-        '<div class="auth-foot">Demo password: <span class="mono">Re-EL-Demo-2026!</span> · <a href="#/site/little-sprouts">View a public daycare website</a></div>' +
         '<div class="row" style="margin-top:10px;justify-content:center"><button type="button" class="link-strong small" @click="forgotOpen = !forgotOpen">Forgot password?</button></div>' +
         '<div x-show="forgotOpen" x-cloak style="margin-top:10px">' +
         '<div class="alert alert-success" x-show="resetSent" x-cloak><i data-lucide="check-circle"></i><span x-text="resetSent"></span></div>' +
@@ -82,6 +74,18 @@
   function siteHref(slug, key) {
     const page = sitePage(key);
     return '#/site/' + encodeURIComponent(slug) + (page && page.path ? '/' + page.path : '');
+  }
+
+  /**
+   * Staff sign-in always belongs to the product's own address. On a tenant's
+   * custom domain the session cookie and CSRF token live on the platform
+   * origin, so sending staff to the platform address avoids a confusing
+   * cross-site login.
+   */
+  function staffHref() {
+    if (!R.isPlatformHost || R.isPlatformHost()) return '#/login';
+    const base = String(window.REEL_PLATFORM_URL || 'https://ecd.re-el.co.za').replace(/\/+$/, '');
+    return base + '/#/login';
   }
 
   /** Only absolute http(s) URLs and same-site paths reach an attribute. */
@@ -111,15 +115,15 @@
 
   function siteNav(slug, current, org) {
     const links = SITE_PAGES.map((page) => '<a class="' + (page.key === current ? 'active' : '') + '" href="' +
-      R.attr(siteHref(slug, page.key)) + '">' + R.esc(page.label) + '</a>').join('');
+      R.attr(siteHref(slug, page.key)) + '" @click="siteMenuOpen = false">' + R.esc(page.label) + '</a>').join('');
     return '<nav class="public-nav site-nav">' +
       '<a class="site-brand" href="' + R.attr(siteHref(slug, 'home')) + '">' + logoMark(org, 42) +
       '<span><span class="brand-name">' + R.esc(org.name || 'Early learning centre') + '</span>' +
       '<span class="brand-sub">Early learning centre</span></span></a>' +
-      '<button type="button" class="site-nav-toggle" aria-label="Open menu" @click="siteMenuOpen = !siteMenuOpen">' + R.icon('menu') + '</button>' +
+      '<button type="button" class="site-nav-toggle" :aria-label="siteMenuOpen ? \'Close menu\' : \'Open menu\'" :aria-expanded="siteMenuOpen" @click="siteMenuOpen = !siteMenuOpen">' + R.icon('menu') + '</button>' +
       '<div class="links" :class="siteMenuOpen ? \'open\' : \'\'">' + links +
-      '<a class="btn btn-primary btn-sm" href="#/site/' + R.attr(slug) + '/apply">Enquire</a>' +
-      '<a class="muted site-staff-link" href="#/login">Staff</a></div>' +
+      '<a class="btn btn-primary btn-sm" href="#/site/' + R.attr(slug) + '/apply" @click="siteMenuOpen = false">Enquire</a>' +
+      '<a class="muted site-staff-link" href="' + R.attr(staffHref()) + '">Staff</a></div>' +
       '</nav>';
   }
 
@@ -143,7 +147,7 @@
       '</div></div></div>' +
       '<div class="site-wrap site-footer-base"><span>© ' + new Date().getFullYear() + ' ' + R.esc(org.name || '') + '. All rights reserved.</span>' +
       '<span class="spacer"></span><a href="#/site/' + R.attr(slug) + '/apply">Enquire about a place</a>' +
-      '<a href="#/login">Staff sign in</a></div>' +
+      '<a href="' + R.attr(staffHref()) + '">Staff sign in</a></div>' +
       '</footer>';
   }
 
@@ -251,8 +255,10 @@
 
   V.publicSite = {
     async load(ctx, params) {
-      const slug = params.slug || 'little-sprouts';
-      ctx.publicSlug = slug;
+      // A custom domain is resolved from the hostname, so the address a family
+      // types has no slug in it. The platform host still uses #/site/:slug.
+      const requestedSlug = params.slug || null;
+      ctx.publicSlug = requestedSlug;
       ctx.publicEnquiry = {
         guardianName: '', guardianEmail: '', guardianPhone: '', childName: '', childDateOfBirth: '',
         requestedAgeGroup: '', preferredStartDate: '', message: '', website: '', branchId: ''
@@ -260,17 +266,57 @@
       ctx.publicResult = null;
       ctx.publicError = null;
       ctx.siteMenuOpen = false;
-      const payload = await R.api('GET', '/public/daycares/' + encodeURIComponent(slug));
-      return payload.data;
+
+      try {
+        let payload;
+        if (requestedSlug) {
+          // On a verified custom domain pass the host so the API can build the
+          // canonical address. The API only honours hosts owned by this org.
+          const customHost = R.isPlatformHost && !R.isPlatformHost() ? location.hostname : null;
+          const suffix = customHost ? '?host=' + encodeURIComponent(customHost) : '';
+          payload = await R.api('GET', '/public/daycares/' + encodeURIComponent(requestedSlug) + suffix);
+        } else {
+          payload = await R.api('GET', '/public/daycares/by-domain/' + encodeURIComponent(location.hostname));
+        }
+        const data = payload.data || {};
+        ctx.publicSlug = (data.organisation && data.organisation.slug) || requestedSlug || null;
+        return data;
+      } catch (error) {
+        if (error instanceof R.ApiError && error.code === 'NOT_FOUND') {
+          const host = location.hostname;
+          return {
+            missing: true,
+            requestedHost: host,
+            seo: {
+              title: 'Website not found | Re-EL ECD',
+              description: 'No daycare website is published at this address.',
+              keywords: ['Re-EL ECD', 'daycare website'],
+              organisationName: 'Re-EL ECD',
+              canonical: 'https://' + host + '/'
+            }
+          };
+        }
+        throw error;
+      }
     },
 
     render(ctx, params, page) {
+      if (page && page.missing) {
+        return '<div class="public site site-missing"><div class="site-missing-card">' +
+          '<div class="brand-mark" style="margin:0 auto 16px">R</div>' +
+          '<h1>No website at this address</h1>' +
+          '<p class="lede">We could not find a daycare website for <span class="mono">' + R.esc(page.requestedHost || 'this address') + '</span>. ' +
+          'The address may have changed, or the centre may not have published its site yet.</p>' +
+          '<div class="site-actions" style="justify-content:center"><a class="btn btn-primary" href="' + R.attr(staffHref()) + '">Staff sign in</a>' +
+          '<a class="btn btn-secondary" href="https://ecd.re-el.co.za">About Re-EL ECD</a></div></div></div>';
+      }
+
       const content = (page && page.content) || {};
-      const org = (page && page.organisation) || { name: R.titleCase(params.slug || 'Early learning centre') };
+      const org = (page && page.organisation) || { name: R.titleCase((params && params.slug) || 'Early learning centre') };
       const branches = (page && page.branches) || [];
       const branding = (page && page.branding) || {};
-      const slug = params.slug || org.slug || 'little-sprouts';
-      const current = sitePage(params.page || 'home');
+      const slug = (params && params.slug) || org.slug || (ctx && ctx.publicSlug) || '';
+      const current = sitePage((params && params.page) || 'home');
       const theme = (page && page.theme) || 'nature';
       const banner = page && page.published === false
         ? '<div class="site-banner">This daycare website is being prepared. Staff can sign in to manage it.</div>'
@@ -502,7 +548,8 @@
       ctx.publicResult = null;
       ctx.publicError = null;
       ctx.siteMenuOpen = false;
-      const payload = await R.api('GET', '/public/daycares/' + encodeURIComponent(params.slug));
+      const payload = await R.api('GET', '/public/daycares/' + encodeURIComponent(params.slug) +
+        (R.isPlatformHost && !R.isPlatformHost() ? '?host=' + encodeURIComponent(location.hostname) : ''));
       const form = await R.api('GET', '/public/daycares/' + encodeURIComponent(params.slug) + '/enquiry-form');
       return { site: payload.data, form: form.data };
     },

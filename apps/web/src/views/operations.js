@@ -579,20 +579,93 @@
     renderDomains(ctx, page) {
       const canManage = ctx.has('website.manage.daycare');
       const domains = page.domains || [];
-      return R.card('Custom domains', R.table({ rows: domains, columns: [
-        { label: 'Domain', render: (d) => '<span class="mono">' + R.esc(d.domain_name) + '</span>' },
-        { label: 'Verified', render: (d) => d.verified_at ? R.badge('verified') : R.badge('pending') },
-        { label: 'Added', render: (d) => R.date(d.created_at) }
-      ], emptyTitle: 'No custom domains', emptyMessage: 'The public site is reachable at its Re-EL address until you add one.' }),
-        canManage ? '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'domain\')">' + R.icon('plus') + ' Add domain</button>' : '') +
-        '<div class="section"></div>' + R.card('How domains work', '<p class="muted small">Point a CNAME record at the Re-EL edge, then add the domain here. Domains are checked before traffic is served. The default address always keeps working.</p>');
+      const organisation = page.organisation || {};
+      const freeHost = organisation.freeSubdomain || '';
+      const freeUrl = freeHost ? 'https://' + freeHost : '';
+
+      const statusBadge = (domain) => {
+        if (domain.verification_status === 'verified' || domain.verified) return '<span class="badge badge-green">Verified</span>';
+        if (domain.verification_status === 'failed') return '<span class="badge badge-danger">Needs attention</span>';
+        return '<span class="badge badge-sun">Pending</span>';
+      };
+      const tlsBadge = (domain) => (domain.ssl_status === 'active'
+        ? '<span class="badge badge-green">TLS active</span>'
+        : '<span class="badge badge-muted">TLS pending</span>');
+
+      const copyButton = (value, label) => '<button type="button" class="btn btn-ghost btn-sm" @click="copyToClipboard(' +
+        R.attr(JSON.stringify(value)) + ', ' + R.attr(JSON.stringify(label)) + ')" title="Copy ' + R.attr(label) + '">' +
+        R.icon('copy') + '<span class="sr-only">Copy ' + R.esc(label) + '</span></button>';
+
+      const recordRow = (type, host, value, note) => '<div class="domain-record">' +
+        '<div class="domain-record-head"><span class="badge badge-sky">' + R.esc(type) + '</span>' +
+        '<span class="mono small domain-record-host">' + R.esc(host) + '</span>' + copyButton(value, type + ' value') + '</div>' +
+        '<div class="domain-record-value mono">' + R.esc(value) + '</div>' +
+        (note ? '<div class="hint">' + R.esc(note) + '</div>' : '') + '</div>';
+
+      const domainCard = (domain) => {
+        const records = domain.records || {};
+        const cname = records.cname || {};
+        const txt = records.txt || {};
+        const verified = domain.verification_status === 'verified' || domain.verified;
+        return '<div class="domain-card">' +
+          '<div class="domain-card-head">' +
+          '<div style="min-width:0"><div class="strong mono domain-name">' + R.esc(domain.domain_name) + '</div>' +
+          '<div class="row" style="gap:6px;margin-top:6px">' + statusBadge(domain) + tlsBadge(domain) +
+          (domain.verification_method ? '<span class="badge badge-muted">' + R.esc(String(domain.verification_method).toUpperCase()) + '</span>' : '') +
+          '</div></div>' +
+          '<div class="btn-group row-end">' +
+          (verified ? '<a class="btn btn-secondary btn-sm" href="https://' + R.attr(domain.domain_name) + '" target="_blank" rel="noopener">' + R.icon('external-link') + ' Open</a>' : '') +
+          (canManage ? '<button type="button" class="btn btn-secondary btn-sm" @click="verifyDomain(' + R.attr(JSON.stringify(domain.id)) + ')" :disabled="domainBusy === ' + R.attr(JSON.stringify(domain.id)) + '">' +
+            '<span class="spinner" x-show="domainBusy === ' + R.attr(JSON.stringify(domain.id)) + '" style="width:13px;height:13px"></span>' +
+            R.icon('refresh-cw') + ' Check DNS</button>' : '') +
+          (canManage ? '<button type="button" class="btn btn-ghost btn-sm" @click="removeDomain(' + R.attr(JSON.stringify(domain.id)) + ', ' + R.attr(JSON.stringify(domain.domain_name)) + ')">' + R.icon('trash-2') + ' Remove</button>' : '') +
+          '</div></div>' +
+          (domain.failure_reason ? '<div class="alert alert-warn" style="margin:12px 0 0"><i data-lucide="alert-triangle"></i><span>' + R.esc(domain.failure_reason) + '</span></div>' : '') +
+          '<div class="domain-record-grid">' +
+          (cname.host ? recordRow('CNAME', cname.host, cname.value, cname.note || 'Point the hostname at the Re-EL website edge.') : '') +
+          (txt.host ? recordRow('TXT', txt.host, txt.value, txt.note || 'Proves ownership when a CNAME cannot be used, such as at an apex domain.') : '') +
+          '</div>' +
+          '<div class="domain-meta muted small">Added ' + R.date(domain.created_at) +
+          (domain.last_checked_at ? ' · Last checked ' + R.relative(domain.last_checked_at) : ' · Not checked yet') +
+          (domain.verified_at ? ' · Verified ' + R.relative(domain.verified_at) : '') + '</div>' +
+          '</div>';
+      };
+
+      const freeCard = '<div class="domain-card domain-card-free">' +
+        '<div class="domain-card-head"><div style="min-width:0">' +
+        '<div class="strong mono domain-name">' + R.esc(freeHost || 'Not available') + '</div>' +
+        '<div class="row" style="gap:6px;margin-top:6px"><span class="badge badge-green">Always on</span><span class="badge badge-muted">Platform managed</span></div>' +
+        '</div><div class="btn-group row-end">' +
+        (freeUrl ? '<a class="btn btn-secondary btn-sm" href="' + R.attr(freeUrl) + '" target="_blank" rel="noopener">' + R.icon('external-link') + ' Open</a>' : '') +
+        (freeHost ? copyButton(freeUrl, 'Website address') : '') + '</div></div>' +
+        '<p class="muted small" style="margin:12px 0 0">Every centre gets this address automatically. It keeps working even before a custom domain is verified, so you can share it straight away.</p>' +
+        '</div>';
+
+      const custom = domains.length
+        ? '<div class="domain-list">' + domains.map(domainCard).join('') + '</div>'
+        : R.emptyState('No custom domain yet', 'Add a domain you own, publish the DNS records below, then run Check DNS. The free address above keeps working throughout.', '', 'globe');
+
+      return R.card('Your public addresses',
+        freeCard +
+        '<div class="section-head" style="margin-top:22px"><h3>Custom domains</h3>' +
+        '<div class="section-actions">' +
+        (canManage ? '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'domain\')">' + R.icon('plus') + ' Add domain</button>' : '') +
+        '</div></div>' +
+        custom) +
+        '<div class="section"></div>' +
+        R.card('How verification works', '<div class="domain-help-grid">' +
+          '<div><div class="strong">1. Add the domain</div><p class="muted small">Enter the hostname without <span class="mono">https://</span>. We generate a private verification token for your organisation.</p></div>' +
+          '<div><div class="strong">2. Publish one DNS record</div><p class="muted small">A <span class="mono">CNAME</span> to the Re-EL edge is best for <span class="mono">www</span> and other subdomains. Use the <span class="mono">TXT</span> record at <span class="mono">_reel-verify</span> for an apex domain.</p></div>' +
+          '<div><div class="strong">3. Check DNS</div><p class="muted small">We look up the record from our servers. A CNAME also proves traffic is pointed at us, so the secure certificate can go live immediately.</p></div>' +
+          '</div>' +
+          '<p class="muted small" style="margin-top:12px">DNS changes can take a few hours to propagate. The domain is only served after it is verified for your organisation.</p>');
     },
 
     openModal(ctx, name) {
       if (name === 'domain') {
         ctx.openModal({
           title: 'Add custom domain', endpoint: '/website/domains', submitLabel: 'Add domain',
-          description: 'Enter the hostname without https:// — for example www.littlesprouts.co.za.',
+          description: 'Enter the hostname without https:// — for example www.littlesprouts.co.za. We will show the exact DNS records to publish next.',
           fields: [{ name: 'domainName', label: 'Domain name', required: true, span: 2, placeholder: 'www.example.co.za' }]
         });
       }

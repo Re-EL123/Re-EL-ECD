@@ -55,18 +55,13 @@ Without `DATABASE_URL`, the API uses the embedded PGlite database (real
 PostgreSQL compiled to WebAssembly), runs all migrations and seeds the
 demonstration dataset. This keeps local development dependency-free.
 
-Demo accounts all use the password `Re-EL-Demo-2026!`:
+The seeded demonstration accounts and data are documented in
+[`DEMO.md`](../DEMO.md). They are for local demos and staging only. The sign-in
+screen never displays them, and the seed script never logs the password.
 
-| Email | Role |
-| --- | --- |
-| `principal@littlesprouts.local` | Principal |
-| `teacher@littlesprouts.local` | Teacher |
-| `parent@littlesprouts.local` | Parent / guardian |
-| `finance@littlesprouts.local` | Finance officer |
-| `platform@re-el-ecd.local` | Platform super admin |
-
-Other seeded users cover every role; see
-`packages/database/seeds/development.js`.
+For a production install, create the first platform administrator with
+`npm run bootstrap:platform` instead of running the demo seed. See
+[`DEMO.md`](../DEMO.md#production-bootstrap).
 
 Useful commands:
 
@@ -139,6 +134,9 @@ static output. Configure these environment variables in Vercel:
 | `EMAIL_FROM` | No | Defaults to `Re-EL ECD <no-reply@re-el.co.za>`. Must be a verified Resend sender. |
 | `EMAIL_REPLY_TO` | No | Reply-to address for outbound mail. |
 | `APP_BASE_URL` | No | Web origin used in email links. Defaults to the first `FRONTEND_ORIGIN`. |
+| `WEBSITE_CNAME_TARGET` | No | Hostname tenants point a `CNAME` at. Defaults to `sites.re-el.co.za`. |
+| `WEBSITE_SUBDOMAIN_BASE` | No | Base domain for free `<slug>.<base>` addresses. Defaults to `re-el.co.za`. |
+| `WEBSITE_PLATFORM_HOSTS` | No | Comma-separated hosts that can never be claimed as tenant domains. Defaults to `ecd.re-el.co.za,www.re-el.co.za,re-el.co.za`. |
 | `API_BASE_URL` | No | API origin used for the PayFast ITN callback. Derived from the request when blank. |
 | `PAYFAST_MERCHANT_ID` | For card payments | PayFast merchant id. |
 | `PAYFAST_MERCHANT_KEY` | For card payments | PayFast merchant key. |
@@ -153,6 +151,30 @@ static output. Configure these environment variables in Vercel:
 | `R2_PUBLIC_BASE_URL` | For media | Public bucket origin, for example `https://media.re-el.co.za`. |
 | `R2_ENDPOINT` | No | Overrides the endpoint derived from `R2_ACCOUNT_ID`. |
 | `R2_REGION` | No | Defaults to `auto`, which is what R2 expects. |
+
+### Custom website domains
+
+Each organisation can publish its website on:
+
+1. A free platform address, `<slug>.re-el.co.za`, which needs no tenant DNS.
+2. Any hostname the tenant proves it controls.
+
+The tenant adds the domain under **Public website → Domains**. The API returns
+two records and the tenant publishes either one:
+
+| Record | Host | Value | Use |
+| --- | --- | --- | --- |
+| `CNAME` | the domain, for example `www.centre.co.za` | `WEBSITE_CNAME_TARGET` (`sites.re-el.co.za`) | Preferred for `www` and other subdomains. Marks TLS active immediately. |
+| `TXT` | `_reel-verify.<domain>` | `reel-verify=<token>` | Required for an apex domain, where a CNAME is not allowed. Proves ownership; TLS stays pending until the edge is attached. |
+
+Verification is server-side and only accepts a matching record. Pending or
+failed domains are never served. The public endpoints return
+`Access-Control-Allow-Origin: *` so a tenant-owned domain can load its content;
+authenticated endpoints still use `FRONTEND_ORIGIN`.
+
+The edge (reverse proxy or hosting provider) must map verified custom hostnames
+to the same static frontend and API. The frontend resolves the site from
+`location.hostname` through `GET /api/v1/public/daycares/by-domain/:host`.
 
 ### Email (Resend)
 

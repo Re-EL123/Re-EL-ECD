@@ -8,6 +8,7 @@ const { parsePagination, sendText } = require('../utils/http');
 const bulk = require('../services/bulk-service');
 const branding = require('../services/branding-service');
 const websiteContent = require('../services/website-content');
+const domainService = require('../services/domain-service');
 const { has, today, roundMoney } = require('./helpers');
 
 const REPORT_CATALOGUE = [
@@ -289,7 +290,10 @@ function register(router) {
     const config = await ctx.db.one(
       'SELECT * FROM website_configs WHERE organisation_id = $1 ORDER BY created_at LIMIT 1', [ctx.organisationId]
     );
-    const domains = await ctx.db.many('SELECT * FROM domains WHERE organisation_id = $1', [ctx.organisationId]);
+    const domainRows = await ctx.db.many(
+      'SELECT * FROM domains WHERE organisation_id = $1 ORDER BY created_at DESC', [ctx.organisationId]
+    );
+    const domains = domainRows.map((row) => domainService.present(row, ctx.organisation));
     const content = websiteContent.normalise(config ? config.draft_content : null, ctx.organisation);
     return {
       config,
@@ -303,7 +307,8 @@ function register(router) {
         name: ctx.organisation.name,
         slug: ctx.organisation.slug,
         logoUrl: ctx.organisation.logo_url || null,
-        currency: ctx.organisation.currency || 'ZAR'
+        currency: ctx.organisation.currency || 'ZAR',
+        freeSubdomain: domainService.freeSubdomain(ctx.organisation.slug)
       }
     };
   }, { permission: 'website.read.daycare' });
@@ -393,20 +398,81 @@ function register(router) {
 
   router.post('/website/domains', async (ctx) => {
     const body = validate(ctx.body, {
-      domainName: { type: 'string', min: 4, max: 255, regex: /^[a-z0-9.-]+$/ }
+      domainName: { type: 'string', min: 4, max: 255 }
     });
-    const existing = await ctx.db.one('SELECT id FROM domains WHERE domain_name = $1', [body.domainName]);
+    const domainName = domainService.normaliseHost(body.domainName);
+    if (!domainName) {
+      fail('VALIDATION', [{ field: 'domainName', message: 'Enter a public domain such as www.example.co.za.' }]);
+    }
+    const existing = await ctx.db.one('SELECT id FROM domains WHERE lower(domain_name) = $1', [domainName]);
     if (existing) fail('CONFLICT', null, 'That domain is already registered.');
+
     const domain = await ctx.db.one(
-      `INSERT INTO domains (organisation_id, domain_name) VALUES ($1,$2) RETURNING *`,
-      [ctx.organisationId, body.domainName]
+      `INSERT INTO domains (organisation_id, domain_name, verification_token, verification_method,
+         verification_status, ssl_status)
+       VALUES ($1,$2,$3,'cname','pending','pending') RETURNING *`,
+      [ctx.organisationId, domainName, domainService.generateToken()]
     );
     await recordAudit(ctx.db, ctx, {
       action: 'website.domain_added', resourceType: 'domain', resourceId: domain.id,
-      metadata: { domainName: body.domainName }
+      metadata: { domainName }
     });
     ctx.status = 201;
-    return domain;
+    return domainService.present(domain, ctx.organisation);
+  }, { permission: 'website.manage.daycare' });
+
+  router.get('/website/domains/:id', async (ctx) => {
+    const domain = await ctx.db.one(
+      'SELECT * FROM domains WHERE id = $1 AND organisation_id = $2', [ctx.params.id, ctx.organisationId]
+    );
+    if (!domain) throw new AppError('NOT_FOUND');
+    return domainService.present(domain, ctx.organisation);
+  }, { permission: 'website.read.daycare' });
+
+  router.post('/website/domains/:id/verify', async (ctx) => {
+    const domain = await ctx.db.one(
+      'SELECT * FROM domains WHERE id = $1 AND organisation_id = $2', [ctx.params.id, ctx.organisationId]
+    );
+    if (!domain) throw new AppError('NOT_FOUND');
+
+    const check = await domainService.verifyDomain(domain);
+    const verified = check.verified;
+    // A CNAME proves traffic is pointed at the Re-EL edge, so TLS can be marked
+    // active. A TXT-only verification proves ownership but not routing, so the
+    // certificate stays pending until the edge attachment is confirmed.
+    const sslStatus = verified && check.method === 'cname' ? 'active' : 'pending';
+    const updated = await ctx.db.one(
+      `UPDATE domains
+       SET verification_status = $2,
+           verification_method = $3,
+           ssl_status = $4,
+           verified_at = CASE WHEN $6 THEN now() ELSE NULL END,
+           last_checked_at = now(),
+           failure_reason = $5,
+           updated_at = now()
+       WHERE id = $1
+       RETURNING *`,
+      [domain.id, verified ? 'verified' : 'failed', check.method || 'cname', sslStatus, check.reason, verified]
+    );
+    await recordAudit(ctx.db, ctx, {
+      action: verified ? 'website.domain_verified' : 'website.domain_verification_failed',
+      resourceType: 'domain', resourceId: domain.id,
+      metadata: { domainName: domain.domain_name, method: check.method, sslStatus }
+    });
+    return Object.assign(domainService.present(updated, ctx.organisation), { check });
+  }, { permission: 'website.manage.daycare' });
+
+  router.delete('/website/domains/:id', async (ctx) => {
+    const domain = await ctx.db.one(
+      'SELECT * FROM domains WHERE id = $1 AND organisation_id = $2', [ctx.params.id, ctx.organisationId]
+    );
+    if (!domain) throw new AppError('NOT_FOUND');
+    await ctx.db.query('DELETE FROM domains WHERE id = $1 AND organisation_id = $2', [domain.id, ctx.organisationId]);
+    await recordAudit(ctx.db, ctx, {
+      action: 'website.domain_removed', resourceType: 'domain', resourceId: domain.id,
+      metadata: { domainName: domain.domain_name }
+    });
+    return { success: true, domainName: domain.domain_name };
   }, { permission: 'website.manage.daycare' });
 
   // --- Reports ------------------------------------------------------------

@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **294 routes** across 17 modules.
+Generated from the router: **298 routes** across 17 modules.
 
 ## Access
 
@@ -426,6 +426,7 @@ Generated from the router: **294 routes** across 17 modules.
 | --- | --- | --- |
 | GET | `/public/daycares/:slug` | Public |
 | GET | `/public/daycares/:slug/enquiry-form` | Public |
+| GET | `/public/daycares/by-domain/:host` | Public |
 | POST | `/public/enquiries` | Public |
 | GET | `/public/forms/:orgSlug/:formSlug` | Public |
 | POST | `/public/forms/:orgSlug/:formSlug/submit` | Public |
@@ -531,6 +532,9 @@ Generated from the router: **294 routes** across 17 modules.
 | GET | `/website` | website.read.daycare |
 | PATCH | `/website` | website.manage.daycare |
 | POST | `/website/domains` | website.manage.daycare |
+| DELETE | `/website/domains/:id` | website.manage.daycare |
+| GET | `/website/domains/:id` | website.read.daycare |
+| POST | `/website/domains/:id/verify` | website.manage.daycare |
 | POST | `/website/publish` | website.manage.daycare |
 | POST | `/website/unpublish` | website.manage.daycare |
 

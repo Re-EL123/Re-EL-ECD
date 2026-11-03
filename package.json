@@ -16,6 +16,7 @@
     "test:api": "node --test apps/api/tests/*.test.js",
     "test:unit": "node --test packages/testing/*.test.js",
     "migrate": "node scripts/migrate.js",
+    "bootstrap:platform": "node scripts/bootstrap-platform.js",
     "seed": "node scripts/seed-development.js",
     "validate:env": "node scripts/validate-env.js",
     "check:migrations": "node scripts/check-migrations.js",

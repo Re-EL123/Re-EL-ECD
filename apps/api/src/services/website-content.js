@@ -428,6 +428,18 @@ function canonicalUrl(slug, pageKey) {
   return `${base}/#/site/${encodeURIComponent(slug || '')}${suffix}`;
 }
 
+/**
+ * Canonical address on a verified custom domain. The host is already validated
+ * by the domain service before it reaches this function.
+ */
+function canonicalUrlForHost(host, slug, pageKey) {
+  const clean = String(host || '').trim().toLowerCase()
+    .replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/\.+$/, '');
+  const page = pageByKey(pageKey || 'home');
+  const suffix = page && page.path ? '/' + page.path : '';
+  return `https://${clean}/#/site/${encodeURIComponent(slug || '')}${suffix}`;
+}
+
 module.exports = {
   LIMITS,
   PAGE_DEFINITIONS,
@@ -436,6 +448,7 @@ module.exports = {
   pages,
   pageByKey,
   canonicalUrl,
+  canonicalUrlForHost,
   deepMerge,
   safeUrl,
   text

@@ -10,54 +10,124 @@ const { parsePagination } = require('../utils/http');
 const branding = require('../services/branding-service');
 const bulk = require('../services/bulk-service');
 const websiteContent = require('../services/website-content');
+const domainService = require('../services/domain-service');
 const { has } = require('./helpers');
 
 const ENQUIRY_BULK_STATUS = { contacted: 'contacted', close: 'closed', spam: 'spam', reopen: 'new' };
 const APPLICATION_BULK_STATUS = { approve: 'approved', waitlist: 'waitlisted', reject: 'rejected', review: 'under_review' };
 
+/**
+ * The single public-site payload. Both the slug route and the custom-domain
+ * route use it, so a tenant's website can never behave differently depending
+ * on which address a family used.
+ */
+async function publicSitePayload(ctx, org, options) {
+  const opts = options || {};
+  const theme = branding.themeFromOrganisation(org);
+  const website = await ctx.db.one(
+    `SELECT * FROM website_configs WHERE organisation_id = $1 AND status = 'published' ORDER BY published_at DESC LIMIT 1`,
+    [org.id]
+  );
+  const freeHost = domainService.freeSubdomain(org.slug);
+  const organisation = {
+    name: org.name,
+    slug: org.slug,
+    logoUrl: org.logo_url,
+    currency: org.currency,
+    freeSubdomain: freeHost ? 'https://' + freeHost : null
+  };
+  const canonicalFor = (pageKey) => (opts.canonicalHost
+    ? websiteContent.canonicalUrlForHost(opts.canonicalHost, org.slug, pageKey)
+    : websiteContent.canonicalUrl(org.slug, pageKey));
+  const shared = {
+    organisation,
+    branding: theme,
+    canonicalHost: opts.canonicalHost || null,
+    domain: opts.matchedDomain || null,
+    pages: websiteContent.pages()
+  };
+
+  if (!website) {
+    const empty = websiteContent.normalise({}, org);
+    return Object.assign(shared, {
+      published: false,
+      content: null,
+      seo: Object.assign({}, empty.seo, { canonical: canonicalFor('home') }),
+      updatedAt: null
+    });
+  }
+
+  const branches = await ctx.db.many(
+    "SELECT id, name, address, contact_email, contact_phone, image_url FROM branches WHERE organisation_id = $1 AND status = 'active'",
+    [org.id]
+  );
+  const content = websiteContent.normalise(website.published_content, org);
+  return Object.assign(shared, {
+    published: true,
+    theme: website.theme,
+    content,
+    seo: Object.assign({}, content.seo, { canonical: canonicalFor('home') }),
+    updatedAt: website.published_at || website.updated_at,
+    branches
+  });
+}
+
 function register(router) {
+  /**
+   * Resolve a public site from the hostname the family actually visited. This
+   * is what makes a verified custom domain (and the free <slug>.re-el.co.za
+   * address) work without putting the slug in the URL.
+   */
+  router.get('/public/daycares/by-domain/:host', async (ctx) => {
+    const host = domainService.normaliseHost(ctx.params.host);
+    if (!host) throw new AppError('NOT_FOUND');
+
+    const org = await ctx.db.one(
+      `SELECT o.*, d.domain_name AS matched_domain
+       FROM domains d
+       JOIN organisations o ON o.id = d.organisation_id
+       WHERE lower(d.domain_name) = $1
+         AND d.verification_status = 'verified'
+         AND o.status IN ('active','onboarding')
+       ORDER BY d.verified_at DESC NULLS LAST
+       LIMIT 1`,
+      [host]
+    );
+    if (org) {
+      return publicSitePayload(ctx, org, { canonicalHost: host, matchedDomain: org.matched_domain });
+    }
+
+    // Every organisation also gets a platform-controlled free address. It is
+    // DNS-verified by the platform's own wildcard, so no tenant token is needed.
+    const slug = domainService.slugFromFreeSubdomain(host);
+    if (slug) {
+      const freeOrg = await ctx.db.one(
+        "SELECT * FROM organisations WHERE slug = $1 AND status IN ('active','onboarding')", [slug]
+      );
+      if (freeOrg) return publicSitePayload(ctx, freeOrg, { canonicalHost: host });
+    }
+    throw new AppError('NOT_FOUND');
+  }, { public: true });
+
   router.get('/public/daycares/:slug', async (ctx) => {
     const org = await ctx.db.one("SELECT * FROM organisations WHERE slug = $1 AND status IN ('active','onboarding')", [ctx.params.slug]);
     if (!org) throw new AppError('NOT_FOUND');
-    const theme = branding.themeFromOrganisation(org);
-    const website = await ctx.db.one(
-      `SELECT * FROM website_configs WHERE organisation_id = $1 AND status = 'published' ORDER BY published_at DESC LIMIT 1`,
-      [org.id]
-    );
-    const organisation = { name: org.name, slug: org.slug, logoUrl: org.logo_url, currency: org.currency };
-    if (!website) {
-      const empty = websiteContent.normalise({}, org);
-      return {
-        organisation,
-        branding: theme,
-        published: false,
-        content: null,
-        seo: Object.assign({}, empty.seo, {
-          canonical: websiteContent.canonicalUrl(org.slug, 'home')
-        }),
-        pages: websiteContent.pages(),
-        updatedAt: null
-      };
+
+    // A custom domain may be used with the slug route as well (for example a
+    // bookmarked #/site/link). Only trust the host when it is verified for
+    // this organisation, so a query parameter cannot spoof the canonical URL.
+    let canonicalHost = null;
+    const requestedHost = domainService.normaliseHost(ctx.query.host);
+    if (requestedHost) {
+      const owned = await ctx.db.one(
+        `SELECT id FROM domains WHERE organisation_id = $1 AND lower(domain_name) = $2 AND verification_status = 'verified'`,
+        [org.id, requestedHost]
+      );
+      if (owned) canonicalHost = requestedHost;
     }
-    const branches = await ctx.db.many(
-      "SELECT id, name, address, contact_email, contact_phone, image_url FROM branches WHERE organisation_id = $1 AND status = 'active'",
-      [org.id]
-    );
-    const content = websiteContent.normalise(website.published_content, org);
-    return {
-      organisation,
-      branding: theme,
-      published: true,
-      theme: website.theme,
-      content,
-      seo: Object.assign({}, content.seo, {
-        canonical: websiteContent.canonicalUrl(org.slug, 'home')
-      }),
-      pages: websiteContent.pages(),
-      updatedAt: website.published_at || website.updated_at,
-      branches
-    };
+    return publicSitePayload(ctx, org, { canonicalHost });
   }, { public: true });
+
 
   router.post('/public/enquiries', async (ctx) => {
     const limit = rateLimit(`enquiry:${ctx.ip}`, 5, 10 * 60 * 1000);

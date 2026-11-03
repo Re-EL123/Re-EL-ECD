@@ -28,6 +28,25 @@
     return API_BASE;
   }
 
+  const DEFAULT_PLATFORM_HOSTS = ['ecd.re-el.co.za', 'www.re-el.co.za', 're-el.co.za'];
+
+  /**
+   * A custom website domain is any host that is not the product's own address.
+   * The list can be extended at deploy time with window.REEL_PLATFORM_HOSTS.
+   */
+  function isPlatformHost(host) {
+    const value = String(host || (typeof location !== 'undefined' ? location.hostname : '')).trim().toLowerCase();
+    if (!value) return true;
+    const configured = Array.isArray(window.REEL_PLATFORM_HOSTS)
+      ? window.REEL_PLATFORM_HOSTS.map((entry) => String(entry).toLowerCase())
+      : DEFAULT_PLATFORM_HOSTS;
+    if (configured.includes(value)) return true;
+    if (value === 'localhost' || value === '127.0.0.1' || value === '::1') return true;
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(value)) return true;
+    if (value.endsWith('.vercel.app') || value.endsWith('.github.io') || value.endsWith('.onrender.com')) return true;
+    return false;
+  }
+
   function readCookie(name) {
     const match = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[.$?*|{}()[\]\\/+^]/g, '\\$&') + '=([^;]*)'));
     return match ? decodeURIComponent(match[1]) : null;
@@ -224,10 +243,11 @@
       : '';
     const head = selectHead + columns.map((c) => '<th' + (c.align ? ' style="text-align:' + c.align + '"' : '') + '>' + esc(c.label) + '</th>').join('');
     const body = rows.map((row) => '<tr>' + (selectable
-      ? '<td class="select-col"><input type="checkbox" :checked="isSelected(' + attr(JSON.stringify(String(row[idKey]))) + ')" @change="toggleSelect(' + attr(JSON.stringify(String(row[idKey]))) + ', $event.target.checked)" aria-label="Select row"></td>'
+      ? '<td class="select-col" data-label="Select"><input type="checkbox" :checked="isSelected(' + attr(JSON.stringify(String(row[idKey]))) + ')" @change="toggleSelect(' + attr(JSON.stringify(String(row[idKey]))) + ', $event.target.checked)" aria-label="Select row"></td>'
       : '') + columns.map((c) => {
       const value = c.render ? c.render(row) : esc(row[c.key]);
-      return '<td' + (c.align ? ' class="' + (c.align === 'right' ? 'num' : '') + '"' : '') + '>' + (value === undefined || value === null || value === '' ? '<span class="muted">—</span>' : value) + '</td>';
+      const label = c.label ? ' data-label="' + attr(c.label) + '"' : ' data-label=""';
+      return '<td' + label + (c.align ? ' class="' + (c.align === 'right' ? 'num' : '') + '"' : '') + '>' + (value === undefined || value === null || value === '' ? '<span class="muted">—</span>' : value) + '</td>';
     }).join('') + '</tr>').join('');
     return '<div class="table-wrap"><table class="table ' + (opts.compact ? 'compact' : '') + '"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>';
   }
@@ -816,14 +836,15 @@
   }
 
   /** Canonical address for a specific public page. */
-  function siteUrl(slug, pagePath) {
-    const base = (window.REEL_SITE_BASE || 'https://ecd.re-el.co.za').replace(/\/+$/, '');
-    return base + '/#/site/' + encodeURIComponent(slug || '') + (pagePath ? '/' + String(pagePath).replace(/^\/+/, '') : '');
+  function siteUrl(slug, pagePath, base) {
+    const origin = (base || window.REEL_SITE_BASE || 'https://ecd.re-el.co.za').replace(/\/+$/, '');
+    return origin + '/#/site/' + encodeURIComponent(slug || '') + (pagePath ? '/' + String(pagePath).replace(/^\/+/, '') : '');
   }
 
   Reel.applySeo = applySeo;
   Reel.resetSeo = resetSeo;
   Reel.siteUrl = siteUrl;
+  Reel.isPlatformHost = isPlatformHost;
 
   /** Fetches a list endpoint and normalises { rows, meta }. */
   async function list(path) {

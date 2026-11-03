@@ -198,6 +198,7 @@
       sidebarOpen: false,
       sidebarCollapsed: true,
       navFlyout: null,
+      viewportWidth: typeof window !== 'undefined' ? window.innerWidth : 1200,
       notifOpen: false,
       notifications: [],
       notifLoading: false,
@@ -227,6 +228,7 @@
       siteSaving: false,
       siteError: null,
       siteSavedAt: null,
+      domainBusy: null,
 
       get activeMembership() {
         if (!this.session || !this.session.memberships) return null;
@@ -286,6 +288,14 @@
       async boot() {
         try { this.theme = localStorage.getItem('reel.theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch { this.theme = 'light'; }
         try { this.sidebarCollapsed = localStorage.getItem('reel.sidebar') !== 'expanded'; } catch { this.sidebarCollapsed = true; }
+        this.viewportWidth = window.innerWidth;
+        window.addEventListener('resize', () => {
+          this.viewportWidth = window.innerWidth;
+          this.navFlyout = null;
+          if (this.viewportWidth >= 961) this.sidebarOpen = false;
+          this.syncBodyScroll();
+          this.refreshIcons();
+        });
         document.documentElement.dataset.theme = this.theme;
         this.installIconObserver();
         window.addEventListener('hashchange', () => this.navigate());
@@ -296,7 +306,7 @@
           this.session = null;
         }
         if (!this.session) await this.loadPlatformBranding();
-        if (!location.hash) {
+        if (!location.hash && Reel.isPlatformHost && Reel.isPlatformHost()) {
           // replaceState avoids a second hashchange-driven navigate on boot.
           history.replaceState(null, '', '#' + (this.session ? this.defaultRoute() : '/login'));
         }
@@ -484,11 +494,14 @@
       },
 
       parseHash() {
-        const raw = (location.hash || '#/login').replace(/^#/, '') || '/login';
+        // On a tenant-owned domain the root address is the public website, not
+        // the staff sign-in screen. Custom domains are resolved by hostname.
+        const fallback = Reel.isPlatformHost && Reel.isPlatformHost() ? '/login' : '/site';
+        const raw = (location.hash || '#' + fallback).replace(/^#/, '') || fallback;
         const [path, queryString] = raw.split('?');
         const query = {};
         new URLSearchParams(queryString || '').forEach((value, key) => { query[key] = value; });
-        return { path: path || '/login', query };
+        return { path: path || fallback, query };
       },
 
       async navigate(force) {
@@ -577,6 +590,7 @@
         this.error = null;
         this.loading = true;
         this.sidebarOpen = false;
+        this.syncBodyScroll();
         if (!force) {
           this.tab = query.tab || null;
           this.filters = {};
@@ -714,17 +728,64 @@
       initials(name) { return Reel.initials(name); },
 
       toggleSidebar() {
-        if (window.innerWidth < 960) {
+        if (this.viewportWidth < 961) {
           this.sidebarOpen = !this.sidebarOpen;
+          this.navFlyout = null;
+          this.syncBodyScroll();
+          this.refreshIcons();
           return;
         }
         this.sidebarCollapsed = !this.sidebarCollapsed;
         this.navFlyout = null;
         try { localStorage.setItem('reel.sidebar', this.sidebarCollapsed ? 'collapsed' : 'expanded'); } catch { /* ignore */ }
+        this.refreshIcons();
+      },
+
+      refreshIcons() {
+        this.$nextTick(() => {
+          if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
+        });
+      },
+
+      syncBodyScroll() {
+        if (typeof document === 'undefined') return;
+        document.body.classList.toggle('nav-open', Boolean(this.sidebarOpen && this.viewportWidth < 961));
+      },
+
+      navToggleIcon() {
+        if (this.viewportWidth < 961) return this.sidebarOpen ? 'x' : 'menu';
+        return this.sidebarCollapsed ? 'panel-left-open' : 'panel-left-close';
+      },
+
+      navToggleLabel() {
+        if (this.viewportWidth < 961) return this.sidebarOpen ? 'Close navigation' : 'Open navigation';
+        return this.sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation';
+      },
+
+      navExpanded() {
+        return this.viewportWidth < 961 ? this.sidebarOpen : !this.sidebarCollapsed;
+      },
+
+      closeSidebar() {
+        this.sidebarOpen = false;
+        this.navFlyout = null;
+        this.syncBodyScroll();
+        this.refreshIcons();
+      },
+
+      copyToClipboard(value, label) {
+        const text = String(value || '');
+        if (!text) return;
+        const done = () => this.toast((label || 'Value') + ' copied.');
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done).catch(() => this.toast('Copy failed. Select the value and copy it manually.', 'warn'));
+          return;
+        }
+        this.toast('Copy is not available in this browser. Select the value and copy it manually.', 'warn');
       },
 
       showNavFlyout(event, group) {
-        if (!this.sidebarCollapsed || window.innerWidth < 960) return;
+        if (!this.sidebarCollapsed || this.viewportWidth < 961) return;
         this.cancelHideFlyout();
         const rect = event.currentTarget.getBoundingClientRect();
         this.navFlyout = {
@@ -1184,6 +1245,40 @@
         this.modal.mediaDraft[field.name] = '';
       },
 
+      async verifyDomain(id) {
+        if (!id || this.domainBusy) return;
+        this.domainBusy = id;
+        try {
+          const payload = await Reel.api('POST', '/website/domains/' + encodeURIComponent(id) + '/verify', {});
+          const data = payload.data || {};
+          if (data.verified) {
+            this.toast(data.ssl_status === 'active'
+              ? 'Domain verified. The secure site is live.'
+              : 'Domain verified. DNS is correct; the certificate is still being issued.');
+          } else {
+            this.toast((data.check && data.check.reason) || 'No matching DNS record was found yet.', 'warn');
+          }
+          await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'The domain could not be checked.', 'error');
+        } finally {
+          this.domainBusy = null;
+        }
+      },
+
+      removeDomain(id, name) {
+        if (!id) return;
+        this.openConfirm('Remove domain',
+          'Remove ' + (name || 'this domain') + '? The public website stays available at its Re-EL address, but it will stop loading on this custom domain.',
+          {
+            endpoint: '/website/domains/' + encodeURIComponent(id),
+            method: 'DELETE',
+            submitLabel: 'Remove domain',
+            successMessage: 'Domain removed.',
+            danger: true
+          });
+      },
+
       removeModalMedia(field, index) {
         if (!this.modal) return;
         const list = Array.isArray(this.modal.data[field.name]) ? this.modal.data[field.name].slice() : [];
@@ -1407,13 +1502,22 @@
               image: org.logoUrl || '',
               organisationName: org.name || 'Re-EL ECD'
             } : null);
-            if (seo) {
+            if (seo && !(page && page.missing)) {
               const pagePath = route.view === 'publicApply'
                 ? 'apply'
                 : route.view === 'publicForm'
                   ? 'forms/' + (params.formSlug || '')
                   : (params.page || '');
-              Reel.applySeo(Object.assign({}, seo, { canonical: Reel.siteUrl(params.slug, pagePath) }), { logo: org.logoUrl || '' });
+              const orgSlug = params.slug || org.slug || this.publicSlug || '';
+              // On a verified custom domain the canonical address is that
+              // domain, not the platform's hash URL. The API supplies the host
+              // only after checking that the organisation owns it.
+              const canonicalHost = site.canonicalHost
+                || ((Reel.isPlatformHost && !Reel.isPlatformHost()) ? location.hostname : null);
+              const canonicalBase = canonicalHost ? 'https://' + canonicalHost : null;
+              Reel.applySeo(Object.assign({}, seo, {
+                canonical: Reel.siteUrl(orgSlug, pagePath, canonicalBase)
+              }), { logo: org.logoUrl || '' });
             }
           }
           if (window.Alpine && window.Alpine.initTree) window.Alpine.initTree(root);
@@ -1441,15 +1545,6 @@
         } finally {
           this.loginBusy = false;
         }
-      },
-
-      fillDemo(email) {
-        this.loginEmail = email;
-        this.loginPassword = 'Re-EL-Demo-2026!';
-        this.$nextTick(() => {
-          const form = document.getElementById('login-form');
-          if (form) { form.email.value = email; form.password.value = 'Re-EL-Demo-2026!'; }
-        });
       },
 
       async submitPublicEnquiry(event, slug) {
@@ -1524,8 +1619,8 @@
         }
       },
 
-      loginEmail: 'principal@littlesprouts.local',
-      loginPassword: 'Re-EL-Demo-2026!',
+      loginEmail: '',
+      loginPassword: '',
       loginError: null,
       loginBusy: false,
       forgotOpen: false,

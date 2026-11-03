@@ -7,7 +7,7 @@
  */
 
 const db = require('../packages/database');
-const { seedDevelopment, DEMO_PASSWORD } = require('../packages/database/seeds/development');
+const { seedDevelopment } = require('../packages/database/seeds/development');
 
 async function main() {
   const force = process.argv.includes('--force');
@@ -21,8 +21,9 @@ async function main() {
   console.log(JSON.stringify({
     level: 'info',
     message: result.skipped ? 'Seed skipped: data already present (use --force to reseed)' : 'Seed complete',
-    ...result,
-    demoPassword: DEMO_PASSWORD
+    seeded: result.seeded,
+    organisations: result.organisations,
+    demoAccounts: 'See DEMO.md for the seeded demonstration accounts.'
   }, null, 2));
   if (process.env.DATABASE_URL) await pool.end();
 }

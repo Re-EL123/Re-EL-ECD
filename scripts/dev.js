@@ -25,7 +25,7 @@ async function bootstrap() {
     level: 'info',
     message: 'Development data ready',
     organisations: result.organisations ? result.organisations.length : 0,
-    demoPassword: result.password
+    demoAccounts: 'See DEMO.md for the seeded demonstration accounts.'
   }));
 }
 

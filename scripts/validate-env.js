@@ -66,6 +66,19 @@ if (present('SESSION_HOURS')) {
   check('SESSION_HOURS', Number.isFinite(hours) && hours > 0 && hours <= 168, 'must be between 1 and 168 hours');
 }
 
+// Website domains: the CNAME target and free-subdomain base must be plain DNS
+// names. A bad value would produce DNS instructions that can never verify.
+for (const name of ['WEBSITE_CNAME_TARGET', 'WEBSITE_SUBDOMAIN_BASE']) {
+  if (!present(name)) continue;
+  check(name, /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/i.test(String(process.env[name]).trim()),
+    'must be a hostname without a scheme or path');
+}
+if (present('WEBSITE_PLATFORM_HOSTS')) {
+  const hosts = String(process.env.WEBSITE_PLATFORM_HOSTS).split(',').map((host) => host.trim()).filter(Boolean);
+  check('WEBSITE_PLATFORM_HOSTS', hosts.every((host) => /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/i.test(host)),
+    'must be a comma-separated list of hostnames');
+}
+
 const report = { environment: process.env.NODE_ENV || 'development', errors, warnings };
 if (errors.length) {
   console.error(JSON.stringify({ level: 'error', message: 'Environment validation failed', ...report }, null, 2));

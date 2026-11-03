@@ -13,6 +13,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { start, stop, createClient } = require('./helpers');
 const websiteContent = require('../src/services/website-content');
+const domainService = require('../src/services/domain-service');
 
 test.before(start);
 test.after(stop);
@@ -143,3 +144,85 @@ test('website writes require the website management permission', async () => {
   const read = await teacher.get('/website', { organisationId: session.activeOrganisationId });
   assert.equal(read.status, 403, 'teachers do not receive the website module');
 });
+
+test('a custom domain is added, verified and then serves the public site', async () => {
+  const { client, organisationId } = await principal();
+  const created = await client.post('/website/domains',
+    { domainName: 'https://WWW.Example.co.za/hello' }, { organisationId });
+  assert.equal(created.status, 201);
+  assert.equal(created.data.domain_name, 'www.example.co.za');
+  assert.equal(created.data.verification_status, 'pending');
+  assert.equal(created.data.records.cname.value, domainService.cnameTarget());
+  assert.equal(created.data.records.txt.host, '_reel-verify.www.example.co.za');
+  assert.match(created.data.records.txt.value, /^reel-verify=[a-f0-9]{20,}$/);
+  assert.equal(created.data.freeSubdomain, 'little-sprouts.re-el.co.za');
+
+  const duplicate = await client.post('/website/domains', { domainName: 'www.example.co.za' }, { organisationId });
+  assert.equal(duplicate.status, 409);
+
+  const listed = await client.get('/website', { organisationId });
+  assert.ok(listed.data.domains.some((domain) => domain.id === created.data.id));
+
+  const unverified = await client.get('/public/daycares/by-domain/www.example.co.za');
+  assert.equal(unverified.status, 404, 'a pending domain is not served');
+
+  // Prove control through a CNAME without touching the public DNS.
+  domainService.setResolverForTesting({
+    resolveCname: async () => [domainService.cnameTarget()],
+    resolveTxt: async () => { throw Object.assign(new Error('not found'), { code: 'ENOTFOUND' }); }
+  });
+  const verified = await client.post('/website/domains/' + created.data.id + '/verify', {}, { organisationId });
+  assert.equal(verified.status, 200);
+  assert.equal(verified.data.verified, true);
+  assert.equal(verified.data.verification_method, 'cname');
+  assert.equal(verified.data.ssl_status, 'active');
+  assert.ok(verified.data.verified_at);
+
+  const publicSite = await client.get('/public/daycares/by-domain/www.example.co.za');
+  assert.equal(publicSite.status, 200);
+  assert.equal(publicSite.data.organisation.slug, 'little-sprouts');
+  assert.equal(publicSite.data.canonicalHost, 'www.example.co.za');
+  assert.equal(publicSite.data.domain, 'www.example.co.za');
+  assert.ok(publicSite.data.seo.canonical.startsWith('https://www.example.co.za/'));
+  assert.equal(publicSite.headers.get('access-control-allow-origin'), '*');
+
+  const free = await client.get('/public/daycares/by-domain/little-sprouts.re-el.co.za');
+  assert.equal(free.status, 200);
+  assert.equal(free.data.organisation.slug, 'little-sprouts');
+  assert.equal(free.data.canonicalHost, 'little-sprouts.re-el.co.za');
+
+  const removed = await client.delete('/website/domains/' + created.data.id, { organisationId });
+  assert.equal(removed.status, 200);
+  const gone = await client.get('/public/daycares/by-domain/www.example.co.za');
+  assert.equal(gone.status, 404);
+});
+
+test('custom domains require the website management permission', async () => {
+  const teacher = createClient();
+  const session = await teacher.login('teacher@littlesprouts.local');
+  const denied = await teacher.post('/website/domains',
+    { domainName: 'teacher.example.co.za' }, { organisationId: session.activeOrganisationId });
+  assert.equal(denied.status, 403);
+
+  const read = await teacher.get('/website', { organisationId: session.activeOrganisationId });
+  assert.equal(read.status, 403);
+});
+
+test('an invalid or platform domain is rejected with a validation error', async () => {
+  const { client, organisationId } = await principal();
+  for (const domainName of ['not a host', 'localhost', '127.0.0.1', 'ecd.re-el.co.za']) {
+    const result = await client.post('/website/domains', { domainName }, { organisationId });
+    assert.equal(result.status, 422, domainName + ' must be rejected');
+    assert.equal(result.error.code, 'VALIDATION_ERROR');
+  }
+});
+
+test('a slug request only adopts a custom host that the organisation owns', async () => {
+  const client = createClient();
+  const spoofed = await client.get('/public/daycares/little-sprouts?host=evil.example.net');
+  assert.equal(spoofed.status, 200);
+  assert.equal(spoofed.data.canonicalHost, null);
+  assert.ok(spoofed.data.seo.canonical.includes('ecd.re-el.co.za'));
+});
+
+test.after(() => domainService.resetResolverForTesting());

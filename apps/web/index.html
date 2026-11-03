@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/styles.css?v=20261104">
+  <link rel="stylesheet" href="assets/styles.css?v=20261105">
   <link rel="icon" href="assets/branding/favicon-32.png" sizes="32x32" type="image/png">
   <link rel="icon" href="assets/branding/favicon-64.png" sizes="64x64" type="image/png">
   <link rel="apple-touch-icon" href="assets/branding/apple-touch-icon.png">
@@ -19,29 +19,29 @@
   <meta property="og:type" content="website">
   <!-- Vendor libraries are self-hosted: a blocked CDN must not stop the app booting. -->
   <!-- Icons are cosmetic: load them async so a slow request never delays boot. -->
-  <script src="vendor/lucide.min.js?v=20261104" async onload="if (window.lucide) window.lucide.createIcons()"></script>
-  <script src="vendor/gsap.min.js?v=20261104" defer></script>
-  <script src="vendor/chart.umd.min.js?v=20261104" defer></script>
-  <script src="config.js?v=20261104"></script>
-  <script src="src/utils.js?v=20261104" defer></script>
-  <script src="src/views/public.js?v=20261104" defer></script>
-  <script src="src/views/platform.js?v=20261104" defer></script>
-  <script src="src/views/overview.js?v=20261104" defer></script>
-  <script src="src/views/learners.js?v=20261104" defer></script>
-  <script src="src/views/admissions.js?v=20261104" defer></script>
-  <script src="src/views/curriculum.js?v=20261104" defer></script>
-  <script src="src/views/assessments.js?v=20261104" defer></script>
-  <script src="src/views/attendance.js?v=20261104" defer></script>
-  <script src="src/views/staff.js?v=20261104" defer></script>
-  <script src="src/views/forms.js?v=20261104" defer></script>
-  <script src="src/views/communications.js?v=20261104" defer></script>
-  <script src="src/views/finance.js?v=20261104" defer></script>
-  <script src="src/views/safety.js?v=20261104" defer></script>
-  <script src="src/views/operations.js?v=20261104" defer></script>
-  <script src="src/views/settings.js?v=20261104" defer></script>
-  <script src="src/views/parent.js?v=20261104" defer></script>
-  <script src="src/app.js?v=20261104" defer></script>
-  <script src="vendor/alpine.min.js?v=20261104" defer></script>
+  <script src="vendor/lucide.min.js?v=20261105" async onload="if (window.lucide) window.lucide.createIcons()"></script>
+  <script src="vendor/gsap.min.js?v=20261105" defer></script>
+  <script src="vendor/chart.umd.min.js?v=20261105" defer></script>
+  <script src="config.js?v=20261105"></script>
+  <script src="src/utils.js?v=20261105" defer></script>
+  <script src="src/views/public.js?v=20261105" defer></script>
+  <script src="src/views/platform.js?v=20261105" defer></script>
+  <script src="src/views/overview.js?v=20261105" defer></script>
+  <script src="src/views/learners.js?v=20261105" defer></script>
+  <script src="src/views/admissions.js?v=20261105" defer></script>
+  <script src="src/views/curriculum.js?v=20261105" defer></script>
+  <script src="src/views/assessments.js?v=20261105" defer></script>
+  <script src="src/views/attendance.js?v=20261105" defer></script>
+  <script src="src/views/staff.js?v=20261105" defer></script>
+  <script src="src/views/forms.js?v=20261105" defer></script>
+  <script src="src/views/communications.js?v=20261105" defer></script>
+  <script src="src/views/finance.js?v=20261105" defer></script>
+  <script src="src/views/safety.js?v=20261105" defer></script>
+  <script src="src/views/operations.js?v=20261105" defer></script>
+  <script src="src/views/settings.js?v=20261105" defer></script>
+  <script src="src/views/parent.js?v=20261105" defer></script>
+  <script src="src/app.js?v=20261105" defer></script>
+  <script src="vendor/alpine.min.js?v=20261105" defer></script>
 </head>
 <body x-data="reelApp()" x-init="boot()" @keydown.window.escape="closeOverlays()" @keydown.window.k="if (($event.metaKey || $event.ctrlKey) && !$event.shiftKey) { $event.preventDefault(); openCommand(); }">
 
@@ -65,7 +65,7 @@
 
   <!-- Authenticated application shell -->
   <div x-show="mode === 'app'" x-cloak class="shell" @resize.window="navFlyout = null">
-    <div class="sidebar-scrim" x-show="sidebarOpen" @click="sidebarOpen = false"></div>
+    <div class="sidebar-scrim" x-show="sidebarOpen" @click="closeSidebar()"></div>
     <aside class="sidebar" :class="{ open: sidebarOpen, collapsed: sidebarCollapsed }" aria-label="Primary navigation">
       <div class="sidebar-brand">
         <span class="brand-logo" :class="{ 'brand-logo-fallback': !brandLogo }">
@@ -76,13 +76,16 @@
           <div class="brand-name" x-text="brandName"></div>
           <div class="brand-sub" x-text="brandTagline"></div>
         </div>
+        <button type="button" class="btn btn-ghost btn-icon btn-sm sidebar-close row-end" @click="closeSidebar()" aria-label="Close navigation">
+          <i data-lucide="x"></i>
+        </button>
       </div>
       <div class="sidebar-scroll">
         <template x-for="group in navGroups" :key="group.label">
           <div class="nav-group" @mouseenter="showNavFlyout($event, group)" @mouseleave="scheduleHideFlyout()">
             <div class="nav-label" x-text="group.label"></div>
             <template x-for="item in group.items" :key="item.path">
-              <a class="nav-item" :class="{ active: isActive(item.path) }" :href="'#' + item.path" :title="item.label" @click="sidebarOpen = false; navFlyout = null">
+              <a class="nav-item" :class="{ active: isActive(item.path) }" :href="'#' + item.path" :title="item.label" @click="closeSidebar()">
                 <i :data-lucide="item.icon"></i>
                 <span class="nav-text" x-text="item.label"></span>
                 <span class="nav-badge" x-show="item.badge && item.badge() > 0" x-text="item.badge ? item.badge() : ''"></span>
@@ -117,7 +120,7 @@
       @mouseenter="cancelHideFlyout()" @mouseleave="scheduleHideFlyout()">
       <div class="nav-flyout-head" x-text="navFlyout ? navFlyout.label : ''"></div>
       <template x-for="item in (navFlyout ? navFlyout.items : [])" :key="item.path">
-        <a class="nav-flyout-item" :class="{ active: isActive(item.path) }" :href="'#' + item.path" @click="navFlyout = null; sidebarOpen = false">
+        <a class="nav-flyout-item" :class="{ active: isActive(item.path) }" :href="'#' + item.path" @click="closeSidebar()">
           <i :data-lucide="item.icon"></i>
           <span x-text="item.label"></span>
           <span class="nav-badge" x-show="item.badge && item.badge() > 0" x-text="item.badge ? item.badge() : ''"></span>
@@ -127,19 +130,19 @@
 
     <div class="main">
       <header class="topbar">
-        <button class="btn btn-ghost btn-icon sidebar-toggle" @click="toggleSidebar()" :title="sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'" :aria-label="sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'" :aria-expanded="!sidebarCollapsed">
-          <i :data-lucide="sidebarCollapsed ? 'panel-left-open' : 'panel-left-close'"></i>
+        <button class="btn btn-ghost btn-icon sidebar-toggle" @click="toggleSidebar()" :title="navToggleLabel()" :aria-label="navToggleLabel()" :aria-expanded="navExpanded()">
+          <i :data-lucide="navToggleIcon()"></i>
         </button>
         <div class="topbar-title" x-text="pageTitle"></div>
         <div class="topbar-spacer"></div>
-        <button class="btn btn-secondary btn-sm" @click="openCommand()" title="Search (Ctrl/Cmd + K)" aria-label="Search">
+        <button class="btn btn-secondary btn-sm topbar-search" @click="openCommand()" title="Search (Ctrl/Cmd + K)" aria-label="Search">
           <i data-lucide="search"></i>
-          <span style="display:inline">Search</span>
-          <span class="muted mono" style="font-size:0.68rem">⌘K</span>
+          <span class="topbar-action-label">Search</span>
+          <span class="muted mono topbar-shortcut" style="font-size:0.68rem">⌘K</span>
         </button>
-        <button class="btn btn-primary btn-sm" @click="quickOpen = !quickOpen" aria-haspopup="true" :aria-expanded="quickOpen">
+        <button class="btn btn-primary btn-sm topbar-quick" @click="quickOpen = !quickOpen" aria-haspopup="true" :aria-expanded="quickOpen">
           <i data-lucide="plus"></i>
-          <span>Quick add</span>
+          <span class="topbar-action-label">Quick add</span>
         </button>
         <button class="btn btn-ghost btn-icon" @click="toggleTheme()" :title="theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'" aria-label="Toggle theme">
           <i :data-lucide="theme === 'dark' ? 'sun' : 'moon'"></i>

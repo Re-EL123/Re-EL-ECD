@@ -31,18 +31,11 @@ Open <http://localhost:4112>. Without `DATABASE_URL` the server creates an
 in-memory PostgreSQL database, applies all migrations and seeds demonstration
 data.
 
-All demo accounts use the password `Re-EL-Demo-2026!`.
-
-| Email | Role |
-| --- | --- |
-| `principal@littlesprouts.local` | Principal |
-| `teacher@littlesprouts.local` | Teacher |
-| `parent@littlesprouts.local` | Parent / guardian |
-| `finance@littlesprouts.local` | Finance officer |
-| `platform@re-el-ecd.local` | Platform super admin |
-
-Two daycare organisations are seeded (`little-sprouts` and `sunrise-kids`)
-plus the platform organisation, with 18 users covering every role.
+The seeded demonstration accounts and data are documented in
+[`DEMO.md`](DEMO.md). They are for local demos and staging only; the sign-in
+screen never displays them. For a production install, use
+`npm run bootstrap:platform` to create the first platform administrator with a
+password you choose.
 
 ## Scripts
 
@@ -55,6 +48,7 @@ plus the platform organisation, with 18 users covering every role.
 | `npm run lint` | Syntax and style checks |
 | `npm run check` | Lint, migration and API-surface checks |
 | `npm run migrate` | Apply migrations to `DATABASE_URL` |
+| `npm run bootstrap:platform` | Create the first production platform admin |
 | `npm run seed` | Seed demonstration data (development) |
 | `npm run seed:catalog` | Seed roles, permissions, plans and flags only |
 | `npm run docs:api` | Regenerate `docs/api.md` from the router |
