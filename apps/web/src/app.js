@@ -315,17 +315,43 @@
 
       installIconObserver() {
         if (!window.MutationObserver) return;
+        let observer = null;
         let scheduled = false;
         const render = () => {
           scheduled = false;
-          if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
+          if (observer) observer.disconnect();
+          try { this.renderIconsNow(); } finally {
+            if (observer) observer.observe(document.body, { childList: true, subtree: true });
+          }
         };
-        const observer = new MutationObserver(() => {
+        observer = new MutationObserver(() => {
           if (scheduled) return;
+          // Lucide leaves data-lucide on the <svg> it creates. Watching every
+          // mutation would therefore re-scan the whole page on each frame, so
+          // only wake up when an unconverted placeholder is waiting.
+          if (!document.querySelector('i[data-lucide]')) return;
           scheduled = true;
           window.requestAnimationFrame(render);
         });
         observer.observe(document.body, { childList: true, subtree: true });
+      },
+
+      /**
+       * Draw any pending <i data-lucide> placeholders. Existing <svg> icons
+       * also carry data-lucide, so they are hidden from Lucide during the pass
+       * and restored afterwards; otherwise every call would rebuild the whole
+       * icon set.
+       */
+      renderIconsNow() {
+        if (!window.lucide || typeof window.lucide.createIcons !== 'function') return;
+        const existing = Array.from(document.querySelectorAll('svg[data-lucide]'))
+          .map((node) => [node, node.getAttribute('data-lucide')]);
+        existing.forEach(([node]) => node.removeAttribute('data-lucide'));
+        try {
+          window.lucide.createIcons();
+        } finally {
+          existing.forEach(([node, name]) => node.setAttribute('data-lucide', name));
+        }
       },
 
       applySession(payload) {
@@ -336,7 +362,7 @@
         this.activeOrganisationId = (candidate && candidate.organisation.id) || payload.activeOrganisationId || (payload.memberships[0] && payload.memberships[0].organisation.id) || null;
         try { if (this.activeOrganisationId) localStorage.setItem('reel.activeOrganisation', this.activeOrganisationId); } catch { /* ignore */ }
         if (Reel.applyTheme) Reel.applyTheme(this.organisationTheme);
-        this.refreshUnread();
+        this.refreshUnread(true);
       },
 
       async refreshSession() {
@@ -644,7 +670,7 @@
       },
 
       afterRender() {
-        if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
+        this.renderIconsNow();
         this.mountCharts();
         if (window.gsap && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
           const root = document.getElementById('view-root');
@@ -742,9 +768,7 @@
       },
 
       refreshIcons() {
-        this.$nextTick(() => {
-          if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
-        });
+        this.$nextTick(() => this.renderIconsNow());
       },
 
       syncBodyScroll() {
@@ -755,6 +779,17 @@
       navToggleIcon() {
         if (this.viewportWidth < 961) return this.sidebarOpen ? 'x' : 'menu';
         return this.sidebarCollapsed ? 'panel-left-open' : 'panel-left-close';
+      },
+
+      // The icon is re-injected through x-html because Lucide replaces the
+      // original <i> with an <svg>; a plain :data-lucide binding would keep
+      // writing to the detached element and the glyph would never change.
+      navToggleIconMarkup() {
+        return '<i data-lucide="' + this.navToggleIcon() + '"></i>';
+      },
+
+      themeIconMarkup() {
+        return '<i data-lucide="' + (this.theme === 'dark' ? 'sun' : 'moon') + '"></i>';
       },
 
       navToggleLabel() {
@@ -813,7 +848,9 @@
 
       async toggleNotifications() {
         this.notifOpen = !this.notifOpen;
-        if (this.notifOpen) await this.loadNotifications();
+        if (!this.notifOpen) return;
+        const stale = !this._notifAt || Date.now() - this._notifAt > 30000;
+        if (stale && !this.notifLoading) await this.loadNotifications();
       },
 
       async loadNotifications() {
@@ -827,6 +864,7 @@
         } catch {
           this.notifications = [];
         } finally {
+          this._notifAt = Date.now();
           this.notifLoading = false;
         }
       },
@@ -860,26 +898,34 @@
         this.mountCharts();
       },
 
-      async refreshUnread() {
+      async refreshUnread(force) {
         if (!this.session) return;
+        const now = Date.now();
+        if (!force && this._unreadAt && now - this._unreadAt < 30000) return;
+        this._unreadAt = now;
         try {
           const payload = await Reel.api('GET', '/notifications/unread-count');
           this.unread = payload.data.unread || 0;
         } catch { /* non-critical */ }
       },
 
-      async signOut() {
-        try { await Reel.api('POST', '/auth/logout', {}); } catch { /* ignore */ }
+      signOut() {
+        if (this.signingOut) return;
+        this.signingOut = true;
+        // Fire the request while the CSRF token is still available, but never
+        // make the person wait for a cold serverless function to see the login
+        // screen. The local session clears immediately.
+        const logout = Reel.api('POST', '/auth/logout', {}).catch(() => {});
         if (Reel.setCsrf) Reel.setCsrf(null);
         this.session = null;
         this.mode = 'login';
-        location.hash = '/login';
-        // The sign-in screen belongs to the platform, not to the tenant that
-        // just signed out. Reload the platform palette and logo so the next
-        // person never sees the previous organisation's colours.
         this.platformBrand = null;
-        await this.loadPlatformBranding();
         this.renderAuth();
+        location.hash = '/login';
+        this.loadPlatformBranding().then(() => {
+          if (this.mode === 'login') this.renderAuth();
+        });
+        Promise.resolve(logout).finally(() => { this.signingOut = false; });
       },
 
       reload() { return this.navigate(true); },
@@ -1655,7 +1701,7 @@
             }
           }
           if (window.Alpine && window.Alpine.initTree) window.Alpine.initTree(root);
-          if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+          this.renderIconsNow();
         } catch (error) {
           root.innerHTML = '<div style="min-height:100vh;display:grid;place-items:center;padding:24px"><div class="card" style="max-width:520px;text-align:center"><h2>Website unavailable</h2><p class="muted">' + Reel.esc(error.message) + '</p><a class="btn btn-primary" href="#/login">Staff sign in</a></div></div>';
         }
@@ -1757,6 +1803,7 @@
       loginPassword: '',
       loginError: null,
       loginBusy: false,
+      signingOut: false,
       forgotOpen: false,
       resetSent: null
     };
