@@ -431,7 +431,20 @@
         ], { hint: 'Suspending signs the person out immediately.' }) : '') +
         R.table({ rows, selectable: canManage, columns: [
           { label: 'Person', render: (m) => '<div class="row" style="gap:10px"><div class="avatar">' + R.esc(R.initials(m.display_name)) + '</div><div><span class="cell-strong">' + R.esc(m.display_name) + '</span><span class="cell-sub">' + R.esc(m.email) + '</span></div></div>' },
-          { label: 'Roles', render: (m) => (m.roles || []).length ? (m.roles || []).map((r) => '<span class="badge badge-sky">' + R.esc(R.titleCase(r.role)) + '</span>' + (r.branchId ? '<span class="badge badge-muted">branch</span>' : '')).join(' ') : '<span class="muted">No role</span>' },
+          { label: 'Roles', render: (m) => {
+            // The API now enforces one active grant per role and branch, but
+            // keep the display honest for any data created before that fix.
+            const seen = new Set();
+            const roles = (m.roles || []).filter((r) => {
+              const key = r.role + '|' + (r.branchId || '');
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
+            return roles.length
+              ? roles.map((r) => '<span class="badge badge-sky">' + R.esc(R.titleCase(r.role)) + '</span>' + (r.branchId ? '<span class="badge badge-muted">branch</span>' : '')).join(' ')
+              : '<span class="muted">No role</span>';
+          } },
           { label: 'Status', render: (m) => R.badge(m.status) },
           { label: 'Joined', render: (m) => R.date(m.joined_at) },
           { label: 'Last login', render: (m) => m.last_login_at ? R.relative(m.last_login_at) : 'Never' },

@@ -137,3 +137,26 @@ test('security headers are present on API responses', async () => {
   assert.equal(result.headers.get('x-content-type-options'), 'nosniff');
   assert.equal(result.headers.get('referrer-policy'), 'no-referrer');
 });
+
+test('the same role cannot be granted twice to one member', async () => {
+  const client = createClient();
+  const session = await client.login('principal@littlesprouts.local');
+  const organisationId = session.activeOrganisationId;
+  const members = (await client.get('/access/memberships', { organisationId })).data;
+  const target = members.find((member) => member.email === 'teacher@littlesprouts.local');
+  assert.ok(target, 'the seeded teacher should be a member');
+
+  const first = await client.post('/access/memberships/' + target.id + '/roles',
+    { roleKey: 'support_staff' }, { organisationId });
+  assert.equal(first.status, 200);
+
+  const duplicate = await client.post('/access/memberships/' + target.id + '/roles',
+    { roleKey: 'support_staff' }, { organisationId });
+  assert.equal(duplicate.status, 409);
+  assert.equal(duplicate.error.code, 'CONFLICT');
+  assert.match(duplicate.error.message, /already has that role/);
+
+  const refreshed = (await client.get('/access/memberships', { organisationId })).data
+    .find((member) => member.id === target.id);
+  assert.equal(refreshed.roles.filter((role) => role.role === 'support_staff').length, 1);
+});

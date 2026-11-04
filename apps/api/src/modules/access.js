@@ -45,7 +45,9 @@ function register(router) {
       row.roles = await ctx.db.many(
         `SELECT mr.id AS "assignmentId", r.role_key AS role, r.name, mr.branch_id AS "branchId", mr.expires_at AS "expiresAt"
          FROM membership_roles mr JOIN roles r ON r.id = mr.role_id
-         WHERE mr.membership_id = $1 AND mr.status = 'active'`,
+         WHERE mr.membership_id = $1 AND mr.status = 'active'
+           AND (mr.expires_at IS NULL OR mr.expires_at > now())
+         ORDER BY mr.granted_at`,
         [row.id]
       );
     }
@@ -128,6 +130,40 @@ function register(router) {
         [body.branchId, ctx.organisationId]);
       if (!branch) fail('VALIDATION', [{ field: 'branchId', message: 'Unknown branch.' }]);
     }
+
+    // One active grant per person, role and branch. Without this check a
+    // double-click or a repeated submit silently stacked identical rows, which
+    // the members list then rendered as duplicate role chips.
+    const existing = await ctx.db.one(
+      `SELECT * FROM membership_roles
+       WHERE membership_id = $1 AND role_id = $2 AND status = 'active'
+         AND (($3::uuid IS NULL AND branch_id IS NULL) OR branch_id = $3::uuid)
+       ORDER BY granted_at DESC
+       LIMIT 1`,
+      [membership.id, role.id, body.branchId || null]
+    );
+    if (existing) {
+      const live = !existing.expires_at || new Date(existing.expires_at) > new Date();
+      if (live) {
+        fail('CONFLICT', null, 'This person already has that role' +
+          (body.branchId ? ' for this branch.' : '.'));
+      }
+      // An expired row still occupies the active slot. Reuse it for the new
+      // grant rather than failing or leaving a stale duplicate behind.
+      const revived = await ctx.db.one(
+        `UPDATE membership_roles
+         SET granted_by = $2, granted_at = now(), expires_at = $3
+         WHERE id = $1 RETURNING *`,
+        [existing.id, ctx.user.id, body.expiresAt || null]
+      );
+      invalidateAccess(membership.user_id, ctx.organisationId);
+      await recordAudit(ctx.db, ctx, {
+        action: 'access.role_assigned', resourceType: 'membership', resourceId: membership.id,
+        metadata: { roleKey: body.roleKey, branchId: body.branchId || null, renewed: true }
+      });
+      return revived;
+    }
+
     const assignment = await ctx.db.one(
       `INSERT INTO membership_roles (membership_id, role_id, branch_id, granted_by, expires_at, status)
        VALUES ($1,$2,$3,$4,$5,'active') RETURNING *`,

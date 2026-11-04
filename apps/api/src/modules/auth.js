@@ -230,8 +230,16 @@ function register(router) {
     }
     const role = await ctx.db.one('SELECT id, name FROM roles WHERE role_key = $1', [invitation.role_key]);
     if (role) {
+      // Accepting an invitation must never stack a second copy of a role the
+      // person already holds (for example a re-invite after a suspension).
       await ctx.db.query(
-        `INSERT INTO membership_roles (membership_id, role_id, branch_id, status) VALUES ($1,$2,$3,'active')`,
+        `INSERT INTO membership_roles (membership_id, role_id, branch_id, status)
+         SELECT $1,$2,$3,'active'
+         WHERE NOT EXISTS (
+           SELECT 1 FROM membership_roles
+           WHERE membership_id = $1 AND role_id = $2 AND status = 'active'
+             AND (($3::uuid IS NULL AND branch_id IS NULL) OR branch_id = $3::uuid)
+         )`,
         [membership.id, role.id, invitation.branch_id]
       );
       if (invitation.branch_id) {
