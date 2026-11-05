@@ -220,69 +220,84 @@ function register(router) {
 
   router.post('/assessments/reports/generate', async (ctx) => {
     const body = validate(ctx.body, {
-      learnerId: { type: 'string', uuid: true },
+      learnerId: { type: 'string', uuid: true, optional: true },
+      learnerIds: { type: 'array', of: 'uuid', max: 100, optional: true },
       assessmentPeriodId: { type: 'string', uuid: true, optional: true },
       format: { type: 'string', enum: ['json', 'html', 'csv'], optional: true }
     });
-    const learner = await getLearner(ctx, body.learnerId);
+    const learnerIds = body.learnerIds && body.learnerIds.length
+      ? Array.from(new Set(body.learnerIds))
+      : (body.learnerId ? [body.learnerId] : []);
+    if (!learnerIds.length) fail('VALIDATION', [{ field: 'learnerIds', message: 'Choose at least one child.' }]);
     let period = null;
     if (body.assessmentPeriodId) {
       period = await ctx.db.one('SELECT * FROM assessment_periods WHERE id = $1 AND organisation_id = $2',
         [body.assessmentPeriodId, ctx.organisationId]);
       if (!period) fail('VALIDATION', [{ field: 'assessmentPeriodId', message: 'Unknown assessment period.' }]);
     }
-    const progress = await progressFor(ctx, learner);
-    const from = period ? dayOf(period.starts_on) : null;
-    const to = period ? dayOf(period.ends_on) : null;
-    const inPeriod = (date) => {
-      const day = dayOf(date);
-      return (!from || day >= from) && (!to || day <= to);
-    };
-    const observations = progress.observations.filter((o) => inPeriod(o.observation_date));
-    const assessments = progress.assessments.filter((a) => !period || a.assessment_period_id === period.id);
-    const domains = progress.domains.map((domain) => {
-      const objectives = domain.objectives.map((objective) => Object.assign({}, objective, {
-        lastObservation: objective.lastObservation && inPeriod(objective.lastObservation.observation_date)
-          ? objective.lastObservation : null
-      }));
-      return Object.assign({}, domain, {
-        objectives,
-        observed: objectives.filter((o) => o.lastObservation).length
+
+    const buildReport = async (learner) => {
+      const progress = await progressFor(ctx, learner);
+      const from = period ? dayOf(period.starts_on) : null;
+      const to = period ? dayOf(period.ends_on) : null;
+      const inPeriod = (date) => {
+        const day = dayOf(date);
+        return (!from || day >= from) && (!to || day <= to);
+      };
+      const observations = progress.observations.filter((o) => inPeriod(o.observation_date));
+      const assessments = progress.assessments.filter((a) => !period || a.assessment_period_id === period.id);
+      const domains = progress.domains.map((domain) => {
+        const objectives = domain.objectives.map((objective) => Object.assign({}, objective, {
+          lastObservation: objective.lastObservation && inPeriod(objective.lastObservation.observation_date)
+            ? objective.lastObservation : null
+        }));
+        return Object.assign({}, domain, {
+          objectives,
+          observed: objectives.filter((o) => o.lastObservation).length
+        });
       });
-    });
-    const totalObjectives = domains.reduce((sum, d) => sum + d.total, 0);
-    const observedObjectives = domains.reduce((sum, d) => sum + d.observed, 0);
-    const report = {
-      learner: progress.learner,
-      period: period ? { id: period.id, name: period.name, startsOn: from, endsOn: to } : null,
-      generatedAt: new Date().toISOString(),
-      totals: {
-        domains: domains.length,
-        objectives: totalObjectives,
-        observed: observedObjectives,
-        observations: observations.length,
-        assessments: assessments.length,
-        coverage: totalObjectives ? Math.round((observedObjectives / totalObjectives) * 100) : 0
-      },
-      domains,
-      observations,
-      assessments,
-      note: progress.note
+      const totalObjectives = domains.reduce((sum, d) => sum + d.total, 0);
+      const observedObjectives = domains.reduce((sum, d) => sum + d.observed, 0);
+      const report = {
+        learner: progress.learner,
+        period: period ? { id: period.id, name: period.name, startsOn: from, endsOn: to } : null,
+        generatedAt: new Date().toISOString(),
+        totals: {
+          domains: domains.length,
+          objectives: totalObjectives,
+          observed: observedObjectives,
+          observations: observations.length,
+          assessments: assessments.length,
+          coverage: totalObjectives ? Math.round((observedObjectives / totalObjectives) * 100) : 0
+        },
+        domains,
+        observations,
+        assessments,
+        note: progress.note
+      };
+      report.html = renderProgressReport(ctx, report);
+      if (body.format === 'csv') report.csv = progressCsv(report);
+      const job = await ctx.db.one(
+        `INSERT INTO report_jobs (organisation_id, report_key, parameters, status, requested_by, completed_at, row_count)
+         VALUES ($1,'learner_progress',$2,'completed',$3,now(),$4) RETURNING *`,
+        [ctx.organisationId, JSON.stringify({ learnerId: learner.id, assessmentPeriodId: body.assessmentPeriodId || null,
+          format: body.format || 'html' }), ctx.user.id, observations.length + assessments.length]
+      );
+      await recordAudit(ctx.db, ctx, {
+        action: 'assessment.report_generated', resourceType: 'report_job', resourceId: job.id,
+        metadata: { learnerId: learner.id, periodId: period ? period.id : null }
+      });
+      return { job, report };
     };
-    report.html = renderProgressReport(ctx, report);
-    if (body.format === 'csv') report.csv = progressCsv(report);
-    const job = await ctx.db.one(
-      `INSERT INTO report_jobs (organisation_id, report_key, parameters, status, requested_by, completed_at, row_count)
-       VALUES ($1,'learner_progress',$2,'completed',$3,now(),$4) RETURNING *`,
-      [ctx.organisationId, JSON.stringify({ learnerId: body.learnerId, assessmentPeriodId: body.assessmentPeriodId || null,
-        format: body.format || 'html' }), ctx.user.id, observations.length + assessments.length]
-    );
-    await recordAudit(ctx.db, ctx, {
-      action: 'assessment.report_generated', resourceType: 'report_job', resourceId: job.id,
-      metadata: { learnerId: learner.id, periodId: period ? period.id : null }
-    });
+
+    const results = [];
+    for (const learnerId of learnerIds) {
+      const learner = await getLearner(ctx, learnerId);
+      results.push(await buildReport(learner));
+    }
     ctx.status = 201;
-    return { job, report };
+    if (learnerIds.length === 1 && !body.learnerIds) return results[0];
+    return { reports: results.map((entry) => entry.report), jobs: results.map((entry) => entry.job), count: results.length };
   }, { permission: 'assessments.read.daycare' });
 
   router.get('/assessments/overview', async (ctx) => {

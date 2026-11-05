@@ -5,6 +5,8 @@ const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
 const { createNotification, notifyRole } = require('../services/notification-service');
 const { sendTemplate } = require('../services/email-service');
+const payfast = require('../services/payfast-service');
+const { createPaymentIntent } = require('../services/payment-intent-service');
 const { rateLimit } = require('../middleware/rate-limit');
 const { parsePagination } = require('../utils/http');
 const branding = require('../services/branding-service');
@@ -75,6 +77,35 @@ function validateSubmission(schema, data) {
   return clean;
 }
 
+/**
+ * The public shape of a form's payment settings. Never expose merchant
+ * credentials; only whether payment is possible right now.
+ */
+function paymentFor(form) {
+  const enabled = form.payment_enabled === true && Number(form.payment_amount || 0) > 0;
+  if (!enabled) return { enabled: false, required: false, amount: 0, currency: form.payment_currency || null, description: null, available: false };
+  return {
+    enabled: true,
+    required: form.payment_required !== false,
+    amount: Number(form.payment_amount),
+    currency: form.payment_currency || 'ZAR',
+    description: form.payment_description || null,
+    available: payfast.isConfigured()
+  };
+}
+
+function payerEmailFrom(body, clean) {
+  if (body.email) return body.email;
+  if (clean && clean.email) return String(clean.email);
+  if (clean && clean.guardian_email) return String(clean.guardian_email);
+  if (clean) {
+    const found = Object.entries(clean).find(([key, value]) =>
+      /email/i.test(key) && typeof value === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value));
+    if (found) return found[1];
+  }
+  return null;
+}
+
 async function submissionFor(ctx, formId, versionId, data, extra) {
   const submission = await ctx.db.one(
     `INSERT INTO form_submissions (organisation_id, form_definition_id, form_version_id, submitted_by_user_id,
@@ -107,18 +138,34 @@ function register(router) {
       formType: { type: 'string', max: 40, optional: true },
       description: { type: 'string', max: 2000, optional: true },
       isPublic: { type: 'boolean', optional: true },
+      displayOnWebsite: { type: 'boolean', optional: true },
+      paymentEnabled: { type: 'boolean', optional: true },
+      paymentRequired: { type: 'boolean', optional: true },
+      paymentAmount: { type: 'number', min: 0, max: 1000000, optional: true },
+      paymentCurrency: { type: 'string', min: 3, max: 3, optional: true },
+      paymentDescription: { type: 'string', max: 255, optional: true },
       fields: { type: 'array', max: 60, optional: true }
     });
+    if (body.paymentEnabled === true && !(Number(body.paymentAmount) > 0)) {
+      fail('VALIDATION', [{ field: 'paymentAmount', message: 'Set an amount greater than zero to take payments.' }]);
+    }
     const existing = await ctx.db.one('SELECT id FROM form_definitions WHERE organisation_id = $1 AND slug = $2',
       [ctx.organisationId, body.slug]);
     if (existing) fail('CONFLICT', null, 'A form with that slug already exists.');
     const fields = normaliseFields(body.fields || []);
     const result = await ctx.db.withTransaction(async (client) => {
       const form = (await client.query(
-        `INSERT INTO form_definitions (organisation_id, name, slug, form_type, description, is_public, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+        `INSERT INTO form_definitions (organisation_id, name, slug, form_type, description, is_public, created_by,
+           display_on_website, payment_enabled, payment_required, payment_amount, payment_currency, payment_description)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
         [ctx.organisationId, body.name, body.slug, body.formType || 'general', body.description || null,
-          body.isPublic === true, ctx.user.id]
+          body.isPublic === true, ctx.user.id,
+          body.displayOnWebsite !== false,
+          body.paymentEnabled === true,
+          body.paymentRequired !== false,
+          body.paymentEnabled === true ? Number(body.paymentAmount) : null,
+          body.paymentCurrency ? body.paymentCurrency.toUpperCase() : null,
+          body.paymentDescription || null]
       )).rows[0];
       const version = (await client.query(
         `INSERT INTO form_versions (form_definition_id, version_number, schema_json)
@@ -146,8 +193,58 @@ function register(router) {
     return { ...form, versions, current };
   }, { permission: ['forms.read.daycare', 'forms.manage.daycare'], permissionMode: 'any' });
 
+  router.patch('/forms/:id', async (ctx) => {
+    const body = validate(ctx.body, {
+      name: { type: 'string', min: 2, max: 200, optional: true },
+      description: { type: 'string', max: 2000, optional: true },
+      formType: { type: 'string', max: 40, optional: true },
+      isPublic: { type: 'boolean', optional: true },
+      displayOnWebsite: { type: 'boolean', optional: true },
+      paymentEnabled: { type: 'boolean', optional: true },
+      paymentRequired: { type: 'boolean', optional: true },
+      paymentAmount: { type: 'number', min: 0, max: 1000000, optional: true },
+      paymentCurrency: { type: 'string', min: 3, max: 3, optional: true },
+      paymentDescription: { type: 'string', max: 255, optional: true }
+    });
+    const form = await ctx.db.one('SELECT * FROM form_definitions WHERE id = $1 AND organisation_id = $2',
+      [ctx.params.id, ctx.organisationId]);
+    if (!form) throw new AppError('NOT_FOUND');
+    const paymentEnabled = body.paymentEnabled === undefined ? form.payment_enabled : body.paymentEnabled === true;
+    const paymentAmount = body.paymentAmount === undefined ? form.payment_amount : body.paymentAmount;
+    if (paymentEnabled && !(Number(paymentAmount) > 0)) {
+      fail('VALIDATION', [{ field: 'paymentAmount', message: 'Set an amount greater than zero to take payments.' }]);
+    }
+    const updated = await ctx.db.one(
+      `UPDATE form_definitions SET
+         name = COALESCE($1,name), description = COALESCE($2,description), form_type = COALESCE($3,form_type),
+         is_public = COALESCE($4,is_public), display_on_website = COALESCE($5,display_on_website),
+         payment_enabled = $6, payment_required = COALESCE($7,payment_required),
+         payment_amount = $8, payment_currency = COALESCE($9,payment_currency),
+         payment_description = COALESCE($10,payment_description), updated_at = now()
+       WHERE id = $11 RETURNING *`,
+      [body.name === undefined ? null : body.name, body.description === undefined ? null : body.description,
+        body.formType === undefined ? null : body.formType,
+        body.isPublic === undefined ? null : body.isPublic,
+        body.displayOnWebsite === undefined ? null : body.displayOnWebsite,
+        paymentEnabled,
+        body.paymentRequired === undefined ? null : body.paymentRequired,
+        paymentEnabled ? Number(paymentAmount) : null,
+        body.paymentCurrency ? body.paymentCurrency.toUpperCase() : null,
+        body.paymentDescription === undefined ? null : body.paymentDescription,
+        form.id]
+    );
+    await recordAudit(ctx.db, ctx, {
+      action: 'form.updated', resourceType: 'form_definition', resourceId: form.id,
+      metadata: { paymentEnabled, displayOnWebsite: updated.display_on_website }
+    });
+    return updated;
+  }, { permission: 'forms.manage.daycare' });
+
   router.post('/forms/:id/versions', async (ctx) => {
-    const body = validate(ctx.body, { fields: { type: 'array', max: 60 } });
+    const body = validate(ctx.body, {
+      fields: { type: 'array', max: 60 },
+      publish: { type: 'boolean', optional: true }
+    });
     const form = await ctx.db.one('SELECT * FROM form_definitions WHERE id = $1 AND organisation_id = $2',
       [ctx.params.id, ctx.organisationId]);
     if (!form) throw new AppError('NOT_FOUND');
@@ -155,17 +252,28 @@ function register(router) {
     const latest = await ctx.db.one(
       'SELECT MAX(version_number)::int AS version FROM form_versions WHERE form_definition_id = $1', [form.id]
     );
-    const version = await ctx.db.one(
-      `INSERT INTO form_versions (form_definition_id, version_number, schema_json)
-       VALUES ($1,$2,$3) RETURNING *`,
-      [form.id, (latest.version || 0) + 1, JSON.stringify({ fields })]
-    );
+    const result = await ctx.db.withTransaction(async (client) => {
+      const version = (await client.query(
+        `INSERT INTO form_versions (form_definition_id, version_number, schema_json)
+         VALUES ($1,$2,$3) RETURNING *`,
+        [form.id, (latest.version || 0) + 1, JSON.stringify({ fields })]
+      )).rows[0];
+      if (body.publish === true) {
+        await client.query('UPDATE form_versions SET published_at = now(), published_by = $1 WHERE id = $2',
+          [ctx.user.id, version.id]);
+        await client.query(
+          "UPDATE form_definitions SET status = 'published', current_version_id = $1, updated_at = now() WHERE id = $2",
+          [version.id, form.id]
+        );
+      }
+      return version;
+    });
     await recordAudit(ctx.db, ctx, {
       action: 'form.version_created', resourceType: 'form_definition', resourceId: form.id,
-      metadata: { version: version.version_number }
+      metadata: { version: result.version_number, published: body.publish === true }
     });
     ctx.status = 201;
-    return version;
+    return result;
   }, { permission: 'forms.manage.daycare' });
 
   router.post('/forms/:id/publish', async (ctx) => {
@@ -353,7 +461,9 @@ function register(router) {
     const org = await ctx.db.one("SELECT id, name, slug, logo_url, primary_colour, secondary_colour, accent_colour, theme_tokens FROM organisations WHERE slug = $1 AND status = 'active'", [ctx.params.orgSlug]);
     if (!org) throw new AppError('NOT_FOUND');
     const form = await ctx.db.one(
-      `SELECT f.id, f.name, f.description, f.form_type, v.schema_json FROM form_definitions f
+      `SELECT f.id, f.name, f.description, f.form_type, f.payment_enabled, f.payment_required,
+         f.payment_amount, f.payment_currency, f.payment_description, v.schema_json
+       FROM form_definitions f
        JOIN form_versions v ON v.id = f.current_version_id
        WHERE f.organisation_id = $1 AND f.slug = $2 AND f.status = 'published' AND f.is_public = true`,
       [org.id, ctx.params.formSlug]
@@ -362,14 +472,21 @@ function register(router) {
     return {
       organisation: { id: org.id, name: org.name, slug: org.slug, logoUrl: org.logo_url },
       branding: branding.themeFromOrganisation(org),
-      form
+      form: {
+        id: form.id,
+        name: form.name,
+        description: form.description,
+        formType: form.form_type,
+        schema_json: form.schema_json,
+        payment: paymentFor(form)
+      }
     };
   }, { public: true });
 
   router.post('/public/forms/:orgSlug/:formSlug/submit', async (ctx) => {
     const limit = rateLimit(`public-form:${ctx.ip}`, 10, 10 * 60 * 1000);
     if (!limit.allowed) throw new AppError('RATE_LIMITED');
-    const org = await ctx.db.one("SELECT id, name FROM organisations WHERE slug = $1 AND status = 'active'", [ctx.params.orgSlug]);
+    const org = await ctx.db.one("SELECT id, name, slug FROM organisations WHERE slug = $1 AND status = 'active'", [ctx.params.orgSlug]);
     if (!org) throw new AppError('NOT_FOUND');
     const form = await ctx.db.one(
       `SELECT f.*, v.schema_json, v.id AS version_id FROM form_definitions f
@@ -381,17 +498,57 @@ function register(router) {
     const body = validate(ctx.body, {
       data: { type: 'object' },
       email: { type: 'string', email: true, optional: true },
+      payerName: { type: 'string', max: 200, optional: true },
       website: { type: 'string', max: 200, optional: true }
     });
     const spam = Boolean(body.website && body.website.trim());
     const clean = validateSubmission(form.schema_json, body.data);
+    const payment = paymentFor(form);
+    const payerEmail = body.email || payerEmailFrom(body, clean);
     const submission = await submissionFor(ctx, form.id, form.version_id, clean, {
-      organisationId: org.id, email: body.email || null
+      organisationId: org.id, email: payerEmail
     });
     if (spam) {
       await ctx.db.query("UPDATE form_submissions SET status = 'archived' WHERE id = $1", [submission.id]);
       return { received: true, submissionId: null };
     }
+
+    // A paid form is submitted first and paid second. The intent carries the
+    // submission id so the ITN can mark exactly this submission as paid even
+    // if the payer never returns to the browser tab.
+    let checkout = null;
+    if (payment.enabled && payment.available) {
+      const nameParts = String(body.payerName || '').trim().split(/\s+/).filter(Boolean);
+      const intentResult = await createPaymentIntent(ctx.db, {
+        organisation: org,
+        amount: payment.amount,
+        currency: payment.currency,
+        createdBy: null,
+        req: ctx.req,
+        scope: 'public',
+        purpose: 'form_payment',
+        payer: payerEmail ? {
+          email: payerEmail,
+          first_name: nameParts[0] || 'Parent',
+          last_name: nameParts.slice(1).join(' ') || 'Guardian'
+        } : null,
+        itemName: form.name,
+        itemDescription: payment.description || form.description || form.name,
+        metadata: { formId: form.id, submissionId: submission.id, payerEmail: payerEmail || null },
+        returnUrl: payfast.frontendBaseUrl() + '/#/site/' + encodeURIComponent(org.slug) +
+          '/forms?payment=return&ref=' + encodeURIComponent(submission.id),
+        cancelUrl: payfast.frontendBaseUrl() + '/#/site/' + encodeURIComponent(org.slug) +
+          '/forms?payment=cancelled&ref=' + encodeURIComponent(submission.id)
+      });
+      checkout = intentResult.checkout;
+      await ctx.db.query(
+        "UPDATE form_submissions SET payment_status = 'pending', payment_intent_id = $1 WHERE id = $2",
+        [intentResult.intent.id, submission.id]
+      );
+    } else if (payment.enabled) {
+      await ctx.db.query("UPDATE form_submissions SET payment_status = 'unavailable' WHERE id = $1", [submission.id]);
+    }
+
     await recordAudit(ctx.db, ctx, {
       action: 'form.public_submission', resourceType: 'form_submission', resourceId: submission.id,
       organisationId: org.id
@@ -415,10 +572,16 @@ function register(router) {
         to: reviewer.email,
         organisationId: org.id,
         metadata: { submissionId: submission.id, formId: form.id },
-        data: { formName: form.name, submittedBy: body.email || 'A website visitor' }
+        data: { formName: form.name, submittedBy: payerEmail || 'A website visitor' }
       });
     }
-    return { received: true, submissionId: submission.id };
+    return {
+      received: true,
+      submissionId: submission.id,
+      payment: payment.enabled
+        ? { required: payment.required, amount: payment.amount, currency: payment.currency, available: payment.available, checkout }
+        : null
+    };
   }, { public: true });
 
   // --- Consent ------------------------------------------------------------

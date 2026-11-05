@@ -264,10 +264,12 @@
       } else if (name === 'generateInvoices') {
         ctx.openModal({
           title: 'Generate invoices', endpoint: '/invoices/generate', submitLabel: 'Generate',
-          description: 'Every actively enrolled child on the selected fee plan receives an issued invoice.',
+          description: 'Every actively enrolled child on the selected fee plan receives an issued invoice. Leave the children blank to bill everyone on the plan.',
+          size: 'wide',
           fields: [
             { name: 'feePlanId', label: 'Fee plan', type: 'select', required: true, value: id || '', options: (page.feePlans || []).map((p) => ({ value: p.id, label: p.name })) },
             { name: 'branchId', label: 'Branch', type: 'select', options: R.branchOptions(ctx) },
+            { name: 'learnerIds', label: 'Children', type: 'multiselect', span: 2, options: R.learnerOptions(page.learners), placeholder: 'Search children…', help: 'Optional. Select children to bill only those children.' },
             { name: 'dueAt', label: 'Due date', type: 'date' },
             { name: 'description', label: 'Invoice note', span: 2 }
           ]

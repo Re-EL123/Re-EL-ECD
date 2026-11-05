@@ -170,16 +170,10 @@
           description: 'Choose a colleague to start a direct conversation. Families can be messaged from their child profile.',
           fields: [
             { name: 'subject', label: 'Subject', span: 2 },
-            { name: 'participantUserId', label: 'Recipient', type: 'select', options: members.map((m) => ({ value: m.user_id, label: m.display_name + (m.email ? ' · ' + m.email : '') })) },
+            { name: 'participantUserIds', label: 'Recipients', type: 'multiselect', span: 2, options: R.memberOptions(members), placeholder: 'Search colleagues…', help: 'Start a direct message or a group conversation with several people.' },
             { name: 'conversationType', label: 'Type', type: 'select', options: [{ value: 'direct', label: 'Direct' }, { value: 'group', label: 'Group' }], value: 'direct' },
             { name: 'message', label: 'Message', type: 'textarea', span: 2, placeholder: 'Say hello…' }
-          ],
-          transform: (data) => {
-            const body = Object.assign({}, data);
-            body.participantUserIds = body.participantUserId ? [body.participantUserId] : [];
-            delete body.participantUserId;
-            return body;
-          }
+          ]
         });
       }
     }

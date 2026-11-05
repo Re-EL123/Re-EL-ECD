@@ -558,6 +558,7 @@ function register(router) {
     const body = validate(ctx.body, {
       branchId: { type: 'string', uuid: true, optional: true },
       feePlanId: { type: 'string', uuid: true },
+      learnerIds: { type: 'array', of: 'uuid', max: 500, optional: true },
       dueAt: { type: 'string', date: true, optional: true },
       description: { type: 'string', max: 255, optional: true }
     });
@@ -566,14 +567,16 @@ function register(router) {
     if (!plan) throw new AppError('NOT_FOUND');
     const items = await ctx.db.many('SELECT * FROM fee_plan_items WHERE fee_plan_id = $1', [plan.id]);
     if (!items.length) fail('CONFLICT', null, 'The fee plan has no line items.');
+    const learnerIds = body.learnerIds && body.learnerIds.length ? Array.from(new Set(body.learnerIds)) : null;
     const enrolments = await ctx.db.many(
       `SELECT e.*, l.first_name, l.last_name,
         (SELECT lg.guardian_id FROM learner_guardians lg WHERE lg.learner_id = e.learner_id
           AND lg.can_receive_financial_information = true ORDER BY lg.is_primary_contact DESC LIMIT 1) AS guardian_id
        FROM enrolments e JOIN learners l ON l.id = e.learner_id
        WHERE e.organisation_id = $1 AND e.status = 'active' AND l.status = 'enrolled'
-         AND ($2::uuid IS NULL OR e.branch_id = $2::uuid)`,
-      [ctx.organisationId, body.branchId || null]
+         AND ($2::uuid IS NULL OR e.branch_id = $2::uuid)
+         AND ($3::uuid[] IS NULL OR e.learner_id = ANY($3::uuid[]))`,
+      [ctx.organisationId, body.branchId || null, learnerIds]
     );
     const created = [];
     for (const enrolment of enrolments) {
@@ -1247,6 +1250,17 @@ function register(router) {
         )).rows[0] || null;
       }
 
+      // A form payment settles the submission that started the checkout. The
+      // submission itself keeps its review status; only the payment state moves.
+      let formSubmission = null;
+      if (intent.purpose === 'form_payment' && intentMetadata.submissionId) {
+        formSubmission = (await client.query(
+          `UPDATE form_submissions SET payment_status = 'paid', payment_intent_id = $1,
+             amount_paid = $2 WHERE id = $3 AND organisation_id = $4 RETURNING *`,
+          [intent.id, Number(intent.amount), intentMetadata.submissionId, intent.organisation_id]
+        )).rows[0] || null;
+      }
+
       // A paid platform invoice buys the organisation another billing period.
       let subscription = null;
       if (intent.purpose === 'platform_subscription' && intentMetadata.subscriptionId) {
@@ -1276,7 +1290,7 @@ function register(router) {
         [payment.id, data.providerReference || null, intent.id]
       );
       await client.query('UPDATE payment_webhook_events SET processed_at = now() WHERE id = $1', [event.id]);
-      return { payment, allocations, application, subscription };
+      return { payment, allocations, application, subscription, formSubmission };
     });
 
     const [guardian, organisation] = await Promise.all([
@@ -1286,6 +1300,7 @@ function register(router) {
     const receiptTo = (guardian && guardian.email)
       || (result.application && result.application.guardian_email)
       || (intent.purpose === 'platform_subscription' ? intentMetadata.payerEmail : null)
+      || (intent.purpose === 'form_payment' ? intentMetadata.payerEmail : null)
       || null;
     if (receiptTo && organisation) {
       await sendTemplate(ctx.db, 'paymentReceipt', {

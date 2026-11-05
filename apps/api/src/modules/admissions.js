@@ -55,7 +55,8 @@ async function publicSitePayload(ctx, org, options) {
       published: false,
       content: null,
       seo: Object.assign({}, empty.seo, { canonical: canonicalFor('home') }),
-      updatedAt: null
+      updatedAt: null,
+      forms: []
     });
   }
 
@@ -64,13 +65,31 @@ async function publicSitePayload(ctx, org, options) {
     [org.id]
   );
   const content = websiteContent.normalise(website.published_content, org);
+  const forms = await ctx.db.many(
+    `SELECT f.slug, f.name, f.description, f.form_type,
+       f.payment_enabled, f.payment_amount, f.payment_currency
+     FROM form_definitions f
+     WHERE f.organisation_id = $1 AND f.status = 'published' AND f.is_public = true
+       AND f.display_on_website = true AND f.current_version_id IS NOT NULL
+     ORDER BY f.name`,
+    [org.id]
+  );
   return Object.assign(shared, {
     published: true,
     theme: website.theme,
     content,
     seo: Object.assign({}, content.seo, { canonical: canonicalFor('home') }),
     updatedAt: website.published_at || website.updated_at,
-    branches
+    branches,
+    forms: forms.map((form) => ({
+      slug: form.slug,
+      name: form.name,
+      description: form.description,
+      formType: form.form_type,
+      payment: form.payment_enabled === true && Number(form.payment_amount || 0) > 0
+        ? { enabled: true, amount: Number(form.payment_amount), currency: form.payment_currency || 'ZAR' }
+        : { enabled: false }
+    }))
   });
 }
 

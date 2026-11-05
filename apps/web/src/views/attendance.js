@@ -35,7 +35,8 @@
       const canRecord = ctx.has('attendance.record.daycare') || ctx.has('attendance.record.assigned');
       return R.pageHead('Learner attendance', 'The daily register, live presence and attendance patterns.',
         '<a class="btn btn-secondary btn-sm" href="#/app/learners">' + R.icon('users') + ' Learners</a>' +
-        (canRecord ? '<button class="btn btn-primary btn-sm" @click="markAllPresent()">' + R.icon('check-check') + ' Mark all present</button>' : '')) +
+        (canRecord ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'register\')">' + R.icon('clipboard-list') + ' Record register</button>' +
+          '<button class="btn btn-primary btn-sm" @click="markAllPresent()">' + R.icon('check-check') + ' Mark all present</button>' : '')) +
         '<div class="grid grid-4 section">' +
         R.statCard({ label: 'Expected', value: R.number((reg.rows || []).length), icon: 'users', foot: R.date(page.date) }) +
         R.statCard({ label: 'Present', value: R.number(summary.present), icon: 'check-circle', foot: R.percent(summary.rate) + ' attendance' }) +
@@ -140,7 +141,27 @@
     },
 
     openModal(ctx, name, id) {
-      if (name === 'absence' && id) {
+      if (name === 'register') {
+        const rows = ((ctx.page.register || {}).rows || []).map((r) => ({
+          id: r.learner_id, first_name: r.first_name, last_name: r.last_name, classroom_name: r.classroom_name
+        }));
+        ctx.openModal({
+          title: 'Record register',
+          endpoint: '/learner-attendance/register',
+          submitLabel: 'Save register',
+          size: 'wide',
+          description: 'Choose the children and one status for the whole group. Children already marked are updated.',
+          fields: [
+            { name: 'date', label: 'Date', type: 'date', required: true, value: (ctx.page || {}).date || R.today() },
+            { name: 'status', label: 'Status', type: 'select', required: true, value: 'present', options: STATUSES.map((s) => ({ value: s, label: R.titleCase(s) })) },
+            { name: 'learnerIds', label: 'Children', type: 'multiselect', span: 2, required: true, options: R.learnerOptions(rows), placeholder: 'Search children…', help: 'Select one, several or every child in the register.' }
+          ],
+          transform: (data) => ({
+            date: data.date,
+            records: (data.learnerIds || []).map((learnerId) => ({ learnerId, status: data.status }))
+          })
+        });
+      } else if (name === 'absence' && id) {
         const learner = ((ctx.page.register || {}).rows || []).find((r) => r.learner_id === id) || {};
         ctx.openModal({ title: 'Report absence', endpoint: '/learner-attendance/absence', submitLabel: 'Record absence', fields: [
           { name: 'learnerId', label: 'Child', type: 'hidden', value: id },

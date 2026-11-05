@@ -493,10 +493,11 @@
         });
       } else if (name === 'assignRole' && id) {
         ctx.openModal({
-          title: 'Add a role', endpoint: '/access/memberships/' + id + '/roles', submitLabel: 'Assign role',
+          title: 'Add roles', endpoint: '/access/memberships/' + id + '/roles', submitLabel: 'Assign roles', size: 'wide',
+          description: 'Grant one or several roles, either across the whole organisation or for selected branches.',
           fields: [
-            { name: 'roleKey', label: 'Role', type: 'select', required: true, options: roles.map((r) => ({ value: r.role_key, label: r.name })) },
-            { name: 'branchId', label: 'Limit to branch', type: 'select', options: R.branchOptions(ctx) },
+            { name: 'roleKeys', label: 'Roles', type: 'multiselect', span: 2, required: true, options: roles.map((r) => ({ value: r.role_key, label: r.name, subtitle: r.description || '' })), placeholder: 'Search roles…' },
+            { name: 'branchIds', label: 'Branches', type: 'multiselect', span: 2, options: R.branchOptions(ctx), placeholder: 'Leave blank for the whole organisation', help: 'Choose branches to limit the grant. Leave empty to grant organisation-wide.' },
             { name: 'expiresAt', label: 'Expires at', type: 'datetime-local' }
           ]
         });

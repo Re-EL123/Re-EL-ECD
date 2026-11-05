@@ -14,6 +14,7 @@
     route('/site', 'public', 'publicSite', null, 'Daycare website'),
     route('/site/:slug', 'public', 'publicSite', null, 'Daycare website'),
     route('/site/:slug/apply', 'public', 'publicApply', null, 'Enquire'),
+    route('/site/:slug/forms', 'public', 'publicForms', null, 'Forms'),
     route('/site/:slug/forms/:formSlug', 'public', 'publicForm', null, 'Form'),
     // Catch-all for the tenant's own pages (about, programmes, admissions,
     // gallery, contact). It must stay after the more specific routes above.
@@ -24,6 +25,7 @@
     route('/platform/overview', 'platform', 'platformOverview', 'platform.organisations.read', 'Platform overview'),
     route('/platform/organisations', 'platform', 'platformOrganisations', 'platform.organisations.read', 'Organisation directory'),
     route('/platform/organisations/:id', 'platform', 'platformOrganisationDetail', 'platform.organisations.read', 'Organisation detail'),
+    route('/platform/users', 'platform', 'platformUsers', 'platform.organisations.read', 'Platform users'),
     route('/platform/subscriptions', 'platform', 'platformSubscriptions', 'platform.subscriptions.read', 'Subscriptions'),
     route('/platform/access', 'platform', 'platformAccess', 'platform.organisations.read', 'Platform access'),
     route('/platform/audit', 'platform', 'platformAudit', 'platform.audit.read', 'Platform audit'),
@@ -100,6 +102,7 @@
       { label: 'Platform', items: [
         { path: '/platform/overview', label: 'Overview', icon: 'layout-dashboard', permission: 'platform.organisations.read' },
         { path: '/platform/organisations', label: 'Organisations', icon: 'building-2', permission: 'platform.organisations.read' },
+        { path: '/platform/users', label: 'Users', icon: 'users', permission: 'platform.organisations.read' },
         { path: '/platform/subscriptions', label: 'Subscriptions', icon: 'credit-card', permission: 'platform.subscriptions.read' },
         { path: '/platform/access', label: 'Platform access', icon: 'shield-check', permission: 'platform.organisations.read' }
       ] },
@@ -557,13 +560,22 @@
         const matched = matchRoute(path);
         if (!matched) {
           if (Reel.resetSeo) Reel.resetSeo();
-          this.mode = this.session ? 'app' : 'login';
+          this.denied = false;
+          this.loading = false;
+          this.error = null;
+          this.pageTitle = 'Page not found';
           if (this.session) {
+            this.mode = 'app';
             this.area = this.isPlatformAdmin ? 'platform' : (this.isParentOnly ? 'parent' : 'app');
-            this.denied = false;
-            this.loading = false;
-            this.pageTitle = 'Page not found';
-            this.renderHtml('<div class="empty-state"><div class="empty-icon"><i data-lucide="compass"></i></div><h3>Page not found</h3><p>The page <span class="mono">' + Reel.esc(path) + '</span> does not exist.</p><a class="btn btn-primary" href="#' + this.defaultRoute() + '">Go to your overview</a></div>');
+            this.renderHtml('<section class="not-found"><div class="not-found-inner">' +
+              '<div class="not-found-code">404</div>' +
+              '<h1>We could not find that page</h1>' +
+              '<p>The page <span class="mono">' + Reel.esc(path) + '</span> does not exist, or it may have moved. ' +
+              'Check the address or head back to your overview.</p>' +
+              '<div class="not-found-actions"><a class="btn btn-primary" href="#' + this.defaultRoute() + '">Go to your overview</a>' +
+              '<button class="btn btn-secondary" @click="navigate()">Try again</button></div></div></section>');
+          } else {
+            this.renderNotFound(path);
           }
           return;
         }
@@ -667,6 +679,41 @@
         if (window.Alpine && window.Alpine.destroyTree) window.Alpine.destroyTree(root);
         root.innerHTML = html;
         if (window.Alpine && window.Alpine.initTree) window.Alpine.initTree(root);
+      },
+
+      /**
+       * A signed-out visitor who follows a broken link still gets a branded
+       * page instead of a blank screen. It uses the public shell so the sign-in
+       * form is not forced on someone who was only looking for a page.
+       */
+      renderNotFound(path) {
+        this.mode = 'public';
+        this.loading = false;
+        this.pageTitle = 'Page not found';
+        const html = '<div class="public"><nav class="public-nav">' +
+          '<a class="site-brand" href="#/login"><span class="brand-logo brand-logo-fallback">R</span>' +
+          '<span><span class="brand-name">Re-EL ECD</span><span class="brand-sub">Early childhood, elevated</span></span></a>' +
+          '<div class="links"><a href="#/login">Sign in</a></div></nav>' +
+          '<section class="not-found"><div class="not-found-inner">' +
+          '<div class="not-found-code">404</div>' +
+          '<h1>We could not find that page</h1>' +
+          '<p>The page <span class="mono">' + Reel.esc(path) + '</span> does not exist, or it may have moved. ' +
+          'If you followed a link from a daycare website, check the address with the centre.</p>' +
+          '<div class="not-found-actions"><a class="btn btn-primary" href="#/login">Go to sign in</a>' +
+          '<a class="btn btn-secondary" href="https://ecd.re-el.co.za">About Re-EL ECD</a></div></div></section></div>';
+        const root = document.getElementById('public-root');
+        if (root) {
+          if (window.Alpine && window.Alpine.destroyTree) window.Alpine.destroyTree(root);
+          root.innerHTML = html;
+          if (window.Alpine && window.Alpine.initTree) window.Alpine.initTree(root);
+        }
+        if (Reel.applySeo) {
+          Reel.applySeo({
+            title: 'Page not found | Re-EL ECD',
+            description: 'The page you followed could not be found.',
+            canonical: location.origin + '/'
+          }, null);
+        }
       },
 
       afterRender() {
@@ -1191,9 +1238,12 @@
         (config.fields || []).forEach((field) => {
           if (field.type === 'checkbox') {
             data[field.name] = field.value === undefined ? false : field.value;
-          } else if (field.multiple) {
+          } else if (field.type === 'multiselect' || field.type === 'repeater' || field.multiple) {
             const initial = field.value === undefined ? [] : field.value;
-            data[field.name] = Array.isArray(initial) ? initial.slice() : (initial ? [initial] : []);
+            const list = Array.isArray(initial) ? initial.slice() : (initial ? [initial] : []);
+            data[field.name] = field.type === 'repeater'
+              ? list.map((item) => Object.assign({}, item))
+              : list;
           } else {
             data[field.name] = field.value === undefined ? '' : field.value;
           }
@@ -1214,9 +1264,94 @@
           onSuccess: config.onSuccess || null,
           mediaBusy: {},
           mediaDraft: {},
+          msQuery: {},
           saving: false,
           error: null
         };
+      },
+
+      // -----------------------------------------------------------------------
+      // Multi-select and repeater fields
+      //
+      // Both live inside the generic modal so every view gets the same picker
+      // and the same row editor without duplicating markup.
+      // -----------------------------------------------------------------------
+
+      msOptions(field) {
+        if (!this.modal) return [];
+        const query = String((this.modal.msQuery || {})[field.name] || '').trim().toLowerCase();
+        const options = (field.options || []).map((option) => (option && typeof option === 'object'
+          ? option
+          : { value: option, label: String(option) }));
+        if (!query) return options;
+        return options.filter((option) => String(option.label || '').toLowerCase().includes(query) ||
+          String(option.subtitle || '').toLowerCase().includes(query));
+      },
+
+      msOption(field, value) {
+        return (field.options || []).map((option) => (option && typeof option === 'object'
+          ? option
+          : { value: option, label: String(option) })).find((option) => String(option.value) === String(value)) || null;
+      },
+
+      isMsSelected(field, value) {
+        if (!this.modal) return false;
+        return (this.modal.data[field.name] || []).some((entry) => String(entry) === String(value));
+      },
+
+      toggleMs(field, value) {
+        if (!this.modal) return;
+        const current = (this.modal.data[field.name] || []).slice();
+        const index = current.findIndex((entry) => String(entry) === String(value));
+        if (index >= 0) current.splice(index, 1);
+        else current.push(value);
+        this.modal.data[field.name] = current;
+      },
+
+      msSelectAll(field) {
+        if (!this.modal) return;
+        const current = (this.modal.data[field.name] || []).slice();
+        for (const option of this.msOptions(field)) {
+          if (!current.some((entry) => String(entry) === String(option.value))) current.push(option.value);
+        }
+        this.modal.data[field.name] = current;
+      },
+
+      msClear(field) {
+        if (!this.modal) return;
+        this.modal.data[field.name] = [];
+      },
+
+      repOptions(column) {
+        return (column.options || []).map((option) => (option && typeof option === 'object'
+          ? option
+          : { value: option, label: String(option) }));
+      },
+
+      addRepeaterRow(field) {
+        if (!this.modal) return;
+        const rows = (this.modal.data[field.name] || []).slice();
+        const template = field.template || {};
+        const row = typeof template === 'function' ? template(rows) : Object.assign({}, template);
+        rows.push(row || {});
+        this.modal.data[field.name] = rows;
+      },
+
+      removeRepeaterRow(field, index) {
+        if (!this.modal) return;
+        const rows = (this.modal.data[field.name] || []).slice();
+        rows.splice(index, 1);
+        this.modal.data[field.name] = rows;
+      },
+
+      moveRepeaterRow(field, index, delta) {
+        if (!this.modal) return;
+        const rows = (this.modal.data[field.name] || []).slice();
+        const target = index + delta;
+        if (target < 0 || target >= rows.length) return;
+        const [row] = rows.splice(index, 1);
+        rows.splice(target, 0, row);
+        this.modal.data[field.name] = rows;
       },
 
       openDetail(title, html, size) {
@@ -1603,7 +1738,7 @@
       },
 
       async markAllPresent() {
-        const rows = ((this.page && this.page.rows) || []).filter((r) => !r.attendance_id);
+        const rows = (((this.page && this.page.register) || {}).rows || []).filter((r) => !r.attendance_id);
         if (!rows.length) { this.toast('Every child is already marked.', 'warn'); return; }
         await this.postJson('/learner-attendance/register', {
           date: (this.page && this.page.date) || Reel.today(),
@@ -1745,9 +1880,27 @@
       async submitPublicForm(event, slug, formSlug) {
         this.publicError = null;
         this.publicResult = null;
+        this.publicCheckout = null;
         try {
-          const payload = await Reel.api('POST', '/public/forms/' + encodeURIComponent(slug) + '/' + encodeURIComponent(formSlug) + '/submit', { data: this.publicFormData });
-          this.publicResult = payload.data && payload.data.received ? 'Thank you. Your response has been submitted.' : 'Thank you.';
+          const payload = await Reel.api('POST', '/public/forms/' + encodeURIComponent(slug) + '/' + encodeURIComponent(formSlug) + '/submit', {
+            data: this.publicFormData,
+            email: this.publicPayerEmail || undefined,
+            payerName: this.publicPayerName || undefined,
+            website: this.publicFormData.website || undefined
+          });
+          const result = (payload && payload.data) || {};
+          if (!result.received) {
+            this.publicResult = 'Thank you.';
+            return;
+          }
+          if (result.payment && result.payment.checkout) {
+            this.publicCheckout = result.payment.checkout;
+            this.publicResult = 'Your form has been received. Complete the secure PayFast payment below to finish.';
+          } else if (result.payment && result.payment.enabled && !result.payment.available) {
+            this.publicResult = 'Your form has been received. Online payment is not available yet; the centre will send a payment link.';
+          } else {
+            this.publicResult = 'Thank you. Your response has been submitted.';
+          }
         } catch (error) {
           this.publicError = error.message || 'We could not submit the form. Please check the fields and try again.';
         }

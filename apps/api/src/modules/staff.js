@@ -393,7 +393,8 @@ function register(router) {
 
   router.post('/shifts', async (ctx) => {
     const body = validate(ctx.body, {
-      staffId: { type: 'string', uuid: true },
+      staffId: { type: 'string', uuid: true, optional: true },
+      staffIds: { type: 'array', of: 'uuid', max: 100, optional: true },
       branchId: { type: 'string', uuid: true },
       shiftDate: { type: 'string', date: true },
       startsAt: { type: 'string', datetime: true },
@@ -402,63 +403,103 @@ function register(router) {
       assignedClassroomId: { type: 'string', uuid: true, optional: true },
       publish: { type: 'boolean', optional: true }
     });
-    const staff = await staffById(ctx, body.staffId);
-    if (staff.employment_status === 'ended') fail('VALIDATION', [{ field: 'staffId', message: 'This staff member has left employment.' }]);
+    const requested = body.staffIds && body.staffIds.length
+      ? Array.from(new Set(body.staffIds))
+      : (body.staffId ? [body.staffId] : []);
+    if (!requested.length) fail('VALIDATION', [{ field: 'staffIds', message: 'Choose at least one staff member.' }]);
     const branch = await ctx.db.one('SELECT id, name FROM branches WHERE id = $1 AND organisation_id = $2',
       [body.branchId, ctx.organisationId]);
     if (!branch) fail('VALIDATION', [{ field: 'branchId', message: 'Unknown branch.' }]);
     if (new Date(body.endsAt) <= new Date(body.startsAt)) {
       fail('VALIDATION', [{ field: 'endsAt', message: 'The shift must end after it starts.' }]);
     }
-    const leave = await approvedLeaveOverlap(ctx, staff.id, body.shiftDate);
-    if (leave) fail('CONFLICT', null, 'This staff member has approved leave on that date.');
-    await assertShiftConflict(ctx, staff.id, body.shiftDate, body.startsAt, body.endsAt);
     if (body.assignedClassroomId) {
       const classroom = await ctx.db.one('SELECT id FROM classrooms WHERE id = $1 AND organisation_id = $2',
         [body.assignedClassroomId, ctx.organisationId]);
       if (!classroom) fail('VALIDATION', [{ field: 'assignedClassroomId', message: 'Unknown classroom.' }]);
     }
-    const shift = await ctx.db.one(
-      `INSERT INTO staff_shifts (organisation_id, branch_id, staff_id, shift_date, starts_at, ends_at, break_minutes,
-        assigned_classroom_id, status, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-      [ctx.organisationId, body.branchId, staff.id, body.shiftDate, body.startsAt, body.endsAt,
-        body.breakMinutes === undefined ? 30 : body.breakMinutes, body.assignedClassroomId || null,
-        body.publish === true ? 'scheduled' : 'draft', ctx.user.id]
-    );
-    if (staff.user_id) {
-      await createNotification(ctx.db, ctx, {
-        recipientUserIds: [staff.user_id], type: 'shift_scheduled',
-        title: 'New shift scheduled', body: `A shift has been scheduled for ${body.shiftDate}.`,
-        resourceType: 'staff_shift', resourceId: shift.id
-      });
-      const staffUser = await ctx.db.one('SELECT email, display_name FROM users WHERE id = $1', [staff.user_id]);
-      if (staffUser && staffUser.email) {
-        const start = new Date(body.startsAt);
-        const end = new Date(body.endsAt);
-        const time = Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())
-          ? null
-          : start.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' }) + ' – ' +
-            end.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
-        await sendTemplate(ctx.db, 'shiftAssigned', {
-          to: staffUser.email,
-          organisationId: ctx.organisationId,
-          metadata: { shiftId: shift.id },
-          data: {
-            staffName: staffUser.display_name,
-            date: body.shiftDate,
-            role: staff.job_title,
-            time,
-            branchName: branch.name
-          }
+
+    const createFor = async (staff) => {
+      if (staff.employment_status === 'ended') fail('VALIDATION', [{ field: 'staffIds', message: 'A selected staff member has left employment.' }]);
+      const leave = await approvedLeaveOverlap(ctx, staff.id, body.shiftDate);
+      if (leave) fail('CONFLICT', null, `${staff.display_name || 'A staff member'} has approved leave on that date.`);
+      await assertShiftConflict(ctx, staff.id, body.shiftDate, body.startsAt, body.endsAt);
+      const shift = await ctx.db.one(
+        `INSERT INTO staff_shifts (organisation_id, branch_id, staff_id, shift_date, starts_at, ends_at, break_minutes,
+          assigned_classroom_id, status, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+        [ctx.organisationId, body.branchId, staff.id, body.shiftDate, body.startsAt, body.endsAt,
+          body.breakMinutes === undefined ? 30 : body.breakMinutes, body.assignedClassroomId || null,
+          body.publish === true ? 'scheduled' : 'draft', ctx.user.id]
+      );
+      if (staff.user_id) {
+        await createNotification(ctx.db, ctx, {
+          recipientUserIds: [staff.user_id], type: 'shift_scheduled',
+          title: 'New shift scheduled', body: `A shift has been scheduled for ${body.shiftDate}.`,
+          resourceType: 'staff_shift', resourceId: shift.id
         });
+        const staffUser = await ctx.db.one('SELECT email, display_name FROM users WHERE id = $1', [staff.user_id]);
+        if (staffUser && staffUser.email) {
+          const start = new Date(body.startsAt);
+          const end = new Date(body.endsAt);
+          const time = Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())
+            ? null
+            : start.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' }) + ' – ' +
+              end.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
+          await sendTemplate(ctx.db, 'shiftAssigned', {
+            to: staffUser.email,
+            organisationId: ctx.organisationId,
+            metadata: { shiftId: shift.id },
+            data: {
+              staffName: staffUser.display_name,
+              date: body.shiftDate,
+              role: staff.job_title,
+              time,
+              branchName: branch.name
+            }
+          });
+        }
+      }
+      await recordAudit(ctx.db, ctx, {
+        action: 'shift.created', resourceType: 'staff_shift', resourceId: shift.id, branchId: body.branchId
+      });
+      return shift;
+    };
+
+    // A single staff member keeps the original response shape so existing
+    // callers and tests are unaffected. Multiple staff return every shift.
+    if (requested.length === 1 && !body.staffIds) {
+      const staff = await staffById(ctx, requested[0]);
+      const shift = await createFor(staff);
+      ctx.status = 201;
+      return shift;
+    }
+
+    const staffRows = await ctx.db.many(
+      `SELECT s.*, u.display_name FROM staff_profiles s LEFT JOIN users u ON u.id = s.user_id
+       WHERE s.organisation_id = $1 AND s.id = ANY($2::uuid[])`,
+      [ctx.organisationId, requested]
+    );
+    const byId = new Map(staffRows.map((row) => [row.id, row]));
+    const shifts = [];
+    const skipped = [];
+    for (const id of requested) {
+      const staff = byId.get(id);
+      if (!staff) {
+        skipped.push({ staffId: id, reason: 'not found' });
+        continue;
+      }
+      try {
+        shifts.push(await createFor(staff));
+      } catch (error) {
+        skipped.push({ staffId: id, name: staff.display_name, reason: error.message || 'could not create shift' });
       }
     }
-    await recordAudit(ctx.db, ctx, {
-      action: 'shift.created', resourceType: 'staff_shift', resourceId: shift.id, branchId: body.branchId
-    });
+    if (!shifts.length) {
+      fail('CONFLICT', null, skipped[0] ? skipped[0].reason : 'No shifts could be created.');
+    }
     ctx.status = 201;
-    return shift;
+    return { shifts, skipped, created: shifts.length, requested: requested.length };
   }, { permission: 'shifts.create.daycare' });
 
   router.patch('/shifts/:id', async (ctx) => {

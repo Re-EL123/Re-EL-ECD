@@ -6,6 +6,7 @@ const { hashPassword, randomToken, sha256 } = require('../../../../packages/auth
 const { ROLES } = require('../../../../packages/auth/roles');
 const { recordAudit } = require('../services/audit-service');
 const { invalidateAccess } = require('../services/access-service');
+const { createNotification } = require('../services/notification-service');
 const { sendTemplate, isConfigured: emailConfigured, fromAddress } = require('../services/email-service');
 const payfast = require('../services/payfast-service');
 const { createPaymentIntent } = require('../services/payment-intent-service');
@@ -119,12 +120,21 @@ function register(router) {
   router.post('/platform/organisations/bulk', async (ctx) => {
     const body = validate(ctx.body, {
       ids: { type: 'array', of: 'uuid', max: 200 },
-      action: { type: 'string', enum: ['suspend', 'restore'] },
+      action: { type: 'string', enum: ['suspend', 'restore', 'assign_plan'] },
+      planId: { type: 'string', uuid: true, optional: true },
+      billingPeriod: { type: 'string', enum: ['monthly', 'annual'], optional: true },
       reason: { type: 'string', min: 5, max: 500, optional: true }
     });
     if (!body.ids.length) fail('VALIDATION', [{ field: 'ids', message: 'Select at least one organisation.' }]);
     if (body.action === 'suspend' && !body.reason) {
       fail('VALIDATION', [{ field: 'reason', message: 'A suspension reason is required.' }]);
+    }
+    let plan = null;
+    if (body.action === 'assign_plan') {
+      if (!body.planId) fail('VALIDATION', [{ field: 'planId', message: 'Choose a plan to assign.' }]);
+      plan = await ctx.db.one('SELECT * FROM subscription_plans WHERE id = $1', [body.planId]);
+      if (!plan) fail('VALIDATION', [{ field: 'planId', message: 'Unknown plan.' }]);
+      if (plan.status === 'archived') fail('VALIDATION', [{ field: 'planId', message: 'That plan is archived. Choose an active plan.' }]);
     }
     const updated = [];
     const skipped = [];
@@ -141,6 +151,22 @@ function register(router) {
           'UPDATE sessions SET revoked_at = now() WHERE user_id IN (SELECT user_id FROM memberships WHERE organisation_id = $1)',
           [id]
         );
+      } else if (body.action === 'assign_plan') {
+        await ctx.db.withTransaction(async (client) => {
+          await client.query(
+            `UPDATE platform_subscriptions SET status = 'cancelled'
+             WHERE organisation_id = $1 AND status IN ('trial','active','past_due')`, [id]
+          );
+          await client.query(
+            `INSERT INTO platform_subscriptions
+               (organisation_id, plan_id, status, billing_period, current_period_start, current_period_end)
+             VALUES ($1,$2,'active',$3,CURRENT_DATE,CURRENT_DATE + 30)`,
+            [id, plan.id, body.billingPeriod || 'monthly']
+          );
+          await client.query(
+            "UPDATE organisations SET subscription_status = 'active', updated_at = now() WHERE id = $1", [id]
+          );
+        });
       } else {
         if (organisation.status !== 'suspended') { skipped.push({ id, reason: 'not suspended' }); continue; }
         await ctx.db.query(
@@ -149,13 +175,213 @@ function register(router) {
         );
       }
       await recordAudit(ctx.db, ctx, {
-        action: body.action === 'suspend' ? 'platform.organisation_suspended' : 'platform.organisation_restored',
+        action: body.action === 'suspend' ? 'platform.organisation_suspended'
+          : body.action === 'assign_plan' ? 'platform.subscription_assigned' : 'platform.organisation_restored',
         resourceType: 'organisation', resourceId: id, organisationId: id,
-        metadata: { bulk: true, reason: body.reason || null }
+        metadata: { bulk: true, reason: body.reason || null, planKey: plan ? plan.plan_key : null }
       });
       updated.push(id);
     }
     return { action: body.action, updated: updated.length, skipped };
+  }, { platformOnly: true, permission: 'platform.organisations.manage' });
+
+  // --- Platform-wide user administration --------------------------------
+
+  router.get('/platform/users', async (ctx) => {
+    const { page, pageSize, offset } = parsePagination(ctx.query);
+    const search = ctx.query.q ? `%${ctx.query.q}%` : null;
+    const status = ctx.query.status || null;
+    const organisationId = ctx.query.organisationId || null;
+    const total = await ctx.db.one(
+      `SELECT COUNT(DISTINCT u.id)::int AS total FROM users u
+       LEFT JOIN memberships m ON m.user_id = u.id
+       WHERE ($1::text IS NULL OR u.display_name ILIKE $1 OR u.email ILIKE $1)
+         AND ($2::text IS NULL OR u.status = $2)
+         AND ($3::uuid IS NULL OR m.organisation_id = $3::uuid)`,
+      [search, status, organisationId]
+    );
+    const rows = await ctx.db.many(
+      `SELECT u.id, u.email, u.display_name, u.avatar_url, u.status, u.last_login_at, u.created_at,
+              u.mfa_enabled,
+              (SELECT COUNT(*)::int FROM sessions s WHERE s.user_id = u.id AND s.revoked_at IS NULL
+                AND s.expires_at > now()) AS active_sessions
+       FROM users u
+       WHERE ($1::text IS NULL OR u.display_name ILIKE $1 OR u.email ILIKE $1)
+         AND ($2::text IS NULL OR u.status = $2)
+         AND ($3::uuid IS NULL OR EXISTS (
+           SELECT 1 FROM memberships m WHERE m.user_id = u.id AND m.organisation_id = $3::uuid))
+       ORDER BY u.created_at DESC LIMIT $4 OFFSET $5`,
+      [search, status, organisationId, pageSize, offset]
+    );
+    for (const row of rows) {
+      row.memberships = await ctx.db.many(
+        `SELECT m.id, m.status, o.id AS organisation_id, o.name AS organisation_name, o.slug AS organisation_slug,
+                COALESCE((SELECT array_agg(r.role_key ORDER BY r.role_key)
+                  FROM membership_roles mr JOIN roles r ON r.id = mr.role_id
+                  WHERE mr.membership_id = m.id AND mr.status = 'active'), '{}') AS roles
+         FROM memberships m JOIN organisations o ON o.id = m.organisation_id
+         WHERE m.user_id = $1 ORDER BY o.name`,
+        [row.id]
+      );
+    }
+    ctx.meta.page = page;
+    ctx.meta.pageSize = pageSize;
+    ctx.meta.total = total.total;
+    ctx.meta.totalPages = Math.max(1, Math.ceil(total.total / pageSize));
+    return rows;
+  }, { platformOnly: true, permission: 'platform.organisations.read' });
+
+  async function platformUser(ctx, id) {
+    const user = await ctx.db.one('SELECT * FROM users WHERE id = $1', [id]);
+    if (!user) throw new AppError('NOT_FOUND');
+    return user;
+  }
+
+  async function setUserStatus(ctx, user, status) {
+    if (user.id === ctx.user.id && status !== 'active') {
+      fail('CONFLICT', null, 'You cannot suspend or disable your own account.');
+    }
+    await ctx.db.query('UPDATE users SET status = $1, updated_at = now() WHERE id = $2', [status, user.id]);
+    if (status !== 'active') {
+      await ctx.db.query(
+        'UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [user.id]
+      );
+    }
+    invalidateAccess(user.id, null);
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.user_status_changed', resourceType: 'user', resourceId: user.id,
+      metadata: { status, previousStatus: user.status }
+    });
+    return { ...user, status };
+  }
+
+  router.post('/platform/users/:id/status', async (ctx) => {
+    const body = validate(ctx.body, {
+      status: { type: 'string', enum: ['active', 'suspended', 'disabled', 'invited'] }
+    });
+    const user = await platformUser(ctx, ctx.params.id);
+    return setUserStatus(ctx, user, body.status);
+  }, { platformOnly: true, permission: 'platform.organisations.manage' });
+
+  router.post('/platform/users/:id/revoke-sessions', async (ctx) => {
+    const user = await platformUser(ctx, ctx.params.id);
+    const result = await ctx.db.query(
+      'UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [user.id]
+    );
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.user_sessions_revoked', resourceType: 'user', resourceId: user.id,
+      metadata: { sessions: result.rowCount }
+    });
+    return { success: true, revoked: result.rowCount || 0 };
+  }, { platformOnly: true, permission: 'platform.organisations.manage' });
+
+  router.post('/platform/users/bulk', async (ctx) => {
+    const body = validate(ctx.body, {
+      ids: { type: 'array', of: 'uuid', max: 200 },
+      action: { type: 'string', enum: ['activate', 'suspend', 'disable', 'revoke_sessions'] }
+    });
+    if (!body.ids.length) fail('VALIDATION', [{ field: 'ids', message: 'Select at least one user.' }]);
+    const statusFor = { activate: 'active', suspend: 'suspended', disable: 'disabled' };
+    const updated = [];
+    const skipped = [];
+    for (const id of Array.from(new Set(body.ids))) {
+      const user = await ctx.db.one('SELECT * FROM users WHERE id = $1', [id]);
+      if (!user) { skipped.push({ id, reason: 'not found' }); continue; }
+      if (body.action === 'revoke_sessions') {
+        const result = await ctx.db.query(
+          'UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [user.id]
+        );
+        await recordAudit(ctx.db, ctx, {
+          action: 'platform.user_sessions_revoked', resourceType: 'user', resourceId: user.id,
+          metadata: { sessions: result.rowCount, bulk: true }
+        });
+        updated.push(id);
+        continue;
+      }
+      const status = statusFor[body.action];
+      if (user.id === ctx.user.id && status !== 'active') {
+        skipped.push({ id, reason: 'cannot change your own account' });
+        continue;
+      }
+      if (user.status === status) { skipped.push({ id, reason: 'already ' + status }); continue; }
+      await setUserStatus(ctx, user, status);
+      updated.push(id);
+    }
+    return { action: body.action, updated: updated.length, skipped };
+  }, { platformOnly: true, permission: 'platform.organisations.manage' });
+
+  router.post('/platform/broadcast', async (ctx) => {
+    const body = validate(ctx.body, {
+      organisationIds: { type: 'array', of: 'uuid', max: 200, optional: true },
+      title: { type: 'string', min: 3, max: 200 },
+      message: { type: 'string', min: 3, max: 5000 },
+      email: { type: 'boolean', optional: true }
+    });
+    const organisations = body.organisationIds && body.organisationIds.length
+      ? await ctx.db.many(
+        "SELECT * FROM organisations WHERE id = ANY($1::uuid[]) AND slug <> 're-el-platform' AND status = 'active'",
+        [body.organisationIds]
+      )
+      : await ctx.db.many(
+        "SELECT * FROM organisations WHERE slug <> 're-el-platform' AND status = 'active' ORDER BY name"
+      );
+    if (!organisations.length) fail('VALIDATION', [{ field: 'organisationIds', message: 'No active organisations matched.' }]);
+    const sendEmail = body.email !== false;
+    const results = [];
+    for (const organisation of organisations) {
+      const recipients = await ctx.db.many(
+        `SELECT DISTINCT m.user_id, u.email, u.display_name FROM memberships m
+         JOIN users u ON u.id = m.user_id
+         WHERE m.organisation_id = $1 AND m.status = 'active' AND u.status = 'active'`,
+        [organisation.id]
+      );
+      if (!recipients.length) {
+        results.push({ organisationId: organisation.id, recipients: 0, emails: 0 });
+        continue;
+      }
+      await createNotification(ctx.db, { organisationId: organisation.id }, {
+        recipientUserIds: recipients.map((r) => r.user_id),
+        type: 'platform_broadcast',
+        title: body.title,
+        body: body.message.slice(0, 500),
+        resourceType: 'platform_broadcast',
+        organisationId: organisation.id
+      });
+      let emails = 0;
+      if (sendEmail && emailConfigured()) {
+        for (const recipient of recipients) {
+          await sendTemplate(ctx.db, 'announcement', {
+            to: recipient.email,
+            organisationId: organisation.id,
+            metadata: { platformBroadcast: true },
+            data: {
+              organisationName: organisation.name,
+              title: body.title,
+              body: body.message,
+              url: '/#/app/overview'
+            }
+          });
+          emails += 1;
+        }
+      }
+      results.push({ organisationId: organisation.id, recipients: recipients.length, emails });
+    }
+    const totalRecipients = results.reduce((sum, row) => sum + row.recipients, 0);
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.broadcast_sent', resourceType: 'platform_broadcast', resourceId: null,
+      metadata: {
+        title: body.title,
+        organisations: results.length,
+        recipients: totalRecipients,
+        email: sendEmail
+      }
+    });
+    return {
+      organisations: results.length,
+      recipients: totalRecipients,
+      emails: results.reduce((sum, row) => sum + row.emails, 0),
+      results
+    };
   }, { platformOnly: true, permission: 'platform.organisations.manage' });
 
   router.get('/platform/organisations/:id', async (ctx) => {
@@ -752,6 +978,33 @@ function register(router) {
     });
     ctx.status = 201;
     return row;
+  }, { platformOnly: true, permission: 'platform.support.manage' });
+
+  router.patch('/platform/support-cases/:id', async (ctx) => {
+    const body = validate(ctx.body, {
+      status: { type: 'string', enum: ['open', 'in_progress', 'resolved', 'closed'], optional: true },
+      subject: { type: 'string', min: 3, max: 200, optional: true },
+      description: { type: 'string', max: 4000, optional: true },
+      accessGrantedUntil: { type: 'string', datetime: true, optional: true }
+    });
+    const existing = await ctx.db.one('SELECT * FROM support_cases WHERE id = $1', [ctx.params.id]);
+    if (!existing) throw new AppError('NOT_FOUND');
+    const updated = await ctx.db.one(
+      `UPDATE support_cases SET
+         status = COALESCE($1,status), subject = COALESCE($2,subject), description = COALESCE($3,description),
+         access_granted_until = $4, updated_at = now()
+       WHERE id = $5 RETURNING *`,
+      [body.status || null, body.subject || null, body.description === undefined ? null : body.description,
+        body.accessGrantedUntil === undefined ? existing.access_granted_until : body.accessGrantedUntil,
+        existing.id]
+    );
+    await recordAudit(ctx.db, ctx, {
+      action: body.status && body.status !== existing.status ? 'platform.support_case_' + body.status
+        : 'platform.support_case_updated',
+      resourceType: 'support_case', resourceId: existing.id, organisationId: existing.organisation_id,
+      metadata: { fields: Object.keys(body) }
+    });
+    return updated;
   }, { platformOnly: true, permission: 'platform.support.manage' });
 }
 

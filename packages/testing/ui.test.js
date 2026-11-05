@@ -130,3 +130,14 @@ test('router routes point at registered views', () => {
     assert.ok(registered.has(view), `route ${routePath} references unregistered view ${view}`);
   }
 });
+
+test('unknown routes render a branded 404 for signed-in and signed-out visitors', () => {
+  const app = fs.readFileSync(path.join(webRoot, 'src', 'app.js'), 'utf8');
+  const styles = fs.readFileSync(path.join(webRoot, 'assets', 'styles.css'), 'utf8');
+  assert.match(app, /renderNotFound\(path\)/, 'signed-out visitors need a branded 404 renderer');
+  assert.match(app, /if \(!matched\)/, 'the router must handle unmatched paths');
+  assert.match(app, /not-found-code">404</, 'the 404 page must show a 404 code');
+  assert.match(app, /renderNotFound\(path\);/, 'the unmatched branch must call renderNotFound');
+  assert.match(styles, /\.not-found\b/, '404 styles must be present');
+  assert.match(styles, /\.not-found-code\b/, 'the large 404 numeral must be styled');
+});

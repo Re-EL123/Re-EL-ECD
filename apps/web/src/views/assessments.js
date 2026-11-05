@@ -89,13 +89,9 @@
     renderReports(ctx, page) {
       const learners = page.learners || [];
       return '<div class="split"><div class="stack">' +
-        R.card('Progress reports', '<p class="muted small">Generate a report for one child and assessment period. The report gathers published observations, domain summaries and next steps.</p>' +
-          '<div class="form-grid"><div class="field"><label>Child</label><select class="select" id="report-learner"><option value="">Select a child…</option>' +
-          learners.map((l) => '<option value="' + R.attr(l.id) + '">' + R.esc(l.first_name + ' ' + l.last_name) + '</option>').join('') + '</select></div>' +
-          '<div class="field"><label>Period</label><select class="select" id="report-period"><option value="">Select a period…</option>' +
-          (page.periods || []).map((p) => '<option value="' + R.attr(p.id) + '">' + R.esc(p.name) + '</option>').join('') + '</select></div>' +
-          '<div class="field"><label>Format</label><select class="select" id="report-format"><option value="pdf">PDF</option><option value="html">HTML</option></select></div></div>' +
-          '<button class="btn btn-primary" @click="generateAssessmentReport()">' + R.icon('file-text') + ' Generate report</button>') +
+        R.card('Progress reports', '<p class="muted small">Generate reports for one child or a whole group. Each report gathers published observations, domain summaries and next steps.</p>' +
+          '<button class="btn btn-primary" @click="openNamedModal(\'report\')">' + R.icon('file-text') + ' Generate reports</button>' +
+          '<p class="muted small" style="margin-top:10px">' + R.number(learners.length) + ' children · ' + R.number((page.periods || []).length) + ' periods available.</p>') +
         R.card('Latest observations', R.table({ rows: (page.observations || []).slice(0, 8), compact: true, columns: [
           { label: 'Child', render: (o) => R.esc(o.first_name + ' ' + o.last_name) },
           { label: 'Domain', render: (o) => R.esc(o.domain_name) },
@@ -132,11 +128,13 @@
           { name: 'endsOn', label: 'Ends on', type: 'date', required: true }
         ] });
       } else if (name === 'report') {
-        ctx.openModal({ title: 'Generate progress report', endpoint: '/assessments/reports/generate', submitLabel: 'Generate', fields: [
-          { name: 'learnerId', label: 'Child', type: 'select', required: true, options: learners.map((l) => ({ value: l.id, label: l.first_name + ' ' + l.last_name })) },
-          { name: 'assessmentPeriodId', label: 'Period', type: 'select', required: true, options: (page.periods || []).map((p) => ({ value: p.id, label: p.name })) },
-          { name: 'format', label: 'Format', type: 'select', options: ['pdf', 'html'], value: 'pdf' }
-        ] });
+        ctx.openModal({ title: 'Generate progress reports', endpoint: '/assessments/reports/generate', submitLabel: 'Generate reports', size: 'wide',
+          description: 'Choose one child or several. Reports are generated in the background and listed in the report jobs.',
+          fields: [
+            { name: 'learnerIds', label: 'Children', type: 'multiselect', span: 2, required: true, options: R.learnerOptions(learners), placeholder: 'Search children…' },
+            { name: 'assessmentPeriodId', label: 'Period', type: 'select', required: true, options: (page.periods || []).map((p) => ({ value: p.id, label: p.name })) },
+            { name: 'format', label: 'Format', type: 'select', options: [{ value: 'html', label: 'HTML' }, { value: 'csv', label: 'CSV' }], value: 'html' }
+          ] });
       }
     },
 

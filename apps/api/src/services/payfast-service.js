@@ -8,7 +8,10 @@
  * an ITN (Instant Transaction Notification) back to the API.
  *
  * Two signature rules matter and they are different:
- *   - Checkout fields are sorted alphabetically before signing.
+ *   - Checkout fields are signed in the order they appear in PayFast's
+ *     checkout form documentation, and must be posted in that same order.
+ *     Sorting them alphabetically produces a valid-looking hash that PayFast
+ *     rejects with "Generated signature does not match submitted signature".
  *   - ITN fields are signed in the order PayFast posted them.
  * `verifyItn` therefore takes the ordered pairs captured by `readBody`, not a
  * plain object.
@@ -55,11 +58,37 @@ function md5(value) {
   return crypto.createHash('md5').update(value, 'utf8').digest('hex');
 }
 
-function signature(fields, secret = passphrase()) {
-  const keys = Object.keys(fields)
+/**
+ * The order PayFast documents for the custom checkout form. The signature is
+ * calculated over the fields in this order, and the hidden inputs must be
+ * submitted in the same order. Do not sort this list.
+ */
+const CHECKOUT_FIELD_ORDER = [
+  'merchant_id', 'merchant_key', 'return_url', 'cancel_url', 'notify_url',
+  'name_first', 'name_last', 'email_address', 'cell_number',
+  'm_payment_id', 'amount', 'item_name', 'item_description',
+  'custom_int1', 'custom_int2', 'custom_int3', 'custom_int4', 'custom_int5',
+  'custom_str1', 'custom_str2', 'custom_str3', 'custom_str4', 'custom_str5',
+  'email_confirmation', 'confirmation_address', 'payment_method',
+  'subscription_type', 'billing_date', 'recurring_amount', 'frequency', 'cycles'
+];
+
+function orderedKeys(fields) {
+  const positions = new Map(CHECKOUT_FIELD_ORDER.map((key, index) => [key, index]));
+  const insertion = Object.keys(fields);
+  return insertion
     .filter((key) => key !== 'signature')
-    .filter((key) => fields[key] !== undefined && fields[key] !== null && fields[key] !== '')
-    .sort();
+    .filter((key) => fields[key] !== undefined && fields[key] !== null && String(fields[key]).trim() !== '')
+    .sort((left, right) => {
+      const a = positions.has(left) ? positions.get(left) : CHECKOUT_FIELD_ORDER.length;
+      const b = positions.has(right) ? positions.get(right) : CHECKOUT_FIELD_ORDER.length;
+      if (a !== b) return a - b;
+      return insertion.indexOf(left) - insertion.indexOf(right);
+    });
+}
+
+function signature(fields, secret = passphrase()) {
+  const keys = orderedKeys(fields);
   const parts = keys.map((key) => key + '=' + pfEncode(fields[key]));
   if (secret) parts.push('passphrase=' + pfEncode(secret));
   return md5(parts.join('&'));
@@ -103,6 +132,8 @@ function apiBaseUrl(req) {
  * so the SPA can either render a hidden form or link to a GET URL.
  */
 function buildCheckout(options) {
+  // Build the object in the documented field order. PayFast signs the fields
+  // in the order they are posted, so this order is part of the contract.
   const fields = {
     merchant_id: process.env.PAYFAST_MERCHANT_ID || '',
     merchant_key: process.env.PAYFAST_MERCHANT_KEY || '',
@@ -116,20 +147,25 @@ function buildCheckout(options) {
     amount: money(options.amount),
     item_name: String(options.itemName || 'School fees').slice(0, 100),
     item_description: options.itemDescription ? String(options.itemDescription).slice(0, 255) : undefined,
-    email_confirmation: options.email ? '1' : undefined,
-    confirmation_address: options.email || undefined,
     custom_str1: options.organisationId || undefined,
-    custom_str2: options.invoiceId || undefined
+    custom_str2: options.invoiceId || undefined,
+    email_confirmation: options.email ? '1' : undefined,
+    confirmation_address: options.email || undefined
   };
+  // PayFast signs trimmed values. Trim here as well so the value in the form
+  // is byte-for-byte the value that was hashed.
+  for (const key of Object.keys(fields)) {
+    if (fields[key] !== undefined && fields[key] !== null) fields[key] = String(fields[key]).trim();
+  }
   const signed = signature(fields);
+  const ordered = orderedKeys(fields);
   return {
     action: processUrl(),
     method: 'POST',
-    fields: { ...fields, signature: signed },
-    query: Object.keys(fields)
-      .filter((key) => fields[key] !== undefined && fields[key] !== null && fields[key] !== '')
-      .map((key) => encodeURIComponent(key) + '=' + encodeURIComponent(fields[key]))
-      .concat(['signature=' + encodeURIComponent(signed)])
+    fields: Object.assign(ordered.reduce((out, key) => { out[key] = fields[key]; return out; }, {}), { signature: signed }),
+    query: ordered
+      .map((key) => pfEncode(key) + '=' + pfEncode(fields[key]))
+      .concat(['signature=' + pfEncode(signed)])
       .join('&')
   };
 }
@@ -238,6 +274,7 @@ module.exports = {
   processUrl,
   validateUrl,
   pfEncode,
+  CHECKOUT_FIELD_ORDER,
   signature,
   itnSignature,
   buildCheckout,

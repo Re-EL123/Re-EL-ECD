@@ -50,6 +50,7 @@
       const status = o.organisationStatus || {};
       const security = Array.isArray(o.securityBreakdown) ? o.securityBreakdown : [];
       return R.pageHead('Platform overview', 'Every daycare on Re-EL ECD, in one calm view.',
+        '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'broadcast\')">' + R.icon('megaphone') + ' Broadcast</button>' +
         '<a class="btn btn-secondary btn-sm" href="#/platform/health">' + R.icon('activity') + ' System health</a>' +
         '<a class="btn btn-primary btn-sm" href="#/platform/organisations">' + R.icon('building-2') + ' Organisations</a>') +
         '<div class="grid grid-4 section">' +
@@ -86,6 +87,26 @@
           '<a class="btn btn-secondary" style="justify-content:flex-start" href="#/platform/support">' + R.icon('life-buoy') + ' Support workspace</a>' +
           '</div>') +
         '</div></div>';
+    },
+    openModal(ctx, name) {
+      if (name !== 'broadcast') return;
+      const organisations = ((ctx.page && ctx.page.organisations) || []);
+      ctx.openModal({
+        title: 'Broadcast to tenants',
+        description: 'Send an in-app notification and an email to every active member of the selected tenants. Leave the tenants blank to reach every active organisation.',
+        endpoint: '/platform/broadcast',
+        submitLabel: 'Send broadcast',
+        successMessage: 'Broadcast queued',
+        size: 'wide',
+        fields: [
+          { name: 'organisationIds', label: 'Organisations', type: 'multiselect', span: 2,
+            options: organisations.map((o) => ({ value: o.id, label: o.name, subtitle: o.slug })),
+            placeholder: 'Leave blank for every active tenant' },
+          { name: 'title', label: 'Title', required: true, span: 2 },
+          { name: 'message', label: 'Message', type: 'textarea', required: true, span: 2 },
+          { name: 'email', label: 'Also send by email', type: 'checkbox', value: true }
+        ]
+      });
     }
   };
 
@@ -180,10 +201,113 @@
     },
   };
 
+  V.platformUsers = {
+    async load(ctx) {
+      const query = new URLSearchParams();
+      if (ctx.filters.q) query.set('q', ctx.filters.q);
+      if (ctx.filters.status) query.set('status', ctx.filters.status);
+      if (ctx.filters.organisationId) query.set('organisationId', ctx.filters.organisationId);
+      const [users, organisations] = await Promise.all([
+        R.api('GET', '/platform/users' + (query.toString() ? '?' + query : '')),
+        R.api('GET', '/platform/organisations').catch(() => ({ data: [] }))
+      ]);
+      return { rows: users.data || [], meta: users.meta || {}, organisations: organisations.data || [] };
+    },
+    render(ctx, params, page) {
+      const rows = page.rows || [];
+      const canManage = ctx.has('platform.organisations.manage');
+      const statusTone = (status) => status === 'active' ? 'badge-green'
+        : status === 'suspended' ? 'badge-danger'
+          : status === 'invited' ? 'badge-sun' : 'badge-muted';
+      return R.pageHead('Platform users', 'Every account on Re-EL ECD, their tenant memberships and their access state.',
+        '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'broadcast\')">' + R.icon('megaphone') + ' Broadcast</button>') +
+        R.filterBar(R.searchFilter(ctx, 'q', 'Search name or email…') +
+          R.selectFilter(ctx, 'status', [
+            { value: 'active', label: 'Active' },
+            { value: 'invited', label: 'Invited' },
+            { value: 'suspended', label: 'Suspended' },
+            { value: 'disabled', label: 'Disabled' }
+          ], 'All statuses') +
+          R.selectFilter(ctx, 'organisationId', (page.organisations || []).map((o) => ({ value: o.id, label: o.name })), 'All organisations')) +
+        (canManage ? R.bulkBar([
+          { label: 'Activate selected', icon: 'play', path: '/platform/users/bulk', action: 'activate' },
+          { label: 'Suspend selected', icon: 'pause', path: '/platform/users/bulk', action: 'suspend', tone: 'danger' },
+          { label: 'Revoke sessions', icon: 'log-out', path: '/platform/users/bulk', action: 'revoke_sessions' }
+        ], { hint: 'Suspending or disabling an account revokes every active session immediately.' }) : '') +
+        R.table({ rows, selectable: canManage, columns: [
+          { label: 'User', render: (u) => '<div class="row" style="gap:9px">' +
+            '<span class="avatar avatar-xs">' + R.esc(R.initials ? R.initials(u.display_name) : (u.display_name || '?').slice(0, 1)) + '</span>' +
+            '<span><span class="cell-strong">' + R.esc(u.display_name) + '</span><span class="cell-sub">' + R.esc(u.email) + '</span></span></div>' },
+          { label: 'Status', render: (u) => '<span class="badge ' + statusTone(u.status) + '">' + R.esc(R.titleCase(u.status)) + '</span>' +
+            (u.mfa_enabled ? ' <span class="badge badge-green">MFA</span>' : '') },
+          { label: 'Organisations', render: (u) => (u.memberships || []).length
+            ? (u.memberships || []).map((m) => '<a class="badge badge-muted" href="#/platform/organisations/' + R.attr(m.organisation_id) + '">' +
+              R.esc(m.organisation_name) + '</a>').join(' ')
+            : '<span class="muted small">No memberships</span>' },
+          { label: 'Roles', render: (u) => (u.memberships || []).flatMap((m) => m.roles || []).length
+            ? Array.from(new Set((u.memberships || []).flatMap((m) => m.roles || []))).slice(0, 4).map((role) =>
+              '<span class="badge badge-muted mono">' + R.esc(role) + '</span>').join(' ')
+            : '—' },
+          { label: 'Sessions', align: 'right', render: (u) => R.number(u.active_sessions) },
+          { label: 'Last sign-in', render: (u) => u.last_login_at ? '<span class="cell-strong">' + R.date(u.last_login_at) + '</span><span class="cell-sub">' + R.relative(u.last_login_at) + '</span>' : '<span class="muted small">Never</span>' },
+          { label: 'Actions', align: 'right', render: (u) => canManage ? '<div class="btn-group">' +
+            (u.status === 'active'
+              ? '<button class="btn btn-sm btn-danger" @click="openNamedModal(\'userStatus\', ' + R.attr(JSON.stringify(u.id)) + ')">Manage</button>'
+              : '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/platform/users/' + R.attr(u.id) + '/status\',{status:\'active\'},{successMessage:\'User activated\'})">Activate</button>') +
+            '<button class="btn btn-sm btn-secondary" @click="act(\'POST\',\'/platform/users/' + R.attr(u.id) + '/revoke-sessions\',{},{successMessage:\'Sessions revoked\'})">Revoke sessions</button>' +
+            '</div>' : '' }
+        ], emptyTitle: 'No users found', emptyMessage: 'Adjust the filters or invite a tenant owner.' }) +
+        '<div class="muted small" style="margin-top:10px">' + R.number(page.meta.total || rows.length) + ' users</div>';
+    },
+    openModal(ctx, name, id) {
+      if (name === 'broadcast') {
+        const organisations = ((ctx.page && ctx.page.organisations) || []);
+        ctx.openModal({
+          title: 'Broadcast to tenants',
+          description: 'Send an in-app notification and an email to every active member of the selected tenants. Leave the tenants blank to reach every active organisation.',
+          endpoint: '/platform/broadcast',
+          submitLabel: 'Send broadcast',
+          successMessage: 'Broadcast queued',
+          size: 'wide',
+          fields: [
+            { name: 'organisationIds', label: 'Organisations', type: 'multiselect', span: 2,
+              options: organisations.map((o) => ({ value: o.id, label: o.name, subtitle: o.slug })),
+              placeholder: 'Leave blank for every active tenant' },
+            { name: 'title', label: 'Title', required: true, span: 2 },
+            { name: 'message', label: 'Message', type: 'textarea', required: true, span: 2 },
+            { name: 'email', label: 'Also send by email', type: 'checkbox', value: true }
+          ]
+        });
+        return;
+      }
+      if (name === 'userStatus' && id) {
+        const user = ((ctx.page && ctx.page.rows) || []).find((u) => u.id === id);
+        ctx.openModal({
+          title: 'Manage ' + (user ? user.display_name : 'user'),
+          description: 'Suspending or disabling an account revokes every active session immediately. The account keeps its history.',
+          endpoint: '/platform/users/' + encodeURIComponent(id) + '/status',
+          submitLabel: 'Update access',
+          successMessage: 'User access updated',
+          fields: [
+            { name: 'status', label: 'Access status', type: 'select', required: true,
+              options: [
+                { value: 'active', label: 'Active' },
+                { value: 'suspended', label: 'Suspended' },
+                { value: 'disabled', label: 'Disabled' }
+              ], value: user ? user.status : 'active' }
+          ]
+        });
+      }
+    }
+  };
+
   V.platformOrganisationDetail = {
     async load(ctx, params) {
-      const payload = await R.api('GET', '/platform/organisations/' + encodeURIComponent(params.id));
-      return { org: payload.data };
+      const [payload, plans] = await Promise.all([
+        R.api('GET', '/platform/organisations/' + encodeURIComponent(params.id)),
+        R.api('GET', '/platform/plans').catch(() => ({ data: [] }))
+      ]);
+      return { org: payload.data, plans: plans.data || [] };
     },
     render(ctx, params, page) {
       const o = page.org || {};
@@ -192,6 +316,8 @@
       return '<a href="#/platform/organisations" class="muted small">← All organisations</a>' +
         R.pageHead(o.name || 'Organisation', R.esc(o.legal_name || '') + ' · created ' + R.date(o.created_at),
           '<a class="btn btn-secondary btn-sm" href="#/platform/organisations">Back</a>' +
+          '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'broadcastOrg\')">' + R.icon('megaphone') + ' Message tenant</button>' +
+          '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'assignPlan\')">' + R.icon('credit-card') + ' Assign plan</button>' +
           (o.status === 'suspended'
             ? '<button class="btn btn-primary btn-sm" @click="act(\'POST\',\'/platform/organisations/' + R.attr(o.id) + '/restore\',{},{successMessage:\'Organisation restored\'})">Restore access</button>'
             : '<button class="btn btn-danger btn-sm" @click="openNamedModal(\'suspendOrg\', ' + R.attr(JSON.stringify(o.id)) + ')">Suspend</button>')) +
@@ -231,7 +357,46 @@
         '</div></div>';
     },
     openModal(ctx, name, id) {
-      if (name === 'suspendOrg') openSuspendOrgModal(ctx, id || (ctx.page && ctx.page.org && ctx.page.org.id));
+      const org = (ctx.page && ctx.page.org) || {};
+      if (name === 'suspendOrg') {
+        openSuspendOrgModal(ctx, id || org.id);
+        return;
+      }
+      if (name === 'broadcastOrg') {
+        ctx.openModal({
+          title: 'Message ' + (org.name || 'tenant'),
+          description: 'Send an in-app notification and an email to every active member of this organisation.',
+          endpoint: '/platform/broadcast',
+          submitLabel: 'Send message',
+          successMessage: 'Message sent',
+          size: 'wide',
+          fields: [
+            { name: 'title', label: 'Title', required: true, span: 2 },
+            { name: 'message', label: 'Message', type: 'textarea', required: true, span: 2 },
+            { name: 'email', label: 'Also send by email', type: 'checkbox', value: true }
+          ],
+          transform: (data) => Object.assign({}, data, { organisationIds: [org.id] })
+        });
+        return;
+      }
+      if (name === 'assignPlan') {
+        const plans = ((ctx.page && ctx.page.plans) || []).filter((plan) => plan.status === 'active');
+        ctx.openModal({
+          title: 'Assign a plan',
+          description: 'The current subscription is replaced and the tenant sees the new limits immediately.',
+          endpoint: '/platform/organisations/' + encodeURIComponent(org.id) + '/subscription',
+          submitLabel: 'Assign plan',
+          successMessage: 'Subscription assigned',
+          fields: [
+            { name: 'planId', label: 'Plan', type: 'select', required: true,
+              options: plans.map((plan) => ({ value: plan.id, label: plan.name + ' · ' + R.money(plan.monthly_price, plan.currency) + '/mo' })) },
+            { name: 'status', label: 'Status', type: 'select',
+              options: [{ value: 'active', label: 'Active' }, { value: 'trial', label: 'Trial' }, { value: 'past_due', label: 'Past due' }], value: 'active' },
+            { name: 'billingPeriod', label: 'Billing period', type: 'select',
+              options: [{ value: 'monthly', label: 'Monthly' }, { value: 'annual', label: 'Annual' }], value: 'monthly' }
+          ]
+        });
+      }
     },
   };
 
@@ -655,10 +820,42 @@
           { label: 'Status', render: (c) => R.badge(c.status) },
           { label: 'Access until', render: (c) => c.access_granted_until ? R.dateTime(c.access_granted_until) : '—' },
           { label: 'Opened', render: (c) => R.date(c.created_at) },
-          { label: 'Description', render: (c) => '<span class="muted small">' + R.esc(R.truncate(c.description, 80)) + '</span>' }
+          { label: 'Description', render: (c) => '<span class="muted small">' + R.esc(R.truncate(c.description, 80)) + '</span>' },
+          { label: 'Actions', align: 'right', render: (c) => '<div class="btn-group">' +
+            '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'editCase\', ' + R.attr(JSON.stringify(c.id)) + ')">Update</button>' +
+            (c.status !== 'resolved' && c.status !== 'closed'
+              ? '<button class="btn btn-sm btn-primary" @click="act(\'PATCH\',\'/platform/support-cases/' + R.attr(c.id) + '\',{status:\'resolved\'},{successMessage:\'Case resolved\'})">Resolve</button>'
+              : '') +
+            '</div>' }
         ], emptyTitle: 'No support cases', emptyMessage: 'Raise a case when a tenant needs hands-on help.' }));
     },
-    openModal(ctx, name) {
+    openModal(ctx, name, id) {
+      if (name === 'editCase' && id) {
+        const supportCase = ((ctx.page && ctx.page.cases) || []).find((c) => c.id === id);
+        ctx.openModal({
+          title: 'Update support case',
+          endpoint: '/platform/support-cases/' + encodeURIComponent(id),
+          method: 'PATCH',
+          submitLabel: 'Save case',
+          successMessage: 'Case updated',
+          fields: [
+            { name: 'subject', label: 'Subject', required: true, value: supportCase ? supportCase.subject : '' },
+            { name: 'status', label: 'Status', type: 'select', value: supportCase ? supportCase.status : 'open',
+              options: [
+                { value: 'open', label: 'Open' },
+                { value: 'in_progress', label: 'In progress' },
+                { value: 'resolved', label: 'Resolved' },
+                { value: 'closed', label: 'Closed' }
+              ] },
+            { name: 'accessGrantedUntil', label: 'Access granted until', type: 'datetime-local',
+              value: supportCase && supportCase.access_granted_until
+                ? String(supportCase.access_granted_until).slice(0, 16) : '',
+              help: 'Leave blank to withdraw support access.' },
+            { name: 'description', label: 'Description', type: 'textarea', span: 2, value: supportCase ? (supportCase.description || '') : '' }
+          ]
+        });
+        return;
+      }
       if (name !== 'newCase') return;
       ctx.openModal({
         title: 'New support case',

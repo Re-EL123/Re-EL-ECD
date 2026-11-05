@@ -52,7 +52,8 @@ async function learnerName(db, invoice) {
 async function createPaymentIntent(db, options) {
   const {
     organisation, invoice = null, guardian = null, amount, createdBy, req, currency,
-    scope = 'parent', itemName, itemDescription, purpose = 'invoice', metadata = {}, payer = null
+    scope = 'parent', itemName, itemDescription, purpose = 'invoice', metadata = {}, payer = null,
+    returnUrl, cancelUrl
   } = options;
   const reference = payfast.newReference();
   const value = Math.round(Number(amount) * 100) / 100;
@@ -76,8 +77,8 @@ async function createPaymentIntent(db, options) {
     nameLast: contact ? (contact.last_name || '') : 'Guardian',
     organisationId: organisation.id,
     invoiceId: invoice ? invoice.id : undefined,
-    returnUrl: urls.returnUrl,
-    cancelUrl: urls.cancelUrl,
+    returnUrl: returnUrl || urls.returnUrl,
+    cancelUrl: cancelUrl || urls.cancelUrl,
     notifyUrl: urls.notifyUrl
   });
   return { intent, checkout };

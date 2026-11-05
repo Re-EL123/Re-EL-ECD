@@ -140,17 +140,12 @@
             { name: 'severity', label: 'Severity', type: 'select', required: true, options: SEVERITIES.map((s) => ({ value: s, label: R.titleCase(s) })) },
             { name: 'occurredAt', label: 'When', type: 'datetime-local', value: new Date().toISOString().slice(0, 16) },
             { name: 'locationDescription', label: 'Location', placeholder: 'Outdoor play area' },
-            { name: 'learnerId', label: 'Child involved', type: 'select', options: (page.learners || []).map((l) => ({ value: l.id, label: l.first_name + ' ' + l.last_name })) },
+            { name: 'learnerIds', label: 'Children involved', type: 'multiselect', span: 2, options: R.learnerOptions(page.learners), placeholder: 'Search children…' },
+            { name: 'staffIds', label: 'Staff involved', type: 'multiselect', span: 2, options: R.staffOptions(page.staff), placeholder: 'Search staff…' },
             { name: 'description', label: 'What happened', type: 'textarea', required: true, span: 2 },
             { name: 'attachmentUrls', label: 'Photos or files', type: 'media', multiple: true, scope: 'incident', accept: 'image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/webm,video/quicktime,audio/mpeg,application/pdf,text/plain,text/csv', span: 2, help: 'Add photos, video, audio or documents that support the record.' },
             { name: 'restricted', label: 'Restrict access', type: 'checkbox', value: false, help: 'Limit to management until reviewed' }
-          ],
-          transform: (data) => {
-            const body = Object.assign({}, data);
-            body.learnerIds = body.learnerId ? [body.learnerId] : [];
-            delete body.learnerId;
-            return body;
-          }
+          ]
         });
       } else if (name === 'incidentStatus' && id) {
         const incident = (page.rows || []).find((i) => i.id === id) || {};

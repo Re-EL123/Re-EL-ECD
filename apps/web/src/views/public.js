@@ -63,6 +63,7 @@
     { key: 'about', label: 'About', path: 'about' },
     { key: 'programmes', label: 'Programmes', path: 'programmes' },
     { key: 'admissions', label: 'Admissions', path: 'admissions' },
+    { key: 'forms', label: 'Forms', path: 'forms' },
     { key: 'gallery', label: 'Gallery', path: 'gallery' },
     { key: 'contact', label: 'Contact', path: 'contact' }
   ];
@@ -249,7 +250,7 @@
       '<div><div class="site-eyebrow">Admissions</div><h2>' + R.esc(title) + '</h2>' +
       '<p>' + R.esc((admissions && admissions.intro) || ('Enquire about a place at ' + (org.name || 'our centre') + '. We will reply by email and arrange a visit.')) + '</p></div>' +
       '<div class="site-actions"><a class="btn btn-primary" href="#/site/' + R.attr(slug) + '/apply">Enquire about a place</a>' +
-      '<a class="btn btn-secondary" href="' + R.attr(siteHref(slug, 'contact')) + '">Contact us</a></div>' +
+      '<a class="btn btn-secondary" href="' + R.attr(siteHref(slug, 'forms')) + '">Forms and payments</a></div>' +
       '</div></section>';
   }
 
@@ -592,18 +593,72 @@
     }
   };
 
+  V.publicForms = {
+    async load(ctx, params) {
+      ctx.publicSlug = params.slug;
+      ctx.siteMenuOpen = false;
+      ctx.publicResult = null;
+      ctx.publicError = null;
+      const payload = await R.api('GET', '/public/daycares/' + encodeURIComponent(params.slug));
+      return payload.data || {};
+    },
+
+    render(ctx, params, page) {
+      const org = page.organisation || {};
+      const branding = page.branding || {};
+      const content = page.content || {};
+      const forms = page.forms || [];
+      const slug = params.slug || org.slug || '';
+      const card = (form) => {
+        const payment = form.payment || {};
+        return '<article class="public-card site-form-card">' +
+          '<div class="site-eyebrow">' + R.esc(R.titleCase(form.formType || 'form')) + '</div>' +
+          '<h3>' + R.esc(form.name) + '</h3>' +
+          '<p class="muted small">' + R.esc(form.description || 'Complete this form online. The centre will review your response.') + '</p>' +
+          (payment.enabled
+            ? '<div class="site-pay-summary">' + R.icon('credit-card') + '<span>Pay ' +
+              R.esc(R.money(payment.amount, payment.currency || 'ZAR')) + ' with PayFast</span></div>'
+            : '<span class="badge badge-muted">No payment required</span>') +
+          '<div class="site-form-foot"><a class="btn btn-primary" href="#/site/' + R.attr(slug) + '/forms/' +
+            R.attr(form.slug) + '">Open form</a></div></article>';
+      };
+      return '<div class="public site" ' + R.themeStyle(branding) + '>' +
+        siteNav(slug, 'forms', org) +
+        '<section class="site-section"><div class="site-wrap">' +
+        sectionHead('Forms', 'Complete a form online',
+          'Enrolment, medical updates, consent and payments in one place. Everything you submit goes straight to the centre office.') +
+        (forms.length
+          ? '<div class="site-form-list">' + forms.map(card).join('') + '</div>'
+          : '<div class="site-empty">There are no public forms available right now. Please contact the centre and the team will help you.</div>') +
+        '<div class="site-section-foot"><a class="btn btn-secondary" href="' + R.attr(siteHref(slug, 'admissions')) + '">Admissions</a>' +
+        '<a class="btn btn-primary" href="' + R.attr(siteHref(slug, 'home')) + '">Back to home</a></div>' +
+        '</div></section>' + siteFooter(slug, org, content) + '</div>';
+    }
+  };
+
   V.publicForm = {
     async load(ctx, params) {
       const payload = await R.api('GET', '/public/forms/' + encodeURIComponent(params.slug) + '/' + encodeURIComponent(params.formSlug));
+      const data = payload.data || {};
+      const fields = ((data.form && data.form.schema_json) || {}).fields || [];
       ctx.publicFormData = {};
-      (payload.data.form.schema_json.fields || []).forEach((f) => { ctx.publicFormData[f.key] = f.type === 'checkbox' ? false : ''; });
-      ctx.publicResult = null;
+      fields.forEach((f) => {
+        ctx.publicFormData[f.key] = f.type === 'checkbox' ? false : '';
+      });
+      ctx.publicPayerEmail = '';
+      ctx.publicPayerName = '';
+      ctx.publicCheckout = null;
+      ctx.publicResult = (ctx.query && ctx.query.payment === 'return')
+        ? 'Thank you. If your payment completed, the centre will confirm it shortly.'
+        : null;
       ctx.publicError = null;
       ctx.siteMenuOpen = false;
-      return payload.data;
+      return data;
     },
     render(ctx, params, page) {
-      const fields = (page.form.schema_json && page.form.schema_json.fields) || [];
+      const form = page.form || {};
+      const fields = (form.schema_json && form.schema_json.fields) || [];
+      const payment = form.payment || {};
       const branding = page.branding || {};
       const org = page.organisation || {};
       const input = (field) => {
@@ -617,17 +672,34 @@
         if (field.type === 'phone') return '<input class="input" type="tel" x-model="' + model + '" ' + (field.required ? 'required' : '') + '>';
         return '<input class="input" type="text" x-model="' + model + '" ' + (field.required ? 'required' : '') + '>';
       };
+      const hasEmailField = fields.some((field) => field.type === 'email');
       return '<div class="public site" ' + R.themeStyle(branding) + '>' +
-        siteNav(params.slug, null, org) +
+        siteNav(params.slug, 'forms', org) +
         '<section class="site-section"><div class="site-wrap site-narrow">' +
-        '<a href="' + R.attr(siteHref(params.slug, 'home')) + '" class="muted small">← Back to website</a>' +
+        '<a href="' + R.attr(siteHref(params.slug, 'forms')) + '" class="muted small">← All forms</a>' +
         '<div class="site-eyebrow" style="margin-top:20px">Form</div>' +
-        '<h1>' + R.esc(page.form.name) + '</h1><p class="lede">' + R.esc(page.form.description || '') + '</p>' +
+        '<h1>' + R.esc(form.name) + '</h1><p class="lede">' + R.esc(form.description || '') + '</p>' +
+        (payment.enabled
+          ? '<div class="site-pay-summary" style="margin-top:12px">' + R.icon('credit-card') +
+            '<span>' + R.esc(R.money(payment.amount, payment.currency || 'ZAR')) +
+            (payment.required === false ? ' · optional payment' : ' · payment required') + ' · secure PayFast checkout</span></div>'
+          : '') +
         '<div class="alert alert-success" x-show="publicResult" style="margin-top:12px"><i data-lucide="check-circle"></i><span x-text="publicResult"></span></div>' +
         '<div class="alert alert-danger" x-show="publicError" style="margin-top:12px"><i data-lucide="alert-circle"></i><span x-text="publicError"></span></div>' +
         '<div class="card glass site-form-card" style="margin-top:16px"><form @submit.prevent="submitPublicForm($event, \'' + R.attr(params.slug) + '\', \'' + R.attr(params.formSlug) + '\')">' +
         (fields.length ? fields.map((f) => '<div class="field"><label>' + R.esc(f.label) + (f.required ? ' *' : '') + '</label>' + input(f) + (f.helpText ? '<div class="hint">' + R.esc(f.helpText) + '</div>' : '') + '</div>').join('') : '<p class="muted">This form has no fields yet.</p>') +
-        '<button class="btn btn-primary" type="submit">Submit</button></form></div>' +
+        (payment.enabled && payment.available && !hasEmailField
+          ? '<div class="form-grid"><div class="field"><label>Email for the receipt</label><input class="input" type="email" x-model="publicPayerEmail" placeholder="you@example.com"></div>' +
+            '<div class="field"><label>Name on the payment</label><input class="input" x-model="publicPayerName" placeholder="Your name"></div></div>'
+          : '') +
+        '<div class="field span-2" style="position:absolute;left:-9999px" aria-hidden="true"><label>Website</label><input class="input" tabindex="-1" autocomplete="off" x-model="publicFormData.website"></div>' +
+        '<button class="btn btn-primary" type="submit">' + (payment.enabled && payment.available ? 'Submit and pay' : 'Submit') + '</button>' +
+        '</form>' +
+        (payment.enabled && !payment.available
+          ? '<div class="alert alert-warning" style="margin-top:12px"><i data-lucide="alert-triangle"></i><span>Online payment is not available yet. Submit the form and the centre will send a payment link.</span></div>'
+          : '') +
+        '<div x-show="publicCheckout" style="margin-top:12px"><button type="button" class="btn btn-primary" @click="submitCheckout(publicCheckout)">' + R.icon('credit-card') + ' Pay now with PayFast</button></div>' +
+        '</div>' +
         '</div></section>' + siteFooter(params.slug, org, {}) + '</div>';
     }
   };

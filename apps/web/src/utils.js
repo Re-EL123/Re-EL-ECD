@@ -877,6 +877,34 @@
     return rows.filter((c) => c && c.name).map((c) => ({ value: c.id, label: c.name }));
   }
 
+  function staffOptions(rows) {
+    return (rows || []).filter((s) => s && s.id).map((s) => ({
+      value: s.id,
+      label: s.display_name || s.name || s.employee_reference || 'Staff member',
+      subtitle: s.job_title || s.employee_reference || '',
+      avatarUrl: s.avatar_url || s.avatarUrl || null
+    }));
+  }
+
+  function learnerOptions(rows) {
+    return (rows || []).filter((l) => l && l.id).map((l) => ({
+      value: l.id,
+      label: [l.first_name, l.last_name].filter(Boolean).join(' ') || 'Child',
+      subtitle: l.classroom_name || l.classroomName || l.room_name || '',
+      avatarUrl: l.photo_url || l.avatar_url || l.photoUrl || null
+    }));
+  }
+
+  function memberOptions(rows, options) {
+    const valueKey = (options && options.valueKey) || 'user_id';
+    return (rows || []).filter((m) => m && (m[valueKey] || m.id)).map((m) => ({
+      value: m[valueKey] || m.id,
+      label: m.display_name || m.email || 'Member',
+      subtitle: m.email || (m.roles || []).map((r) => r.role || r.role_key).join(', '),
+      avatarUrl: m.avatar_url || m.avatarUrl || null
+    }));
+  }
+
   function searchFilter(ctx, key, placeholder) {
     return '<div class="search-box">' + icon('search') + '<input class="input" type="search" placeholder="' + attr(placeholder || 'Search…') +
       '" value="' + attr((ctx.filters || {})[key] || '') + '" @input.debounce.350ms="setFilter(\'' + attr(key) + '\', $event.target.value)"></div>';
@@ -901,6 +929,9 @@
   Reel.pager = pager;
   Reel.branchOptions = branchOptions;
   Reel.classroomOptions = classroomOptions;
+  Reel.staffOptions = staffOptions;
+  Reel.learnerOptions = learnerOptions;
+  Reel.memberOptions = memberOptions;
   Reel.searchFilter = searchFilter;
   Reel.selectFilter = selectFilter;
   Reel.trend = trend;

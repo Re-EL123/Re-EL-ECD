@@ -112,69 +112,95 @@ function register(router) {
 
   router.post('/access/memberships/:id/roles', async (ctx) => {
     const body = validate(ctx.body, {
-      roleKey: { type: 'string', min: 2, max: 100 },
+      roleKey: { type: 'string', min: 2, max: 100, optional: true },
+      roleKeys: { type: 'array', of: 'string', max: 20, optional: true },
       branchId: { type: 'string', uuid: true, optional: true },
+      branchIds: { type: 'array', of: 'uuid', max: 50, optional: true },
       expiresAt: { type: 'string', datetime: true, optional: true }
     });
     const membership = await ctx.db.one('SELECT * FROM memberships WHERE id = $1 AND organisation_id = $2',
       [ctx.params.id, ctx.organisationId]);
     if (!membership) throw new AppError('NOT_FOUND');
-    const role = await ctx.db.one('SELECT * FROM roles WHERE role_key = $1', [body.roleKey]);
-    if (!role) fail('VALIDATION', [{ field: 'roleKey', message: 'Unknown role.' }]);
-    if (role.scope_type === 'platform' && ctx.organisation.slug !== 're-el-platform') {
-      fail('FORBIDDEN', null, 'Platform roles cannot be granted inside a daycare organisation.');
-    }
-    if ((ROLE_HIERARCHY[body.roleKey] || 0) > (await actorRank(ctx))) fail('FORBIDDEN', null, 'Cannot grant a higher role.');
-    if (body.branchId) {
+    const roleKeys = body.roleKeys && body.roleKeys.length
+      ? Array.from(new Set(body.roleKeys))
+      : (body.roleKey ? [body.roleKey] : []);
+    if (!roleKeys.length) fail('VALIDATION', [{ field: 'roleKeys', message: 'Choose at least one role.' }]);
+    const branchIds = body.branchIds && body.branchIds.length
+      ? Array.from(new Set(body.branchIds))
+      : (body.branchId ? [body.branchId] : [null]);
+    for (const branchId of branchIds) {
+      if (!branchId) continue;
       const branch = await ctx.db.one('SELECT id FROM branches WHERE id = $1 AND organisation_id = $2',
-        [body.branchId, ctx.organisationId]);
-      if (!branch) fail('VALIDATION', [{ field: 'branchId', message: 'Unknown branch.' }]);
+        [branchId, ctx.organisationId]);
+      if (!branch) fail('VALIDATION', [{ field: 'branchIds', message: 'Unknown branch.' }]);
     }
-
-    // One active grant per person, role and branch. Without this check a
-    // double-click or a repeated submit silently stacked identical rows, which
-    // the members list then rendered as duplicate role chips.
-    const existing = await ctx.db.one(
-      `SELECT * FROM membership_roles
-       WHERE membership_id = $1 AND role_id = $2 AND status = 'active'
-         AND (($3::uuid IS NULL AND branch_id IS NULL) OR branch_id = $3::uuid)
-       ORDER BY granted_at DESC
-       LIMIT 1`,
-      [membership.id, role.id, body.branchId || null]
-    );
-    if (existing) {
-      const live = !existing.expires_at || new Date(existing.expires_at) > new Date();
-      if (live) {
-        fail('CONFLICT', null, 'This person already has that role' +
-          (body.branchId ? ' for this branch.' : '.'));
+    const actor = await actorRank(ctx);
+    const roles = [];
+    for (const roleKey of roleKeys) {
+      const role = await ctx.db.one('SELECT * FROM roles WHERE role_key = $1', [roleKey]);
+      if (!role) fail('VALIDATION', [{ field: 'roleKeys', message: `Unknown role: ${roleKey}` }]);
+      if (role.scope_type === 'platform' && ctx.organisation.slug !== 're-el-platform') {
+        fail('FORBIDDEN', null, 'Platform roles cannot be granted inside a daycare organisation.');
       }
-      // An expired row still occupies the active slot. Reuse it for the new
-      // grant rather than failing or leaving a stale duplicate behind.
-      const revived = await ctx.db.one(
-        `UPDATE membership_roles
-         SET granted_by = $2, granted_at = now(), expires_at = $3
-         WHERE id = $1 RETURNING *`,
-        [existing.id, ctx.user.id, body.expiresAt || null]
-      );
-      invalidateAccess(membership.user_id, ctx.organisationId);
-      await recordAudit(ctx.db, ctx, {
-        action: 'access.role_assigned', resourceType: 'membership', resourceId: membership.id,
-        metadata: { roleKey: body.roleKey, branchId: body.branchId || null, renewed: true }
-      });
-      return revived;
+      if ((ROLE_HIERARCHY[roleKey] || 0) > actor) fail('FORBIDDEN', null, 'Cannot grant a higher role.');
+      roles.push({ roleKey, role });
     }
 
-    const assignment = await ctx.db.one(
-      `INSERT INTO membership_roles (membership_id, role_id, branch_id, granted_by, expires_at, status)
-       VALUES ($1,$2,$3,$4,$5,'active') RETURNING *`,
-      [membership.id, role.id, body.branchId || null, ctx.user.id, body.expiresAt || null]
-    );
+    const granted = [];
+    const skipped = [];
+    for (const entry of roles) {
+      for (const branchId of branchIds) {
+        // One active grant per person, role and branch. Without this check a
+        // double-click or a repeated submit silently stacked identical rows,
+        // which the members list then rendered as duplicate role chips.
+        const existing = await ctx.db.one(
+          `SELECT * FROM membership_roles
+           WHERE membership_id = $1 AND role_id = $2 AND status = 'active'
+             AND (($3::uuid IS NULL AND branch_id IS NULL) OR branch_id = $3::uuid)
+           ORDER BY granted_at DESC
+           LIMIT 1`,
+          [membership.id, entry.role.id, branchId || null]
+        );
+        if (existing) {
+          const live = !existing.expires_at || new Date(existing.expires_at) > new Date();
+          if (live) {
+            skipped.push({ roleKey: entry.roleKey, branchId: branchId || null, reason: 'already granted' });
+            continue;
+          }
+          const revived = await ctx.db.one(
+            `UPDATE membership_roles
+             SET granted_by = $2, granted_at = now(), expires_at = $3
+             WHERE id = $1 RETURNING *`,
+            [existing.id, ctx.user.id, body.expiresAt || null]
+          );
+          granted.push(revived);
+          await recordAudit(ctx.db, ctx, {
+            action: 'access.role_assigned', resourceType: 'membership', resourceId: membership.id,
+            metadata: { roleKey: entry.roleKey, branchId: branchId || null, renewed: true }
+          });
+          continue;
+        }
+        const assignment = await ctx.db.one(
+          `INSERT INTO membership_roles (membership_id, role_id, branch_id, granted_by, expires_at, status)
+           VALUES ($1,$2,$3,$4,$5,'active') RETURNING *`,
+          [membership.id, entry.role.id, branchId || null, ctx.user.id, body.expiresAt || null]
+        );
+        granted.push(assignment);
+        await recordAudit(ctx.db, ctx, {
+          action: 'access.role_assigned', resourceType: 'membership', resourceId: membership.id,
+          metadata: { roleKey: entry.roleKey, branchId: branchId || null }
+        });
+      }
+    }
+    if (!granted.length) {
+      fail('CONFLICT', null, skipped.length && skipped[0].reason === 'already granted'
+        ? 'This person already has that role' + (branchIds.length === 1 && branchIds[0] ? ' for this branch.' : '.')
+        : 'No roles were granted.');
+    }
     invalidateAccess(membership.user_id, ctx.organisationId);
-    await recordAudit(ctx.db, ctx, {
-      action: 'access.role_assigned', resourceType: 'membership', resourceId: membership.id,
-      metadata: { roleKey: body.roleKey, branchId: body.branchId || null }
-    });
-    return assignment;
+    // A single role/branch keeps the original response shape.
+    if (granted.length === 1 && !body.roleKeys && !body.branchIds) return granted[0];
+    return { assignments: granted, skipped, granted: granted.length };
   }, { permission: 'access.manage.daycare' });
 
   router.delete('/access/memberships/:id/roles/:roleId', async (ctx) => {

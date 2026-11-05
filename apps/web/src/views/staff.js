@@ -63,14 +63,8 @@
           { name: 'employeeReference', label: 'Employee reference', required: true, placeholder: 'EMP-011' },
           { name: 'jobTitle', label: 'Job title', required: true },
           { name: 'startDate', label: 'Start date', type: 'date', value: R.today() },
-          { name: 'classroomId', label: 'Primary classroom', type: 'select', options: R.classroomOptions(ctx.page) }
-        ],
-        transform: (data) => {
-          const body = Object.assign({}, data);
-          if (body.classroomId) body.classroomIds = [body.classroomId];
-          delete body.classroomId;
-          return body;
-        }
+          { name: 'classroomIds', label: 'Classrooms', type: 'multiselect', span: 2, options: R.classroomOptions(ctx.page), placeholder: 'Search classrooms…', help: 'A staff member can work across more than one room.' }
+        ]
       });
     }
   };
@@ -163,9 +157,10 @@
         ] });
       } else if (name === 'classrooms') {
         const options = (ctx.page.classrooms || []).map((c) => ({ value: c.id, label: c.name }));
-        ctx.openModal({ title: 'Assign classrooms', endpoint: '/staff/' + s.id + '/classrooms', method: 'POST', submitLabel: 'Save assignments', fields: [
-          { name: 'classroomId', label: 'Primary classroom', type: 'select', options, value: ((s.classrooms || [])[0] || {}).id }
-        ], transform: (data) => ({ classroomIds: data.classroomId ? [data.classroomId] : [] }) });
+        ctx.openModal({ title: 'Assign classrooms', endpoint: '/staff/' + s.id + '/classrooms', method: 'POST', submitLabel: 'Save assignments', size: 'wide', fields: [
+          { name: 'classroomIds', label: 'Classrooms', type: 'multiselect', span: 2, options,
+            value: (s.classrooms || []).map((c) => c.id), placeholder: 'Search classrooms…' }
+        ], transform: (data) => ({ classroomIds: data.classroomIds || [] }) });
       }
     }
   };
@@ -206,7 +201,7 @@
     openModal(ctx, name) {
       if (name !== 'shift') return;
       ctx.openModal({ title: 'Add shift', endpoint: '/shifts', submitLabel: 'Create shift', size: 'wide', fields: [
-        { name: 'staffId', label: 'Staff member', type: 'select', required: true, options: (ctx.page.staff || []).map((s) => ({ value: s.id, label: s.display_name + ' · ' + s.job_title })) },
+        { name: 'staffIds', label: 'Staff members', type: 'multiselect', span: 2, required: true, options: R.staffOptions(ctx.page.staff), placeholder: 'Search staff…', help: 'Create the same shift for one or several staff members at once.' },
         { name: 'branchId', label: 'Branch', type: 'select', required: true, options: R.branchOptions(ctx) },
         { name: 'shiftDate', label: 'Date', type: 'date', required: true, value: R.today() },
         { name: 'startsAt', label: 'Starts at', type: 'datetime-local', required: true },
