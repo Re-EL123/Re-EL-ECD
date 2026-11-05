@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **304 routes** across 17 modules.
+Generated from the router: **311 routes** across 17 modules.
 
 ## Access
 
@@ -216,6 +216,7 @@ Generated from the router: **304 routes** across 17 modules.
 | GET | `/forms` | forms.read.daycare OR forms.submissions.review.daycare |
 | POST | `/forms` | forms.manage.daycare |
 | GET | `/forms/:id` | forms.read.daycare OR forms.manage.daycare |
+| PATCH | `/forms/:id` | forms.manage.daycare |
 | POST | `/forms/:id/archive` | forms.manage.daycare |
 | POST | `/forms/:id/publish` | forms.manage.daycare |
 | GET | `/forms/:id/submissions` | forms.submissions.review.daycare |
@@ -407,6 +408,7 @@ Generated from the router: **304 routes** across 17 modules.
 | Method | Path | Access |
 | --- | --- | --- |
 | GET | `/platform/audit-events` | Platform only · platform.audit.read |
+| POST | `/platform/broadcast` | Platform only · platform.organisations.manage |
 | GET | `/platform/features` | Platform only · platform.organisations.read |
 | PATCH | `/platform/features/:key` | Platform only · platform.features.manage |
 | GET | `/platform/health` | Platform only · platform.health.read |
@@ -429,6 +431,11 @@ Generated from the router: **304 routes** across 17 modules.
 | GET | `/platform/subscriptions` | Platform only · platform.subscriptions.read |
 | GET | `/platform/support-cases` | Platform only · platform.support.manage |
 | POST | `/platform/support-cases` | Platform only · platform.support.manage |
+| PATCH | `/platform/support-cases/:id` | Platform only · platform.support.manage |
+| GET | `/platform/users` | Platform only · platform.organisations.read |
+| POST | `/platform/users/:id/revoke-sessions` | Platform only · platform.organisations.manage |
+| POST | `/platform/users/:id/status` | Platform only · platform.organisations.manage |
+| POST | `/platform/users/bulk` | Platform only · platform.organisations.manage |
 
 ## Public
 
