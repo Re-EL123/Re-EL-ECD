@@ -146,6 +146,8 @@ static output. Configure these environment variables in Vercel:
 | `PAYFAST_SANDBOX` | No | `true` uses `sandbox.payfast.co.za`. |
 | `PAYFAST_IP_ALLOWLIST` | No | Comma-separated IPs allowed to post ITNs. |
 | `PAYFAST_VALIDATE` | No | Defaults to `true` (server-to-server ITN confirmation). |
+| `PAYMENT_CREDENTIALS_KEY` | For tenant-owned PayFast accounts | Long random string (32+ characters). Encrypts tenant merchant keys, passphrases and payout account numbers at rest. Generate one with `openssl rand -base64 32`; never reuse it across deployments because existing ciphertext cannot be opened with a different key. |
+| `CRON_SECRET` | For subscription reminders | Shared secret for `GET /api/v1/internal/subscription-reminders`. Any scheduler that knows it can flip past-due subscriptions and email owners a reminder. Leave unset to disable the endpoint (it returns 404). |
 | `R2_ACCOUNT_ID` | For media | Cloudflare account id. Used to derive the R2 S3 endpoint. |
 | `R2_ACCESS_KEY_ID` | For media | R2 S3 access key id. |
 | `R2_SECRET_ACCESS_KEY` | For media | R2 S3 secret access key. |
@@ -316,6 +318,25 @@ account is live. PayFast must be able to reach the public API URL; set
 
 The webhook is idempotent: the same `pf_payment_id` and status is only
 processed once, and a duplicate ITN returns `200 DUPLICATE`.
+
+Two deployment choices affect who holds tenant money:
+
+- **Tenant pays Re-EL.** Organisations pay their subscription from
+  Settings → Billing. The checkout is charged to the platform account and the
+  ITN extends the subscription and settles the invoice. An owner who is used
+  to paying by EFT can have the platform record the payment manually from
+  Platform → Subscriptions (or Organisation → Record payment).
+- **Tenant collects parent fees.** By default the platform collects and then
+  pays each tenant by EFT (Platform → Settlements), minus the collection fee
+  configured in the tenant's payment account. Alternatively the tenant can
+  connect their **own** PayFast merchant account in Settings → Billing —
+  checkouts then sign with the tenant's credentials and PayFast settles
+  directly to the tenant's bank account. Tenant credentials require
+  `PAYMENT_CREDENTIALS_KEY` on production (see the environment table). Any
+  scheduler can point at `GET /api/v1/internal/subscription-reminders` with
+  `Authorization: Bearer <CRON_SECRET>` to flip past-due subscriptions and
+  email owners a weekly reminder; without `CRON_SECRET` the endpoint returns
+  404 and nothing happens.
 
 Deploy with the Vercel Git integration (recommended) or:
 

@@ -303,11 +303,12 @@
 
   V.platformOrganisationDetail = {
     async load(ctx, params) {
-      const [payload, plans] = await Promise.all([
+      const [payload, plans, paymentAccount] = await Promise.all([
         R.api('GET', '/platform/organisations/' + encodeURIComponent(params.id)),
-        R.api('GET', '/platform/plans').catch(() => ({ data: [] }))
+        R.api('GET', '/platform/plans').catch(() => ({ data: [] })),
+        R.api('GET', '/platform/organisations/' + encodeURIComponent(params.id) + '/payment-account').catch(() => ({ data: null }))
       ]);
-      return { org: payload.data, plans: plans.data || [] };
+      return { org: payload.data, plans: plans.data || [], paymentAccount: paymentAccount.data || null };
     },
     render(ctx, params, page) {
       const o = page.org || {};
@@ -318,6 +319,8 @@
           '<a class="btn btn-secondary btn-sm" href="#/platform/organisations">Back</a>' +
           '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'broadcastOrg\')">' + R.icon('megaphone') + ' Message tenant</button>' +
           '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'assignPlan\')">' + R.icon('credit-card') + ' Assign plan</button>' +
+          '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'manualSubscriptionPayment\')">' + R.icon('wallet') + ' Record payment</button>' +
+          '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'paymentAccount\')">' + R.icon('banknote') + ' Payment account</button>' +
           (o.status === 'suspended'
             ? '<button class="btn btn-primary btn-sm" @click="act(\'POST\',\'/platform/organisations/' + R.attr(o.id) + '/restore\',{},{successMessage:\'Organisation restored\'})">Restore access</button>'
             : '<button class="btn btn-danger btn-sm" @click="openNamedModal(\'suspendOrg\', ' + R.attr(JSON.stringify(o.id)) + ')">Suspend</button>')) +
@@ -396,6 +399,58 @@
               options: [{ value: 'monthly', label: 'Monthly' }, { value: 'annual', label: 'Annual' }], value: 'monthly' }
           ]
         });
+        return;
+      }
+      if (name === 'manualSubscriptionPayment') {
+        ctx.openModal({
+          title: 'Record a subscription payment',
+          description: 'Records an EFT (or other manual payment) from this tenant: marks the current invoice paid and extends the subscription by one period. Leave the amount blank to pay the invoice as issued.',
+          endpoint: '/platform/organisations/' + encodeURIComponent(org.id) + '/subscription/manual-payment',
+          submitLabel: 'Record payment',
+          successMessage: 'Subscription payment recorded',
+          fields: [
+            { name: 'reference', label: 'Bank reference', placeholder: 'e.g. EFT-2026-0142', help: 'Receipt quoting happens against the tenant.' },
+            { name: 'amount', label: 'Amount (optional)', type: 'number', placeholder: 'Leave blank to pay the invoice as issued' },
+            { name: 'notes', label: 'Notes', type: 'textarea', span: 2 }
+          ]
+        });
+        return;
+      }
+      if (name === 'paymentAccount') {
+        const account = (ctx.page && ctx.page.paymentAccount) || {};
+        const payout = account.payout || {};
+        ctx.openModal({
+          title: 'Tenant fee collection',
+          description: 'Choose where this tenant’s parent payments go. Platform collection takes the fee and settles to the tenant by EFT; own PayFast pays the tenant directly and takes no fee. Credentials are stored encrypted and never shown again.',
+          endpoint: '/platform/organisations/' + encodeURIComponent(org.id) + '/payment-account',
+          method: 'PUT',
+          submitLabel: 'Save account',
+          successMessage: 'Payment account saved',
+          size: 'wide',
+          fields: [
+            { name: 'mode', label: 'Collection mode', type: 'select', value: account.mode || 'platform_collected',
+              options: [
+                { value: 'platform_collected', label: 'Platform collects (settle by EFT)' },
+                { value: 'own_payfast', label: 'Tenant’s own PayFast account' }
+              ] },
+            { name: 'feePercent', label: 'Collection fee (%)', type: 'number', value: account.feePercent !== undefined ? account.feePercent : 0, help: 'Deducted from each payout when the platform collects. 0–50.' },
+            { name: 'merchantId', label: 'Merchant id', value: account.merchantId || '', placeholder: 'Only for the tenant’s own account' },
+            { name: 'merchantKey', label: 'Merchant key', placeholder: account.merchantKeySet ? 'Currently saved — enter to replace' : 'Only for the tenant’s own account' },
+            { name: 'passphrase', label: 'Passphrase', help: account.passphraseSet ? 'Currently saved. Enter a new value or leave blank to keep it.' : 'Only if the tenant’s PayFast account sets one.' },
+            { name: 'clearCredentials', label: 'Forget stored credentials', type: 'checkbox', value: false, help: 'Drops the saved key and passphrase. Does not change the mode.' },
+            { name: 'payoutAccountHolder', label: 'Payout account holder', value: payout.accountHolder || '' },
+            { name: 'payoutBankName', label: 'Payout bank', value: payout.bankName || '' },
+            { name: 'payoutBranchCode', label: 'Branch code', value: payout.branchCode || '' },
+            { name: 'payoutAccountNumber', label: 'Account number', placeholder: payout.accountNumberLast4 ? 'Currently •••• ' + payout.accountNumberLast4 + ' — re-enter to change' : 'Tenant’s settlement account', help: 'Encrypted at rest; used only if the platform collects.' },
+            { name: 'payoutAccountType', label: 'Account type', type: 'select', value: payout.accountType || 'cheque',
+              options: [
+                { value: 'cheque', label: 'Current / cheque' },
+                { value: 'savings', label: 'Savings' },
+                { value: 'transmission', label: 'Transmission' },
+                { value: 'bond', label: 'Bond' }
+              ] }
+          ]
+        });
       }
     },
   };
@@ -450,7 +505,10 @@
           { label: 'Status', render: (s) => R.badge(s.status) },
           { label: 'Billing', render: (s) => R.esc(R.titleCase(s.billing_period)) },
           { label: 'Renews', render: (s) => R.date(s.current_period_end) },
-          { label: 'MRR', align: 'right', render: (s) => R.money(s.monthly_price, s.organisation_currency) }
+          { label: 'MRR', align: 'right', render: (s) => R.money(s.monthly_price, s.organisation_currency) },
+          { label: 'Actions', align: 'right', render: (s) => canManage && s.organisation_id
+            ? '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'manualSubscriptionPayment\', ' + R.attr(JSON.stringify(s.organisation_id)) + ')">Record payment</button>'
+            : '' }
         ], emptyTitle: 'No subscriptions', emptyMessage: 'Assign a plan to an organisation to begin billing.' })) +
         R.card('Revenue', '<div class="stat-value">' + R.money(d.mrr) + '</div><div class="muted small">Monthly recurring revenue</div>' +
           '<div class="kpi-list" style="margin-top:14px">' +
@@ -464,6 +522,22 @@
       const page = ctx.page || {};
       const plans = ((page.data || {}).plans) || [];
       const organisations = page.organisations || [];
+      if (name === 'manualSubscriptionPayment' && id) {
+        const subscription = subs.find((entry) => entry.organisation_id === id);
+        ctx.openModal({
+          title: 'Record subscription payment — ' + (subscription ? subscription.organisation_name : 'tenant'),
+          description: 'Records an EFT (or other manual payment): marks the current invoice paid and extends the subscription by one period. Leave the amount blank to pay the invoice as issued.',
+          endpoint: '/platform/organisations/' + encodeURIComponent(id) + '/subscription/manual-payment',
+          submitLabel: 'Record payment',
+          successMessage: 'Subscription payment recorded',
+          fields: [
+            { name: 'reference', label: 'Bank reference', placeholder: 'e.g. EFT-2026-0142' },
+            { name: 'amount', label: 'Amount (optional)', type: 'number', placeholder: 'Leave blank to pay the invoice as issued' },
+            { name: 'notes', label: 'Notes', type: 'textarea', span: 2 }
+          ]
+        });
+        return;
+      }
       if (name === 'newPlan' || name === 'editPlan') {
         const plan = name === 'editPlan' ? plans.find((p) => p.id === id) : null;
         if (name === 'editPlan' && !plan) { ctx.toast('That plan could not be found.', 'warn'); return; }
@@ -524,6 +598,81 @@
           }
         });
       }
+    }
+  };
+
+  V.platformSettlements = {
+    async load(ctx) {
+      const [settlements, payouts] = await Promise.allSettled([
+        R.api('GET', '/platform/settlements'),
+        R.api('GET', '/platform/settlements/payouts')
+      ]);
+      return {
+        settlements: settlements.status === 'fulfilled' ? settlements.value.data : { rows: [], totalOutstanding: 0 },
+        payouts: payouts.status === 'fulfilled' ? payouts.value.data : []
+      };
+    },
+    render(ctx, params, page) {
+      const settlements = page.settlements || { rows: [], totalOutstanding: 0 };
+      const rows = settlements.rows || [];
+      const total = Number(settlements.totalOutstanding || 0);
+      const payouts = page.payouts || [];
+      const modeBadge = (mode) => mode === 'own_payfast'
+        ? '<span class="badge badge-sky">Own PayFast</span>'
+        : '<span class="badge badge-sun">Platform collects</span>';
+      const configured = rows.filter((row) => row.payout && row.payout.accountNumberLast4).length;
+      const awaiting = rows.filter((row) => row.outstanding > 0 && !(row.payout && row.payout.accountNumberLast4)).length;
+      return R.pageHead('Settlements', 'Parent fees collected through the platform account, settled to each tenant by EFT.', '') +
+        '<div class="grid grid-3 section">' +
+          R.statCard({ label: 'Outstanding to settle', value: R.money(total, 'ZAR'), icon: 'hand-coins', tone: total > 0 ? 'sun' : 'green', foot: rows.length + ' organisation' + (rows.length === 1 ? '' : 's') + ' with activity' }) +
+          R.statCard({ label: 'Bank details set', value: R.number(configured), icon: 'building', foot: 'Ready to pay out' }) +
+          R.statCard({ label: 'Missing bank details', value: R.number(awaiting), icon: 'alert-triangle', tone: awaiting ? 'danger' : 'green', foot: awaiting ? 'Ask the tenant to add them' : 'Nothing blocked' }) +
+        '</div>' +
+        R.card('Balances', R.table({ rows, columns: [
+          { label: 'Organisation', render: (row) => R.esc(row.organisationName) },
+          { label: 'Mode', render: (row) => modeBadge(row.mode) },
+          { label: 'Collected', align: 'right', render: (row) => R.money(row.collectedGross, row.currency) },
+          { label: 'Fee', render: (row) => R.number(row.feePercent) + '%' },
+          { label: 'Fees paid', align: 'right', render: (row) => R.money(row.feesPaid, row.currency) },
+          { label: 'Settled', align: 'right', render: (row) => R.money(row.settledNet, row.currency) },
+          { label: 'Outstanding', align: 'right', render: (row) => '<span class="cell-strong">' + R.money(row.outstanding, row.currency) + '</span>' },
+          { label: '', align: 'right', render: (row) => '<div class="btn-group">' +
+            '<a class="btn btn-sm btn-ghost" href="#/platform/organisations/' + R.attr(row.organisationId) + '">' + R.icon('settings') + ' Account</a>' +
+            (row.outstanding > 0
+              ? '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'recordPayout\', ' + R.attr(JSON.stringify(row.organisationId)) + ')">Pay out</button>'
+              : '') +
+            '</div>' }
+        ], emptyTitle: 'Nothing collected yet', emptyMessage: 'Once a parent pays through an organisation’s platform account, the balance appears here.' })) +
+        '<div class="section">' + R.card('Payout history', R.table({ rows: payouts, compact: true, columns: [
+          { label: 'Paid', render: (row) => R.date(row.paid_at) },
+          { label: 'Organisation', render: (row) => R.esc(row.organisation_name) },
+          { label: 'Period', render: (row) => R.esc(R.date(row.period_start)) + ' → ' + R.esc(R.date(row.period_end)) },
+          { label: 'Gross', align: 'right', render: (row) => R.money(row.gross_amount, row.currency) },
+          { label: 'Fee', align: 'right', render: (row) => R.money(row.fee_amount, row.currency) },
+          { label: 'Net', align: 'right', render: (row) => '<span class="cell-strong">' + R.money(row.net_amount, row.currency) + '</span>' },
+          { label: 'Reference', render: (row) => row.reference ? '<span class="mono small">' + R.esc(row.reference) + '</span>' : '—' },
+          { label: '', align: 'right', render: (row) => row.status === 'void' ? '<span class="badge badge-muted">Void</span>'
+            : '<button class="btn btn-sm btn-ghost" @click="act(\'POST\',\'/platform/settlements/payouts/' + R.attr(row.id) + '/void\',{},{successMessage:\'Payout voided\'})">Void</button>' }
+        ], emptyTitle: 'No payouts yet', emptyMessage: 'Record a payout once you have made the EFT.' })) + '</div>';
+    },
+    openModal(ctx, name, id) {
+      if (name !== 'recordPayout' || !id) return;
+      const rows = ((ctx.page && ctx.page.settlements && ctx.page.settlements.rows) || []);
+      const row = rows.find((entry) => entry.organisationId === id);
+      const outstanding = row ? Number(row.outstanding) : 0;
+      ctx.openModal({
+        title: 'Record payout to ' + (row ? row.organisationName : 'tenant'),
+        description: 'Confirm the EFT has been made. The gross amount defaults to the full outstanding balance and the configured collection fee is deducted; the tenant receives the net.',
+        endpoint: '/platform/settlements/payout',
+        submitLabel: 'Record payout',
+        successMessage: 'Payout recorded',
+        fields: [
+          { name: 'grossAmount', label: 'Gross amount (ZAR)', type: 'number', required: true, value: outstanding.toFixed(2) },
+          { name: 'reference', label: 'EFT reference', required: true, placeholder: 'e.g. EFT-2026-0142' },
+          { name: 'notes', label: 'Notes', type: 'textarea', span: 2 }
+        ],
+        transform: (data) => ({ organisationId: id, grossAmount: Number(data.grossAmount), reference: data.reference, notes: data.notes })
+      });
     }
   };
 

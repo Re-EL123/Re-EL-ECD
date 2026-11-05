@@ -55,18 +55,18 @@ test('verifyItn accepts a correctly signed notification and rejects tampering', 
     ['merchant_id', '10000100']
   ];
   const valid = [...pairs, ['signature', payfast.itnSignature(pairs)]];
-  const result = payfast.verifyItn(valid, { amount: 500 });
+  const result = payfast.verifyItn(valid, undefined, { amount: 500 });
   assert.equal(result.valid, true);
   assert.equal(result.data.reference, 'ECD-1');
   assert.equal(result.data.providerReference, '123456');
 
   const tampered = valid.map((pair) => pair[0] === 'amount_gross' ? ['amount_gross', '1.00'] : pair);
-  assert.equal(payfast.verifyItn(tampered, { amount: 1 }).valid, false);
+  assert.equal(payfast.verifyItn(tampered, undefined, { amount: 1 }).valid, false);
 
-  assert.equal(payfast.verifyItn(valid, { amount: 999 }).valid, false);
+  assert.equal(payfast.verifyItn(valid, undefined, { amount: 999 }).valid, false);
 
   const wrongMerchant = valid.map((pair) => pair[0] === 'merchant_id' ? ['merchant_id', '999'] : pair);
-  assert.equal(payfast.verifyItn(wrongMerchant, { amount: 500 }).valid, false);
+  assert.equal(payfast.verifyItn(wrongMerchant, undefined, { amount: 500 }).valid, false);
   delete process.env.PAYFAST_MERCHANT_ID;
   delete process.env.PAYFAST_PASSPHRASE;
 });
@@ -105,6 +105,7 @@ test('every email template renders a subject, html and text', () => {
     enquiryAcknowledgement: { guardianName: 'Sarah', organisationName: 'Little Sprouts', slug: 'little-sprouts' },
     formSubmission: { formName: 'Consent', submittedBy: 'Sarah' },
     announcement: { organisationName: 'Little Sprouts', title: 'Sports day', body: 'Wear comfortable shoes.' },
+    subscriptionReminder: { organisationName: 'Little Sprouts', planName: 'Sapling', amount: 1499, currency: 'ZAR', dueDate: '2026-10-31' },
     invoiceIssued: { organisationName: 'Little Sprouts', invoiceNumber: 'INV-1', amount: 500, currency: 'ZAR' },
     paymentReceipt: { organisationName: 'Little Sprouts', amount: 500, currency: 'ZAR', reference: 'ECD-1' },
     incidentAlert: { learnerName: 'Amelia', severity: 'high', summary: 'Fall', reportedBy: 'Sipho' },

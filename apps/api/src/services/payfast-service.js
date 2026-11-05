@@ -15,6 +15,11 @@
  *   - ITN fields are signed in the order PayFast posted them.
  * `verifyItn` therefore takes the ordered pairs captured by `readBody`, not a
  * plain object.
+ *
+ * A tenant can collect fees into their own PayFast merchant account. The
+ * optional `credentials` argument ({ merchantId, merchantKey, passphrase })
+ * overrides the platform account for checkout signing and ITN verification;
+ * omitting it keeps the platform behaviour for existing callers.
  */
 
 const crypto = require('node:crypto');
@@ -23,6 +28,28 @@ const LIVE_PROCESS = 'https://www.payfast.co.za/eng/process';
 const SANDBOX_PROCESS = 'https://sandbox.payfast.co.za/eng/process';
 const LIVE_VALIDATE = 'https://www.payfast.co.za/eng/query/validate';
 const SANDBOX_VALIDATE = 'https://sandbox.payfast.co.za/eng/query/validate';
+
+/**
+ * The merchant account this process uses by default: the platform's own
+ * PayFast account. Tenant accounts are resolved by the payment modules from
+ * the organisations' payment account rows.
+ */
+function platformCredentials() {
+  return {
+    merchantId: process.env.PAYFAST_MERCHANT_ID || '',
+    merchantKey: process.env.PAYFAST_MERCHANT_KEY || '',
+    passphrase: passphrase()
+  };
+}
+
+function normaliseCredentials(credentials) {
+  if (!credentials) return platformCredentials();
+  return {
+    merchantId: String(credentials.merchantId || '').trim(),
+    merchantKey: String(credentials.merchantKey || '').trim(),
+    passphrase: credentials.passphrase === undefined ? '' : String(credentials.passphrase).trim()
+  };
+}
 
 function isSandbox() {
   return String(process.env.PAYFAST_SANDBOX || '').toLowerCase() === 'true';
@@ -131,12 +158,13 @@ function apiBaseUrl(req) {
  * Build a signed checkout payload. Returns both the action URL and the fields
  * so the SPA can either render a hidden form or link to a GET URL.
  */
-function buildCheckout(options) {
+function buildCheckout(options, credentials) {
   // Build the object in the documented field order. PayFast signs the fields
   // in the order they are posted, so this order is part of the contract.
+  const creds = normaliseCredentials(credentials);
   const fields = {
-    merchant_id: process.env.PAYFAST_MERCHANT_ID || '',
-    merchant_key: process.env.PAYFAST_MERCHANT_KEY || '',
+    merchant_id: creds.merchantId,
+    merchant_key: creds.merchantKey,
     return_url: options.returnUrl,
     cancel_url: options.cancelUrl,
     notify_url: options.notifyUrl,
@@ -157,7 +185,7 @@ function buildCheckout(options) {
   for (const key of Object.keys(fields)) {
     if (fields[key] !== undefined && fields[key] !== null) fields[key] = String(fields[key]).trim();
   }
-  const signed = signature(fields);
+  const signed = signature(fields, creds.passphrase);
   const ordered = orderedKeys(fields);
   return {
     action: processUrl(),
@@ -177,21 +205,24 @@ function field(pairs, key) {
 
 /**
  * Validate an ITN. Checks the signature, the merchant id and, when an amount is
- * supplied, that PayFast collected what we asked for.
+ * supplied, that PayFast collected what we asked for. `credentials` selects
+ * the merchant account the ITN must belong to; omit it for the platform account.
  */
-function verifyItn(pairs, options = {}) {
+function verifyItn(pairs, credentials, options) {
   if (!Array.isArray(pairs) || !pairs.length) return { valid: false, reason: 'Empty notification' };
+  const usingOwnAccount = Boolean(credentials);
+  const creds = usingOwnAccount ? normaliseCredentials(credentials) : platformCredentials();
   const supplied = field(pairs, 'signature');
   if (!supplied) return { valid: false, reason: 'Missing signature' };
-  const expected = itnSignature(pairs);
+  const expected = itnSignature(pairs, creds.passphrase);
   if (supplied.toLowerCase() !== expected.toLowerCase()) {
     return { valid: false, reason: 'Signature mismatch' };
   }
   const merchantId = field(pairs, 'merchant_id');
-  if (process.env.PAYFAST_MERCHANT_ID && merchantId !== process.env.PAYFAST_MERCHANT_ID) {
+  if (creds.merchantId && merchantId !== creds.merchantId) {
     return { valid: false, reason: 'Merchant mismatch' };
   }
-  if (options.amount !== undefined) {
+  if (options && options.amount !== undefined) {
     const gross = Number(field(pairs, 'amount_gross'));
     if (!Number.isFinite(gross) || Math.abs(gross - Number(options.amount)) > 0.01) {
       return { valid: false, reason: 'Amount mismatch' };
@@ -278,6 +309,7 @@ module.exports = {
   signature,
   itnSignature,
   buildCheckout,
+  platformCredentials,
   verifyItn,
   validateWithPayfast,
   ipAllowed,

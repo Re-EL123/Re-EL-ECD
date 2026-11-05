@@ -10,9 +10,26 @@ const { createNotification } = require('../services/notification-service');
 const { sendTemplate, isConfigured: emailConfigured, fromAddress } = require('../services/email-service');
 const payfast = require('../services/payfast-service');
 const { createPaymentIntent } = require('../services/payment-intent-service');
+const { recordManualPayment, dateString } = require('../services/subscription-billing-service');
+const { maskedAccount, savePaymentAccount } = require('../services/payment-accounts-service');
+const secretbox = require('../services/secretbox');
 const storage = require('../services/storage-service');
 const branding = require('../services/branding-service');
 const { parsePagination } = require('../utils/http');
+
+function roundMoney(value) {
+  return Math.round(Number(value || 0) * 100) / 100;
+}
+
+function todayDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function addDays(dateValue, days) {
+  const base = new Date(String(dateValue).slice(0, 10) + 'T00:00:00Z');
+  base.setUTCDate(base.getUTCDate() + days);
+  return base.toISOString().slice(0, 10);
+}
 
 function register(router) {
   router.get('/public/platform', async (ctx) => {
@@ -637,6 +654,13 @@ function register(router) {
   }, { platformOnly: true, permission: 'platform.settings.manage' });
 
   router.get('/platform/subscriptions', async (ctx) => {
+    // Lazy status flip: a period that ended without a payment becomes past_due.
+    // Done here so the platform console always sees the truth without a cron.
+    await ctx.db.query(
+      `UPDATE platform_subscriptions SET status = 'past_due'
+       WHERE status IN ('trial','active') AND current_period_end < CURRENT_DATE
+         AND organisation_id IN (SELECT id FROM organisations WHERE slug <> 're-el-platform')`
+    );
     const plans = await ctx.db.many(
       `SELECT sp.*,
               (SELECT COUNT(*)::int FROM platform_subscriptions ps
@@ -855,6 +879,247 @@ function register(router) {
       metadata: { intentId: intent.id, amount, reference: intent.reference, billingPeriod: body.billingPeriod }
     });
     return { intent, checkout, amount, currency };
+  }, { platformOnly: true, permission: 'platform.subscriptions.manage' });
+
+  // --- Tenant fee settlements -------------------------------------------
+  //
+  // Organisations on platform collection hold fees that belong to them: the
+  // platform collected the money and must pay it out by EFT. These endpoints
+  // compute the balance per organisation and record each payout.
+
+  async function settlementFor(db, organisationId) {
+    const collected = await db.one(
+      `SELECT COALESCE(SUM(amount), 0) AS gross, MIN(completed_at) AS first_collected_at
+       FROM payment_intents
+       WHERE organisation_id = $1 AND status = 'paid'
+         AND purpose IN ('invoice','statement','application_fee','form_payment')
+         AND (metadata->>'settlement') IS DISTINCT FROM 'own_payfast'`,
+      [organisationId]
+    );
+    const settled = await db.one(
+      `SELECT COALESCE(SUM(net_amount), 0) AS net, COALESCE(SUM(fee_amount), 0) AS fee,
+              MAX(paid_at) AS last_payout_at, MAX(period_end) AS last_period_end
+       FROM platform_payouts WHERE organisation_id = $1 AND status = 'paid'`,
+      [organisationId]
+    );
+    const gross = Number(collected.gross || 0);
+    const net = Number(settled.net || 0);
+    const fee = Number(settled.fee || 0);
+    return {
+      collectedGross: roundMoney(gross),
+      settledNet: roundMoney(net),
+      feesPaid: roundMoney(fee),
+      outstanding: roundMoney(Math.max(0, gross - net - fee)),
+      firstCollectedAt: collected.first_collected_at || null,
+      lastPayoutAt: settled.last_payout_at || null,
+      lastPeriodEnd: settled.last_period_end ? dateString(settled.last_period_end) : null
+    };
+  }
+
+  router.get('/platform/settlements', async (ctx) => {
+    const orgs = await ctx.db.many(
+      `SELECT o.id, o.name, o.slug, o.status, o.currency,
+              pha.mode, pha.status AS account_status, pha.fee_percent, pha.merchant_id,
+              pha.payout_account_holder, pha.payout_bank_name, pha.payout_branch_code,
+              pha.payout_account_type, pha.payout_account_number_encrypted
+       FROM organisations o
+       LEFT JOIN organisation_payment_accounts pha ON pha.organisation_id = o.id
+       WHERE o.slug <> 're-el-platform'
+       ORDER BY o.name`
+    );
+    const rows = [];
+    let totalOutstanding = 0;
+    for (const org of orgs) {
+      const settlement = await settlementFor(ctx.db, org.id);
+      if (settlement.collectedGross <= 0 && settlement.settledNet <= 0) continue;
+      const accountMode = org.mode || 'platform_collected';
+      totalOutstanding += settlement.outstanding;
+      rows.push({
+        organisationId: org.id,
+        organisationName: org.name,
+        organisationSlug: org.slug,
+        organisationStatus: org.status,
+        mode: accountMode,
+        accountStatus: org.account_status || (org.mode ? 'active' : 'not_configured'),
+        feePercent: Number(org.fee_percent || 0),
+        currency: org.currency || 'ZAR',
+        collectedGross: settlement.collectedGross,
+        settledNet: settlement.settledNet,
+        feesPaid: settlement.feesPaid,
+        outstanding: settlement.outstanding,
+        firstCollectedAt: settlement.firstCollectedAt,
+        lastPayoutAt: settlement.lastPayoutAt,
+        payout: {
+          accountHolder: org.payout_account_holder || null,
+          bankName: org.payout_bank_name || null,
+          branchCode: org.payout_branch_code || null,
+          accountType: org.payout_account_type || null,
+          accountNumberLast4: org.payout_account_number_encrypted
+            ? secretbox.decrypt(org.payout_account_number_encrypted).slice(-4) : null
+        }
+      });
+    }
+    rows.sort((left, right) => right.outstanding - left.outstanding);
+    return { rows, totalOutstanding: roundMoney(totalOutstanding) };
+  }, { platformOnly: true, permission: 'platform.subscriptions.manage' });
+
+  router.get('/platform/settlements/payouts', async (ctx) => {
+    const organisationId = ctx.query.organisationId || null;
+    const rows = await ctx.db.many(
+      `SELECT p.*, o.name AS organisation_name, o.slug AS organisation_slug
+       FROM platform_payouts p JOIN organisations o ON o.id = p.organisation_id
+       WHERE ($1::uuid IS NULL OR p.organisation_id = $1::uuid)
+       ORDER BY p.paid_at DESC LIMIT 100`,
+      [organisationId]
+    );
+    return rows;
+  }, { platformOnly: true, permission: 'platform.subscriptions.manage' });
+
+  router.post('/platform/settlements/payout', async (ctx) => {
+    const body = validate(ctx.body, {
+      organisationId: { type: 'string', uuid: true },
+      grossAmount: { type: 'number', min: 0.01, max: 1000000000, optional: true },
+      reference: { type: 'string', max: 120, optional: true },
+      notes: { type: 'string', max: 500, optional: true }
+    });
+    const organisation = await ctx.db.one(
+      "SELECT * FROM organisations WHERE id = $1 AND slug <> 're-el-platform'", [body.organisationId]
+    );
+    if (!organisation) throw new AppError('NOT_FOUND');
+    const account = await ctx.db.one(
+      'SELECT * FROM organisation_payment_accounts WHERE organisation_id = $1', [organisation.id]
+    );
+    const settlement = await settlementFor(ctx.db, organisation.id);
+    const outstanding = settlement.outstanding;
+    const gross = body.grossAmount === undefined ? outstanding : roundMoney(body.grossAmount);
+    if (!(gross > 0)) fail('CONFLICT', null, 'There is nothing outstanding to pay this organisation.');
+    if (gross - outstanding > 0.009) {
+      fail('VALIDATION', [{ field: 'grossAmount', message: 'Only ' + outstanding.toFixed(2) + ' is outstanding for this organisation.' }]);
+    }
+    const feePercent = Number((account && account.fee_percent) || 0);
+    const fee = roundMoney(gross * feePercent / 100);
+    const net = roundMoney(gross - fee);
+    const today = todayDate();
+    const periodStart = settlement.lastPeriodEnd
+      ? addDays(settlement.lastPeriodEnd, 1)
+      : (settlement.firstCollectedAt ? dateString(settlement.firstCollectedAt) : today);
+    const saved = await ctx.db.one(
+      `INSERT INTO platform_payouts
+         (organisation_id, period_start, period_end, gross_amount, fee_amount, net_amount, currency, reference, notes, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [organisation.id, periodStart, today, gross, fee, net, organisation.currency || 'ZAR',
+        body.reference || null, body.notes || null, ctx.user.id]
+    );
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.settlement_paid', resourceType: 'platform_payout', resourceId: saved.id,
+      organisationId: organisation.id,
+      metadata: { gross, fee, net, feePercent, reference: body.reference || null }
+    });
+    ctx.status = 201;
+    return saved;
+  }, { platformOnly: true, permission: 'platform.subscriptions.manage' });
+
+  router.post('/platform/settlements/payouts/:id/void', async (ctx) => {
+    const payout = await ctx.db.one('SELECT * FROM platform_payouts WHERE id = $1', [ctx.params.id]);
+    if (!payout) throw new AppError('NOT_FOUND');
+    if (payout.status === 'void') return payout;
+    const updated = await ctx.db.one(
+      "UPDATE platform_payouts SET status = 'void' WHERE id = $1 RETURNING *", [payout.id]
+    );
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.settlement_voided', resourceType: 'platform_payout', resourceId: payout.id,
+      organisationId: payout.organisation_id,
+      metadata: { gross: Number(payout.gross_amount), net: Number(payout.net_amount) }
+    });
+    return updated;
+  }, { platformOnly: true, permission: 'platform.subscriptions.manage' });
+
+  // --- Platform administration of a tenant's payment account ----------------
+
+  router.get('/platform/organisations/:id/payment-account', async (ctx) => {
+    const organisation = await ctx.db.one(
+      "SELECT * FROM organisations WHERE id = $1 AND slug <> 're-el-platform'", [ctx.params.id]
+    );
+    if (!organisation) throw new AppError('NOT_FOUND');
+    const account = await ctx.db.one(
+      'SELECT * FROM organisation_payment_accounts WHERE organisation_id = $1', [organisation.id]
+    );
+    return maskedAccount(account);
+  }, { platformOnly: true, permission: 'platform.organisations.read' });
+
+  router.put('/platform/organisations/:id/payment-account', async (ctx) => {
+    const organisation = await ctx.db.one(
+      "SELECT * FROM organisations WHERE id = $1 AND slug <> 're-el-platform'", [ctx.params.id]
+    );
+    if (!organisation) throw new AppError('NOT_FOUND');
+    const body = validate(ctx.body, {
+      mode: { type: 'string', enum: ['own_payfast', 'platform_collected'], optional: true },
+      merchantId: { type: 'string', min: 2, max: 60, optional: true },
+      merchantKey: { type: 'string', min: 4, max: 200, optional: true },
+      passphrase: { type: 'string', max: 200, optional: true },
+      clearCredentials: { type: 'boolean', optional: true },
+      feePercent: { type: 'number', min: 0, max: 50, optional: true },
+      payoutAccountHolder: { type: 'string', max: 120, optional: true },
+      payoutBankName: { type: 'string', max: 120, optional: true },
+      payoutBranchCode: { type: 'string', min: 4, max: 20, optional: true },
+      payoutAccountNumber: { type: 'string', min: 4, max: 40, optional: true },
+      payoutAccountType: { type: 'string', enum: ['cheque', 'savings', 'transmission', 'bond'], optional: true }
+    });
+    const { account, mode, clearedCredentials, payoutAccountSet } = await savePaymentAccount(
+      ctx.db, organisation.id, body, { allowFeePercent: true }
+    );
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.payment_account_saved', resourceType: 'organisation_payment_account',
+      resourceId: organisation.id, organisationId: organisation.id,
+      metadata: { mode, ownPayfast: mode === 'own_payfast', clearedCredentials, payoutAccountSet,
+        feePercent: body.feePercent !== undefined ? body.feePercent : undefined }
+    });
+    return maskedAccount(account);
+  }, { platformOnly: true, permission: 'platform.organisations.manage' });
+
+  // Manual payment of a subscription (for example an EFT from the tenant).
+  router.post('/platform/organisations/:id/subscription/manual-payment', async (ctx) => {
+    const organisation = await ctx.db.one(
+      "SELECT * FROM organisations WHERE id = $1 AND slug <> 're-el-platform'", [ctx.params.id]
+    );
+    if (!organisation) throw new AppError('NOT_FOUND');
+    const body = validate(ctx.body || {}, {
+      amount: { type: 'number', min: 0.01, max: 100000000, optional: true },
+      reference: { type: 'string', max: 60, optional: true },
+      notes: { type: 'string', max: 500, optional: true }
+    });
+    const result = await recordManualPayment(ctx.db, organisation.id, body);
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.subscription_manual_payment', resourceType: 'platform_subscription',
+      resourceId: result.subscription.id, organisationId: organisation.id,
+      metadata: { amount: result.amount, reference: body.reference || null, notes: body.notes || null }
+    });
+    // Best-effort receipt to the owner; a missing email must not fail the payment.
+    const owner = await ctx.db.one(
+      `SELECT u.email, u.display_name FROM memberships m JOIN users u ON u.id = m.user_id
+       LEFT JOIN membership_roles mr ON mr.membership_id = m.id AND mr.status = 'active'
+       LEFT JOIN roles r ON r.id = mr.role_id
+       WHERE m.organisation_id = $1 AND m.status = 'active'
+       ORDER BY (r.role_key = 'organisation_owner') DESC NULLS LAST, m.created_at LIMIT 1`,
+      [organisation.id]
+    );
+    if (owner && owner.email) {
+      await sendTemplate(ctx.db, 'paymentReceipt', {
+        to: owner.email,
+        organisationId: organisation.id,
+        metadata: { subscriptionId: result.subscription.id, invoiceId: result.invoice ? result.invoice.id : null },
+        data: {
+          organisationName: organisation.name,
+          invoiceNumber: result.invoice ? result.invoice.invoice_number : null,
+          amount: result.amount,
+          currency: organisation.currency || 'ZAR',
+          method: 'EFT (bank transfer)',
+          reference: body.reference || null,
+          paidAt: new Date().toLocaleString('en-ZA')
+        }
+      });
+    }
+    return result;
   }, { platformOnly: true, permission: 'platform.subscriptions.manage' });
 
   router.get('/platform/features', async (ctx) => {

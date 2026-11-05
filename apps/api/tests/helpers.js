@@ -89,6 +89,7 @@ function createClient() {
     request,
     get: (path, options) => request('GET', path, options),
     post: (path, body, options) => request('POST', path, Object.assign({ body }, options)),
+    put: (path, body, options) => request('PUT', path, Object.assign({ body }, options)),
     // PayFast posts ITNs as application/x-www-form-urlencoded and signs the
     // fields in the exact order they were posted, so order must be preserved.
     async postForm(path, pairs, options = {}) {

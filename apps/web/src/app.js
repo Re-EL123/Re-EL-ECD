@@ -27,6 +27,7 @@
     route('/platform/organisations/:id', 'platform', 'platformOrganisationDetail', 'platform.organisations.read', 'Organisation detail'),
     route('/platform/users', 'platform', 'platformUsers', 'platform.organisations.read', 'Platform users'),
     route('/platform/subscriptions', 'platform', 'platformSubscriptions', 'platform.subscriptions.read', 'Subscriptions'),
+    route('/platform/settlements', 'platform', 'platformSettlements', 'platform.subscriptions.manage', 'Settlements'),
     route('/platform/access', 'platform', 'platformAccess', 'platform.organisations.read', 'Platform access'),
     route('/platform/audit', 'platform', 'platformAudit', 'platform.audit.read', 'Platform audit'),
     route('/platform/health', 'platform', 'platformHealth', 'platform.health.read', 'System health'),
@@ -104,6 +105,7 @@
         { path: '/platform/organisations', label: 'Organisations', icon: 'building-2', permission: 'platform.organisations.read' },
         { path: '/platform/users', label: 'Users', icon: 'users', permission: 'platform.organisations.read' },
         { path: '/platform/subscriptions', label: 'Subscriptions', icon: 'credit-card', permission: 'platform.subscriptions.read' },
+        { path: '/platform/settlements', label: 'Settlements', icon: 'hand-coins', permission: 'platform.subscriptions.manage' },
         { path: '/platform/access', label: 'Platform access', icon: 'shield-check', permission: 'platform.organisations.read' }
       ] },
       { label: 'Governance', items: [
@@ -1099,6 +1101,39 @@
         });
         document.body.appendChild(form);
         form.submit();
+      },
+
+      /**
+       * Pay the outstanding Re-EL subscription invoice through PayFast. The
+       * server decides the amount from the oldest open invoice, or reuses the
+       * pending checkout if the button was already pressed.
+       */
+      async paySubscription() {
+        try {
+          const result = await Reel.api('POST', '/billing/subscription/pay', {});
+          const checkout = (result && result.data && result.data.checkout) || null;
+          if (checkout) {
+            this.submitCheckout(checkout);
+            return;
+          }
+          this.toast('There is nothing outstanding to pay right now.', 'success');
+        } catch (error) {
+          this.toast(error.message || 'We could not start the subscription payment.', 'error');
+        }
+      },
+
+      /**
+       * Stop collecting through the tenant's own PayFast account. Credentials
+       * are forgotten and future checkouts fall back to the platform account.
+       */
+      async disconnectOwnPayfast() {
+        try {
+          await Reel.api('PUT', '/billing/payment-account', { mode: 'platform_collected', clearCredentials: true });
+          this.toast('Disconnected — parent fees now collect through the platform account.', 'success');
+          await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'We could not change the payment account.', 'error');
+        }
       },
 
       async payInvoice(id) {

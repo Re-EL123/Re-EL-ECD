@@ -14,15 +14,17 @@
         R.api('GET', '/organisations/current/settings'),
         R.api('GET', '/onboarding/checklist'),
         R.api('GET', '/branches'),
-        R.api('GET', '/organisation/themes')
+        R.api('GET', '/organisation/themes'),
+        R.api('GET', '/billing/summary')
       ]);
-      const [organisation, settings, onboarding, branches, themes] = settled;
+      const [organisation, settings, onboarding, branches, themes, billing] = settled;
       return {
         organisation: organisation.status === 'fulfilled' ? organisation.value.data : null,
         settings: settings.status === 'fulfilled' ? settings.value.data : {},
         onboarding: onboarding.status === 'fulfilled' ? onboarding.value.data : null,
         branches: branches.status === 'fulfilled' ? branches.value.data : [],
-        themes: themes.status === 'fulfilled' ? themes.value.data : { themes: [], current: null, appliedThemeId: null }
+        themes: themes.status === 'fulfilled' ? themes.value.data : { themes: [], current: null, appliedThemeId: null },
+        billing: billing.status === 'fulfilled' ? billing.value.data : null
       };
     },
 
@@ -42,8 +44,8 @@
       return R.pageHead('Settings', 'How the centre is configured — the details every other screen depends on.',
         (canUpdate ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'organisation\')">' + R.icon('building-2') + ' Edit organisation</button>' : '') +
         (canManageBranches ? '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'branch\')">' + R.icon('plus') + ' Add branch</button>' : '')) +
-        R.tabs([{ key: 'organisation', label: 'Organisation' }, { key: 'branding', label: 'Branding' }, { key: 'branches', label: 'Branches (' + branches.length + ')' }, { key: 'operations', label: 'Operations' }, { key: 'onboarding', label: 'Setup checklist' }], tab) +
-        (tab === 'branches' ? this.renderBranches(ctx, page) : tab === 'branding' ? this.renderBranding(ctx, page) : tab === 'operations' ? this.renderOperations(ctx, settings, hours, attendance, notifications, retention, canManageSettings) : tab === 'onboarding' ? this.renderOnboarding(onboarding) : this.renderOrganisation(org, branches, settings));
+        R.tabs([{ key: 'organisation', label: 'Organisation' }, { key: 'branding', label: 'Branding' }, { key: 'branches', label: 'Branches (' + branches.length + ')' }, { key: 'operations', label: 'Operations' }, { key: 'onboarding', label: 'Setup checklist' }, { key: 'billing', label: 'Billing & payments' }], tab) +
+        (tab === 'branches' ? this.renderBranches(ctx, page) : tab === 'branding' ? this.renderBranding(ctx, page) : tab === 'operations' ? this.renderOperations(ctx, settings, hours, attendance, notifications, retention, canManageSettings) : tab === 'onboarding' ? this.renderOnboarding(onboarding) : tab === 'billing' ? this.renderBilling(ctx, page, canManageSettings) : this.renderOrganisation(org, branches, settings));
     },
 
     renderOrganisation(org, branches, settings) {
@@ -180,6 +182,115 @@
           (item.complete ? '<span class="badge badge-green">Done</span>' : '<span class="badge badge-sun">To do</span>') + '</div>').join('') + '</div>');
     },
 
+    renderBilling(ctx, page, canManage) {
+      const billing = page.billing || {};
+      const subscription = billing.subscription || null;
+      const invoices = billing.invoices || [];
+      const openInvoice = billing.openInvoice || null;
+      const account = billing.paymentAccount || {};
+      const collections = billing.collections || {};
+      const payouts = billing.payouts || [];
+      const payfast = billing.payfast || {};
+      const ownPayfast = account.mode === 'own_payfast';
+      const platformPayfast = payfast.platformAvailable !== false;
+      const statusBadge = {
+        active: { label: 'Active', cls: 'badge-green' },
+        trial: { label: 'Trial', cls: 'badge-sun' },
+        past_due: { label: 'Payment overdue', cls: 'badge-danger' },
+        cancelled: { label: 'Cancelled', cls: 'badge-muted' }
+      };
+      const invoiceBadge = {
+        issued: { label: 'Awaiting payment', cls: 'badge-sun' },
+        paid: { label: 'Paid', cls: 'badge-green' },
+        void: { label: 'Void', cls: 'badge-muted' }
+      };
+      const backBanner = (ctx.query && ctx.query.payment === 'return')
+        ? '<div class="alert alert-success" style="margin-bottom:14px"><i data-lucide="check-circle"></i><span>Payment received. It may take a moment to reflect — refresh this tab if the invoice is still shown as awaiting payment.</span></div>'
+        : (ctx.query && ctx.query.payment === 'cancelled')
+          ? '<div class="alert alert-warning" style="margin-bottom:14px"><i data-lucide="alert-triangle"></i><span>Checkout was cancelled. The invoice stays open and nothing was charged.</span></div>'
+          : '';
+      const subscriptionCard = R.card('Your plan',
+        subscription
+          ? '<div class="detail-list">' +
+            R.detailItem('Plan', '<span class="cell-strong">' + R.esc(subscription.planName) + '</span>') +
+            R.detailItem('Status', '<span class="badge ' + (statusBadge[subscription.status] || statusBadge.active).cls + '">' + R.esc((statusBadge[subscription.status] || statusBadge.active).label) + '</span>') +
+            R.detailItem('Amount', '<span class="cell-strong">' + R.money(subscription.amount, subscription.currency) + '</span> / ' + R.esc(subscription.billingPeriod)) +
+            R.detailItem('Current period', R.date(subscription.currentPeriodStart) + ' → ' + R.date(subscription.currentPeriodEnd)) +
+            (subscription.status === 'trial' || subscription.status === 'active'
+              ? R.detailItem('Days remaining', R.number(subscription.daysRemaining))
+              : '') +
+            '</div>' +
+            (openInvoice
+              ? '<div class="alert alert-warning" style="margin-top:12px"><i data-lucide="alert-circle"></i><span><strong>' + R.money(openInvoice.amount, openInvoice.currency) + '</strong> due for the current period. Pay securely with PayFast.</span></div>' +
+                (canManage && platformPayfast
+                  ? '<button class="btn btn-primary" style="margin-top:12px" @click="paySubscription()">' + R.icon('credit-card') + ' Pay ' + R.money(openInvoice.amount, openInvoice.currency) + '</button>'
+                  : '<p class="muted small" style="margin-top:10px">' + (platformPayfast ? 'Ask an administrator with settings access to pay this invoice.' : 'Online payment is not configured. Ask support to record a bank transfer.') + '</p>')
+              : '<div class="alert alert-success" style="margin-top:12px"><i data-lucide="check-circle"></i><span>You are up to date. Your plan renews on ' + R.date(subscription.currentPeriodEnd) + '.</span></div>')
+          : '<div class="alert alert-warning"><i data-lucide="alert-circle"></i><span>This organisation has no plan yet. Contact support to set one up.</span></div>');
+
+      const invoicesCard = R.card('Subscription invoices',
+        R.table({ rows: invoices, compact: true, columns: [
+          { label: 'Invoice', render: (row) => '<span class="mono cell-strong">' + R.esc(row.invoice_number) + '</span>' },
+          { label: 'Period', render: (row) => R.esc(R.date(row.period_start)) + ' → ' + R.esc(R.date(row.period_end)) },
+          { label: 'Amount', align: 'right', render: (row) => R.money(row.amount, row.currency) },
+          { label: 'Due', render: (row) => row.status === 'paid' ? '—' : (row.due_at ? R.date(row.due_at) : '—') },
+          { label: 'Status', render: (row) => '<span class="badge ' + (invoiceBadge[row.status] || invoiceBadge.issued).cls + '">' + R.esc((invoiceBadge[row.status] || invoiceBadge.issued).label) + '</span>' },
+          { label: 'Reference', render: (row) => row.payment_reference ? '<span class="mono small">' + R.esc(row.payment_reference) + '</span>' : '—' }
+        ], emptyTitle: 'No subscription invoices', emptyMessage: 'Invoices for your plan appear here automatically.' }));
+
+      const accountCard = R.card('How parent fees are collected',
+        '<p class="muted small">Parents can pay invoices, application fees and form deposits online. Choose where that money lands.</p>' +
+        '<div class="grid grid-2" style="margin-top:10px">' +
+          '<div class="card flat" style="' + (ownPayfast ? '' : 'border:2px solid var(--primary)') + '">' +
+            '<div class="row" style="justify-content:space-between;gap:8px"><div><div class="cell-strong">Platform collects for you</div>' +
+              '<p class="muted small" style="margin-top:4px">PayFast charges parents into the Re-EL account. We pay you out by EFT, minus the collection fee.</p></div>' +
+              (ownPayfast ? '' : '<span class="badge badge-green">Current mode</span>') +
+            '</div>' +
+            (ownPayfast
+              ? '<button class="btn btn-secondary btn-sm" style="margin-top:10px" @click="disconnectOwnPayfast()">Switch to platform collection</button>'
+              : '<p class="muted small" style="margin-top:10px">Fee: <strong>' + R.number(collections.feePercent || 0) + '%</strong> of collected fees</p>' +
+                (canManage ? '<button class="btn btn-secondary btn-sm" style="margin-top:6px" @click="openNamedModal(\'payoutDetails\')">' + R.icon('building') + ' Payout bank details</button>' : '')) +
+          '</div>' +
+          '<div class="card flat" style="' + (ownPayfast ? 'border:2px solid var(--primary)' : '') + '">' +
+            '<div class="row" style="justify-content:space-between;gap:8px"><div><div class="cell-strong">Your own PayFast account</div>' +
+              '<p class="muted small" style="margin-top:4px">Parents pay straight into your PayFast account. PayFast settles to your bank account; we take no fee and move no money.</p></div>' +
+              (ownPayfast ? '<span class="badge badge-green">Current mode</span>' : '') +
+            '</div>' +
+            (ownPayfast
+              ? '<div class="detail-list" style="margin-top:10px">' +
+                  R.detailItem('Merchant id', '<span class="mono">' + R.esc(account.merchantId || '—') + '</span>') +
+                  R.detailItem('Merchant key', account.merchantKeySet ? '<span class="badge badge-green">Saved</span>' : '<span class="badge badge-danger">Missing</span>') +
+                  R.detailItem('Passphrase', account.passphraseSet ? '<span class="badge badge-green">Saved</span>' : '<span class="badge badge-muted">Not set</span>') +
+                '</div>' +
+                (canManage ? '<div class="row" style="margin-top:10px;gap:8px">' +
+                  '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'ownPayfast\')">' + R.icon('pencil') + ' Update credentials</button>' +
+                  '<button class="btn btn-sm btn-danger" @click="disconnectOwnPayfast()">Disconnect</button></div>' : '')
+              : (canManage
+                ? '<p class="muted small" style="margin-top:10px">You need a PayFast merchant account before money can flow to your own bank account.</p>' +
+                  '<button class="btn btn-primary btn-sm" style="margin-top:6px" @click="openNamedModal(\'ownPayfast\')">' + R.icon('link') + ' Connect your PayFast</button>'
+                : '<p class="muted small" style="margin-top:10px">An administrator with settings access can connect your PayFast account.</p>')) +
+          '</div>' +
+        '</div>' +
+        (ownPayfast ? '' :
+          '<div class="grid grid-3" style="margin-top:14px">' +
+            R.statCard({ label: 'Collected (all time)', value: R.money(collections.collectedGross, billing.organisation ? billing.organisation.currency : 'ZAR'), icon: 'banknote', foot: 'Through the platform account' }) +
+            R.statCard({ label: 'Fees charged', value: R.money(collections.feesPaid, billing.organisation ? billing.organisation.currency : 'ZAR'), icon: 'percent', tone: 'plum', foot: R.number(collections.feePercent || 0) + '% of collections' }) +
+            R.statCard({ label: 'Outstanding to pay you', value: R.money(collections.outstanding, billing.organisation ? billing.organisation.currency : 'ZAR'), icon: 'hand-coins', tone: collections.outstanding > 0 ? 'sun' : 'green', foot: 'Paid out by EFT' }) +
+          '</div>'));
+
+      const payoutHistory = !ownPayfast ? R.card('Payout history',
+        R.table({ rows: payouts, compact: true, columns: [
+          { label: 'Paid', render: (row) => R.date(row.paid_at) },
+          { label: 'Period', render: (row) => R.esc(R.date(row.period_start)) + ' → ' + R.esc(R.date(row.period_end)) },
+          { label: 'Gross', align: 'right', render: (row) => R.money(row.gross_amount, row.currency) },
+          { label: 'Fee', align: 'right', render: (row) => R.money(row.fee_amount, row.currency) },
+          { label: 'Net', align: 'right', render: (row) => '<span class="cell-strong">' + R.money(row.net_amount, row.currency) + '</span>' },
+          { label: 'Reference', render: (row) => row.reference ? '<span class="mono small">' + R.esc(row.reference) + '</span>' : '—' }
+        ], emptyTitle: 'No payouts yet', emptyMessage: 'Once fees are collected, the platform settles them to your bank account and each payout appears here.' })) : '';
+
+      return backBanner + subscriptionCard + '<div class="section">' + invoicesCard + '</div><div class="section">' + accountCard + '</div>' + (payoutHistory ? '<div class="section">' + payoutHistory + '</div>' : '');
+    },
+
     openModal(ctx, name, id) {
       const page = ctx.page || {};
       const org = page.organisation || {};
@@ -188,6 +299,8 @@
       const attendance = settings.attendancePolicy || {};
       const notifications = settings.notificationPreferences || {};
       const retention = settings.dataRetention || {};
+      const billing = page.billing || {};
+      const account = billing.paymentAccount || {};
       if (name === 'organisation') {
         ctx.openModal({
           title: 'Edit organisation', endpoint: '/organisations/current', method: 'PATCH', submitLabel: 'Save organisation', size: 'wide',
@@ -257,6 +370,38 @@
               background: data.background, surface: data.surface, text: data.text
             }
           })
+        });
+      } else if (name === 'ownPayfast') {
+        ctx.openModal({
+          title: 'Connect your PayFast account',
+          endpoint: '/billing/payment-account', method: 'PUT', submitLabel: 'Save and verify', size: 'wide',
+          description: 'Find these on your PayFast merchant dashboard. Your merchant key and passphrase are encrypted at rest and only used to sign checkouts and verify webhooks. Parents will pay straight into your PayFast account.',
+          fields: [
+            { name: 'merchantId', label: 'Merchant id', required: true, value: account.merchantId || '', placeholder: '10000100' },
+            { name: 'merchantKey', label: 'Merchant key', required: true, placeholder: 'Your 32-character key', help: 'Must match the account above.' },
+            { name: 'passphrase', label: 'Passphrase', help: 'Only if set on your PayFast account. Leave blank to clear it.' }
+          ],
+          transform: (data) => ({ mode: 'own_payfast', merchantId: data.merchantId, merchantKey: data.merchantKey, passphrase: data.passphrase })
+        });
+      } else if (name === 'payoutDetails') {
+        const payout = account.payout || {};
+        ctx.openModal({
+          title: 'Payout bank details',
+          endpoint: '/billing/payment-account', method: 'PUT', submitLabel: 'Save details', size: 'wide',
+          description: 'The account the platform pays your collected fees into. The account number is encrypted at rest.',
+          fields: [
+            { name: 'payoutAccountHolder', label: 'Account holder', required: true, value: payout.accountHolder || '' },
+            { name: 'payoutBankName', label: 'Bank', required: true, value: payout.bankName || '', placeholder: 'Standard Bank' },
+            { name: 'payoutBranchCode', label: 'Branch code', required: true, value: payout.branchCode || '', placeholder: '051001' },
+            { name: 'payoutAccountNumber', label: 'Account number', required: true, placeholder: payout.accountNumberLast4 ? 'Currently •••• ' + payout.accountNumberLast4 + ' — re-enter to change' : 'Your account number', help: 'Must be the actual number, not the last 4.' },
+            { name: 'payoutAccountType', label: 'Account type', type: 'select', value: payout.accountType || 'cheque',
+              options: [
+                { value: 'cheque', label: 'Current / cheque' },
+                { value: 'savings', label: 'Savings' },
+                { value: 'transmission', label: 'Transmission' },
+                { value: 'bond', label: 'Bond' }
+              ] }
+          ]
         });
       } else if (name === 'operations') {
         ctx.openModal({

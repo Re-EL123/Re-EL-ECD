@@ -303,3 +303,47 @@ See [deployment.md](deployment.md). In short: Neon holds the schema and data,
 Vercel runs the single API function, GitHub Pages serves `apps/web`, and the API
 applies pending migrations plus the permission catalogue on cold start when
 `DATABASE_URL` is present.
+
+## 13. Payments and settlements
+
+Every payment belongs to exactly one of two streams, and each stream has its
+own merchant account.
+
+**Tenant pays Re-EL (billing).** The organisation's subscription is invoiced
+per period (`platform_subscription_invoices`), issued lazily and idempotently
+on read. The tenant pays through the platform's PayFast account
+(`purpose = platform_subscription`); the checkout return lands on
+`Settings → Billing`. The ITN marks the invoice paid and extends the
+subscription in one transaction, and the receipt references the invoice
+number. A subscription whose period ends unpaid flips to `past_due`
+automatically on the next read; an optional reminder endpoint (`GET
+/internal/subscription-reminders`, guarded by `CRON_SECRET`) emails the
+owner at most once a week. An administrator can also record an EFT manually,
+which extends the subscription the same way.
+
+**Parents pay the tenant (settlements).** Fee collection is per organisation
+and comes in two explicit modes, stored in `organisation_payment_accounts`:
+
+- `own_payfast` — the checkout uses the tenant's own PayFast merchant
+  account, so PayFast settles directly to the tenant's bank account and no
+  platform fee is taken. Merchant key and passphrase are sealed with
+  AES-256-GCM (`PAYMENT_CREDENTIALS_KEY`); only the checkout signer and the
+  ITN verifier can open them. The ITN is verified against the tenant's
+  account, never the platform's. The chosen settlement mode is pinned on
+  every payment intent at creation time, so an in-flight payment still
+  verifies if the account is reconfigured later.
+- `platform_collected` (the default) — the platform collects and then pays
+  the tenant by EFT. `platform_payouts` records each payout (gross, fee,
+  net, period) so the ledger per organisation is total collections (paid
+  intents whose settlement is not `own_payfast`) minus settled payouts. The
+  collection fee is configurable per organisation by the platform. Voiding a
+  payout returns the balance to the ledger.
+
+Tenant fee payments (invoices, statements, application fees, form payments)
+are allocated by the ITN as before; only the merchant account that verifies
+them differs. A `payment_intents` row that was started on a tenant account is
+excluded from the platform settlement ledger.
+
+Merchant credentials and payout account numbers are never returned to clients
+— only booleans and last-4 values. Every configuration change and every
+payout is audited.

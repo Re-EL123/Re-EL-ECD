@@ -6,6 +6,8 @@ const { recordAudit } = require('../services/audit-service');
 const { createNotification } = require('../services/notification-service');
 const { sendTemplate, appLink } = require('../services/email-service');
 const payfast = require('../services/payfast-service');
+const { resolveItnAccount } = require('../services/payment-accounts-service');
+const { settleSubscriptionPayment } = require('../services/subscription-billing-service');
 const { createInvoiceIntent, createStatementIntent, outstandingFor, isPayable, guardianForInvoice, learnerName } = require('../services/payment-intent-service');
 const { parsePagination, sendText } = require('../utils/http');
 const bulk = require('../services/bulk-service');
@@ -1142,20 +1144,53 @@ function register(router) {
 
     const pairs = ctx.formPairs || [];
     const body = ctx.body || {};
-    const verification = payfast.verifyItn(pairs);
+    const reference = pairs.find(([key]) => key === 'm_payment_id');
+    const referenceValue = reference ? reference[1] : null;
+    // Resolve the intent before verifying anything: a tenant may collect on
+    // their own PayFast account, and the ITN must be checked against that
+    // account's key, not the platform's.
+    let intent = null;
+    if (referenceValue) {
+      intent = await ctx.db.one('SELECT * FROM payment_intents WHERE reference = $1', [referenceValue]);
+    }
+    let settlement = 'platform';
+    let verificationCreds = null;
+    if (intent) {
+      try {
+        const resolved = await resolveItnAccount(ctx.db, intent);
+        settlement = resolved.settlement;
+        verificationCreds = resolved.credentials || undefined;
+      } catch (error) {
+        console.error(JSON.stringify({ level: 'warn', message: 'payfast itn account rejected', reason: error.message, reference: referenceValue }));
+        return sendText(ctx.res, 400, 'INVALID');
+      }
+    }
+    const verification = payfast.verifyItn(pairs, verificationCreds);
     if (!verification.valid) {
-      console.error(JSON.stringify({ level: 'warn', message: 'payfast itn rejected', reason: verification.reason, ip: ctx.ip }));
+      console.error(JSON.stringify({ level: 'warn', message: 'payfast itn rejected', reason: verification.reason, settlement, ip: ctx.ip }));
+      await recordAudit(ctx.db, { requestId: ctx.requestId, ip: ctx.ip }, {
+        action: 'finance.itn_rejected', resourceType: 'payment_intent', resourceId: intent ? intent.id : null,
+        organisationId: intent ? intent.organisation_id : null,
+        metadata: { reason: verification.reason, settlement }
+      });
       return sendText(ctx.res, 400, 'INVALID');
     }
     const data = verification.data;
     if (!data.reference) return sendText(ctx.res, 400, 'INVALID');
 
-    const intents = await ctx.db.many('SELECT * FROM payment_intents WHERE reference = $1', [data.reference]);
-    if (intents.length !== 1) {
-      console.error(JSON.stringify({ level: 'warn', message: 'payfast itn for unknown reference', reference: data.reference }));
-      return ack('UNKNOWN');
+    if (!intent) {
+      const intents = await ctx.db.many('SELECT * FROM payment_intents WHERE reference = $1', [data.reference]);
+      if (intents.length !== 1) {
+        console.error(JSON.stringify({ level: 'warn', message: 'payfast itn for unknown reference', reference: data.reference }));
+        return ack('UNKNOWN');
+      }
+      intent = intents[0];
+      if ((intent.metadata && intent.metadata.settlement) && intent.metadata.settlement !== 'platform') {
+        // The intent was verified against the wrong account; refuse it.
+        console.error(JSON.stringify({ level: 'warn', message: 'payfast itn settlement mismatch', reference: data.reference }));
+        return ack('UNKNOWN');
+      }
     }
-    const intent = intents[0];
 
     const serverCheck = await payfast.validateWithPayfast(ctx.rawBody);
     if (serverCheck.status === 'invalid') {
@@ -1262,21 +1297,15 @@ function register(router) {
       }
 
       // A paid platform invoice buys the organisation another billing period.
+      // The subscription row is flipped active and its period extended by the
+      // shared settlement service (also used by the manual-payment path).
       let subscription = null;
+      let subscriptionInvoice = null;
       if (intent.purpose === 'platform_subscription' && intentMetadata.subscriptionId) {
-        const period = (await client.query(
-          'SELECT billing_period, current_period_end FROM platform_subscriptions WHERE id = $1',
-          [intentMetadata.subscriptionId]
-        )).rows[0];
-        if (period) {
-          const days = period.billing_period === 'annual' ? 365 : 30;
-          subscription = (await client.query(
-            `UPDATE platform_subscriptions SET status = 'active',
-              current_period_start = COALESCE(current_period_end, CURRENT_DATE),
-              current_period_end = COALESCE(current_period_end, CURRENT_DATE) + ($1::int * INTERVAL '1 day')
-             WHERE id = $2 RETURNING *`,
-            [days, intentMetadata.subscriptionId]
-          )).rows[0] || null;
+        const settled = await settleSubscriptionPayment(client, intent);
+        if (settled) {
+          subscription = settled.subscription;
+          subscriptionInvoice = settled.invoice;
           await client.query(
             "UPDATE organisations SET subscription_status = 'active', updated_at = now() WHERE id = $1",
             [intentMetadata.organisationId || intent.organisation_id]
@@ -1290,7 +1319,7 @@ function register(router) {
         [payment.id, data.providerReference || null, intent.id]
       );
       await client.query('UPDATE payment_webhook_events SET processed_at = now() WHERE id = $1', [event.id]);
-      return { payment, allocations, application, subscription, formSubmission };
+      return { payment, allocations, application, subscription, subscriptionInvoice, formSubmission };
     });
 
     const [guardian, organisation] = await Promise.all([
@@ -1309,7 +1338,8 @@ function register(router) {
         metadata: { paymentId: result.payment.id, intentId: intent.id },
         data: {
           organisationName: organisation.name,
-          invoiceNumber: invoice ? invoice.invoice_number : null,
+          invoiceNumber: invoice ? invoice.invoice_number
+            : (result.subscriptionInvoice ? result.subscriptionInvoice.invoice_number : null),
           amount: Number(result.payment.amount),
           currency: result.payment.currency,
           method: 'PayFast card payment',
@@ -1322,7 +1352,7 @@ function register(router) {
     await recordAudit(ctx.db, { requestId: ctx.requestId, ip: ctx.ip }, {
       action: 'finance.payment_received', resourceType: 'payment', resourceId: result.payment.id,
       organisationId: intent.organisation_id,
-      metadata: { provider: 'payfast', reference: intent.reference, intentId: intent.id }
+      metadata: { provider: 'payfast', reference: intent.reference, intentId: intent.id, settlement: (intent.metadata && intent.metadata.settlement) || 'platform' }
     });
     return ack('OK');
   }, { public: true, skipCsrf: true });

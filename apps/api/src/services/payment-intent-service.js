@@ -10,6 +10,7 @@
  */
 
 const payfast = require('./payfast-service');
+const { resolveCheckoutAccount } = require('./payment-accounts-service');
 
 function outstandingFor(invoice) {
   const total = Number(invoice.total_amount || 0);
@@ -58,13 +59,19 @@ async function createPaymentIntent(db, options) {
   const reference = payfast.newReference();
   const value = Math.round(Number(amount) * 100) / 100;
   const contact = payer || guardian;
+  // Tenant fees are collected on the tenant's own PayFast account when the
+  // organisation configured one; otherwise the platform collects and settles
+  // by EFT. The chosen mode is pinned on the intent so the ITN verifies
+  // against the same account that produced this checkout.
+  const resolved = await resolveCheckoutAccount(db, organisation, purpose);
+  const metadataWithSettlement = { ...(metadata || {}), settlement: resolved.settlement };
   const intent = await db.one(
     `INSERT INTO payment_intents (organisation_id, invoice_id, guardian_id, reference, amount, currency,
       provider, status, created_by, purpose, metadata)
      VALUES ($1,$2,$3,$4,$5,$6,'payfast','pending',$7,$8,$9::jsonb) RETURNING *`,
     [organisation.id, invoice ? invoice.id : null, guardian ? guardian.id : null, reference, value,
       currency || (invoice && invoice.currency) || organisation.currency || 'ZAR', createdBy || null,
-      purpose, JSON.stringify(metadata || {})]
+      purpose, JSON.stringify(metadataWithSettlement)]
   );
   const urls = payfast.checkoutUrls(req, reference, scope);
   const checkout = payfast.buildCheckout({
@@ -80,7 +87,7 @@ async function createPaymentIntent(db, options) {
     returnUrl: returnUrl || urls.returnUrl,
     cancelUrl: cancelUrl || urls.cancelUrl,
     notifyUrl: urls.notifyUrl
-  });
+  }, resolved.credentials || undefined);
   return { intent, checkout };
 }
 

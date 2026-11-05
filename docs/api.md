@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **311 routes** across 17 modules.
+Generated from the router: **323 routes** across 18 modules.
 
 ## Access
 
@@ -103,6 +103,15 @@ Generated from the router: **311 routes** across 17 modules.
 | --- | --- | --- |
 | GET | `/automation-rules` | organisation.settings.manage |
 | POST | `/automation-rules` | organisation.settings.manage |
+
+## Billing
+
+| Method | Path | Access |
+| --- | --- | --- |
+| PUT | `/billing/payment-account` | organisation.settings.manage |
+| GET | `/billing/payouts` | organisation.settings.manage |
+| POST | `/billing/subscription/pay` | organisation.settings.manage |
+| GET | `/billing/summary` | organisation.settings.manage |
 
 ## Branches
 
@@ -248,6 +257,12 @@ Generated from the router: **311 routes** across 17 modules.
 | POST | `/incidents/:id/actions` | safety.manage.daycare |
 | POST | `/incidents/:id/notify-guardians` | safety.manage.daycare |
 | POST | `/incidents/bulk` | safety.manage.daycare |
+
+## Internal
+
+| Method | Path | Access |
+| --- | --- | --- |
+| GET | `/internal/subscription-reminders` | Public |
 
 ## Inventory
 
@@ -416,9 +431,12 @@ Generated from the router: **311 routes** across 17 modules.
 | POST | `/platform/organisations` | Platform only · platform.organisations.manage |
 | GET | `/platform/organisations/:id` | Platform only · platform.organisations.read |
 | PATCH | `/platform/organisations/:id` | Platform only · platform.organisations.manage |
+| GET | `/platform/organisations/:id/payment-account` | Platform only · platform.organisations.read |
+| PUT | `/platform/organisations/:id/payment-account` | Platform only · platform.organisations.manage |
 | POST | `/platform/organisations/:id/restore` | Platform only · platform.organisations.manage |
 | POST | `/platform/organisations/:id/subscription` | Platform only · platform.subscriptions.manage |
 | POST | `/platform/organisations/:id/subscription/checkout` | Platform only · platform.subscriptions.manage |
+| POST | `/platform/organisations/:id/subscription/manual-payment` | Platform only · platform.subscriptions.manage |
 | POST | `/platform/organisations/:id/suspend` | Platform only · platform.organisations.manage |
 | POST | `/platform/organisations/bulk` | Platform only · platform.organisations.manage |
 | GET | `/platform/overview` | Platform only · platform.organisations.read |
@@ -427,6 +445,10 @@ Generated from the router: **311 routes** across 17 modules.
 | PATCH | `/platform/plans/:id` | Platform only · platform.subscriptions.manage |
 | GET | `/platform/settings` | Platform only · platform.organisations.read |
 | PATCH | `/platform/settings` | Platform only · platform.settings.manage |
+| GET | `/platform/settlements` | Platform only · platform.subscriptions.manage |
+| POST | `/platform/settlements/payout` | Platform only · platform.subscriptions.manage |
+| GET | `/platform/settlements/payouts` | Platform only · platform.subscriptions.manage |
+| POST | `/platform/settlements/payouts/:id/void` | Platform only · platform.subscriptions.manage |
 | POST | `/platform/storage/check` | Platform only · platform.settings.manage |
 | GET | `/platform/subscriptions` | Platform only · platform.subscriptions.read |
 | GET | `/platform/support-cases` | Platform only · platform.support.manage |
