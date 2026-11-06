@@ -27,6 +27,15 @@ test('role manuals seed for every capacity and download as branded PDFs', async 
   assert.equal(pdf.headers.get('content-type'), 'application/pdf');
   assert.ok(pdf.text.startsWith('%PDF-'));
   assert.ok(pdf.text.length > 2000);
+
+  // Manual slugs contain underscores (from role keys) — detail and PDF
+  // must resolve them, not 422.
+  const underscored = await client.get('/documents/manual-admissions_officer');
+  assert.equal(underscored.status, 200, underscored.text);
+  assert.equal(underscored.data.role_key, 'admissions_officer');
+  const underscoredPdf = await client.get('/documents/manual-parent_guardian/pdf');
+  assert.equal(underscoredPdf.status, 200, underscoredPdf.text?.slice(0, 200));
+  assert.ok(underscoredPdf.text.startsWith('%PDF-'));
 });
 
 test('legal PDFs are public and the super admin can edit every document', async () => {
@@ -54,6 +63,13 @@ test('legal PDFs are public and the super admin can edit every document', async 
   assert.equal(edited.status, 200, edited.text);
   assert.equal(edited.data.title, 'Teacher Manual — edited');
   assert.ok(edited.data.version >= 2);
+
+  // Editing a manual whose slug has underscores must work too.
+  const editedUnderscored = await platformClient.patch('/platform/documents/manual-admissions_officer', {
+    lede: 'Edited lede for test.'
+  });
+  assert.equal(editedUnderscored.status, 200, editedUnderscored.text);
+  assert.ok(editedUnderscored.data.version >= 2);
 
   // Tenant administrators must not edit documents.
   const principalClient = createClient();

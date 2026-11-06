@@ -18,7 +18,7 @@ function sendPdf(ctx, buffer, filename) {
 
 function safeSlug(value) {
   const slug = String(value || '').trim();
-  if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) fail('VALIDATION', [{ field: 'slug', message: 'Unknown document.' }]);
+  if (!/^[a-z0-9][a-z0-9_-]*$/.test(slug)) fail('VALIDATION', [{ field: 'slug', message: 'Unknown document.' }]);
   return slug;
 }
 
