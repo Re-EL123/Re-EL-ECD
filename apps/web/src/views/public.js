@@ -863,8 +863,37 @@
     ).join('') + '</nav>';
   }
 
-  function renderLegalPage(slug) {
-    const doc = LEGAL_PAGES[slug];
+  async function loadLegalDoc(slug) {
+    // Legal pages are editable by the super admin in the database (see
+    // Platform → Configuration → Documents). Fall back to the static
+    // template below until the first edit is saved.
+    try {
+      const payload = await R.api('GET', '/public/documents/' + encodeURIComponent(slug));
+      const doc = (payload && payload.data) || null;
+      if (!doc || !doc.sections || !doc.sections.length) return null;
+      return {
+        title: doc.title,
+        eyebrow: doc.category === 'legal' ? 'Legal' : 'Document',
+        lede: doc.lede || '',
+        intro: doc.intro || [],
+        sections: (doc.sections || []).map((s) => [s.heading || 'Section', (s.paragraphs || []).concat((s.steps || []).map((step) => step))])
+      };
+    } catch { return null; }
+  }
+
+  function legalDocViews(slug) {
+    return {
+      async load(ctx) { return { override: await loadLegalDoc(slug) }; },
+      render(ctx, params, page) {
+        const base = LEGAL_PAGES[slug];
+        const doc = (page && page.override) || base;
+        return renderLegalPage(slug, doc);
+      }
+    };
+  }
+
+  function renderLegalPage(slug, docOverride) {
+    const doc = docOverride || LEGAL_PAGES[slug];
     if (!doc) return '<section class="site-section"><div class="site-wrap site-narrow"><h1>Legal page not found</h1><p><a href="#/legal">Back to the legal hub</a></p></div></section>';
     const sections = doc.sections.map((section) =>
       '<h2>' + R.esc(section[0]) + '</h2><div class="legal-body">' + section[1].map((p) => '<p>' + R.esc(p) + '</p>').join('') + '</div>'
@@ -895,9 +924,9 @@
   }
 
   V.legalIndex = { render() { return renderLegalIndex(); } };
-  V.legalTerms = { render() { return renderLegalPage('terms'); } };
-  V.legalPrivacy = { render() { return renderLegalPage('privacy'); } };
-  V.legalCookies = { render() { return renderLegalPage('cookies'); } };
-  V.legalAcceptableUse = { render() { return renderLegalPage('acceptable-use'); } };
-  V.legalSafeguarding = { render() { return renderLegalPage('safeguarding'); } };
+  V.legalTerms = legalDocViews('terms');
+  V.legalPrivacy = legalDocViews('privacy');
+  V.legalCookies = legalDocViews('cookies');
+  V.legalAcceptableUse = legalDocViews('acceptable-use');
+  V.legalSafeguarding = legalDocViews('safeguarding');
 })();

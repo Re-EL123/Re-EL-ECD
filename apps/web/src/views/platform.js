@@ -779,9 +779,10 @@
 
   V.platformSettings = {
     async load(ctx) {
-      const [features, config] = await Promise.all([
+      const [features, config, documents] = await Promise.all([
         R.api('GET', '/platform/features'),
-        R.api('GET', '/platform/settings')
+        R.api('GET', '/platform/settings'),
+        R.api('GET', '/documents?pageSize=100').catch(() => ({ data: [] }))
       ]);
       const payload = config.data || {};
       let health = null;
@@ -791,6 +792,7 @@
       return {
         features: features.data,
         health,
+        documents: documents.data || [],
         org: Object.assign({}, payload.organisation || {}, { settings: payload.settings || {} }),
         theme: payload.theme || R.PLATFORM_BRAND.theme
       };
@@ -826,6 +828,12 @@
             ? '<div class="alert alert-info"><i data-lucide="info"></i><span>' + R.esc(((org.settings || {}).banner || {}).message || '') + '</span></div>'
             : '<p class="muted small">Show a short message at the top of every workspace.</p>'),
           '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'platformBanner\')">' + R.icon('megaphone') + ' ' + (((org.settings || {}).banner || {}).enabled ? 'Edit banner' : 'Enable banner') + '</button>') : '') +
+        (canManage ? R.card('Manuals and legal documents',
+          '<p class="muted small">Role manuals with SOPs and every legal document. Edit any document, including legal ones — downloads update everywhere instantly.</p>' +
+          R.table({ rows: page.documents || [], compact: true, columns: [
+            { label: 'Document', render: (d) => '<a class="cell-strong" href="#/app/manuals/' + R.attr(d.slug) + '">' + R.esc(d.title) + '</a><span class="cell-sub">' + R.esc(d.category === 'legal' ? 'Legal' : (d.role_key || 'Manual')) + ' · v' + R.esc(d.version) + '</span>' },
+            { label: '', align: 'right', render: (d) => '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'editDocument\', ' + R.attr(JSON.stringify(d.slug)) + ')">Edit</button> <button class="btn btn-sm btn-secondary" @click="downloadExport(\'/documents/' + R.attr(d.slug) + '/pdf\')">PDF</button>' }
+          ] })) : '') +
         '<div class="section"></div>' +
         '<div class="split"><div class="stack">' +
         R.card('Platform organisation', '<div class="detail-list">' +
@@ -866,7 +874,48 @@
     },
   };
 
-  V.platformSettings.openModal = function (ctx, name) {
+  V.platformSettings.openModal = function (ctx, name, id) {
+    if (name === 'editDocument') {
+      const slug = String(id || '').trim();
+      if (!slug) return;
+      R.api('GET', '/documents/' + encodeURIComponent(slug)).then((payload) => {
+        const doc = payload.data || {};
+        ctx.openModal({
+          title: 'Edit document: ' + (doc.title || slug),
+          description: 'Full edit access (super admin). Saving bumps the version; tenants and legal pages update immediately. Audited.',
+          endpoint: '/platform/documents/' + encodeURIComponent(slug),
+          method: 'PATCH',
+          submitLabel: 'Save document',
+          successMessage: 'Document saved and version bumped.',
+          size: 'wide',
+          fields: [
+            { name: 'title', label: 'Title', required: true, value: doc.title || '' },
+            { name: 'lede', label: 'Subtitle / lede', value: doc.lede || '', span: 2 },
+            { name: 'intro', label: 'Introduction (one paragraph per line)', type: 'textarea', span: 2, help: 'Separate paragraphs with a blank line in the PDF.', value: (doc.intro || []).join('\n\n') },
+            { name: 'sections', label: 'Sections', type: 'repeater', span: 2, itemLabel: 'Section', addLabel: 'Add section', value: (doc.sections || []).map((s) => ({
+              heading: s.heading || '',
+              body: (s.paragraphs || []).join('\n\n'),
+              stepsText: (s.steps || []).join('\n')
+            })), columns: [
+              { key: 'heading', label: 'Heading', placeholder: 'e.g. Morning register SOP' },
+              { key: 'body', label: 'Paragraphs (blank line between)', type: 'textarea', span: 2, placeholder: 'Explain the section…' },
+              { key: 'stepsText', label: 'Steps (one per line)', type: 'textarea', span: 2, placeholder: '1. …' }
+            ] }
+          ],
+          transform: (data) => ({
+            title: data.title,
+            lede: data.lede,
+            intro: String(data.intro || '').split(/\n\s*\n+/).map((p) => p.trim()).filter(Boolean),
+            sections: (data.sections || []).map((s) => ({
+              heading: s.heading,
+              paragraphs: String(s.body || '').split(/\n\s*\n+/).map((p) => p.trim()).filter(Boolean),
+              steps: String(s.stepsText || '').split(/\n+/).map((p) => p.trim()).filter(Boolean)
+            }))
+          })
+        });
+      }).catch((error) => ctx.toast(error.message || 'Could not load the document.', 'error'));
+      return;
+    }
     if (name === 'platformBanner') {
       const settings = ((ctx.page && ctx.page.org) || {}).settings || {};
       const banner = settings.banner || {};

@@ -501,6 +501,8 @@ table.table { width: 100%; border-collapse: collapse; font-size: 0.86rem; min-wi
 .legal-article hr { border: 0; border-top: 1px solid var(--border-subtle); margin: 24px 0; }
 .legal-card p { margin-bottom: 10px; }
 .legal-card a { font-weight: 700; color: var(--reel-green-700); }
+.legal-steps { padding-left: 22px; margin: 8px 0 14px; }
+.legal-steps li { margin-bottom: 6px; line-height: 1.5; }
 @media (max-width: 760px) { .legal-layout { grid-template-columns: 1fr; } .legal-nav { position: static; flex-direction: row; flex-wrap: wrap; } }
 
 /* --- Public website ----------------------------------------------------- */

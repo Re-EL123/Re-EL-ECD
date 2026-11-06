@@ -458,4 +458,122 @@ function toPdf({ title, subtitle, columns, rows, generatedAt, footer }) {
   return Buffer.concat(chunks);
 }
 
-module.exports = { toCsv, toXlsx, toPdf, formatCell };
+/**
+ * Branded multi-page document (manuals and legal policies).
+ * Text flows with headings, paragraphs and numbered steps instead of a
+ * table, so it reads as a manual while reusing the same dependency-free
+ * PDF machinery as toPdf.
+ */
+function toDocumentPdf({ title, subtitle, organisationName, intro, sections, updatedAt, version, footer }) {
+  const PAGE_W = 595.28;
+  const PAGE_H = 841.89;
+  const MARGIN = 56;
+  const contentW = PAGE_W - MARGIN * 2;
+  const TITLE_CHARS = 88;
+  const BODY_CHARS = 118;
+  const GREEN = '0.043 0.325 0.29';
+
+  function wrap(text, chars) {
+    const words = String(text || '').split(/\s+/).filter(Boolean);
+    const lines = [];
+    let line = '';
+    for (const word of words) {
+      const next = line ? line + ' ' + word : word;
+      if (next.length <= chars) { line = next; continue; }
+      if (line) lines.push(line);
+      line = word.length > chars ? word.slice(0, chars) : word;
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+
+  const items = [];
+  const push = (text, kind) => { for (const line of wrap(text, kind === 'body' ? BODY_CHARS : TITLE_CHARS)) items.push({ line, kind }); };
+  push(title || 'Document', 'title');
+  if (subtitle) push(subtitle, 'subtitle');
+  if (organisationName) push(organisationName, 'subtitle');
+  const stamp = updatedAt ? new Date(updatedAt) : new Date();
+  push('Updated ' + stamp.toISOString().slice(0, 10) + (version ? ' · v' + version : ''), 'subtitle');
+  items.push({ line: '', kind: 'gap' });
+  for (const para of intro || []) { push(para, 'body'); items.push({ line: '', kind: 'gap' }); }
+  for (const section of sections || []) {
+    items.push({ line: section.heading || 'Section', kind: 'heading' });
+    for (const para of section.paragraphs || []) { push(para, 'body'); items.push({ line: '', kind: 'gap' }); }
+    let n = 0;
+    for (const step of section.steps || []) { n += 1; push(n + '. ' + step, 'body'); }
+    items.push({ line: '', kind: 'gap' });
+  }
+
+  const pages = [];
+  let current = [];
+  let y = PAGE_H - MARGIN;
+  const heights = { title: 26, subtitle: 15, heading: 22, body: 13, gap: 8 };
+  const flush = () => { pages.push(current); current = []; y = PAGE_H - MARGIN; };
+  for (const item of items) {
+    const h = heights[item.kind] || 13;
+    if (y - h < MARGIN + 30) flush();
+    current.push({ ...item, y });
+    y -= h;
+  }
+  if (current.length || !pages.length) flush();
+
+  const pageContents = pages.map((page) => {
+    const content = [];
+    content.push(MARGIN + ' ' + (PAGE_H - MARGIN + 8) + ' ' + contentW + ' 3 re ' + GREEN + ' rg f 0 g');
+    for (const item of page) {
+      if (item.kind === 'gap') continue;
+      if (item.kind === 'title') content.push('BT /F1 20 Tf ' + MARGIN + ' ' + item.y + ' Td 0.055 0.17 0.149 rg (' + pdfEscape(item.line) + ') Tj ET');
+      else if (item.kind === 'subtitle') content.push('BT /F2 10 Tf ' + MARGIN + ' ' + item.y + ' Td 0.42 0.52 0.47 rg (' + pdfEscape(item.line) + ') Tj ET');
+      else if (item.kind === 'heading') content.push('BT /F1 13 Tf ' + MARGIN + ' ' + item.y + ' Td ' + GREEN + ' rg (' + pdfEscape(item.line) + ') Tj ET');
+      else content.push('BT /F2 10 Tf ' + MARGIN + ' ' + item.y + ' Td 0.055 0.17 0.149 rg (' + pdfEscape(item.line) + ') Tj ET');
+    }
+    return content.join('\n');
+  });
+
+  let nextId = 3;
+  const fontId = nextId; nextId += 1;
+  const pageIds = [];
+  const contentIds = [];
+  for (let i = 0; i < pages.length; i += 1) { pageIds.push(nextId); nextId += 1; contentIds.push(nextId); nextId += 1; }
+  const objects = [];
+  const kids = pageIds.map((id) => id + ' 0 R').join(' ');
+  objects.push({ id: 1, body: '<< /Type /Catalog /Pages 2 0 R >>' });
+  objects.push({ id: 2, body: '<< /Type /Pages /Kids [' + kids + '] /Count ' + pages.length + ' >>' });
+  objects.push({ id: fontId, body: '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>' });
+  for (let i = 0; i < pages.length; i += 1) {
+    const hasTitle = pages[i].some((it) => it.kind === 'title');
+    const header = hasTitle ? '' : 'BT /F2 8 Tf ' + MARGIN + ' ' + (PAGE_H - MARGIN + 8) + ' Td 0.42 0.52 0.47 rg (' + pdfEscape((organisationName || 'Re-EL ECD') + ' · ' + (title || '')) + ') Tj ET\n';
+    const foot = 'BT /F2 7.5 Tf ' + MARGIN + ' 20 Td 0.42 0.52 0.47 rg (' + pdfEscape(footer || ('Re-EL ECD · ' + (organisationName || ''))) + ') Tj ET\n'
+      + 'BT /F2 7.5 Tf ' + (PAGE_W - MARGIN - 60) + ' 20 Td 0.42 0.52 0.47 rg (' + pdfEscape('Page ' + (i + 1) + ' of ' + pages.length) + ') Tj ET';
+    const full = header + (pageContents[i] || '') + '\n' + foot;
+    objects.push({
+      id: pageIds[i],
+      body: '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + PAGE_W + ' ' + PAGE_H + '] '
+        + '/Resources << /Font << /F1 ' + fontId + ' 0 R /F2 ' + fontId + ' 0 R >> >> '
+        + '/Contents ' + contentIds[i] + ' 0 R >>'
+    });
+    const stream = Buffer.from(full, 'utf8');
+    objects.push({ id: contentIds[i], body: '<< /Length ' + stream.length + ' >>\nstream\n' + full + '\nendstream' });
+  }
+  objects.sort((a, b) => a.id - b.id);
+  const chunks = [Buffer.from('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n', 'binary')];
+  let offset = chunks[0].length;
+  const offsets = new Map([[0, 0]]);
+  for (const object of objects) {
+    const head = Buffer.from(object.id + ' 0 obj\n', 'utf8');
+    const body = Buffer.from(object.body, 'utf8');
+    const tail = Buffer.from('\nendobj\n', 'utf8');
+    offsets.set(object.id, offset);
+    chunks.push(head, body, tail);
+    offset += head.length + body.length + tail.length;
+  }
+  const xrefOffset = offset;
+  const xrefLines = ['xref', '0 ' + (objects.length + 1), '0000000000 65535 f '];
+  for (let i = 1; i <= objects.length; i += 1) xrefLines.push(String(offsets.get(i)).padStart(10, '0') + ' 00000 n ');
+  const trailer = ['trailer', '<< /Size ' + (objects.length + 1) + ' /Root 1 0 R >>', 'startxref', String(xrefOffset), '%%EOF'];
+  chunks.push(Buffer.from(xrefLines.join('\n') + '\n', 'utf8'));
+  chunks.push(Buffer.from(trailer.join('\n'), 'utf8'));
+  return Buffer.concat(chunks);
+}
+
+module.exports = { toCsv, toXlsx, toPdf, toDocumentPdf, formatCell };

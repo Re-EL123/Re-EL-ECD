@@ -69,6 +69,8 @@
     route('/app/settings', 'app', 'settings', 'organisation.read.daycare', 'Settings'),
     route('/app/website', 'app', 'website', 'website.read.daycare', 'Public website'),
     route('/app/media', 'app', 'mediaLibrary', 'media.read.daycare', 'Media library'),
+    route('/app/manuals', 'app', 'manuals', ['parent.read.own', 'reports.read.daycare', 'tasks.read.own', 'attendance.read.assigned'], 'Manuals'),
+    route('/app/manuals/:slug', 'app', 'manualDetail', ['parent.read.own', 'reports.read.daycare', 'tasks.read.own', 'attendance.read.assigned'], 'Manual'),
     route('/app/access', 'app', 'access', 'access.read.daycare', 'Users and access'),
     route('/app/audit', 'app', 'audit', 'audit.read.daycare', 'Audit log'),
     route('/app/automation', 'app', 'automation', 'organisation.settings.manage', 'Automation'),
@@ -82,7 +84,9 @@
     route('/parent/forms', 'parent', 'parentForms', 'parent.forms.submit.own', 'Forms'),
     route('/parent/messages', 'parent', 'parentMessages', 'messages.read.own', 'Messages'),
     route('/parent/finance', 'parent', 'parentFinance', 'parent.finance.read.own', 'Fees'),
-    route('/parent/settings', 'parent', 'parentSettings', 'parent.read.own', 'Profile and consent')
+    route('/parent/settings', 'parent', 'parentSettings', 'parent.read.own', 'Profile and consent'),
+    route('/parent/manuals', 'parent', 'manuals', 'parent.read.own', 'Manuals'),
+    route('/parent/manuals/:slug', 'parent', 'manualDetail', 'parent.read.own', 'Manual')
   ];
 
   function compile(pattern) {
@@ -164,6 +168,7 @@
         { path: '/app/media', label: 'Media library', icon: 'images', permission: 'media.read.daycare' },
         { path: '/app/access', label: 'Users and access', icon: 'shield-check', permission: 'access.read.daycare' },
         { path: '/app/audit', label: 'Audit log', icon: 'scroll-text', permission: 'audit.read.daycare' },
+        { path: '/app/manuals', label: 'Manuals', icon: 'book-open', permission: ['parent.read.own', 'reports.read.daycare', 'tasks.read.own', 'attendance.read.assigned'] },
         { path: '/app/automation', label: 'Automation', icon: 'workflow', permission: 'organisation.settings.manage' }
       ] }
     ],
@@ -179,6 +184,7 @@
         { path: '/parent/forms', label: 'Forms', icon: 'file-text', permission: 'parent.forms.submit.own' },
         { path: '/parent/messages', label: 'Messages', icon: 'messages-square', permission: 'messages.read.own' },
         { path: '/parent/finance', label: 'Fees', icon: 'wallet', permission: 'parent.finance.read.own' },
+        { path: '/parent/manuals', label: 'Manuals', icon: 'book-open', permission: 'parent.read.own' },
         { path: '/parent/settings', label: 'Profile and consent', icon: 'settings', permission: 'parent.read.own' }
       ] }
     ]

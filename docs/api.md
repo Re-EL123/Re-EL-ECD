@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **330 routes** across 19 modules.
+Generated from the router: **336 routes** across 20 modules.
 
 ## Access
 
@@ -185,6 +185,14 @@ Generated from the router: **330 routes** across 19 modules.
 | Method | Path | Access |
 | --- | --- | --- |
 | GET | `/dashboard` | reports.read.daycare |
+
+## Documents
+
+| Method | Path | Access |
+| --- | --- | --- |
+| GET | `/documents` | Authenticated |
+| GET | `/documents/:slug` | Authenticated |
+| GET | `/documents/:slug/pdf` | Authenticated |
 
 ## Expense Categories
 
@@ -433,6 +441,7 @@ Generated from the router: **330 routes** across 19 modules.
 | --- | --- | --- |
 | GET | `/platform/audit-events` | Platform only · platform.audit.read |
 | POST | `/platform/broadcast` | Platform only · platform.organisations.manage |
+| PATCH | `/platform/documents/:slug` | Platform only · platform.settings.manage |
 | GET | `/platform/features` | Platform only · platform.organisations.read |
 | PATCH | `/platform/features/:key` | Platform only · platform.features.manage |
 | GET | `/platform/health` | Platform only · platform.health.read |
@@ -478,6 +487,8 @@ Generated from the router: **330 routes** across 19 modules.
 | GET | `/public/daycares/:slug` | Public |
 | GET | `/public/daycares/:slug/enquiry-form` | Public |
 | GET | `/public/daycares/by-domain/:host` | Public |
+| GET | `/public/documents/:slug` | Public |
+| GET | `/public/documents/:slug/pdf` | Public |
 | POST | `/public/enquiries` | Public |
 | GET | `/public/forms/:orgSlug/:formSlug` | Public |
 | POST | `/public/forms/:orgSlug/:formSlug/submit` | Public |
