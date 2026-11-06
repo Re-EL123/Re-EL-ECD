@@ -7,6 +7,12 @@
 
   const AUDIENCES = ['all', 'staff', 'parents', 'guardians', 'teachers'];
 
+  function branchName(id, branches, fallback) {
+    const branchesList = branches || [];
+    const found = branchesList.find((branch) => branch.id === id);
+    return found ? found.name : (fallback || 'Branch');
+  }
+
   V.communications = {
     async load(ctx) {
       const canManage = ctx.has('announcements.manage.daycare');
@@ -27,6 +33,7 @@
         thread = await R.api('GET', '/conversations/' + encodeURIComponent(selectedId))
           .then((p) => p.data).catch(() => null);
       }
+      const branches = await R.api('GET', '/branches').then((p) => p.data).catch(() => []);
 
       let members = [];
       if (ctx.has('access.read.daycare')) {
@@ -40,7 +47,7 @@
 
       return {
         overview: overview || {}, announcements: announcements || [], conversations: conversations || [],
-        thread, selectedId, members: members.filter((m) => m.user_id), canManage
+        branches, thread, selectedId, members: members.filter((m) => m.user_id), canManage
       };
     },
 
@@ -78,7 +85,9 @@
           '<div class="row" style="margin-bottom:8px">' + R.badge(a.status) +
           (canManage ? '<label class="check" style="gap:6px"><input type="checkbox" :checked="isSelected(' + R.attr(JSON.stringify(a.id)) + ')" @change="toggleSelect(' + R.attr(JSON.stringify(a.id)) + ', $event.target.checked)" aria-label="Select announcement"><span class="muted small">Select</span></label>' : '') +
           '<span class="badge badge-muted">' + R.esc(R.titleCase(a.audience_type)) + '</span>' +
-          (a.branch_name ? '<span class="badge badge-sky">' + R.esc(a.branch_name) + '</span>' : '<span class="badge badge-muted">All branches</span>') +
+          (a.branch_ids && a.branch_ids.length
+            ? a.branch_ids.map((id) => '<span class="badge badge-sky">' + R.esc(branchName(id, (page.branches || []), null)) + '</span>').join(' ')
+            : (a.branch_name ? '<span class="badge badge-sky">' + R.esc(a.branch_name) + '</span>' : '<span class="badge badge-muted">All branches</span>')) +
           '<span class="muted small row-end">' + (a.published_at ? R.relative(a.published_at) : 'Created ' + R.relative(a.created_at)) + '</span></div>' +
           '<p class="muted" style="white-space:pre-wrap">' + R.esc(a.body) + '</p>' +
           (R.mediaList(a.attachment_urls).length ? '<div class="media-grid" style="margin:10px 0">' +
@@ -147,7 +156,7 @@
           fields: [
             { name: 'title', label: 'Title', required: true, span: 2 },
             { name: 'audienceType', label: 'Audience', type: 'select', options: AUDIENCES.map((a) => ({ value: a, label: R.titleCase(a) })), value: 'all' },
-            { name: 'branchId', label: 'Branch', type: 'select', options: R.branchOptions(ctx) },
+            { name: 'branchIds', label: 'Branches', type: 'multiselect', span: 2, options: (ctx.branches || []).map((b) => ({ value: b.id, label: b.name })), placeholder: 'All branches' },
             { name: 'body', label: 'Message', type: 'textarea', required: true, span: 2 },
             { name: 'attachmentUrls', label: 'Attachments', type: 'media', multiple: true, scope: 'announcement', accept: 'image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/webm,video/quicktime,audio/mpeg,application/pdf,text/plain,text/csv', span: 2, help: 'Photos, video, audio or documents to include with this announcement.' },
             { name: 'publish', label: 'Publish immediately', type: 'checkbox', value: true, help: 'Notify the audience now' }

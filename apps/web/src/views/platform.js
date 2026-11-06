@@ -50,6 +50,8 @@
       const status = o.organisationStatus || {};
       const security = Array.isArray(o.securityBreakdown) ? o.securityBreakdown : [];
       return R.pageHead('Platform overview', 'Every daycare on Re-EL ECD, in one calm view.',
+        '<button class="btn btn-secondary btn-sm" @click="openCommand()">' + R.icon('search') + ' Global search</button>' +
+        '<button class="btn btn-secondary btn-sm" @click="act(\'POST\',\'/platform/subscriptions/sweep\',{},{successMessage:\'Billing sweep complete.\'})">' + R.icon('refresh-cw') + ' Run billing sweep</button>' +
         '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'broadcast\')">' + R.icon('megaphone') + ' Broadcast</button>' +
         '<a class="btn btn-secondary btn-sm" href="#/platform/health">' + R.icon('activity') + ' System health</a>' +
         '<a class="btn btn-primary btn-sm" href="#/platform/organisations">' + R.icon('building-2') + ' Organisations</a>') +
@@ -58,6 +60,9 @@
         R.statCard({ label: 'Active users', value: R.number(o.activeUsers), icon: 'users', tone: 'sky', foot: 'Across all tenants' }) +
         R.statCard({ label: 'Learners', value: R.number(o.activeLearners), icon: 'baby', tone: 'clay', foot: 'Enrolled children' }) +
         R.statCard({ label: 'Subscription revenue', value: R.money(revenue), icon: 'credit-card', tone: 'plum', foot: 'Monthly recurring' }) +
+        R.statCard({ label: 'Fees collected (30d)', value: R.money(Number(o.feesCollectedLast30Days || 0)), icon: 'banknote', tone: 'sky', foot: 'Parent fees through the platform account' }) +
+        R.statCard({ label: 'Outstanding to settle', value: R.money(Number(o.platformOutstanding || 0)), icon: 'hand-coins', tone: Number(o.platformOutstanding || 0) > 0 ? 'sun' : 'green', foot: 'Tenants awaiting EFT payouts' }) +
+        R.statCard({ label: 'Past-due subscriptions', value: R.number(Number(o.pastDueSubscriptions || 0)), icon: 'alarm-clock', tone: Number(o.pastDueSubscriptions || 0) > 0 ? 'danger' : 'green', foot: 'Awaiting payment' }) +
         '</div>' +
         '<div class="split section"><div class="stack">' +
         R.card('Organisations', R.table({ rows: orgs, columns: [
@@ -255,6 +260,7 @@
               ? '<button class="btn btn-sm btn-danger" @click="openNamedModal(\'userStatus\', ' + R.attr(JSON.stringify(u.id)) + ')">Manage</button>'
               : '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/platform/users/' + R.attr(u.id) + '/status\',{status:\'active\'},{successMessage:\'User activated\'})">Activate</button>') +
             '<button class="btn btn-sm btn-secondary" @click="act(\'POST\',\'/platform/users/' + R.attr(u.id) + '/revoke-sessions\',{},{successMessage:\'Sessions revoked\'})">Revoke sessions</button>' +
+            (u.status === 'active' ? '<button class="btn btn-sm btn-secondary" @click="impersonateUser(\'' + R.attr(u.id) + '\')">' + R.icon('eye') + ' View as</button>' : '') +
             '</div>' : '' }
         ], emptyTitle: 'No users found', emptyMessage: 'Adjust the filters or invite a tenant owner.' }) +
         '<div class="muted small" style="margin-top:10px">' + R.number(page.meta.total || rows.length) + ' users</div>';
@@ -815,6 +821,11 @@
           swatch('Background', theme.background) + swatch('Surface', theme.surface) + swatch('Text', theme.text) +
           '</div>',
           canManage ? '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'platformBranding\')">Edit palette ' + R.icon('arrow-right') + '</button>' : '') +
+        (canManage ? R.card('Platform banner',
+          (((org.settings || {}).banner || {}).enabled
+            ? '<div class="alert alert-info"><i data-lucide="info"></i><span>' + R.esc(((org.settings || {}).banner || {}).message || '') + '</span></div>'
+            : '<p class="muted small">Show a short message at the top of every workspace.</p>'),
+          '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'platformBanner\')">' + R.icon('megaphone') + ' ' + (((org.settings || {}).banner || {}).enabled ? 'Edit banner' : 'Enable banner') + '</button>') : '') +
         '<div class="section"></div>' +
         '<div class="split"><div class="stack">' +
         R.card('Platform organisation', '<div class="detail-list">' +
@@ -856,6 +867,36 @@
   };
 
   V.platformSettings.openModal = function (ctx, name) {
+    if (name === 'platformBanner') {
+      const settings = ((ctx.page && ctx.page.org) || {}).settings || {};
+      const banner = settings.banner || {};
+      ctx.openModal({
+        title: banner.enabled ? 'Update platform banner' : 'Enable platform banner',
+        description: 'The banner appears at the top of every workspace and on the sign-in screen. Keep it short and useful.',
+        endpoint: '/platform/settings',
+        method: 'PATCH',
+        submitLabel: 'Save banner',
+        successMessage: 'Platform banner updated.',
+        fields: [
+          { name: 'enabled', label: 'Show this banner', type: 'checkbox', value: banner.enabled === true },
+          { name: 'message', label: 'Message', type: 'textarea', required: true, value: banner.message || '', span: 2, help: 'For example: Scheduled maintenance Sunday 20:00–21:00. Tenants will see this notice.' },
+          { name: 'tone', label: 'Tone', type: 'select', value: banner.tone || 'info', options: [
+            { value: 'info', label: 'Info' },
+            { value: 'warning', label: 'Warning' },
+            { value: 'danger', label: 'Danger' },
+            { value: 'success', label: 'Success' }
+          ] }
+        ],
+        transform: (data) => ({
+          banner: {
+            enabled: data.enabled === true,
+            message: String(data.message || '').slice(0, 300),
+            tone: data.tone || 'info'
+          }
+        })
+      });
+      return;
+    }
     if (name === 'platformSettings') {
       const settings = ((ctx.page && ctx.page.org) || {}).settings || {};
       ctx.openModal({

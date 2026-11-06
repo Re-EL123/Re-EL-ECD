@@ -36,9 +36,12 @@
           R.selectFilter(ctx, 'classroomId', classrooms.map((c) => ({ value: c.id, label: c.name })), 'All classrooms') +
           R.selectFilter(ctx, 'branchId', R.branchOptions(ctx), 'All branches')
         ) +
-        (ctx.has('learners.archive.daycare') ? R.bulkBar([
-          { label: 'Archive selected', icon: 'archive', path: '/learners/bulk', action: 'archive', tone: 'danger' },
-          { label: 'Restore selected', icon: 'rotate-ccw', path: '/learners/bulk', action: 'restore' }
+        (ctx.has('learners.archive.daycare') || ctx.has('learners.update.daycare') ? R.bulkBar([
+          { label: 'Move classroom', icon: 'arrow-right-circle', modal: 'moveClassroom' },
+          ...(ctx.has('learners.archive.daycare') ? [
+            { label: 'Archive selected', icon: 'archive', path: '/learners/bulk', action: 'archive', tone: 'danger' },
+            { label: 'Restore selected', icon: 'rotate-ccw', path: '/learners/bulk', action: 'restore' }
+          ] : [])
         ], { hint: 'Archiving withdraws the learner from active enrolments.' }) : '') +
         R.table({ rows, selectable: ctx.has('learners.archive.daycare') || ctx.has('learners.update.daycare'), columns: [
           { label: 'Learner', render: (l) => '<div class="row" style="gap:10px">' + R.mediaThumb(l.profile_image_url, l.first_name + ' ' + l.last_name) + '<div><a class="cell-strong" href="#/app/learners/' + R.attr(l.id) + '">' + R.esc(l.first_name) + ' ' + R.esc(l.last_name) + '</a><span class="cell-sub mono">' + R.esc(l.learner_reference) + '</span></div></div>' },
@@ -53,6 +56,24 @@
     },
 
     openModal(ctx, name) {
+      if (name === 'moveClassroom') {
+        ctx.openModal({
+          title: 'Move selected children',
+          endpoint: '/learners/bulk',
+          method: 'POST',
+          submitLabel: 'Move children',
+          successMessage: 'Children moved.',
+          fields: [
+            { name: 'classroomId', label: 'Destination classroom', type: 'select', required: true, options: R.classroomOptions((ctx.page || {}).classrooms) }
+          ],
+          transform: (data) => ({
+            ids: (ctx.selectedIds || []).slice(),
+            action: 'move_classroom',
+            classroomId: data.classroomId
+          })
+        });
+        return;
+      }
       if (name !== 'learner') return;
       ctx.openModal({
         title: 'Add a learner',

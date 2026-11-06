@@ -311,35 +311,50 @@ function register(router) {
     const body = validate(ctx.body, {
       description: { type: 'string', min: 3, max: 2000 },
       assignedTo: { type: 'string', uuid: true, optional: true },
+      staffIds: { type: 'array', of: 'uuid', max: 20, optional: true },
       dueAt: { type: 'string', date: true, optional: true }
     });
     const incident = await ctx.db.one('SELECT * FROM incidents WHERE id = $1 AND organisation_id = $2',
       [ctx.params.id, ctx.organisationId]);
     if (!incident) throw new AppError('NOT_FOUND');
     if (incident.status === 'closed') fail('CONFLICT', null, 'Closed incidents cannot receive new actions.');
-    if (body.assignedTo) {
-      const member = await ctx.db.one(
-        "SELECT id FROM memberships WHERE user_id = $1 AND organisation_id = $2 AND status = 'active'",
-        [body.assignedTo, ctx.organisationId]
+    const assignees = body.staffIds && body.staffIds.length
+      ? Array.from(new Set(body.staffIds))
+      : (body.assignedTo ? [body.assignedTo] : [null]);
+    const withAssignees = assignees.filter(Boolean);
+    if (withAssignees.length) {
+      const members = await ctx.db.many(
+        "SELECT user_id FROM memberships WHERE organisation_id = $1 AND status = 'active' AND user_id = ANY($2::uuid[])",
+        [ctx.organisationId, withAssignees]
       );
-      if (!member) fail('VALIDATION', [{ field: 'assignedTo', message: 'The assignee must be an active organisation member.' }]);
+      const valid = new Set(members.map((m) => m.user_id));
+      const invalid = withAssignees.filter((id) => !valid.has(id));
+      if (invalid.length) {
+        fail('VALIDATION', [{ field: 'staffIds', message: 'One or more assignees are not active organisation members.' }]);
+      }
     }
-    const action = await ctx.db.one(
-      `INSERT INTO incident_actions (incident_id, action_description, assigned_to, due_at) VALUES ($1,$2,$3,$4) RETURNING *`,
-      [incident.id, body.description, body.assignedTo || null, body.dueAt || null]
-    );
-    if (body.assignedTo) {
-      await createNotification(ctx.db, ctx, {
-        recipientUserIds: [body.assignedTo], type: 'incident_action_assigned',
-        title: 'Corrective action assigned', body: body.description.slice(0, 300),
-        resourceType: 'incident', resourceId: incident.id
-      });
+    const created = [];
+    for (const assignee of assignees) {
+      const action = await ctx.db.one(
+        `INSERT INTO incident_actions (incident_id, action_description, assigned_to, due_at) VALUES ($1,$2,$3,$4) RETURNING *`,
+        [incident.id, body.description, assignee || null, body.dueAt || null]
+      );
+      if (assignee) {
+        await createNotification(ctx.db, ctx, {
+          recipientUserIds: [assignee], type: 'incident_action_assigned',
+          title: 'Corrective action assigned', body: body.description.slice(0, 300),
+          resourceType: 'incident', resourceId: incident.id
+        });
+      }
+      created.push(action);
     }
     await recordAudit(ctx.db, ctx, {
-      action: 'safety.incident_action_created', resourceType: 'incident_action', resourceId: action.id
+      action: 'safety.incident_action_created', resourceType: 'incident_action', resourceId: created[0].id,
+      metadata: { assignees: withAssignees.length, bulk: withAssignees.length > 1 }
     });
     ctx.status = 201;
-    return action;
+    if (withAssignees.length > 1) return { created: created.length, actions: created };
+    return created[0];
   }, { permission: 'safety.manage.daycare' });
 
   router.patch('/incident-actions/:id', async (ctx) => {

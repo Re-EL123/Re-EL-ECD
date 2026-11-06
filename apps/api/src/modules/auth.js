@@ -3,7 +3,7 @@
 const { validate } = require('../../../../packages/contracts/validate');
 const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { hashPassword, verifyPassword, randomToken, sha256 } = require('../../../../packages/auth/password');
-const { createSession, revokeSession, revokeAllSessions, SESSION_COOKIE, CSRF_COOKIE } = require('../services/session-service');
+const { createSession, revokeSession, revokeAllSessions, SESSION_COOKIE, CSRF_COOKIE, IMPERSONATION_COOKIE } = require('../services/session-service');
 const { resolveAccess, invalidateAccess } = require('../services/access-service');
 const { rateLimit } = require('../middleware/rate-limit');
 const { recordAudit } = require('../services/audit-service');
@@ -54,6 +54,15 @@ async function sessionPayload(ctx) {
   const activeId = ctx.organisationId || (memberships[0] && memberships[0].organisation_id) || null;
   const active = enriched.find((m) => m.organisation.id === activeId) || null;
   const features = await ctx.db.many('SELECT flag_key, enabled FROM feature_flags ORDER BY flag_key');
+  const impersonated = ctx.impersonatedBy
+    ? {
+        by: ctx.impersonatedBy,
+        byName: ctx.session.impersonated_by_name || null,
+        byEmail: ctx.session.impersonated_by_email || null,
+        expiresAt: ctx.session.expires_at,
+        targetUserId: ctx.user.id
+      }
+    : null;
   return {
     user: ctx.user,
     csrfToken: ctx.session ? ctx.session.csrf_token : null,
@@ -61,7 +70,8 @@ async function sessionPayload(ctx) {
     memberships: enriched,
     active,
     features: Object.fromEntries(features.map((f) => [f.flag_key, f.enabled])),
-    isPlatformAdmin: Boolean(active && active.roles.some((r) => r.startsWith('platform_')))
+    isPlatformAdmin: Boolean(active && active.roles.some((r) => r.startsWith('platform_'))),
+    impersonated
   };
 }
 
@@ -105,7 +115,23 @@ function register(router) {
     await revokeSession(ctx.db, ctx.session.id);
     clearCookie(ctx.res, SESSION_COOKIE);
     clearCookie(ctx.res, CSRF_COOKIE);
+    clearCookie(ctx.res, IMPERSONATION_COOKIE);
     await recordAudit(ctx.db, ctx, { action: 'auth.logout', resourceType: 'session', resourceId: ctx.session.id });
+    return { success: true };
+  }, { authenticated: true });
+
+  // Stop impersonating. The platform administrator's own session was never
+  // touched; the short-lived impersonation session is revoked here and the
+  // browser falls back to the underlying platform session.
+  router.post('/auth/impersonation/stop', async (ctx) => {
+    if (!ctx.impersonatedBy) fail('CONFLICT', null, 'You are not impersonating anyone.');
+    const impersonatedBy = ctx.impersonatedBy;
+    await revokeSession(ctx.db, ctx.session.id);
+    clearCookie(ctx.res, IMPERSONATION_COOKIE);
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.impersonation_stopped', resourceType: 'session', resourceId: ctx.session.id,
+      metadata: { impersonatedBy }
+    });
     return { success: true };
   }, { authenticated: true });
 

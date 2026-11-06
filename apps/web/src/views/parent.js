@@ -326,18 +326,13 @@
     openModal(ctx) {
       const children = (ctx.page || {}).children || [];
       ctx.openModal({
-        title: 'Report an absence', endpoint: '/parent/children', submitLabel: 'Report absence',
-        description: 'Tell the centre which day your child will be away and why.',
+        title: 'Report an absence', endpoint: '/parent/absence', submitLabel: 'Report absence',
+        description: 'Tell the centre which day your children will be away and why.',
         fields: [
-          { name: 'childId', label: 'Child', type: 'select', required: true, options: children.map((c) => ({ value: c.id, label: childLabel(c) })) },
+          { name: 'childIds', label: 'Children', type: 'multiselect', span: 2, required: true, options: R.learnerOptions(children), placeholder: 'Search children…' },
           { name: 'date', label: 'Date', type: 'date', required: true, value: R.today() },
           { name: 'reason', label: 'Reason', type: 'textarea', required: true, span: 2 }
         ],
-        onSubmit: async (data) => {
-          await R.api('POST', '/parent/children/' + encodeURIComponent(data.childId) + '/absence', {
-            date: data.date, reason: data.reason
-          });
-        },
         successMessage: 'Absence reported. The centre has been notified.'
       });
     }

@@ -1,6 +1,11 @@
 'use strict';
 
 async function recordAudit(db, ctx, { action, resourceType, resourceId = null, organisationId = null, branchId = null, metadata = {} }) {
+  // An impersonated action is attributed to both: the actor who did the
+  // thing and the user whose identity and permissions were used.
+  const merged = (ctx && ctx.impersonatedBy)
+    ? { ...metadata, impersonatedBy: ctx.impersonatedBy }
+    : metadata;
   try {
     await db.query(
       `INSERT INTO audit_events (actor_user_id, organisation_id, branch_id, action, resource_type, resource_id,
@@ -15,7 +20,7 @@ async function recordAudit(db, ctx, { action, resourceType, resourceId = null, o
         resourceId,
         ctx ? ctx.requestId : null,
         ctx ? ctx.ip : null,
-        JSON.stringify(metadata || {})
+        JSON.stringify(merged || {})
       ]
     );
   } catch (error) {

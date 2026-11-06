@@ -207,7 +207,15 @@
           fields: [
             { name: 'description', label: 'Action', type: 'textarea', required: true, span: 2 },
             { name: 'dueAt', label: 'Due date', type: 'date' },
-            { name: 'assignedTo', label: 'Assign to', type: 'select', options: (page.staff || []).map((s) => ({ value: s.user_id, label: s.display_name })).filter((o) => o.value) }
+            { name: 'staffIds', label: 'Assign to', type: 'multiselect', span: 2,
+              options: (page.staff || []).filter((s) => s.user_id).map((s) => ({
+                value: s.user_id,
+                label: s.display_name || s.email || 'Staff member',
+                subtitle: s.job_title || s.email || '',
+                avatarUrl: s.avatar_url || s.avatarUrl || null
+              })),
+              placeholder: 'Search staff…',
+              help: 'Select one or more staff members. Each receives a corrective action.' }
           ]
         });
       } else if (name === 'notifyGuardians' && id) {

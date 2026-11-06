@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **325 routes** across 19 modules.
+Generated from the router: **330 routes** across 19 modules.
 
 ## Access
 
@@ -90,6 +90,7 @@ Generated from the router: **325 routes** across 19 modules.
 | --- | --- | --- |
 | POST | `/auth/change-password` | Authenticated |
 | POST | `/auth/forgot-password` | Public |
+| POST | `/auth/impersonation/stop` | Authenticated |
 | POST | `/auth/invitations/accept` | Public |
 | POST | `/auth/login` | Public |
 | POST | `/auth/logout` | Authenticated |
@@ -398,6 +399,7 @@ Generated from the router: **325 routes** across 19 modules.
 
 | Method | Path | Access |
 | --- | --- | --- |
+| POST | `/parent/absence` | parent.absence.report.own |
 | GET | `/parent/announcements` | parent.read.own |
 | GET | `/parent/children` | parent.read.own |
 | GET | `/parent/children/:id` | parent.read.own |
@@ -450,6 +452,7 @@ Generated from the router: **325 routes** across 19 modules.
 | GET | `/platform/plans` | Platform only · platform.subscriptions.read |
 | POST | `/platform/plans` | Platform only · platform.subscriptions.manage |
 | PATCH | `/platform/plans/:id` | Platform only · platform.subscriptions.manage |
+| GET | `/platform/search` | Platform only · platform.organisations.read |
 | GET | `/platform/settings` | Platform only · platform.organisations.read |
 | PATCH | `/platform/settings` | Platform only · platform.settings.manage |
 | GET | `/platform/settlements` | Platform only · platform.subscriptions.manage |
@@ -458,10 +461,12 @@ Generated from the router: **325 routes** across 19 modules.
 | POST | `/platform/settlements/payouts/:id/void` | Platform only · platform.subscriptions.manage |
 | POST | `/platform/storage/check` | Platform only · platform.settings.manage |
 | GET | `/platform/subscriptions` | Platform only · platform.subscriptions.read |
+| POST | `/platform/subscriptions/sweep` | Platform only · platform.subscriptions.manage |
 | GET | `/platform/support-cases` | Platform only · platform.support.manage |
 | POST | `/platform/support-cases` | Platform only · platform.support.manage |
 | PATCH | `/platform/support-cases/:id` | Platform only · platform.support.manage |
 | GET | `/platform/users` | Platform only · platform.organisations.read |
+| POST | `/platform/users/:id/impersonate` | Platform only · platform.impersonate.manage |
 | POST | `/platform/users/:id/revoke-sessions` | Platform only · platform.organisations.manage |
 | POST | `/platform/users/:id/status` | Platform only · platform.organisations.manage |
 | POST | `/platform/users/bulk` | Platform only · platform.organisations.manage |

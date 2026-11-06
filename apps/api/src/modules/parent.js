@@ -315,6 +315,74 @@ function register(router) {
     return { invoices, outstanding };
   }, { permission: 'parent.finance.read.own' });
 
+  router.post('/parent/absence', async (ctx) => {
+    const body = validate(ctx.body, {
+      childIds: { type: 'array', of: 'uuid', max: 20 },
+      date: { type: 'string', date: true, optional: true },
+      reason: { type: 'string', min: 3, max: 1000 }
+    });
+    const date = body.date || today();
+    if (date < today()) fail('VALIDATION', [{ field: 'date', message: 'Report an absence for today or a future date.' }]);
+    const childIds = [...new Set(body.childIds)];
+    const linked = await ctx.db.many(
+      `SELECT l.* FROM learners l
+       JOIN learner_guardians lg ON lg.learner_id = l.id AND lg.organisation_id = $1
+       JOIN guardians g ON g.id = lg.guardian_id AND g.organisation_id = $1
+       WHERE g.user_id = $2 AND lg.portal_access_status = 'active'
+         AND (lg.ends_at IS NULL OR lg.ends_at >= CURRENT_DATE)
+         AND l.id = ANY($3::uuid[])`,
+      [ctx.organisationId, ctx.user.id, childIds]
+    );
+    const validIds = new Set(linked.map((child) => child.id));
+    if (validIds.size !== childIds.length) {
+      fail('FORBIDDEN', null, 'One or more children are not linked to your account.');
+    }
+    const records = [];
+    for (const child of linked) {
+      const existing = await ctx.db.one(
+        'SELECT * FROM learner_attendance WHERE learner_id = $1 AND attendance_date = $2', [child.id, date]
+      );
+      if (existing && existing.check_in_at) fail('CONFLICT', null, child.first_name + ' is already checked in for that date.');
+      let record;
+      if (existing) {
+        await ctx.db.query(
+          `UPDATE learner_attendance SET attendance_status = 'excused', absence_reason = $1, recorded_by = $2,
+            updated_at = now() WHERE id = $3`, [body.reason, ctx.user.id, existing.id]
+        );
+        record = await ctx.db.one('SELECT * FROM learner_attendance WHERE id = $1', [existing.id]);
+      } else {
+        record = await ctx.db.one(
+          `INSERT INTO learner_attendance (organisation_id, branch_id, learner_id, attendance_date, attendance_status,
+            absence_reason, recorded_by) VALUES ($1,$2,$3,$4,'excused',$5,$6) RETURNING *`,
+          [ctx.organisationId, child.branch_id, child.id, date, body.reason, ctx.user.id]
+        );
+      }
+      records.push(record);
+    }
+    const staff = await ctx.db.many(
+      `SELECT DISTINCT m.user_id FROM memberships m
+       JOIN membership_roles mr ON mr.membership_id = m.id
+       JOIN roles r ON r.id = mr.role_id
+       WHERE m.organisation_id = $1 AND m.status = 'active'
+         AND r.role_key IN ('teacher','assistant_teacher','principal','daycare_administrator','daycare_manager')`,
+      [ctx.organisationId]
+    );
+    if (staff.length && records.length) {
+      await createNotification(ctx.db, ctx, {
+        recipientUserIds: staff.map((s) => s.user_id), type: 'absence_reported',
+        title: 'Absence reported',
+        body: `${records.length} child${records.length === 1 ? '' : 'ren'} will be absent on ${date}.${records.length === 1 ? ' ' + linked[0].first_name + ' ' + linked[0].last_name + ': ' + body.reason : ' Reason: ' + body.reason}`,
+        resourceType: 'learner_attendance', resourceId: records[0].id
+      });
+    }
+    await recordAudit(ctx.db, ctx, {
+      action: 'parent.absence_reported', resourceType: 'learner_attendance', resourceId: records[0].id,
+      metadata: { date, childIds }
+    });
+    ctx.status = 201;
+    return { created: records.length, records };
+  }, { permission: 'parent.absence.report.own' });
+
   router.post('/parent/children/:id/absence', async (ctx) => {
     const { learner } = await childOrFail(ctx, ctx.params.id);
     const body = validate(ctx.body, {

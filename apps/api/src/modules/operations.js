@@ -83,6 +83,7 @@ function register(router) {
       description: { type: 'string', max: 4000, optional: true },
       branchId: { type: 'string', uuid: true, optional: true },
       assignedTo: { type: 'string', uuid: true, optional: true },
+      staffIds: { type: 'array', of: 'uuid', max: 20, optional: true },
       priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'], optional: true },
       dueAt: { type: 'string', date: true, optional: true },
       relatedResourceType: { type: 'string', max: 60, optional: true },
@@ -90,38 +91,63 @@ function register(router) {
       checklist: { type: 'array', max: 60, optional: true }
     });
     const scopeAll = has(ctx, 'tasks.manage.daycare');
-    const assignedTo = body.assignedTo || ctx.user.id;
-    if (!scopeAll && assignedTo !== ctx.user.id) fail('FORBIDDEN', null, 'You can only create tasks assigned to yourself.');
-    if (body.assignedTo) {
-      const member = await ctx.db.one(
-        "SELECT id FROM memberships WHERE user_id = $1 AND organisation_id = $2 AND status = 'active'",
-        [body.assignedTo, ctx.organisationId]
-      );
-      if (!member) fail('VALIDATION', [{ field: 'assignedTo', message: 'The assignee must be an active organisation member.' }]);
+    const assignees = body.staffIds && body.staffIds.length
+      ? Array.from(new Set(body.staffIds))
+      : [body.assignedTo || ctx.user.id];
+    if (!scopeAll && assignees.some((id) => id !== ctx.user.id)) {
+      fail('FORBIDDEN', null, 'You can only create tasks assigned to yourself.');
+    }
+    const members = await ctx.db.many(
+      "SELECT user_id FROM memberships WHERE organisation_id = $1 AND status = 'active' AND user_id = ANY($2::uuid[])",
+      [ctx.organisationId, assignees]
+    );
+    const valid = new Set(members.map((m) => m.user_id));
+    const invalid = assignees.filter((id) => !valid.has(id));
+    if (invalid.length) {
+      fail('VALIDATION', [{ field: 'staffIds', message: 'One or more assignees are not active organisation members.' }]);
     }
     const items = checklistLabels(body.checklist);
-    const task = await ctx.db.withTransaction(async (client) => {
-      const created = (await client.query(
-        `INSERT INTO tasks (organisation_id, branch_id, title, description, assigned_to, priority, due_at, source,
-          related_resource_type, related_resource_id, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,'manual',$8,$9,$10) RETURNING *`,
-        [ctx.organisationId, body.branchId || null, body.title, body.description || null, assignedTo,
-          body.priority || 'medium', body.dueAt || null, body.relatedResourceType || null,
-          body.relatedResourceId || null, ctx.user.id]
-      )).rows[0];
-      for (const [index, label] of items.entries()) {
-        await client.query(
-          `INSERT INTO task_checklist_items (organisation_id, task_id, label, sort_order)
-           VALUES ($1,$2,$3,$4)`,
-          [ctx.organisationId, created.id, label, index]
-        );
+    const createdTasks = await ctx.db.withTransaction(async (client) => {
+      const created = [];
+      for (const assignedTo of assignees) {
+        const task = (await client.query(
+          `INSERT INTO tasks (organisation_id, branch_id, title, description, assigned_to, priority, due_at, source,
+            related_resource_type, related_resource_id, created_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,'manual',$8,$9,$10) RETURNING *`,
+          [ctx.organisationId, body.branchId || null, body.title, body.description || null, assignedTo,
+            body.priority || 'medium', body.dueAt || null, body.relatedResourceType || null,
+            body.relatedResourceId || null, ctx.user.id]
+        )).rows[0];
+        for (const [index, label] of items.entries()) {
+          await client.query(
+            `INSERT INTO task_checklist_items (organisation_id, task_id, label, sort_order)
+             VALUES ($1,$2,$3,$4)`,
+            [ctx.organisationId, task.id, label, index]
+          );
+        }
+        created.push(task);
       }
       return created;
     });
-    if (assignedTo !== ctx.user.id) {
+    if (assignees.length > 1) {
+      for (const task of createdTasks) {
+        if (task.assigned_to !== ctx.user.id) {
+          await createNotification(ctx.db, ctx, {
+            recipientUserIds: [task.assigned_to], type: 'task_assigned', title: 'Task assigned',
+            body: task.title, resourceType: 'task', resourceId: task.id
+          });
+        }
+      }
+      await recordAudit(ctx.db, ctx, { action: 'task.created', resourceType: 'task', resourceId: createdTasks[0].id,
+        metadata: { bulk: true, count: createdTasks.length } });
+      ctx.status = 201;
+      return { created: createdTasks.length, tasks: createdTasks };
+    }
+    const task = createdTasks[0];
+    if (task.assigned_to !== ctx.user.id) {
       await createNotification(ctx.db, ctx, {
-        recipientUserIds: [assignedTo], type: 'task_assigned', title: 'Task assigned',
-        body: body.title, resourceType: 'task', resourceId: task.id
+        recipientUserIds: [task.assigned_to], type: 'task_assigned', title: 'Task assigned',
+        body: task.title, resourceType: 'task', resourceId: task.id
       });
     }
     await recordAudit(ctx.db, ctx, { action: 'task.created', resourceType: 'task', resourceId: task.id });

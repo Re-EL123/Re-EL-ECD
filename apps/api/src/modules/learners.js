@@ -235,14 +235,25 @@ function register(router) {
   }, { permission: 'learners.archive.daycare' });
 
   router.post('/learners/bulk', async (ctx) => {
-    const body = bulk.parse(ctx.body, ['archive', 'restore']);
+    const body = bulk.parse(ctx.body, ['archive', 'restore', 'move_classroom']);
     if (body.action === 'archive') assertPermission(ctx, 'learners.archive.daycare');
     else assertPermission(ctx, 'learners.update.daycare');
+    let targetClassroom = null;
+    if (body.action === 'move_classroom') {
+      const classroomId = ctx.body.classroomId;
+      if (!classroomId || typeof classroomId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(classroomId)) {
+        fail('VALIDATION', [{ field: 'classroomId', message: 'Choose the classroom to move the children into.' }]);
+      }
+      targetClassroom = await ctx.db.one('SELECT * FROM classrooms WHERE id = $1 AND organisation_id = $2',
+        [classroomId, ctx.organisationId]);
+      if (!targetClassroom) fail('VALIDATION', [{ field: 'classroomId', message: 'That classroom does not exist in this organisation.' }]);
+    }
     return bulk.run(ctx, {
       ids: body.ids,
       action: body.action,
       resourceType: 'learner',
-      auditAction: body.action === 'archive' ? 'learner.archived' : 'learner.restored',
+      auditAction: body.action === 'archive' ? 'learner.archived'
+        : body.action === 'move_classroom' ? 'learner.classroom_moved' : 'learner.restored',
       handler: async (id) => {
         const learner = await ctx.db.one(
           'SELECT * FROM learners WHERE id = $1 AND organisation_id = $2', [id, ctx.organisationId]
@@ -258,6 +269,16 @@ function register(router) {
             "UPDATE enrolments SET status = 'withdrawn', end_date = CURRENT_DATE WHERE learner_id = $1 AND status = 'active'",
             [id]
           );
+        } else if (body.action === 'move_classroom') {
+          await ctx.db.query(
+            "UPDATE learners SET classroom_id = $1, updated_at = now() WHERE id = $2",
+            [targetClassroom.id, learner.id]
+          );
+          await ctx.db.query(
+            "UPDATE enrolments SET classroom_id = $1 WHERE learner_id = $2 AND status = 'active'",
+            [targetClassroom.id, learner.id]
+          );
+          return { ok: true, branchId: targetClassroom.branch_id, metadata: { classroomId: targetClassroom.id, classroomName: targetClassroom.name } };
         } else {
           if (learner.status !== 'archived') return { ok: false, reason: 'not archived' };
           await ctx.db.query(

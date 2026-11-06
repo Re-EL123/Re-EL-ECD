@@ -282,14 +282,14 @@ const templates = {
           { label: 'Current period ended', value: data.dueDate }
         ],
         ctaLabel: 'Pay your subscription',
-        ctaUrl: data.ctaUrl || appLink('/#/app/settings?tab=billing')
+        ctaUrl: appLink(data.ctaUrl || '/#/app/settings?tab=billing')
       }),
       text: plain([
         'Subscription payment due',
         data.organisationName + ' is on the ' + data.planName + ' plan.',
         'Amount: ' + (data.currency || 'ZAR') + ' ' + data.amount,
         'Current period ended: ' + data.dueDate,
-        'Pay now: ' + (data.ctaUrl || appLink('/#/app/settings?tab=billing'))
+        'Pay now: ' + appLink(data.ctaUrl || '/#/app/settings?tab=billing')
       ])
     };
   },

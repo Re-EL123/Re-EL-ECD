@@ -14,6 +14,7 @@
 
 const crypto = require('node:crypto');
 const { AppError } = require('../../../../packages/contracts/errors');
+const { sendTemplate } = require('./email-service');
 
 function todayDate() {
   return new Date().toISOString().slice(0, 10);
@@ -185,6 +186,56 @@ async function recordManualPayment(db, organisationId, { amount, reference, note
   });
 }
 
+/**
+ * Recurring billing maintenance: flip ended periods to past_due and email
+ * owners a reminder at most once a week. Shared by the optional cron endpoint
+ * and the platform console's "Run sweep" action.
+ */
+async function runSubscriptionSweep(db) {
+  const flip = await db.query(
+    "UPDATE platform_subscriptions SET status = 'past_due' WHERE status IN ('trial','active') AND current_period_end < CURRENT_DATE"
+  );
+  const due = await db.many(
+    `SELECT ps.*, o.name AS organisation_name, sp.name AS plan_name, sp.monthly_price, sp.currency AS plan_currency
+     FROM platform_subscriptions ps
+     JOIN organisations o ON o.id = ps.organisation_id
+     JOIN subscription_plans sp ON sp.id = ps.plan_id
+     WHERE ps.status = 'past_due' AND o.slug <> 're-el-platform'
+       AND (ps.last_reminder_at IS NULL OR ps.last_reminder_at < now() - interval '7 days')
+     ORDER BY ps.current_period_end LIMIT 100`
+  );
+  let reminders = 0;
+  for (const subscription of due) {
+    const owner = await db.one(
+      `SELECT u.email, u.display_name FROM memberships m JOIN users u ON u.id = m.user_id
+       LEFT JOIN membership_roles mr ON mr.membership_id = m.id AND mr.status = 'active'
+       LEFT JOIN roles r ON r.id = mr.role_id
+       WHERE m.organisation_id = $1 AND m.status = 'active'
+       ORDER BY (r.role_key = 'organisation_owner') DESC NULLS LAST, m.created_at LIMIT 1`,
+      [subscription.organisation_id]
+    );
+    if (!owner || !owner.email) continue;
+    await sendTemplate(db, 'subscriptionReminder', {
+      to: owner.email,
+      organisationId: subscription.organisation_id,
+      metadata: { subscriptionId: subscription.id, planName: subscription.plan_name },
+      data: {
+        organisationName: subscription.organisation_name,
+        planName: subscription.plan_name,
+        amount: Number(subscription.monthly_price || 0),
+        currency: subscription.plan_currency || 'ZAR',
+        dueDate: String(subscription.current_period_end || '').slice(0, 10),
+        ctaUrl: '/#/app/settings?tab=billing'
+      }
+    });
+    await db.query(
+      'UPDATE platform_subscriptions SET last_reminder_at = now() WHERE id = $1', [subscription.id]
+    );
+    reminders += 1;
+  }
+  return { flipped: flip.rowCount || 0, reminders };
+}
+
 module.exports = {
   currentSubscription,
   ensureInvoice,
@@ -193,5 +244,6 @@ module.exports = {
   recordManualPayment,
   periodFor,
   todayDate,
-  dateString
+  dateString,
+  runSubscriptionSweep
 };

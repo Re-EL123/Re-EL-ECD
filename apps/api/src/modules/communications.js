@@ -31,7 +31,10 @@ function register(router) {
     const audience = ctx.query.audience || null;
     const status = ctx.query.status || null;
     const isManager = has(ctx, 'announcements.manage.daycare');
-    const params = [ctx.organisationId, audience, isManager ? status : 'published'];
+    const visibilityUnrestricted = isManager || Boolean(ctx.access && ctx.access.orgWide);
+    const viewerBranches = isManager ? [] : (ctx.access ? Array.from(ctx.access.branchIds || []) : []);
+    const params = [ctx.organisationId, audience, isManager ? status : 'published',
+      ctx.query.branchId || null, visibilityUnrestricted, viewerBranches];
     const rows = await ctx.db.many(
       `SELECT a.*, b.name AS branch_name, u.display_name AS created_by_name
        FROM announcements a
@@ -41,8 +44,12 @@ function register(router) {
          AND ($2::text IS NULL OR a.audience_type = $2 OR a.audience_type = 'all')
          AND ($3::text IS NULL OR a.status = $3)
          AND (a.branch_id IS NULL OR $4::uuid IS NULL OR a.branch_id = $4::uuid)
-       ORDER BY a.created_at DESC LIMIT $5 OFFSET $6`,
-      [...params, ctx.query.branchId || null, pageSize, offset]
+         AND (($5::boolean)
+              OR (a.branch_ids = '{}'::uuid[] AND a.branch_id IS NULL)
+              OR (a.branch_ids && $6::uuid[])
+              OR (a.branch_ids = '{}'::uuid[] AND a.branch_id = ANY($6::uuid[])))
+       ORDER BY a.created_at DESC LIMIT $7 OFFSET $8`,
+      [...params, pageSize, offset]
     );
     ctx.meta.page = page;
     ctx.meta.pageSize = pageSize;
@@ -54,27 +61,39 @@ function register(router) {
       title: { type: 'string', min: 3, max: 200 },
       body: { type: 'string', min: 3, max: 10000 },
       branchId: { type: 'string', uuid: true, optional: true },
+      branchIds: { type: 'array', of: 'uuid', max: 20, optional: true },
       audienceType: { type: 'string', enum: ['all', 'staff', 'parents', 'guardians', 'teachers'], optional: true },
       attachmentUrls: { type: 'array', of: 'string', max: 20, optional: true },
       publish: { type: 'boolean', optional: true }
     });
-    if (body.branchId) {
-      const branch = await ctx.db.one('SELECT id FROM branches WHERE id = $1 AND organisation_id = $2',
-        [body.branchId, ctx.organisationId]);
-      if (!branch) fail('VALIDATION', [{ field: 'branchId', message: 'Unknown branch.' }]);
+    const branchIds = body.branchIds && body.branchIds.length
+      ? Array.from(new Set(body.branchIds))
+      : (body.branchId ? [body.branchId] : []);
+    if (branchIds.length) {
+      const found = await ctx.db.one(
+        'SELECT COUNT(*)::int AS total FROM branches WHERE organisation_id = $1 AND id = ANY($2::uuid[])',
+        [ctx.organisationId, branchIds]
+      );
+      if (!found || found.total !== branchIds.length) {
+        fail('VALIDATION', [{ field: 'branchIds', message: 'One or more branches are unknown.' }]);
+      }
     }
     const publish = body.publish === true;
     const announcement = await ctx.db.one(
-      `INSERT INTO announcements (organisation_id, branch_id, title, body, audience_type, status, published_at, attachment_urls, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [ctx.organisationId, body.branchId || null, body.title, body.body, body.audienceType || 'all',
+      `INSERT INTO announcements (organisation_id, branch_id, branch_ids, title, body, audience_type, status,
+        published_at, attachment_urls, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [ctx.organisationId, branchIds.length === 1 ? branchIds[0] : null, branchIds,
+        body.title, body.body, body.audienceType || 'all',
         publish ? 'published' : 'draft', publish ? new Date().toISOString() : null,
         JSON.stringify(body.attachmentUrls || []), ctx.user.id]
     );
     if (publish) await dispatchAnnouncement(ctx, announcement);
     await recordAudit(ctx.db, ctx, {
       action: publish ? 'announcement.published' : 'announcement.created',
-      resourceType: 'announcement', resourceId: announcement.id, branchId: body.branchId || null
+      resourceType: 'announcement', resourceId: announcement.id,
+      branchId: branchIds.length === 1 ? branchIds[0] : null,
+      metadata: { branchIds }
     });
     ctx.status = 201;
     return announcement;
@@ -319,34 +338,76 @@ function register(router) {
   }, { permission: ['messages.read.own', 'announcements.read.daycare'], permissionMode: 'any' });
 }
 
+const STAFF_ROLE_KEYS = ['organisation_owner', 'principal', 'daycare_administrator', 'daycare_manager',
+  'curriculum_coordinator', 'teacher', 'assistant_teacher', 'support_staff', 'finance_officer',
+  'admissions_officer', 'substitute_staff'];
+const TEACHER_ROLE_KEYS = ['curriculum_coordinator', 'teacher', 'assistant_teacher', 'substitute_staff'];
+
+function staffAudienceFilter(audienceType) {
+  if (audienceType === 'staff') return STAFF_ROLE_KEYS;
+  if (audienceType === 'teachers') return TEACHER_ROLE_KEYS;
+  return null;
+}
+
 async function dispatchAnnouncement(ctx, announcement) {
-  let audienceFilter;
-  if (announcement.audience_type === 'staff' || announcement.audience_type === 'teachers') {
-    audienceFilter = ['organisation_owner', 'principal', 'daycare_administrator', 'daycare_manager',
-      'curriculum_coordinator', 'teacher', 'assistant_teacher', 'support_staff', 'finance_officer',
-      'admissions_officer', 'substitute_staff'];
-    if (announcement.audience_type === 'teachers') {
-      audienceFilter = ['curriculum_coordinator', 'teacher', 'assistant_teacher', 'substitute_staff'];
+  const audienceFilter = staffAudienceFilter(announcement.audience_type);
+  const wantsParents = ['all', 'parents', 'guardians'].includes(announcement.audience_type);
+  const wantedBranches = Array.isArray(announcement.branch_ids) ? announcement.branch_ids : [];
+  let recipients;
+  if (!wantedBranches.length) {
+    if (audienceFilter) {
+      recipients = await ctx.db.many(
+        `SELECT DISTINCT m.user_id, u.email FROM memberships m
+         JOIN users u ON u.id = m.user_id
+         JOIN membership_roles mr ON mr.membership_id = m.id
+         JOIN roles r ON r.id = mr.role_id
+         WHERE m.organisation_id = $1 AND m.status = 'active' AND r.role_key = ANY($2)`,
+        [ctx.organisationId, audienceFilter]
+      );
+    } else {
+      recipients = await ctx.db.many(
+        `SELECT m.user_id, u.email FROM memberships m JOIN users u ON u.id = m.user_id
+         WHERE m.organisation_id = $1 AND m.status = 'active'`,
+        [ctx.organisationId]
+      );
     }
   } else {
-    audienceFilter = null;
-  }
-  let recipients;
-  if (audienceFilter) {
-    recipients = await ctx.db.many(
-      `SELECT DISTINCT m.user_id, u.email FROM memberships m
-       JOIN users u ON u.id = m.user_id
-       JOIN membership_roles mr ON mr.membership_id = m.id
-       JOIN roles r ON r.id = mr.role_id
-       WHERE m.organisation_id = $1 AND m.status = 'active' AND r.role_key = ANY($2)`,
-      [ctx.organisationId, audienceFilter]
-    );
-  } else {
-    recipients = await ctx.db.many(
-      `SELECT m.user_id, u.email FROM memberships m JOIN users u ON u.id = m.user_id
-       WHERE m.organisation_id = $1 AND m.status = 'active'`,
-      [ctx.organisationId]
-    );
+    // Branch-scoped: staff who serve those branches (plus org-wide staff) and
+    // guardians of children enrolled in those branches.
+    const staff = audienceFilter || announcement.audience_type === 'all' || announcement.audience_type === 'parents' || announcement.audience_type === 'guardians'
+      ? await ctx.db.many(
+        `SELECT DISTINCT m.user_id, u.email FROM memberships m
+         JOIN users u ON u.id = m.user_id
+         JOIN membership_roles mr ON mr.membership_id = m.id
+         JOIN roles r ON r.id = mr.role_id
+         WHERE m.organisation_id = $1 AND m.status = 'active'
+           AND ($2::text[] IS NULL OR r.role_key = ANY($2))
+           AND (NOT EXISTS (SELECT 1 FROM branch_memberships bm WHERE bm.membership_id = m.id)
+             OR EXISTS (SELECT 1 FROM branch_memberships bm
+                        WHERE bm.membership_id = m.id AND bm.branch_id = ANY($3::uuid[])))`,
+        [ctx.organisationId, audienceFilter, wantedBranches]
+      )
+      : [];
+    // 'parents' and 'guardians' are scoped purely to guardians of branch children.
+    const includeParents = announcement.audience_type !== 'staff' && announcement.audience_type !== 'teachers';
+    const parents = includeParents
+      ? await ctx.db.many(
+        `SELECT DISTINCT m.user_id, u.email FROM memberships m
+         JOIN users u ON u.id = m.user_id
+         JOIN guardians g ON g.user_id = m.user_id AND g.organisation_id = $1
+         JOIN learner_guardians lg ON lg.guardian_id = g.id
+         JOIN learners l ON l.id = lg.learner_id
+         WHERE m.organisation_id = $1 AND m.status = 'active' AND l.branch_id = ANY($2::uuid[])`,
+        [ctx.organisationId, wantedBranches]
+      )
+      : [];
+    if (announcement.audience_type === 'parents' || announcement.audience_type === 'guardians') {
+      recipients = parents;
+    } else {
+      const seen = new Map();
+      for (const recipient of [...staff, ...parents]) seen.set(recipient.user_id, recipient);
+      recipients = Array.from(seen.values());
+    }
   }
   if (!recipients.length) return;
   await createNotification(ctx.db, ctx, {

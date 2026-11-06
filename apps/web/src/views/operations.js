@@ -104,7 +104,7 @@
             { name: 'description', label: 'Description', type: 'textarea', span: 2 },
             { name: 'priority', label: 'Priority', type: 'select', options: PRIORITIES.map((p) => ({ value: p, label: R.titleCase(p) })), value: 'medium' },
             { name: 'dueAt', label: 'Due date', type: 'date' },
-            ...(assigneeOptions.length ? [{ name: 'assignedTo', label: 'Assign to', type: 'select', options: assigneeOptions }] : []),
+            ...(assigneeOptions.length ? [{ name: 'staffIds', label: 'Assign to', type: 'multiselect', span: 2, options: R.memberOptions(members), placeholder: 'Search people…', help: 'Select one or more people. Each person receives their own task.' }] : []),
             ...(R.branchOptions(ctx).length ? [{ name: 'branchId', label: 'Branch', type: 'select', options: R.branchOptions(ctx) }] : []),
             { name: 'checklist', label: 'Checklist', type: 'textarea', span: 2, help: 'One item per line. Useful for cleaning rounds, kitchen preparation or trip preparation.' }
           ],

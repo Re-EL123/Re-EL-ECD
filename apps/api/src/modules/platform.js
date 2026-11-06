@@ -10,8 +10,9 @@ const { createNotification } = require('../services/notification-service');
 const { sendTemplate, isConfigured: emailConfigured, fromAddress } = require('../services/email-service');
 const payfast = require('../services/payfast-service');
 const { createPaymentIntent } = require('../services/payment-intent-service');
-const { recordManualPayment, dateString } = require('../services/subscription-billing-service');
+const { recordManualPayment, dateString, runSubscriptionSweep } = require('../services/subscription-billing-service');
 const { maskedAccount, savePaymentAccount } = require('../services/payment-accounts-service');
+const { createImpersonationSession, impersonationCookie } = require('../services/session-service');
 const secretbox = require('../services/secretbox');
 const storage = require('../services/storage-service');
 const branding = require('../services/branding-service');
@@ -40,6 +41,11 @@ function register(router) {
       `SELECT name, plan_key, description, monthly_price, currency, max_learners, max_staff, features
        FROM subscription_plans WHERE status = 'active' ORDER BY monthly_price, name`
     );
+    const bannerSettings = await ctx.db.one(
+      `SELECT settings FROM organisation_settings os JOIN organisations o ON o.id = os.organisation_id
+       WHERE o.slug = 're-el-platform'`
+    );
+    const banner = (bannerSettings && bannerSettings.settings && bannerSettings.settings.banner) || null;
     return {
       organisation: {
         name: organisation ? organisation.name : 'Re-EL ECD',
@@ -48,7 +54,8 @@ function register(router) {
         currency: organisation ? organisation.currency : 'ZAR'
       },
       branding: branding.themeFromOrganisation(organisation || {}),
-      plans
+      plans,
+      banner: banner && banner.enabled && banner.message ? { message: banner.message, tone: banner.tone || 'info' } : null
     };
   }, { public: true });
 
@@ -74,6 +81,31 @@ function register(router) {
     const failedPayments = await ctx.db.one(
       `SELECT COUNT(*)::int AS total FROM payments WHERE status = 'failed'`
     );
+    // God's-eye revenue view: fees collected through the platform account
+    // in the last 30 days, what tenants are still owed, and how many plans lapsed.
+    const fees = await ctx.db.one(
+      `SELECT COALESCE(SUM(amount), 0)::float AS collected
+       FROM payments
+       WHERE received_at > now() - interval '30 days' AND status IN ('confirmed','reconciled')`
+    );
+    const platformOutstanding = await ctx.db.one(
+      `WITH collected AS (
+         SELECT COALESCE(SUM(amount), 0) AS gross FROM payment_intents
+         WHERE status = 'paid'
+           AND purpose IN ('invoice','statement','application_fee','form_payment')
+           AND (metadata->>'settlement') IS DISTINCT FROM 'own_payfast'
+       ),
+       settled AS (
+         SELECT COALESCE(SUM(net_amount), 0) AS net, COALESCE(SUM(fee_amount), 0) AS fee
+         FROM platform_payouts WHERE status = 'paid'
+       )
+       SELECT GREATEST(collected.gross - settled.net - settled.fee, 0)::float AS outstanding FROM collected, settled`
+    );
+    const pastDue = await ctx.db.one(
+      `SELECT COUNT(*)::int AS total FROM platform_subscriptions ps
+       JOIN organisations o ON o.id = ps.organisation_id
+       WHERE ps.status = 'past_due' AND o.slug <> 're-el-platform'`
+    );
     const security = await ctx.db.many(
       `SELECT action, COUNT(*)::int AS total FROM audit_events
        WHERE action LIKE 'auth.%' OR action LIKE 'access.%'
@@ -97,6 +129,9 @@ function register(router) {
       activeLearners: learners.total,
       subscriptionRevenue: revenue.mrr,
       failedPaymentEvents: failedPayments.total,
+      feesCollectedLast30Days: fees.collected,
+      platformOutstanding: platformOutstanding.outstanding,
+      pastDueSubscriptions: pastDue.total,
       securityEvents: security.reduce((sum, row) => sum + row.total, 0),
       securityBreakdown: security,
       recentEvents
@@ -1122,6 +1157,102 @@ function register(router) {
     return result;
   }, { platformOnly: true, permission: 'platform.subscriptions.manage' });
 
+  // --- God's-eye search and power actions --------------------------------
+
+  router.get('/platform/search', async (ctx) => {
+    const q = String(ctx.query.q || '').trim();
+    if (q.length < 2) return { organisations: [], users: [], branches: [], learners: [] };
+    const term = `%${q}%`;
+    const like = (column) => `${column} ILIKE $1`;
+    const [organisations, users, branches, learners] = await Promise.all([
+      ctx.db.many(
+        `SELECT id, name, slug, status FROM organisations
+         WHERE slug <> 're-el-platform' AND (${like('name')} OR ${like('slug')})
+         ORDER BY name LIMIT 8`,
+        [term]
+      ),
+      ctx.db.many(
+        `SELECT u.id, u.email, u.display_name, u.status,
+                (SELECT COUNT(*)::int FROM memberships m WHERE m.user_id = u.id AND m.status = 'active') AS membership_count
+         FROM users u
+         WHERE ${like('u.display_name')} OR ${like('u.email')}
+         ORDER BY u.display_name LIMIT 8`,
+        [term]
+      ),
+      ctx.db.many(
+        `SELECT b.id, b.name, o.name AS organisation_name
+         FROM branches b JOIN organisations o ON o.id = b.organisation_id
+         WHERE ${like('b.name')} OR ${like('o.name')}
+         ORDER BY b.name LIMIT 8`,
+        [term]
+      ),
+      ctx.db.many(
+        `SELECT l.id, l.first_name, l.last_name, l.learner_reference, l.status, o.name AS organisation_name
+         FROM learners l JOIN organisations o ON o.id = l.organisation_id
+         WHERE ${like('l.first_name')} OR ${like('l.last_name')}
+            OR (${like("l.first_name || ' ' || l.last_name")})
+            OR ${like('l.learner_reference')}
+         ORDER BY l.last_name, l.first_name LIMIT 8`,
+        [term]
+      )
+    ]);
+    return { organisations, users, branches, learners };
+  }, { platformOnly: true, permission: 'platform.organisations.read' });
+
+  router.post('/platform/subscriptions/sweep', async (ctx) => {
+    const result = await runSubscriptionSweep(ctx.db);
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.subscription_sweep', resourceType: 'platform_subscription', resourceId: null,
+      metadata: result
+    });
+    return result;
+  }, { platformOnly: true, permission: 'platform.subscriptions.manage' });
+
+  // Impersonate an active, non-platform user for a short window. The platform
+  // administrator's own session is untouched; the impersonation session is
+  // revoked by the administrator (or expires after 30 minutes).
+  router.post('/platform/users/:id/impersonate', async (ctx) => {
+    const target = await ctx.db.one('SELECT * FROM users WHERE id = $1', [ctx.params.id]);
+    if (!target) throw new AppError('NOT_FOUND');
+    if (target.status !== 'active') {
+      fail('CONFLICT', null, 'Only active users can be impersonated.');
+    }
+    if (target.id === ctx.user.id) {
+      fail('CONFLICT', null, 'You cannot impersonate yourself.');
+    }
+    const targetIsPlatformAdmin = await ctx.db.one(
+      `SELECT m.id FROM memberships m JOIN organisations o ON o.id = m.organisation_id
+       WHERE m.user_id = $1 AND o.slug = 're-el-platform' AND m.status = 'active'`,
+      [target.id]
+    );
+    if (targetIsPlatformAdmin) {
+      fail('CONFLICT', null, 'Platform administrators cannot be impersonated.');
+    }
+    const created = await createImpersonationSession(ctx.db, target.id, ctx.user.id, {
+      ip: ctx.ip, userAgent: ctx.req.headers['user-agent'] || null
+    });
+    const crossSite = process.env.CROSS_SITE_COOKIES === 'true';
+    const existing = ctx.res.getHeader('Set-Cookie');
+    ctx.res.setHeader('Set-Cookie', [
+      ...(Array.isArray(existing) ? existing : existing ? [existing] : []),
+      impersonationCookie(created.token, created.session.expires_at, crossSite)
+    ]);
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.impersonation_started', resourceType: 'user', resourceId: target.id,
+      metadata: { targetEmail: target.email, impersonatedBy: ctx.user.id }
+    });
+    return {
+      impersonating: true,
+      user: {
+        id: target.id,
+        email: target.email,
+        displayName: target.display_name
+      },
+      csrfToken: created.csrf,
+      expiresAt: created.session.expires_at
+    };
+  }, { platformOnly: true, permission: 'platform.impersonate.manage' });
+
   router.get('/platform/features', async (ctx) => {
     return ctx.db.many('SELECT * FROM feature_flags ORDER BY flag_key');
   }, { platformOnly: true, permission: 'platform.organisations.read' });
@@ -1163,8 +1294,26 @@ function register(router) {
       timezone: { type: 'string', max: 64, optional: true },
       currency: { type: 'string', min: 3, max: 3, optional: true },
       locale: { type: 'string', max: 10, optional: true },
-      settings: { type: 'object', optional: true }
+      settings: { type: 'object', optional: true },
+      banner: { type: 'object', optional: true }
     });
+    if (body.banner !== undefined) {
+      const banner = body.banner;
+      if (typeof banner !== 'object' || Array.isArray(banner)) {
+        fail('VALIDATION', [{ field: 'banner', message: 'The banner must be an object.' }]);
+      }
+      const tone = ['info', 'warning', 'danger', 'success'].includes(String(banner.tone)) ? String(banner.tone) : 'info';
+      const message = String(banner.message || '').slice(0, 300);
+      if (banner.enabled === true && !message.trim()) {
+        fail('VALIDATION', [{ field: 'banner.message', message: 'Write the banner message before enabling it.' }]);
+      }
+      body.settings = { ...(body.settings || {}), banner: {
+        enabled: banner.enabled === true,
+        message,
+        tone
+      } };
+      delete body.banner;
+    }
     const tokens = body.themeTokens ? branding.normalizeTokens(body.themeTokens) : null;
     if (body.themeTokens && !Object.keys(tokens).length) {
       fail('VALIDATION', [{ field: 'themeTokens', message: 'Provide at least one six-digit hex colour.' }]);

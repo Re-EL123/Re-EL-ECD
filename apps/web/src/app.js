@@ -222,6 +222,10 @@
       _lastHash: null,
       activeOrganisationId: null,
       platformBrand: null,
+      platformBanner: null,
+      bannerDismissed: false,
+      impersonated: null,
+      impersonationTimer: null,
       selectedIds: [],
       libraryBusy: false,
       siteDraft: null,
@@ -264,6 +268,12 @@
       get organisationTheme() { return (this.activeMembership && this.activeMembership.organisation && this.activeMembership.organisation.theme) || null; },
       get canSwitchOrganisation() { return Boolean(this.session && this.session.memberships && this.session.memberships.length > 1); },
       get isPlatformAdmin() { return Boolean(this.session && this.session.isPlatformAdmin && this.activeMembership && this.activeMembership.roles.some((r) => r.startsWith('platform_'))); },
+      get impersonationLabel() {
+        return this.impersonated
+          ? 'Viewing as ' + (this.session && this.session.user ? this.session.user.displayName + (this.session.user.email ? ' · ' + this.session.user.email : '') : '') + ' · started by ' + (this.impersonated.byName || this.impersonated.byEmail || 'platform admin')
+          : '';
+      },
+      get impersonationTimeLabel() { return this.impersonated && this.impersonated.expiresAt ? 'Expires ' + new Date(this.impersonated.expiresAt).toLocaleTimeString() : ''; },
       get isParentOnly() {
         return this.has('parent.read.own') && !this.has('learners.read.daycare') && !this.has('learners.read.assigned') && !this.has('staff.read.daycare');
       },
@@ -361,12 +371,14 @@
 
       applySession(payload) {
         this.session = payload;
+        this.impersonated = payload.impersonated || null;
         if (Reel.setCsrf) Reel.setCsrf(payload.csrfToken || null);
         const stored = (() => { try { return localStorage.getItem('reel.activeOrganisation'); } catch { return null; } })();
         const candidate = payload.memberships.find((m) => m.organisation.id === stored);
         this.activeOrganisationId = (candidate && candidate.organisation.id) || payload.activeOrganisationId || (payload.memberships[0] && payload.memberships[0].organisation.id) || null;
         try { if (this.activeOrganisationId) localStorage.setItem('reel.activeOrganisation', this.activeOrganisationId); } catch { /* ignore */ }
         if (Reel.applyTheme) Reel.applyTheme(this.organisationTheme);
+        if (!this.platformBrand) this.loadPlatformBranding();
         this.refreshUnread(true);
       },
 
@@ -388,6 +400,8 @@
         try {
           const payload = await Reel.api('GET', '/public/platform', null, { organisationId: null });
           this.platformBrand = payload.data || null;
+          this.platformBanner = (this.platformBrand && this.platformBrand.banner && this.platformBrand.banner.message) ? this.platformBrand.banner : null;
+          if (!this.platformBanner) this.bannerDismissed = true;
           if (this.platformBrand && this.platformBrand.branding && Reel.applyTheme) {
             Reel.applyTheme(this.platformBrand.branding);
           }
@@ -956,6 +970,41 @@
           const payload = await Reel.api('GET', '/notifications/unread-count');
           this.unread = payload.data.unread || 0;
         } catch { /* non-critical */ }
+      },
+
+      async stopImpersonation() {
+        if (!this.impersonated) return;
+        try {
+          await Reel.api('POST', '/auth/impersonation/stop', {});
+          this.impersonated = null;
+          this.toast('Returned to Platform.');
+          await this.refreshSession();
+          await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'Could not stop impersonating.', 'error');
+        }
+      },
+
+      /**
+       * Start viewing as another user. The CSRF cookie and session cookie are
+       * updated together, and the app refreshes into the impersonated
+       * organisation's workspace.
+       */
+      async impersonateUser(userId) {
+        if (!userId) return;
+        try {
+          const payload = await Reel.api('POST', '/platform/users/' + encodeURIComponent(userId) + '/impersonate', {});
+          const data = payload.data || {};
+          if (data.csrfToken && Reel.setCsrf) Reel.setCsrf(data.csrfToken);
+          this.toast('Viewing as ' + (data.user ? data.user.displayName : 'user') + '. Use Return to platform to stop.');
+          await this.refreshSession();
+          const first = (this.session && this.session.memberships && this.session.memberships[0]) || null;
+          const target = first ? first.organisation.id : null;
+          if (target) this.activeOrganisationId = target;
+          await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'Could not view as user.', 'error');
+        }
       },
 
       signOut() {
@@ -1712,13 +1761,25 @@
         if (query.length >= 2) {
           const seq = ++this._searchSeq;
           try {
-            const payload = await Reel.api('GET', '/search?q=' + encodeURIComponent(this.commandQuery.trim()));
-            if (seq !== this._searchSeq) return;
-            const data = payload.data || {};
-            apiResults = [
-              ...(data.learners || []).map((l) => ({ key: 'learner-' + l.id, label: l.first_name + ' ' + l.last_name, route: '/app/learners/' + l.id, kind: 'Learner', icon: 'user' })),
-              ...(data.staff || []).map((s) => ({ key: 'staff-' + s.id, label: s.display_name, route: '/app/staff/' + s.id, kind: 'Staff', icon: 'id-card' }))
-            ];
+            if (this.area === 'platform') {
+              const payload = await Reel.api('GET', '/platform/search?q=' + encodeURIComponent(this.commandQuery.trim()));
+              if (seq !== this._searchSeq) return;
+              const data = payload.data || {};
+              apiResults = [
+                ...(data.organisations || []).map((o) => ({ key: 'org-' + o.id, label: o.name, route: '/platform/organisations/' + o.id, kind: 'Organisation', icon: 'building-2' })),
+                ...(data.users || []).map((u) => ({ key: 'puser-' + u.id, label: u.display_name + ' · ' + u.email, route: '/platform/users?q=' + encodeURIComponent(u.email), kind: 'User', icon: 'user' })),
+                ...(data.branches || []).map((b) => ({ key: 'branch-' + b.id, label: b.name + ' · ' + (b.organisation_name || ''), route: '/platform/organisations', kind: 'Branch', icon: 'store' })),
+                ...(data.learners || []).map((l) => ({ key: 'plearner-' + l.id, label: l.first_name + ' ' + l.last_name + ' · ' + (l.organisation_name || ''), route: '/platform/organisations', kind: 'Learner', icon: 'baby' }))
+              ];
+            } else {
+              const payload = await Reel.api('GET', '/search?q=' + encodeURIComponent(this.commandQuery.trim()));
+              if (seq !== this._searchSeq) return;
+              const data = payload.data || {};
+              apiResults = [
+                ...(data.learners || []).map((l) => ({ key: 'learner-' + l.id, label: l.first_name + ' ' + l.last_name, route: '/app/learners/' + l.id, kind: 'Learner', icon: 'user' })),
+                ...(data.staff || []).map((s) => ({ key: 'staff-' + s.id, label: s.display_name, route: '/app/staff/' + s.id, kind: 'Staff', icon: 'id-card' }))
+              ];
+            }
           } catch { apiResults = []; }
         }
         const pages = (this.area === 'app' && this.has(['learners.create.daycare'])) ? [{ key: 'action-learner', label: 'Add a learner', route: '/app/learners', kind: 'Action', icon: 'user-plus', action: 'learner' }] : [];

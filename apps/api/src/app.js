@@ -181,6 +181,7 @@ async function handle(req, res) {
       ctx.session = loaded.session;
       ctx.user = loaded.user;
       ctx.fromCookie = loaded.fromCookie;
+      ctx.impersonatedBy = loaded.impersonatedBy || null;
       ctx.platformOrganisationId = await findPlatformOrganisation(ctx);
 
       if (ctx.fromCookie && !SAFE_METHODS.has(req.method) && !route.options.skipCsrf) {

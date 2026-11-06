@@ -1162,3 +1162,13 @@ body.nav-open { overflow: hidden; }
 @media (max-width: 720px) {
   .export-buttons { justify-content: flex-start; }
 }
+
+/* --- Platform banner and impersonation bar ------------------------------- */
+.banner { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 14px; font-size:0.85rem; border-bottom:1px solid var(--border); }
+.banner-info { background: color-mix(in srgb, var(--primary, #0B534A) 8%, var(--surface, #fff)); color: var(--text); }
+.banner-warning { background:#fff4d6; color:#6b4e00; }
+.banner-danger { background:#ffe2e2; color:#7a1f1f; }
+.banner-success { background:#dcf5df; color:#165a2b; }
+.banner-platform { flex:0 0 auto; }
+.impersonation-bar { position:sticky; top:0; z-index:100; display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 14px; background:#1a1a1a; color:#f7f7f7; font-size:0.85rem; border-bottom:1px solid rgba(255,255,255,0.12); box-shadow:0 2px 8px rgba(0,0,0,0.12); }
+.impersonation-bar .btn { margin-left:auto; }
