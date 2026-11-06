@@ -50,6 +50,7 @@
         '<button class="btn btn-primary btn-block" type="submit" :disabled="loginBusy"><span class="spinner" x-show="loginBusy" style="width:15px;height:15px"></span><span x-text="loginBusy ? \'Signing in…\' : \'Sign in\'"></span></button>' +
         '</form>' +
         '<div class="row" style="margin-top:10px;justify-content:center"><button type="button" class="link-strong small" @click="forgotOpen = !forgotOpen">Forgot password?</button></div>' +
+        '<div class="auth-legal-links"><a href="#/legal/terms">Terms</a><span aria-hidden="true">·</span><a href="#/legal/privacy">Privacy</a><span aria-hidden="true">·</span><a href="#/legal/cookies">Cookies</a><span aria-hidden="true">·</span><a href="#/legal">Legal hub</a></div>' +
         '<div x-show="forgotOpen" x-cloak style="margin-top:10px">' +
         '<div class="alert alert-success" x-show="resetSent" x-cloak><i data-lucide="check-circle"></i><span x-text="resetSent"></span></div>' +
         '<form @submit.prevent="sendPasswordReset($event)" x-show="!resetSent">' +
@@ -148,7 +149,7 @@
       (contact.hours ? '<span>' + R.esc(contact.hours) + '</span>' : '') +
       '</div></div></div>' +
       '<div class="site-wrap site-footer-base"><span>© ' + new Date().getFullYear() + ' ' + R.esc(org.name || '') + '. All rights reserved.</span>' +
-      '<span class="spacer"></span><a href="#/site/' + R.attr(slug) + '/apply">Enquire about a place</a>' +
+      '<span class="spacer"></span><a href="#/legal/terms">Terms</a><a href="#/legal/privacy">Privacy</a><a href="#/legal/cookies">Cookies</a><a href="#/legal">Legal</a><a href="#/site/' + R.attr(slug) + '/apply">Enquire about a place</a>' +
       '<a href="' + R.attr(staffHref()) + '">Staff sign in</a></div>' +
       '</footer>';
   }
@@ -751,4 +752,152 @@
         '<div class="card glass" style="margin-top:16px">' + body + '</div></section></div>';
     }
   };
+
+  /* --- Legal pages (South Africa) -----------------------------------------
+   * Platform policies. These pages are templates for a South African SaaS
+   * operator: POPIA, ECTA, CPA, PAIA and ECD-sector obligations are
+   * referenced throughout. They are not legal advice. Before relying on
+   * them in production the Information Officer details, registration
+   * numbers and DSD/DOE registrations on a tenant site must be verified
+   * by a South African attorney and kept current.
+   */
+
+  const LEGAL_ENTITY = 'Re-EL ECD Technologies (Pty) Ltd';
+  const LEGAL_UPDATED = '13 November 2026';
+  const LEGAL_NAV = [
+    ['/legal', 'Legal hub'],
+    ['/legal/terms', 'Terms of Service'],
+    ['/legal/privacy', 'Privacy Policy'],
+    ['/legal/cookies', 'Cookie Policy'],
+    ['/legal/acceptable-use', 'Acceptable Use'],
+    ['/legal/safeguarding', 'Safeguarding']
+  ];
+
+  const LEGAL_PAGES = {
+    terms: {
+      title: 'Terms of Service',
+      eyebrow: 'Terms',
+      lede: 'The agreement between you, your centre and Re-EL ECD for using the platform.',
+      intro: [
+        'These Terms of Service (the “Terms”) govern your use of Re-EL ECD (the “Service”), provided by ' + LEGAL_ENTITY + ' (“we”, “us”). By creating an account, signing in, or using the Service you accept these Terms. If you use the Service for a centre, you warrant that you are authorised to bind that centre. If you do not agree, do not use the Service.',
+        'This page is a general template in plain language for a South African operator. It is not legal advice. Have a South African attorney review these Terms for your exact facts before you rely on them.'
+      ],
+      sections: [
+        ['1. The Service', ['Re-EL ECD is a multi-tenant software platform for early childhood development (ECD) centres: enrolments, attendance, learning records, parent communication, fees, media and a public website. Access is provided “as is” on a subscription basis. We do not provide childcare, medical advice, or early-learning assessment outcomes. All pedagogical, safeguarding, health and safety decisions remain those of the centre and its registered practitioners.']],
+        ['2. Who may use the Service', ['You must be 18 or older, or use the Service with a parent or guardian’s consent. Tenant staff must hold the role and permissions granted by the centre administrator. Parent accounts are limited to children linked to that account. Any use that breaches the Children’s Act 38 of 2005, the Domestic Violence Act, or applicable DSD/Department of Basic Education (DBE) requirements is prohibited (see Safeguarding).']],
+        ['3. Accounts and security', ['You are responsible for keeping your credentials secret and for all activity under your account. Use a strong, unique password and enable MFA where offered. You must notify us and your centre administrator immediately if you suspect unauthorised use. We may suspend or terminate an account for a material breach, suspected fraud, unlawful use, or to protect children or the Service.']],
+        ['4. Subscription, billing and taxes (South Africa)', ['Centres choose a plan (Seedling, Sapling or a custom plan) priced in rand (ZAR). Subscriptions are billed via PayFast or, where the centre collects fees through the platform, settled to the centre by EFT after deducting the platform fee disclosed in the centre’s fee settings. Prices are quoted exclusive of VAT; VAT, if applicable, will be charged at the prevailing rate (currently 15% for most domestic supplies) and reflected on a tax invoice. Past-due subscriptions may be suspended after reasonable notice. All fees are non-refundable once the billing period has started, except where the Consumer Protection Act 68 of 2008 (CPA) requires a refund or where we agree in writing.']],
+        ['5. Your data and content', ['You own the data you enter (learner records, photos, documents). You grant us a limited licence to host, transmit and display it solely to operate the Service, provide support and comply with the law. We apply role-based access, tenant isolation and encryption, but you are the responsible party for the accuracy of the records you keep and for obtaining any required consents from parents/guardians (see Privacy Policy for POPIA processing). On termination you may export your data; we will delete residual copies within 30 days, subject to legal retention duties.']],
+        ['6. Acceptable use', ['You must not upload illegal, infringing or harmful content; attempt to access another tenant’s data; reverse-engineer, scrape or overload the Service; or use it to send spam or conduct fraud. Abusive behaviour may lead to immediate suspension and referral to the authorities. The Acceptable Use Policy gives the detailed rules.']],
+        ['7. Platform support and “View as” access', ['To resolve a support case we may, on a short-lived and audited basis, impersonate a tenant user (“View as”). Every impersonation start and stop is written to the audit log with the acting administrator’s identity, and you can return to the platform console at any time. We do not read passwords, and we do not download data wholesale for our own purposes.']],
+        ['8. Availability and liability', ['We aim for reliable service but do not guarantee uninterrupted availability. To the extent permitted by the CPA and the common law, our liability for any claim is limited to the fees you paid us in the three months before the claim, and we are not liable for indirect, consequential or loss-of-profit damages arising from use or non-use of the Service. Nothing in these Terms excludes liability for fraud, or for any liability that cannot be excluded under South African law.']],
+        ['9. Termination', ['Either party may terminate a subscription on 30 days’ written notice (or immediately for a material breach). On termination, access ends, final fees fall due, and the export/delete duties in clause 5 apply. Survivals include amounts due, IP, confidentiality and liability clauses.']],
+        ['10. Changes, law and disputes', ['We may update these Terms on reasonable notice; continued use is acceptance. These Terms are governed by the laws of the Republic of South Africa. Any dispute will first be addressed in good faith; if unresolved, it will be subject to the non-exclusive jurisdiction of the courts of the Republic of South Africa and, where the CPA applies, to the remedies it provides.']],
+        ['11. Contact and company details', [LEGAL_ENTITY + ' · Registration 2026/000001/07 · South Africa. For legal notices: legal@re-el.co.za. For privacy: privacy@re-el.co.za (see Privacy Policy for the Information Officer). For billing: support@re-el.co.za.']]
+      ],
+    },
+    privacy: {
+      title: 'Privacy Policy',
+      eyebrow: 'POPIA',
+      lede: 'How we process personal information in line with South Africa’s Protection of Personal Information Act (POPIA).',
+      intro: [
+        'This Privacy Policy explains how ' + LEGAL_ENTITY + ' (“we”) processes personal information as a responsible party under the Protection of Personal Information Act 4 of 2013 (POPIA). Centres using the Service are also responsible parties for the learner, guardian and staff information they enter; guardians and staff are data subjects for both. This policy is a template, not legal advice. Confirm the Information Officer details and keep this policy current with a South African attorney.'
+      ],
+      sections: [
+        ['1. Who we are and who to contact', ['Responsible Party: ' + LEGAL_ENTITY + ' (registration 2026/000001/07), platform operator of Re-EL ECD. Information Officer (PAIA Manual s14): the Information Officer named in our PAIA Manual, reachable at privacy@re-el.co.za. We will respond to verified requests within a reasonable time and, where PAIA requires it, within the statutory period.']],
+        ['2. What we process and why (POPIA s11–s12)', ['We process only what is needed for the purpose, under a lawful basis: consent, contract, legal obligation, legitimate interests, vital interests, or public interest. Categories: account identity (name, email, phone, avatar); centre and branch data; learner data (name, date of birth, learner reference, classroom, attendance, allergies/medical notes, photos); guardian and staff data; communications; financial data (invoices, PayFast references — never full card numbers); device, IP and audit logs. Special personal information (health, biometrics, children’s data) is processed only with an applicable POPIA s27–s35 basis, normally explicit guardian consent, and with heightened safeguards.']],
+        ['3. Children’s information', ['Children’s personal information is processed only where the parent/guardian has consented or another POPIA s35 basis applies, and only for enrolment, care, learning, safety and communication. Photos and videos are shared only with the consent recorded in the centre’s media settings. Guardians may withdraw consent at any time (withdrawal does not affect prior lawful processing).']],
+        ['4. Sharing and processors', ['We share information only as instructed by the centre or required by law: with Cloudflare R2 (object storage for media — URLs and metadata are stored in our database), Resend (email delivery), PayFast (payments), and our hosting/database providers. Every operator is bound by contract to POPIA-grade confidentiality and security. We do not sell personal information. Cross-border transfers (s72) occur only under contract and for countries with substantially similar protection, or with your informed consent.']],
+        ['5. Security and breach notification (s19–s22)', ['We apply administrative, technical and physical safeguards proportionate to the risk: encryption in transit and at rest, role-based tenant isolation, audit logging, short-lived sessions and least-privilege access. If a breach is likely to cause serious harm we will notify the Information Regulator and affected data subjects without unreasonable delay, as POPIA requires.']],
+        ['6. Retention', ['We keep information only as long as needed for the purpose or as required by law (for example tax and accounting records for five years under the Tax Administration Act, and ECD records under DSD requirements). Centres set their own retention; on termination we delete or anonymise residual copies within 30 days.']],
+        ['7. Your POPIA rights', ['You may request access to, correction of, or deletion of your personal information; object to or restrict certain processing; request portability where applicable; and lodge a complaint with the Information Regulator (inforeg.org.za). To exercise a right contact the centre (for centre-held records) or privacy@re-el.co.za (for platform account data). We will verify identity before acting and may refuse a request only on a lawful POPIA ground.']],
+        ['8. Marketing and cookies', ['We do not send marketing to parents without opt-in consent, and every message offers an opt-out. Cookies are described in our Cookie Policy. You can withdraw consent for non-essential cookies at any time from your browser or our consent banner.']],
+        ['9. Changes', ['We will publish changes to this policy with a new “last updated” date and, for material changes, reasonable advance notice.']]
+      ],
+    },
+    cookies: {
+      title: 'Cookie Policy',
+      eyebrow: 'Cookies',
+      lede: 'Which cookies we use, why, and how to control them under POPIA.',
+      intro: ['Re-EL ECD uses cookies and similar storage to keep you signed in, remember your workspace, and understand aggregate usage. This policy explains the categories, in line with POPIA s11 and the Electronic Communications and Transactions Act 25 of 2002 (ECTA).'],
+      sections: [
+        ['Essential (always on)', ['Session cookie (reel_session): keeps you signed in. CSRF cookie (reel_csrf): protects forms. Impersonation cookie (reel_impersonation, HttpOnly, 30 minutes): only present for audited support sessions. These are strictly necessary and do not require consent, but you can sign out to clear them.']],
+        ['Functional', ['Workspace and theme preferences (for example your last organisation and light/dark choice) stored in local storage. You can clear them from your browser at any time.']],
+        ['Analytics (consent-based)', ['Anonymous, aggregate usage statistics that help us fix bugs and improve the product. We do not use advertising trackers, cross-site profiling, or sale of browsing data. You can withdraw consent by clearing storage or declining the optional analytics banner, without affecting sign-in.']],
+        ['Third-party and media', ['Videos and images load from our own hosted storage (Cloudflare R2 via media.re-el.co.za) or the centre’s configured public base. No social-media pixels are embedded on sign-in.']],
+        ['Managing cookies', ['Most browsers let you block or delete cookies in Settings → Privacy. Blocking essential cookies will sign you out. Withdrawing consent for analytics is effective immediately; past lawful processing is unaffected. Questions: privacy@re-el.co.za.']]
+      ],
+    },
+    'acceptable-use': {
+      title: 'Acceptable Use Policy',
+      eyebrow: 'Acceptable use',
+      lede: 'What you may and may not do on Re-EL ECD.',
+      intro: ['This Acceptable Use Policy (AUP) forms part of the Terms of Service. It protects children, families and the shared platform. Breaches may lead to suspension and, where required, reporting to the authorities.'],
+      sections: [
+        ['1. Children and safeguarding come first', ['Never use the Service in a way that harms, exploits or sexualises a child, or that breaches the Children’s Act 38 of 2005. Do not attempt to access a child’s record unless you are that child’s parent/guardian or authorised staff. Report suspected abuse through your centre’s safeguarding lead and, where required, the Child Protection Register and SAPS processes — the Service does not replace those duties.']],
+        ['2. Respect privacy and consent', ['Do not upload or share photos, medical details or other personal information without the required consent. Do not download bulk records for side purposes, scrape the Service, or share credentials. Treat POPIA special personal information (health, biometrics) as confidential.']],
+        ['3. Platform integrity', ['Do not attempt to bypass tenant isolation or role-based permissions, reverse-engineer the Service, overload it (including bots and denial-of-service), or interfere with PayFast, email or storage providers. Do not upload malware, illegal content, or material that infringes copyright.']],
+        ['4. Fair use of communication', ['Do not send spam, unsolicited marketing, or messages that misrepresent the centre. Parent communication must be truthful, non-discriminatory and respect opt-outs.']],
+        ['5. Enforcement', ['We may warn, suspend, terminate or report breaches, and may preserve evidence for the authorities. You are liable for breaches by anyone using your account.']]
+      ],
+    },
+    safeguarding: {
+      title: 'Safeguarding and Child Protection Policy',
+      eyebrow: 'Safeguarding',
+      lede: 'How the platform and centres keep children safe, in line with South Africa’s Children’s Act and ECD duties.',
+      intro: ['Re-EL ECD is software, not a childcare provider. This policy explains how the Service supports — but does not replace — a centre’s statutory safeguarding duties under the Children’s Act 38 of 2005, the Criminal Law (Sexual Offences) Act 32 of 2007, and applicable DSD/DBE Early Childhood Development requirements. Centres must adopt and publish their own safeguarding policy; this document is a platform template, not legal advice.'],
+      sections: [
+        ['1. Roles and responsibility', ['Each tenant centre must appoint a designated safeguarding lead and deputy, keep a current Child Protection Register check for all staff/volunteers, and ensure every adult working with children has been vetted and trained. Platform administrators enforce tenant-level access controls; they do not supervise children.']],
+        ['2. Safe recruitment and training', ['Centres must verify identity, check the Child Protection Register and National Register for Sex Offenders where required, obtain police clearance where applicable, and complete induction covering abuse recognition, reporting, record-keeping and online safety. Re-EL ECD stores the resulting checks and expiry dates with role-gated visibility.']],
+        ['3. Incident logging and reporting', ['The Health and Safety module logs incidents, corrective actions and follow-up with time-stamped audit trails. Suspected abuse must be reported immediately to the designated social worker and, where required, to SAPS and the DSD — not only recorded in the Service. The “View as” impersonation feature never delays a mandatory report.']],
+        ['4. Health, food and premises safety', ['Centres must register and operate under DSD/DBE requirements for premises, staff-child ratios, nutrition (including the Regulations relating to Foodstuffs and the National Food Security duties), medication, transport, fire safety and emergency plans. The Service helps with checklists and records; compliance itself is the centre’s duty.']],
+        ['5. Online and media safety', ['Photos and videos are shared only where the centre has recorded guardian consent, are stored on encrypted R2 with signed access, and are never used for platform marketing without separate written consent. Staff must not exchange private messages with children or store child images on personal devices.']],
+        ['6. Review', ['This policy and each centre’s policy must be reviewed at least annually and after any incident. Workers who breach safeguarding rules may face disciplinary action, withdrawal of access, and referral to the authorities.']]
+      ]
+    }
+  };
+
+  function legalNavHtml(current) {
+    return '<nav class="legal-nav">' + LEGAL_NAV.map((entry) =>
+      '<a class="' + (entry[0] === current ? 'active' : '') + '" href="#' + entry[0] + '">' + R.esc(entry[1]) + '</a>'
+    ).join('') + '</nav>';
+  }
+
+  function renderLegalPage(slug) {
+    const doc = LEGAL_PAGES[slug];
+    if (!doc) return '<section class="site-section"><div class="site-wrap site-narrow"><h1>Legal page not found</h1><p><a href="#/legal">Back to the legal hub</a></p></div></section>';
+    const sections = doc.sections.map((section) =>
+      '<h2>' + R.esc(section[0]) + '</h2><div class="legal-body">' + section[1].map((p) => '<p>' + R.esc(p) + '</p>').join('') + '</div>'
+    ).join('');
+    return '<div class="public">' +
+      '<nav class="public-nav"><div class="row" style="gap:10px"><div class="brand-mark">R</div><div><div class="brand-name">Re-EL ECD</div><div class="brand-sub">Early childhood, elevated</div></div></div><div class="links"><a href="#/login">Sign in</a><a href="#/legal">Legal</a></div></nav>' +
+      '<header class="site-page-hero"><div class="site-wrap site-page-hero-inner"><div class="site-eyebrow">' + R.esc(doc.eyebrow) + '</div><h1>' + R.esc(doc.title) + '</h1><p class="lede">' + R.esc(doc.lede) + '</p><p class="small muted">Last updated ' + R.esc(LEGAL_UPDATED) + ' · ' + R.esc(LEGAL_ENTITY) + '</p></div></header>' +
+      '<section class="public-section"><div class="site-wrap legal-layout">' + legalNavHtml('#/legal/' + slug) +
+      '<article class="legal-article">' + doc.intro.map((p) => '<p>' + R.esc(p) + '</p>').join('') + sections +
+      '<hr><p class="small muted">Questions about this document? Email legal@re-el.co.za. For personal information requests use privacy@re-el.co.za (see Privacy Policy).</p>' +
+      '</article></div></section>' +
+      '<footer class="public-footer site-footer"><div class="site-wrap site-footer-base"><span>© ' + new Date().getFullYear() + ' ' + R.esc(LEGAL_ENTITY) + '. All rights reserved.</span><span class="spacer"></span><a href="#/legal/terms">Terms</a><a href="#/legal/privacy">Privacy</a><a href="#/legal/cookies">Cookies</a><a href="#/login">Sign in</a></div></footer>' +
+      '</div>';
+  }
+
+  function renderLegalIndex() {
+    const cards = LEGAL_NAV.slice(1).map((entry) => {
+      const slug = entry[0].replace('/legal/', '');
+      const doc = LEGAL_PAGES[slug];
+      return '<article class="site-card legal-card"><div class="site-card-body"><div class="site-pill">' + R.esc(doc.eyebrow) + '</div><h3>' + R.esc(doc.title) + '</h3><p>' + R.esc(doc.lede) + '</p><a href="#' + entry[0] + '">Read policy →</a></div></article>';
+    }).join('');
+    return '<div class="public">' +
+      '<nav class="public-nav"><div class="row" style="gap:10px"><div class="brand-mark">R</div><div><div class="brand-name">Re-EL ECD</div><div class="brand-sub">Early childhood, elevated</div></div></div><div class="links"><a href="#/login">Sign in</a></div></nav>' +
+      '<header class="site-page-hero"><div class="site-wrap site-page-hero-inner"><div class="site-eyebrow">Legal</div><h1>Legal hub</h1><p class="lede">Terms, privacy, cookies and the policies that govern Re-EL ECD in South Africa. Last updated ' + R.esc(LEGAL_UPDATED) + '.</p></div></header>' +
+      '<section class="public-section"><div class="site-wrap">' + legalNavHtml('#/legal') + '<div class="site-card-grid" style="margin-top:18px">' + cards + '</div></div></section>' +
+      '<footer class="public-footer site-footer"><div class="site-wrap site-footer-base"><span>© ' + new Date().getFullYear() + ' ' + R.esc(LEGAL_ENTITY) + '. All rights reserved.</span><span class="spacer"></span><a href="#/legal/terms">Terms</a><a href="#/legal/privacy">Privacy</a><a href="#/legal/cookies">Cookies</a></div></footer>' +
+      '</div>';
+  }
+
+  V.legalIndex = { render() { return renderLegalIndex(); } };
+  V.legalTerms = { render() { return renderLegalPage('terms'); } };
+  V.legalPrivacy = { render() { return renderLegalPage('privacy'); } };
+  V.legalCookies = { render() { return renderLegalPage('cookies'); } };
+  V.legalAcceptableUse = { render() { return renderLegalPage('acceptable-use'); } };
+  V.legalSafeguarding = { render() { return renderLegalPage('safeguarding'); } };
 })();
