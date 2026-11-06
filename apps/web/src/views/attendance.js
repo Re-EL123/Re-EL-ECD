@@ -33,8 +33,9 @@
       const reg = page.register || { rows: [], summary: {} };
       const summary = reg.summary || {};
       const canRecord = ctx.has('attendance.record.daycare') || ctx.has('attendance.record.assigned');
+      const range = page.reportRange || { from: new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10), to: R.today() };
       return R.pageHead('Learner attendance', 'The daily register, live presence and attendance patterns.',
-        '<a class="btn btn-secondary btn-sm" href="#/app/learners">' + R.icon('users') + ' Learners</a>' + R.exportButtons('/exports/attendance', 'from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to)) +
+        '<a class="btn btn-secondary btn-sm" href="#/app/learners">' + R.icon('users') + ' Learners</a>' + R.exportButtons('/exports/attendance', 'from=' + encodeURIComponent(range.from) + '&to=' + encodeURIComponent(range.to)) +
         (canRecord ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'register\')">' + R.icon('clipboard-list') + ' Record register</button>' +
           '<button class="btn btn-primary btn-sm" @click="markAllPresent()">' + R.icon('check-check') + ' Mark all present</button>' : '')) +
         '<div class="grid grid-4 section">' +
