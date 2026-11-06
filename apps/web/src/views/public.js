@@ -33,6 +33,7 @@
       return '' +
         '<div class="auth-screen" ' + style + '>' +
         '<div class="auth-art">' +
+        '<video class="auth-art-video" src="assets/branding/login-hero.mp4" type="video/mp4" autoplay muted loop playsinline preload="metadata" aria-hidden="true" tabindex="-1"></video>' +
         '<div><div class="row" style="gap:10px">' + logoMark + '<div><div class="brand-name" style="color:#fff">' + R.esc(name) + '</div><div class="brand-sub" style="color:rgba(255,255,255,0.7)">Early childhood, elevated</div></div></div>' +
         '<h1 style="margin-top:56px">Every child\'s early years, held with care.</h1>' +
         '<p style="margin-top:16px">One calm workspace for enrolment, learning, attendance, families, finance and the everyday safety of the children in your care.</p></div>' +
