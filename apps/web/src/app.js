@@ -2044,6 +2044,7 @@
 
       loginEmail: '',
       loginPassword: '',
+      loginShowPassword: false,
       loginError: null,
       loginBusy: false,
       signingOut: false,

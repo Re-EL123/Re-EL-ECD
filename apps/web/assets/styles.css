@@ -310,6 +310,15 @@ small, .small { font-size: 0.82rem; }
 .input:focus, .select:focus, .textarea:focus { outline: none; border-color: var(--reel-green-500); box-shadow: var(--focus-ring); }
 .textarea { min-height: 96px; resize: vertical; }
 .input::placeholder, .textarea::placeholder { color: var(--text-muted); }
+.input-wrap { position: relative; }
+.input-wrap .input-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); display: inline-flex; align-items: center; color: var(--text-muted); pointer-events: none; }
+.input-wrap .input-icon svg { width: 18px; height: 18px; }
+.input-wrap .input-icon-left { padding-left: 38px; }
+.input-wrap .input-icon-right { padding-right: 42px; }
+.password-toggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 0; background: transparent; color: var(--text-muted); border-radius: 8px; cursor: pointer; }
+.password-toggle:hover { background: var(--reel-green-100); color: var(--text-strong); }
+.password-toggle:focus-visible { outline: 2px solid var(--reel-green-500); outline-offset: 1px; }
+.password-toggle svg { width: 18px; height: 18px; }
 .check { display: flex; align-items: center; gap: 8px; font-size: 0.86rem; cursor: pointer; }
 .check input { width: 17px; height: 17px; accent-color: var(--reel-green-600); }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }

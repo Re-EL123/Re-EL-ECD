@@ -45,15 +45,15 @@
         '<h2>Welcome back</h2><div class="muted">Use your work email and password. Parents use the same sign-in.</div>' +
         '<div class="alert alert-danger" x-show="loginError" style="margin-bottom:12px"><i data-lucide="alert-circle"></i><span x-text="loginError"></span></div>' +
         '<form id="login-form" @submit.prevent="login($event)">' +
-        '<div class="field"><label for="login-email">Email</label><input class="input" id="login-email" name="email" type="email" autocomplete="username" required x-model="loginEmail" placeholder="you@centre.co.za"></div>' +
-        '<div class="field"><label for="login-password">Password</label><input class="input" id="login-password" name="password" type="password" autocomplete="current-password" required x-model="loginPassword" placeholder="Your password"></div>' +
+        '<div class="field"><label for="login-email">Email</label><div class="input-wrap"><span class="input-icon" aria-hidden="true"><i data-lucide="mail"></i></span><input class="input input-icon-left" id="login-email" name="email" type="email" autocomplete="username" required x-model="loginEmail" placeholder="you@centre.co.za"></div></div>' +
+        '<div class="field"><label for="login-password">Password</label><div class="input-wrap"><span class="input-icon" aria-hidden="true"><i data-lucide="lock"></i></span><input class="input input-icon-left input-icon-right" id="login-password" name="password" :type="loginShowPassword ? \'text\' : \'password\'" autocomplete="current-password" required x-model="loginPassword" placeholder="Your password"><button type="button" class="password-toggle" @click.prevent="loginShowPassword = !loginShowPassword" :aria-label="loginShowPassword ? \'Hide password\' : \'Show password\'" :aria-pressed="loginShowPassword" :title="loginShowPassword ? \'Hide password\' : \'Show password\'"><i data-lucide="eye" x-show="!loginShowPassword" x-cloak></i><i data-lucide="eye-off" x-show="loginShowPassword" x-cloak></i></button></div></div>' +
         '<button class="btn btn-primary btn-block" type="submit" :disabled="loginBusy"><span class="spinner" x-show="loginBusy" style="width:15px;height:15px"></span><span x-text="loginBusy ? \'Signing in…\' : \'Sign in\'"></span></button>' +
         '</form>' +
         '<div class="row" style="margin-top:10px;justify-content:center"><button type="button" class="link-strong small" @click="forgotOpen = !forgotOpen">Forgot password?</button></div>' +
         '<div x-show="forgotOpen" x-cloak style="margin-top:10px">' +
         '<div class="alert alert-success" x-show="resetSent" x-cloak><i data-lucide="check-circle"></i><span x-text="resetSent"></span></div>' +
         '<form @submit.prevent="sendPasswordReset($event)" x-show="!resetSent">' +
-        '<div class="field"><label for="forgot-email">Email address</label><input class="input" id="forgot-email" name="email" type="email" autocomplete="username" required placeholder="you@centre.co.za"></div>' +
+        '<div class="field"><label for="forgot-email">Email address</label><div class="input-wrap"><span class="input-icon" aria-hidden="true"><i data-lucide="mail"></i></span><input class="input input-icon-left" id="forgot-email" name="email" type="email" autocomplete="username" required placeholder="you@centre.co.za"></div></div>' +
         '<button class="btn btn-secondary btn-block" type="submit">Email me a reset link</button></form></div>' +
         '</div></div></div>';
     }
