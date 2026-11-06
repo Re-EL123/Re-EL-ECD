@@ -91,6 +91,17 @@
     return payload;
   }
 
+  function exportButtons(path, params) {
+    const base = path + (params ? (path.includes('?') ? '&' : '?') + params : '');
+    const withFormat = (format) => base + (base.includes('?') ? '&' : '?') + 'format=' + format;
+    const item = (format, label, iconName) =>
+      '<button type="button" class="btn btn-sm btn-secondary" @click="downloadExport(' + attr(JSON.stringify(withFormat(format))) + ')" title="Download ' + esc(label) + '">' +
+      icon(iconName) + ' ' + esc(label) + '</button>';
+    return '<span class="export-buttons" role="group" aria-label="Export">' +
+      item('csv', 'CSV', 'file-text') + item('xlsx', 'Excel', 'file-spreadsheet') + item('pdf', 'PDF', 'file-badge') +
+      '</span>';
+  }
+
   function download(path) {
     const org = activeOrg();
     const url = API_BASE + '/api/v1' + path + (path.includes('?') ? '&' : '?') + (org ? 'organisationId=' + encodeURIComponent(org) : '');
@@ -659,6 +670,7 @@
   Reel.setCsrf = setCsrf;
   Reel.apiBase = apiBase;
   Reel.download = download;
+  Reel.exportButtons = exportButtons;
   Reel.esc = esc;
   Reel.attr = attr;
   Reel.titleCase = titleCase;

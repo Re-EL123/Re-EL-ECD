@@ -1156,3 +1156,9 @@ body.nav-open { overflow: hidden; }
   .ms-controls { flex-wrap: wrap; }
   .ms-controls .input { flex-basis: 100%; }
 }
+
+/* --- Export button group ------------------------------------------------- */
+.export-buttons { display: inline-flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 720px) {
+  .export-buttons { justify-content: flex-start; }
+}

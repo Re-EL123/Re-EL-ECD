@@ -26,7 +26,7 @@
       const counts = o.staff || {};
       return R.pageHead('Staff', 'Your team, their classrooms and everything the week requires.',
         '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'staff\')">' + R.icon('user-plus') + ' Add staff profile</button>' +
-        '<a class="btn btn-primary btn-sm" href="#/app/staff-shifts">' + R.icon('calendar-clock') + ' Shifts</a>') +
+        '<a class="btn btn-primary btn-sm" href="#/app/staff-shifts">' + R.icon('calendar-clock') + ' Shifts</a>' + R.exportButtons('/exports/staff')) +
         '<div class="grid grid-4 section">' +
         R.statCard({ label: 'Team', value: R.number(counts.total), icon: 'id-card', foot: R.number(counts.active) + ' active' }) +
         R.statCard({ label: 'On site', value: R.number(o.onSiteCount), icon: 'fingerprint', tone: 'sky', foot: R.number(o.onBreakCount) + ' on break' }) +

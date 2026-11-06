@@ -1011,6 +1011,15 @@
         }
       },
 
+      /**
+       * Hand a download path (CSV, XLSX or PDF) to the browser. The browser
+       * follows the Content-Disposition header and saves the file, using the
+       * session cookie for authentication.
+       */
+      downloadExport(path) {
+        Reel.download(path);
+      },
+
       act(method, path, body, options) {
         return this.apiAction(method, path, body, options);
       },
@@ -1252,21 +1261,6 @@
         });
       },
 
-      exportCurrentCsv(filename, keys, labels) {
-        const source = (this.page && (this.page.rows || this.page.items || this.page.events)) || [];
-        const columns = keys || [];
-        const header = labels && labels.length === columns.length ? labels : columns;
-        const csv = [header.join(',')].concat(source.map((row) => columns.map((key) =>
-          '"' + String(row[key] === null || row[key] === undefined ? '' : row[key]).replace(/"/g, '""') + '"').join(','))).join('\n');
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename || 'export.csv';
-        a.click();
-        URL.revokeObjectURL(url);
-        this.toast('Export downloaded.');
-      },
 
       openModal(config) {
         const data = {};

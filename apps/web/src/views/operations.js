@@ -42,7 +42,7 @@
       const mine = ctx.filters.mine === 'true';
       return R.pageHead('Tasks', 'The work that keeps the centre running, assigned and visible.',
         '<button class="btn btn-secondary btn-sm" @click="setFilter(\'mine\', \'' + (mine ? '' : 'true') + '\')">' + R.icon('user-check') + ' ' + (mine ? 'Show all' : 'Only mine') + '</button>' +
-        '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'task\')">' + R.icon('list-plus') + ' New task</button>') +
+        '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'task\')">' + R.icon('list-plus') + ' New task</button>' + R.exportButtons('/exports/tasks')) +
         '<div class="grid grid-4 section">' +
         R.statCard({ label: 'Open', value: R.number(counts.open), icon: 'circle-dot', tone: 'sky', foot: 'Waiting to start' }) +
         R.statCard({ label: 'In progress', value: R.number(counts.in_progress), icon: 'loader', tone: 'sun', foot: 'Being worked on' }) +
@@ -202,7 +202,7 @@
         }
       }));
       return R.pageHead('Reports', 'The numbers behind the decisions — exported, dated and auditable.',
-        '<a class="btn btn-secondary btn-sm" href="/api/v1/reports/' + R.attr(selected || 'enrolment_summary') + '?from=' + R.attr(page.from) + '&to=' + R.attr(page.to) + '&format=csv" target="_blank" rel="noopener">' + R.icon('download') + ' Export CSV</a>') +
+        R.exportButtons('/reports/' + (selected || 'enrolment_summary'), 'from=' + encodeURIComponent(page.from) + '&to=' + encodeURIComponent(page.to))) +
         '<div class="grid grid-3 section">' + catalogue.map((c) => R.card(c.name,
           '<p class="muted small" style="margin:0 0 10px">' + R.esc(c.description) + '</p>' +
           '<div class="row"><span class="badge badge-muted mono">' + R.esc(c.key) + '</span>' +

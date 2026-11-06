@@ -34,7 +34,7 @@
       const summary = reg.summary || {};
       const canRecord = ctx.has('attendance.record.daycare') || ctx.has('attendance.record.assigned');
       return R.pageHead('Learner attendance', 'The daily register, live presence and attendance patterns.',
-        '<a class="btn btn-secondary btn-sm" href="#/app/learners">' + R.icon('users') + ' Learners</a>' +
+        '<a class="btn btn-secondary btn-sm" href="#/app/learners">' + R.icon('users') + ' Learners</a>' + R.exportButtons('/exports/attendance', 'from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to)) +
         (canRecord ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'register\')">' + R.icon('clipboard-list') + ' Record register</button>' +
           '<button class="btn btn-primary btn-sm" @click="markAllPresent()">' + R.icon('check-check') + ' Mark all present</button>' : '')) +
         '<div class="grid grid-4 section">' +

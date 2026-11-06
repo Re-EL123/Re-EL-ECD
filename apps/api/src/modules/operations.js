@@ -1,10 +1,11 @@
 'use strict';
 
-const { validate, csvCell } = require('../../../../packages/contracts/validate');
+const { validate } = require('../../../../packages/contracts/validate');
 const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
 const { createNotification } = require('../services/notification-service');
-const { parsePagination, sendText } = require('../utils/http');
+const { parsePagination } = require('../utils/http');
+const exportService = require('../services/export-service');
 const bulk = require('../services/bulk-service');
 const branding = require('../services/branding-service');
 const websiteContent = require('../services/website-content');
@@ -21,6 +22,16 @@ const REPORT_CATALOGUE = [
   { key: 'occupancy', name: 'Occupancy and capacity', description: 'Configured capacity against enrolled learners.', permission: 'reports.read.daycare' },
   { key: 'admissions_funnel', name: 'Admissions funnel', description: 'Enquiries and applications by stage.', permission: 'admissions.read.daycare' }
 ];
+
+function inferExportFormat(key) {
+  const k = String(key).toLowerCase();
+  if (/(_at$|_date$|^date$|^date_of_birth$|^issued_at$|^due_at$)/.test(k)) return 'date';
+  if (/amount|total|paid|outstanding|balance|cost|fee|price|revenue|gross|net/.test(k)) return 'money';
+  if (/count|quantity|qty|number|minutes|hours|learners|staff|children|rate/.test(k)) {
+    return /rate|percent/.test(k) ? 'percent' : 'number';
+  }
+  return undefined;
+}
 
 function checklistLabels(values) {
   const list = Array.isArray(values) ? values : [];
@@ -501,19 +512,49 @@ function register(router) {
     const from = ctx.query.from || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
     const to = ctx.query.to || today();
     const rows = await buildReport(ctx, report.key, from, to);
-    if (ctx.query.format === 'csv') {
+    const format = String(ctx.query.format || '').toLowerCase();
+    if (['csv', 'xlsx', 'pdf'].includes(format)) {
       const keys = rows.length ? Object.keys(rows[0]) : ['no_data'];
-      const header = keys.map(csvCell).join(',');
-      const body = rows.map((row) => keys.map((k) => csvCell(row[k])).join(',')).join('\n');
+      const columns = keys.map((key) => ({
+        key,
+        label: String(key).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+        format: inferExportFormat(key),
+        align: /amount|total|paid|outstanding|balance|cost|fee|count|quantity|minutes|hours|rate|percent/.test(String(key).toLowerCase()) ? 'right' : undefined
+      }));
+      const organisation = await ctx.db.one('SELECT name FROM organisations WHERE id = $1', [ctx.organisationId]);
+      let buffer;
+      let type;
+      let ext;
+      if (format === 'csv') {
+        buffer = exportService.toCsv(columns, rows);
+        type = 'text/csv; charset=utf-8';
+        ext = 'csv';
+      } else if (format === 'xlsx') {
+        buffer = exportService.toXlsx(columns, rows, report.key);
+        type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        ext = 'xlsx';
+      } else {
+        buffer = exportService.toPdf({
+          title: report.name,
+          subtitle: 'From ' + from + ' to ' + to,
+          columns,
+          rows,
+          footer: 'Re-EL ECD — ' + (organisation ? organisation.name : ''),
+          generatedAt: new Date()
+        });
+        type = 'application/pdf';
+        ext = 'pdf';
+      }
       await recordAudit(ctx.db, ctx, {
         action: 'report.exported', resourceType: 'report', resourceId: null,
-        metadata: { report: report.key, format: 'csv', rowCount: rows.length }
+        metadata: { report: report.key, format, rowCount: rows.length }
       });
       ctx.rawResponse = true;
-      sendText(ctx.res, 200, [header, body].join('\n'), {
-        'Content-Type': 'text/csv; charset=utf-8',
-        'Content-Disposition': `attachment; filename="re-el-${report.key}.csv"`
-      });
+      ctx.res.statusCode = 200;
+      ctx.res.setHeader('Content-Type', type);
+      ctx.res.setHeader('Content-Disposition', 'attachment; filename="re-el-' + report.key + '.' + ext + '"');
+      ctx.res.setHeader('Cache-Control', 'no-store');
+      ctx.res.end(buffer);
       return;
     }
     return { report: { key: report.key, name: report.name }, from, to, rows, generatedAt: new Date().toISOString() };

@@ -42,7 +42,7 @@
       const counts = o.incidents || {};
       return R.pageHead('Health and safety', 'Report what happened, fix what caused it, and keep the record straight.',
         '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'incident\')">' + R.icon('shield-alert') + ' Report incident</button>' +
-        (page.compliance ? '<a class="btn btn-primary btn-sm" href="#/app/safety?tab=compliance">' + R.icon('clipboard-check') + ' Compliance</a>' : '')) +
+        (page.compliance ? '<a class="btn btn-primary btn-sm" href="#/app/safety?tab=compliance">' + R.icon('clipboard-check') + ' Compliance</a>' : '') + R.exportButtons('/exports/incidents')) +
         '<div class="grid grid-4 section">' +
         R.statCard({ label: 'Open incidents', value: R.number(counts.open), icon: 'shield-alert', tone: Number(counts.open) ? 'danger' : 'green', foot: R.number(counts.total) + ' recorded all time' }) +
         R.statCard({ label: 'Critical open', value: R.number(counts.critical_open), icon: 'alert-octagon', tone: Number(counts.critical_open) ? 'danger' : 'green', foot: 'Needs immediate review' }) +

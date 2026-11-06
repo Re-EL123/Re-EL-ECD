@@ -98,7 +98,8 @@
     },
 
     renderInvoices(ctx, page) {
-      return R.filterBar(
+      return '<div class="row" style="justify-content:flex-end;margin-bottom:10px">' + R.exportButtons('/exports/invoices') + '</div>' +
+        R.filterBar(
         R.searchFilter(ctx, 'q', 'Search invoice or learner…') +
         statusFilter(ctx, 'status', INVOICE_STATUSES, 'All statuses')) +
         (ctx.has('finance.invoice.issue.daycare') ? R.bulkBar([
@@ -128,7 +129,8 @@
     renderPayments(ctx, page) {
       const canReconcile = ctx.has('finance.payment.reconcile.daycare');
       const canReverse = ctx.has('finance.manage.daycare');
-      return R.filterBar(statusFilter(ctx, 'paymentStatus', PAYMENT_STATUSES, 'All statuses')) +
+      return '<div class="row" style="justify-content:flex-end;margin-bottom:10px">' + R.exportButtons('/exports/payments') + '</div>' +
+        R.filterBar(statusFilter(ctx, 'paymentStatus', PAYMENT_STATUSES, 'All statuses')) +
         R.table({ rows: page.payments || [], columns: [
           { label: 'Received', render: (p) => '<span class="cell-strong">' + R.dateTime(p.received_at) + '</span><span class="cell-sub">' + R.esc(R.titleCase(p.payment_method)) + '</span>' },
           { label: 'Guardian', render: (p) => R.esc(p.guardian_name || '—') },
@@ -355,7 +357,7 @@
       const approved = rows.filter((e) => ['approved', 'paid'].includes(e.approval_status)).reduce((sum, e) => sum + Number(e.amount || 0), 0);
       return R.pageHead('Expenses', 'What the centre spends, who approved it and which supplier it went to.',
         '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'supplier\')">' + R.icon('truck') + ' Add supplier</button>' +
-        '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'expense\')">' + R.icon('plus') + ' New expense</button>') +
+        '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'expense\')">' + R.icon('plus') + ' New expense</button>' + R.exportButtons('/exports/expenses')) +
         '<div class="grid grid-4 section">' +
         R.statCard({ label: 'Entries', value: R.number(rows.length), icon: 'receipt', foot: 'In this view' }) +
         R.statCard({ label: 'Total', value: R.money(total), icon: 'wallet', tone: 'sky' }) +
@@ -473,7 +475,7 @@
       const low = rows.filter((r) => r.is_low);
       return R.pageHead('Inventory', 'Stock, supplies and the things a classroom runs out of at the worst moment.',
         '<button class="btn btn-secondary btn-sm" @click="setFilter(\'low\', \'' + (ctx.filters.low === 'true' ? '' : 'true') + '\')">' + R.icon('alert-triangle') + ' ' + (ctx.filters.low === 'true' ? 'Show all' : 'Low stock only') + '</button>' +
-        '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'inventoryItem\')">' + R.icon('plus') + ' Add item</button>') +
+        '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'inventoryItem\')">' + R.icon('plus') + ' Add item</button>' + R.exportButtons('/exports/inventory')) +
         '<div class="grid grid-4 section">' +
         R.statCard({ label: 'Items', value: R.number(rows.length), icon: 'package', foot: 'Active stock lines' }) +
         R.statCard({ label: 'Low stock', value: R.number(low.length), icon: 'alert-triangle', tone: low.length ? 'danger' : 'green', foot: 'At or below minimum' }) +

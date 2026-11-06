@@ -29,7 +29,7 @@
       const canCreate = ctx.has('learners.create.daycare');
       return R.pageHead('Learners', 'Every child in your care, with the details their teachers need.',
         (canCreate ? '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'learner\')">' + R.icon('user-plus') + ' Add learner</button>' : '') +
-        '<button class="btn btn-secondary btn-sm" @click="exportCurrentCsv(\'learners.csv\',[\'learner_reference\',\'first_name\',\'last_name\',\'classroom_name\',\'branch_name\',\'status\'])">' + R.icon('download') + ' Export</button>') +
+        R.exportButtons('/exports/learners')) +
         R.filterBar(
           R.searchFilter(ctx, 'q', 'Search name or reference…') +
           R.selectFilter(ctx, 'status', STATUSES.map((s) => ({ value: s, label: R.titleCase(s) })), 'All statuses') +

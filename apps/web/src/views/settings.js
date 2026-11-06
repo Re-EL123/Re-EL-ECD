@@ -236,7 +236,7 @@
           { label: 'Due', render: (row) => row.status === 'paid' ? '—' : (row.due_at ? R.date(row.due_at) : '—') },
           { label: 'Status', render: (row) => '<span class="badge ' + (invoiceBadge[row.status] || invoiceBadge.issued).cls + '">' + R.esc((invoiceBadge[row.status] || invoiceBadge.issued).label) + '</span>' },
           { label: 'Reference', render: (row) => row.payment_reference ? '<span class="mono small">' + R.esc(row.payment_reference) + '</span>' : '—' }
-        ], emptyTitle: 'No subscription invoices', emptyMessage: 'Invoices for your plan appear here automatically.' }));
+        ], emptyTitle: 'No subscription invoices', emptyMessage: 'Invoices for your plan appear here automatically.' }), R.exportButtons('/exports/subscription-invoices'));
 
       const accountCard = R.card('How parent fees are collected',
         '<p class="muted small">Parents can pay invoices, application fees and form deposits online. Choose where that money lands.</p>' +
@@ -679,7 +679,7 @@
 
     render(ctx, params, page) {
       return R.pageHead('Audit log', 'An append-only record of who did what, when and from where.',
-        '<button class="btn btn-secondary btn-sm" @click="exportCurrentCsv(\'audit-log.csv\',[\'occurred_at\',\'actor_name\',\'action\',\'resource_type\'],[\'When\',\'Actor\',\'Action\',\'Resource\'])\">' + R.icon('download') + ' Export view</button>') +
+        R.exportButtons('/exports/audit')) +
         R.filterBar(R.searchFilter(ctx, 'action', 'Filter by action, e.g. invoice.')) +
         R.table({ rows: page.rows || [], columns: [
           { label: 'When', render: (a) => '<span class="cell-strong">' + R.dateTime(a.occurred_at) + '</span><span class="cell-sub">' + R.relative(a.occurred_at) + '</span>' },

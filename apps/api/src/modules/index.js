@@ -18,7 +18,8 @@ const modules = [
   require('./safety'),
   require('./operations'),
   require('./parent'),
-  require('./billing')
+  require('./billing'),
+  require('./exports')
 ];
 
 function register(router) {

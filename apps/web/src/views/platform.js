@@ -622,7 +622,8 @@
         : '<span class="badge badge-sun">Platform collects</span>';
       const configured = rows.filter((row) => row.payout && row.payout.accountNumberLast4).length;
       const awaiting = rows.filter((row) => row.outstanding > 0 && !(row.payout && row.payout.accountNumberLast4)).length;
-      return R.pageHead('Settlements', 'Parent fees collected through the platform account, settled to each tenant by EFT.', '') +
+      return R.pageHead('Settlements', 'Parent fees collected through the platform account, settled to each tenant by EFT.',
+        R.exportButtons('/exports/platform/settlements') + R.exportButtons('/exports/platform/payouts')) +
         '<div class="grid grid-3 section">' +
           R.statCard({ label: 'Outstanding to settle', value: R.money(total, 'ZAR'), icon: 'hand-coins', tone: total > 0 ? 'sun' : 'green', foot: rows.length + ' organisation' + (rows.length === 1 ? '' : 's') + ' with activity' }) +
           R.statCard({ label: 'Bank details set', value: R.number(configured), icon: 'building', foot: 'Ready to pay out' }) +
@@ -715,7 +716,7 @@
     },
     render(ctx, params, page) {
       return R.pageHead('Platform audit explorer', 'Every privileged action across all tenants, immutable and timestamped.',
-        '<button class="btn btn-secondary btn-sm" @click="exportCurrentCsv(\'platform-audit.csv\',[\'occurred_at\',\'actor_name\',\'action\',\'resource_type\',\'resource_id\',\'organisation_name\',\'ip_address\'])">' + R.icon('download') + ' Export CSV</button>') +
+        R.exportButtons('/exports/platform/platform-audit')) +
         R.filterBar(R.searchFilter(ctx, 'q', 'Search action, actor or resource…') +
           R.selectFilter(ctx, 'action', [{ value: 'auth.login', label: 'Sign in' }, { value: 'platform.', label: 'Platform actions' }, { value: 'learner', label: 'Learner actions' }], 'All actions')) +
         R.table({ rows: page.rows || [], columns: [
