@@ -214,6 +214,7 @@
       error: null,
       errorTitle: null,
       denied: false,
+      suspendedWorkspace: false,
       tab: null,
       filters: {},
       sidebarOpen: false,
@@ -593,6 +594,7 @@
         if (!matched) {
           if (Reel.resetSeo) Reel.resetSeo();
           this.denied = false;
+          this.suspendedWorkspace = false;
           this.loading = false;
           this.error = null;
           this.pageTitle = 'Page not found';
@@ -657,6 +659,7 @@
 
         this.mode = 'app';
         this.denied = false;
+        this.suspendedWorkspace = false;
         this.error = null;
         this.loading = true;
         this.sidebarOpen = false;
@@ -689,6 +692,7 @@
           if (seq !== this._navSeq) return;
           this.loading = false;
           if (error instanceof Reel.ApiError && (error.code === 'FORBIDDEN' || error.status === 403)) {
+            this.suspendedWorkspace = /suspended/i.test(error.message || '');
             this.denied = true;
             return;
           }

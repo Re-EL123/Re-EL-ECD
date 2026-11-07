@@ -304,3 +304,59 @@ test('the reminder endpoint is inert without the secret and flips statuses and e
   assert.ok(typeof rightAuth.data.flipped === 'number');
   assert.ok(typeof rightAuth.data.reminders === 'number');
 });
+
+test('a suspended tenant can still view and pay their subscription invoice; payment restores the workspace', async () => {
+  const { session, organisationId } = await principal();
+  const { client: admin } = await platform();
+
+  const suspended = await admin.post('/platform/organisations/' + organisationId + '/suspend', {
+    reason: 'Non-payment of subscription.'
+  });
+  assert.equal(suspended.status, 200, suspended.text);
+
+  // Suspension revoked sessions: sign in again and confirm normal routes are blocked,
+  // but billing (summary + checkout) still works.
+  const tenant = createClient();
+  await tenant.login('principal@littlesprouts.local');
+  const blocked = await tenant.get('/organisations/current', { organisationId });
+  assert.equal(blocked.status, 403, blocked.text);
+  assert.match(blocked.error.message, /suspended/i);
+
+  const summary = await tenant.get('/billing/summary', { organisationId });
+  assert.equal(summary.status, 200, summary.text);
+  assert.equal(summary.data.workspaceSuspended, true);
+  assert.ok(summary.data.openInvoice, 'the suspended tenant still sees the open invoice');
+
+  const pay = await tenant.post('/billing/subscription/pay', {}, { organisationId });
+  assert.equal(pay.status, 200, pay.text);
+  const checkout = pay.data.checkout;
+  assert.equal(Number(pay.data.amount), 999);
+
+  // Still blocked from everything else until the payment lands.
+  const stillBlocked = await tenant.get('/organisations/current', { organisationId });
+  assert.equal(stillBlocked.status, 403);
+
+  const reference = checkout.fields.m_payment_id;
+  const paid = await createClient().postForm('/public/payfast/itn', itn(reference, {
+    item_name: checkout.fields.item_name,
+    amount_gross: '999.00',
+    merchant_id: PLATFORM_MID,
+    custom_str1: organisationId
+  }));
+  assert.equal(paid.status, 200, paid.text);
+  assert.equal(paid.text, 'OK');
+
+  const org = await db.one('SELECT status, subscription_status FROM organisations WHERE id = $1', [organisationId]);
+  assert.equal(org.status, 'active', 'payment reactivated the workspace');
+  assert.equal(org.subscription_status, 'active');
+
+  const restored = await tenant.get('/organisations/current', { organisationId });
+  assert.equal(restored.status, 200, restored.text);
+
+  const audit = await db.one(
+    `SELECT COUNT(*)::int AS total FROM audit_events
+     WHERE action = 'platform.organisation_restored' AND organisation_id = $1 AND metadata->>'reason' = 'subscription_payment'`,
+    [organisationId]
+  );
+  assert.ok(audit.total >= 1, 'the auto-restore is audited');
+});

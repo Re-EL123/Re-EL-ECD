@@ -184,6 +184,10 @@
 
     renderBilling(ctx, page, canManage) {
       const billing = page.billing || {};
+      const workspaceSuspended = billing.workspaceSuspended === true;
+      const suspendedBanner = workspaceSuspended
+        ? '<div class="alert alert-danger" style="margin-bottom:14px"><i data-lucide="alert-triangle"></i><span><strong>Your workspace is currently suspended.</strong> Pay the outstanding subscription invoice below to restore access automatically — no need to contact support.</span></div>'
+        : '';
       const subscription = billing.subscription || null;
       const invoices = billing.invoices || [];
       const openInvoice = billing.openInvoice || null;
@@ -288,7 +292,7 @@
           { label: 'Reference', render: (row) => row.reference ? '<span class="mono small">' + R.esc(row.reference) + '</span>' : '—' }
         ], emptyTitle: 'No payouts yet', emptyMessage: 'Once fees are collected, the platform settles them to your bank account and each payout appears here.' })) : '';
 
-      return backBanner + subscriptionCard + '<div class="section">' + invoicesCard + '</div><div class="section">' + accountCard + '</div>' + (payoutHistory ? '<div class="section">' + payoutHistory + '</div>' : '');
+      return suspendedBanner + backBanner + subscriptionCard + '<div class="section">' + invoicesCard + '</div><div class="section">' + accountCard + '</div>' + (payoutHistory ? '<div class="section">' + payoutHistory + '</div>' : '');
     },
 
     openModal(ctx, name, id) {

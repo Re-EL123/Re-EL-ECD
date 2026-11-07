@@ -1301,14 +1301,21 @@ function register(router) {
       // shared settlement service (also used by the manual-payment path).
       let subscription = null;
       let subscriptionInvoice = null;
+      let reactivated = false;
       if (intent.purpose === 'platform_subscription' && intentMetadata.subscriptionId) {
         const settled = await settleSubscriptionPayment(client, intent);
         if (settled) {
           subscription = settled.subscription;
           subscriptionInvoice = settled.invoice;
+          const orgId = intentMetadata.organisationId || intent.organisation_id;
+          const orgRow = (await client.query('SELECT status FROM organisations WHERE id = $1', [orgId])).rows[0];
+          reactivated = Boolean(orgRow && orgRow.status === 'suspended');
+          // A paid subscription buys the workspace back: a suspended centre
+          // that pays its platform invoice is restored automatically.
           await client.query(
-            "UPDATE organisations SET subscription_status = 'active', updated_at = now() WHERE id = $1",
-            [intentMetadata.organisationId || intent.organisation_id]
+            `UPDATE organisations SET status = 'active', suspended_reason = NULL, suspended_at = NULL,
+               subscription_status = 'active', updated_at = now() WHERE id = $1`,
+            [orgId]
           );
         }
       }
@@ -1319,7 +1326,7 @@ function register(router) {
         [payment.id, data.providerReference || null, intent.id]
       );
       await client.query('UPDATE payment_webhook_events SET processed_at = now() WHERE id = $1', [event.id]);
-      return { payment, allocations, application, subscription, subscriptionInvoice, formSubmission };
+      return { payment, allocations, application, subscription, subscriptionInvoice, formSubmission, reactivated };
     });
 
     const [guardian, organisation] = await Promise.all([
@@ -1354,6 +1361,13 @@ function register(router) {
       organisationId: intent.organisation_id,
       metadata: { provider: 'payfast', reference: intent.reference, intentId: intent.id, settlement: (intent.metadata && intent.metadata.settlement) || 'platform' }
     });
+    if (result.reactivated) {
+      await recordAudit(ctx.db, { requestId: ctx.requestId, ip: ctx.ip }, {
+        action: 'platform.organisation_restored', resourceType: 'organisation', resourceId: intent.organisation_id,
+        organisationId: intent.organisation_id,
+        metadata: { reason: 'subscription_payment', intentId: intent.id }
+      });
+    }
     return ack('OK');
   }, { public: true, skipCsrf: true });
 

@@ -84,6 +84,7 @@ function register(router) {
     return {
       organisation: { id: organisation.id, name: organisation.name, currency: organisation.currency || 'ZAR' },
       payfast: { platformAvailable: payfast.isConfigured() },
+      workspaceSuspended: organisation.status === 'suspended',
       subscription: subscription ? {
         id: subscription.id,
         planName: subscription.plan_name,
@@ -112,7 +113,7 @@ function register(router) {
       },
       payouts
     };
-  }, { permission: MANAGE });
+  }, { permission: MANAGE, allowSuspended: true });
 
   router.post('/billing/subscription/pay', async (ctx) => {
     if (!payfast.isConfigured()) {
@@ -199,7 +200,7 @@ function register(router) {
       metadata: { intentId: intent.id, amount, invoice: invoice.invoice_number }
     });
     return { invoice, amount, currency: invoice.currency, checkout, intent: { id: intent.id, reference: intent.reference } };
-  }, { permission: MANAGE });
+  }, { permission: MANAGE, allowSuspended: true });
 
   router.get('/billing/payouts', async (ctx) => {
     const outstanding = await collectionsOutstanding(ctx.db, ctx.organisationId);
