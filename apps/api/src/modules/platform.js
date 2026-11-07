@@ -16,6 +16,8 @@ const { createImpersonationSession, impersonationCookie } = require('../services
 const secretbox = require('../services/secretbox');
 const storage = require('../services/storage-service');
 const branding = require('../services/branding-service');
+const { provisionOrganisation } = require('../services/provision-service');
+const { rateLimit } = require('../middleware/rate-limit');
 const { parsePagination } = require('../utils/http');
 
 function roundMoney(value) {
@@ -46,6 +48,7 @@ function register(router) {
        WHERE o.slug = 're-el-platform'`
     );
     const banner = (bannerSettings && bannerSettings.settings && bannerSettings.settings.banner) || null;
+    const platformSettings = (bannerSettings && bannerSettings.settings) || {};
     return {
       organisation: {
         name: organisation ? organisation.name : 'Re-EL ECD',
@@ -55,7 +58,73 @@ function register(router) {
       },
       branding: branding.themeFromOrganisation(organisation || {}),
       plans,
+      allowTenantSignup: platformSettings.allowTenantSignup === true,
       banner: banner && banner.enabled && banner.message ? { message: banner.message, tone: banner.tone || 'info' } : null
+    };
+  }, { public: true });
+
+  router.post('/public/signup', async (ctx) => {
+    const platformOrg = await ctx.db.one(
+      "SELECT id FROM organisations WHERE slug = 're-el-platform' ORDER BY created_at LIMIT 1"
+    );
+    let signupEnabled = false;
+    if (platformOrg) {
+      const settingsRow = await ctx.db.one('SELECT settings FROM organisation_settings WHERE organisation_id = $1', [platformOrg.id]);
+      signupEnabled = Boolean(settingsRow && settingsRow.settings && settingsRow.settings.allowTenantSignup === true);
+    }
+    if (!signupEnabled) {
+      fail('FORBIDDEN', null, 'Self-signup is not enabled. Contact Re-EL ECD to create your centre account.');
+    }
+    const limit = rateLimit(`signup:${ctx.ip}`, 5, 60 * 60 * 1000);
+    if (!limit.allowed) throw new AppError('RATE_LIMITED');
+    const body = validate(ctx.body, {
+      centreName: { type: 'string', min: 2, max: 200 },
+      ownerName: { type: 'string', min: 2, max: 120 },
+      ownerEmail: { type: 'string', email: true, max: 255 },
+      password: { type: 'string', min: 10, max: 200 },
+      planKey: { type: 'string', max: 40, optional: true },
+      timezone: { type: 'string', max: 64, optional: true }
+    });
+    const email = body.ownerEmail.toLowerCase();
+    const existingUser = await ctx.db.one('SELECT id FROM users WHERE email_normalized = $1', [email]);
+    if (existingUser) {
+      fail('CONFLICT', null, 'An account with this email already exists. Sign in instead.');
+    }
+    if (body.planKey) {
+      const plan = await ctx.db.one('SELECT id FROM subscription_plans WHERE plan_key = $1 AND status = $2', [body.planKey, 'active']);
+      if (!plan) fail('VALIDATION', [{ field: 'planKey', message: 'That plan is not available.' }]);
+    }
+    // Derive a unique slug from the centre name.
+    let base = body.centreName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'centre';
+    let slug = base;
+    for (let attempt = 2; attempt <= 20; attempt += 1) {
+      const taken = await ctx.db.one('SELECT id FROM organisations WHERE slug = $1', [slug]);
+      if (!taken) break;
+      slug = (base + '-' + attempt).slice(0, 60);
+      if (attempt === 20) fail('CONFLICT', null, 'We could not find a free web address for that centre name. Try a more specific name.');
+    }
+    const passwordHash = await hashPassword(body.password);
+    const result = await provisionOrganisation(ctx.db, {
+      name: body.centreName,
+      slug,
+      ownerName: body.ownerName,
+      ownerEmail: email,
+      passwordHash,
+      planKey: body.planKey || null,
+      timezone: body.timezone || null,
+      source: 'self-signup'
+    }, null);
+    await sendTemplate(ctx.db, 'signupWelcome', {
+      to: email,
+      organisationId: result.organisation.id,
+      metadata: { organisationId: result.organisation.id, ownerUserId: result.owner.id },
+      data: { ownerName: body.ownerName, organisationName: result.organisation.name }
+    });
+    ctx.status = 201;
+    return {
+      organisation: { name: result.organisation.name, slug: result.organisation.slug, status: result.organisation.status },
+      trialDays: 30,
+      planKey: body.planKey || null
     };
   }, { public: true });
 
@@ -481,61 +550,21 @@ function register(router) {
     }
     const password = body.temporaryPassword || `Reel-${randomToken(6)}`;
     const passwordHash = await hashPassword(password);
-    const result = await ctx.db.withTransaction(async (client) => {
-      const org = (await client.query(
-        `INSERT INTO organisations (name, slug, legal_name, registration_number, status, subscription_status, currency, timezone)
-         VALUES ($1,$2,$3,$4,'onboarding','trial',$5,$6) RETURNING *`,
-        [body.name, body.slug, body.legalName || body.name, body.registrationNumber || null,
-          body.currency || 'ZAR', body.timezone || 'Africa/Johannesburg']
-      )).rows[0];
-      const branch = (await client.query(
-        `INSERT INTO branches (organisation_id, name, slug, contact_email) VALUES ($1,$2,'main',$3) RETURNING *`,
-        [org.id, body.branchName || 'Main Branch', body.ownerEmail]
-      )).rows[0];
-      let owner = ownerExisting;
-      if (!owner) {
-        owner = (await client.query(
-          `INSERT INTO users (email, email_normalized, display_name, password_hash, status)
-           VALUES ($1,$2,$3,$4,'active') RETURNING *`,
-          [body.ownerEmail, body.ownerEmail.toLowerCase(), body.ownerName, passwordHash]
-        )).rows[0];
-      }
-      const membership = (await client.query(
-        `INSERT INTO memberships (user_id, organisation_id, status, joined_at) VALUES ($1,$2,'active',now()) RETURNING *`,
-        [owner.id, org.id]
-      )).rows[0];
-      const ownerRole = (await client.query("SELECT id FROM roles WHERE role_key = 'organisation_owner'")).rows[0];
-      await client.query(
-        `INSERT INTO membership_roles (membership_id, role_id, granted_by, status) VALUES ($1,$2,$3,'active')`,
-        [membership.id, ownerRole.id, ctx.user.id]
-      );
-      await client.query('INSERT INTO branch_memberships (membership_id, branch_id) VALUES ($1,$2)', [membership.id, branch.id]);
-      await client.query('INSERT INTO organisation_settings (organisation_id, settings) VALUES ($1,$2)', [org.id, JSON.stringify({
-        academicYear: new Date().getFullYear(),
-        operatingHours: { open: '06:30', close: '18:00' },
-        publicWebsite: { enabled: false }
-      })]);
-      await client.query(
-        `INSERT INTO website_configs (organisation_id, branch_id, slug, status) VALUES ($1,$2,$3,'draft')`,
-        [org.id, branch.id, body.slug]
-      );
-      if (body.planKey) {
-        const plan = (await client.query('SELECT id FROM subscription_plans WHERE plan_key = $1', [body.planKey])).rows[0];
-        if (plan) {
-          await client.query(
-            `INSERT INTO platform_subscriptions (organisation_id, plan_id, status, current_period_start, current_period_end)
-             VALUES ($1,$2,'trial',CURRENT_DATE,CURRENT_DATE + 30)`, [org.id, plan.id]
-          );
-        }
-      }
-      await client.query(
-        `INSERT INTO audit_events (actor_user_id, organisation_id, branch_id, action, resource_type, resource_id, metadata)
-         VALUES ($1,$2,$3,'organisation.provisioned','organisation',$2,$4)`,
-        [ctx.user.id, org.id, branch.id, JSON.stringify({ planKey: body.planKey || null })]
-      );
-      return { organisation: org, branch, membership, owner };
-    });
-    invalidateAccess(result.owner.id, result.organisation.id);
+    const result = await provisionOrganisation(ctx.db, {
+      name: body.name,
+      slug: body.slug,
+      legalName: body.legalName,
+      registrationNumber: body.registrationNumber,
+      ownerName: body.ownerName,
+      ownerEmail: body.ownerEmail,
+      passwordHash,
+      branchName: body.branchName,
+      currency: body.currency,
+      timezone: body.timezone,
+      planKey: body.planKey,
+      owner: ownerExisting || null,
+      source: 'admin'
+    }, ctx.user.id);
     if (!ownerExisting && !body.temporaryPassword) {
       const token = randomToken(24);
       await ctx.db.query(

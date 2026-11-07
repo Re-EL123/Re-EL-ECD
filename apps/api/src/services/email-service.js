@@ -169,6 +169,23 @@ const templates = {
     };
   },
 
+  signupWelcome(data) {
+    const url = appLink('/#/login');
+    return {
+      subject: 'Your Re-EL ECD centre is ready — ' + data.organisationName,
+      html: layout({
+        brand: data.brand,
+        heading: 'Welcome, ' + data.ownerName,
+        intro: data.organisationName + ' now has a Re-EL ECD workspace with a 30-day trial. Sign in with the email and password you chose to start setting up your centre.',
+        rows: [{ label: 'Organisation', value: data.organisationName }, { label: 'Your role', value: 'Owner' }],
+        ctaLabel: 'Sign in to Re-EL ECD',
+        ctaUrl: url,
+        footer: 'If you did not sign up for this, ignore this email — no account will be used without an owner signing in.'
+      }),
+      text: plain(['Your Re-EL ECD centre is ready: ' + data.organisationName, 'Sign in: ' + url])
+    };
+  },
+
   invitation(data) {
     const url = appLink('/#/accept-invite?token=' + encodeURIComponent(data.token));
     return {

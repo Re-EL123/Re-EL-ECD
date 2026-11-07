@@ -50,6 +50,7 @@
         '<button class="btn btn-primary btn-block" type="submit" :disabled="loginBusy"><span class="spinner" x-show="loginBusy" style="width:15px;height:15px"></span><span x-text="loginBusy ? \'Signing in…\' : \'Sign in\'"></span></button>' +
         '</form>' +
         '<div class="row" style="margin-top:10px;justify-content:center"><button type="button" class="link-strong small" @click="forgotOpen = !forgotOpen">Forgot password?</button></div>' +
+        ((brand && brand.allowTenantSignup) ? '<div class="row" style="margin-top:10px;justify-content:center"><a class="link-strong small" href="#/signup">New centre? Create your account →</a></div>' : '') +
         '<div class="auth-legal-links"><a href="#/legal/terms">Terms</a><span aria-hidden="true">·</span><a href="#/legal/privacy">Privacy</a><span aria-hidden="true">·</span><a href="#/legal/cookies">Cookies</a><span aria-hidden="true">·</span><a href="#/legal">Legal hub</a></div>' +
         '<div x-show="forgotOpen" x-cloak style="margin-top:10px">' +
         '<div class="alert alert-success" x-show="resetSent" x-cloak><i data-lucide="check-circle"></i><span x-text="resetSent"></span></div>' +
@@ -749,6 +750,48 @@
           '<a class="btn btn-primary" href="#/login">Back to sign in</a>';
       return '<div class="public"><nav class="public-nav"><div class="row" style="gap:10px"><div class="brand-mark">R</div><div><div class="brand-name">Re-EL ECD</div><div class="brand-sub">Early childhood, elevated</div></div></div><div class="links"><a href="#/login">Sign in</a></div></nav>' +
         '<section class="public-section" style="max-width:520px;margin:40px auto"><h1>Join your centre</h1><p class="lede">Set your name and a password to activate your Re-EL ECD account.</p>' +
+        '<div class="card glass" style="margin-top:16px">' + body + '</div></section></div>';
+    }
+  };
+
+  V.signup = {
+    async load(ctx) {
+      ctx.signupBusy = false;
+      ctx.signupError = null;
+      ctx.signupDone = false;
+      try {
+        const payload = await R.api('GET', '/public/platform');
+        const data = (payload && payload.data) || {};
+        ctx.signupEnabled = data.allowTenantSignup === true;
+        ctx.signupPlans = Array.isArray(data.plans) ? data.plans : [];
+      } catch {
+        ctx.signupEnabled = false;
+        ctx.signupPlans = [];
+      }
+      return {};
+    },
+    render(ctx, params, page) {
+      const enabled = ctx.signupEnabled === true;
+      const plans = (ctx.signupPlans || []).map((p) =>
+        '<option value="' + R.attr(p.plan_key) + '">' + R.esc(p.name) + ' — R' + R.esc(String(p.monthly_price)) + '/mo</option>'
+      ).join('');
+      const body = enabled
+        ? '<div class="alert alert-success" x-show="signupDone"><i data-lucide="check-circle"></i><span>Your centre is created. Sign in with the email and password you chose — a welcome email is on its way.</span></div>' +
+        '<div class="alert alert-danger" x-show="signupError" style="margin-top:10px"><i data-lucide="alert-circle"></i><span x-text="signupError"></span></div>' +
+        '<form @submit.prevent="submitSignup($event)" x-show="!signupDone">' +
+        '<div class="field"><label for="signup-centre">Centre name</label><input class="input" id="signup-centre" name="centreName" autocomplete="organization" required minlength="2" maxlength="200" placeholder="e.g. Little Sprouts Early Learning"></div>' +
+        '<div class="field"><label for="signup-owner">Your name</label><input class="input" id="signup-owner" name="ownerName" autocomplete="name" required minlength="2" maxlength="120" placeholder="Owner / principal name"></div>' +
+        '<div class="field"><label for="signup-email">Email</label><input class="input" id="signup-email" name="ownerEmail" type="email" autocomplete="email" required placeholder="you@centre.co.za"></div>' +
+        '<div class="field"><label for="signup-plan">Plan (30-day trial)</label><select class="select" id="signup-plan" name="planKey"><option value="">No plan yet — choose later</option>' + plans + '</select></div>' +
+        '<div class="field"><label for="signup-password">Password</label><input class="input" id="signup-password" name="password" type="password" autocomplete="new-password" minlength="10" required placeholder="At least 10 characters"></div>' +
+        '<div class="field"><label for="signup-confirm">Confirm password</label><input class="input" id="signup-confirm" name="confirm" type="password" autocomplete="new-password" minlength="10" required></div>' +
+        '<label class="check-row"><input type="checkbox" name="agreed"> <span>I accept the <a href="#/legal/terms">Terms of Service</a> and <a href="#/legal/privacy">Privacy Policy</a></span></label>' +
+        '<button class="btn btn-primary btn-block" type="submit" :disabled="signupBusy"><span class="spinner" x-show="signupBusy" style="width:15px;height:15px"></span><span x-text="signupBusy ? \'Creating…\' : \'Create my centre\'"></span></button></form>' +
+        '<div class="row" style="margin-top:14px"><a class="muted small" href="#/login" x-show="signupDone">Go to sign in →</a></div>'
+        : '<div class="alert alert-info"><i data-lucide="info"></i><span>New centres are currently created by invitation. Contact Re-EL ECD and we will set up your workspace.</span></div>' +
+        '<a class="btn btn-primary" href="#/login">Back to sign in</a>';
+      return '<div class="public"><nav class="public-nav"><div class="row" style="gap:10px"><div class="brand-mark">R</div><div><div class="brand-name">Re-EL ECD</div><div class="brand-sub">Early childhood, elevated</div></div></div><div class="links"><a href="#/login">Sign in</a></div></nav>' +
+        '<section class="public-section" style="max-width:520px;margin:40px auto"><h1>Create your centre</h1><p class="lede">Start a 30-day trial. You become the owner of your workspace and can invite your team.</p>' +
         '<div class="card glass" style="margin-top:16px">' + body + '</div></section></div>';
     }
   };

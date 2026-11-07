@@ -500,6 +500,8 @@ table.table { width: 100%; border-collapse: collapse; font-size: 0.86rem; min-wi
 .legal-article p { margin: 0 0 12px; line-height: 1.65; color: var(--text-strong); }
 .legal-article hr { border: 0; border-top: 1px solid var(--border-subtle); margin: 24px 0; }
 .legal-card p { margin-bottom: 10px; }
+.check-row { display: flex; align-items: flex-start; gap: 8px; margin: 4px 0 12px; font-size: 14px; line-height: 1.45; cursor: pointer; }
+.check-row input[type="checkbox"] { margin-top: 2px; }
 .legal-card a { font-weight: 700; color: var(--reel-green-700); }
 .legal-steps { padding-left: 22px; margin: 8px 0 14px; }
 .legal-steps li { margin-bottom: 6px; line-height: 1.5; }

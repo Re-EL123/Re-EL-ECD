@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **336 routes** across 20 modules.
+Generated from the router: **337 routes** across 20 modules.
 
 ## Access
 
@@ -495,6 +495,7 @@ Generated from the router: **336 routes** across 20 modules.
 | POST | `/public/payfast/itn` | Public |
 | GET | `/public/payfast/return` | Public |
 | GET | `/public/platform` | Public |
+| POST | `/public/signup` | Public |
 
 ## Reports
 

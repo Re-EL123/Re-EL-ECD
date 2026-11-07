@@ -11,6 +11,7 @@
 
   const ROUTES = [
     route('/login', 'login', null, null, 'Sign in'),
+    route('/signup', 'public', 'signup', null, 'Sign up'),
     route('/site', 'public', 'publicSite', null, 'Daycare website'),
     route('/site/:slug', 'public', 'publicSite', null, 'Daycare website'),
     route('/site/:slug/apply', 'public', 'publicApply', null, 'Enquire'),
@@ -2024,6 +2025,30 @@
         }
       },
 
+      async submitSignup(event) {
+        const form = event && event.target ? event.target : null;
+        const centreName = form ? form.centreName.value.trim() : '';
+        const ownerName = form ? form.ownerName.value.trim() : '';
+        const ownerEmail = form ? form.ownerEmail.value.trim() : '';
+        const password = form ? form.password.value : '';
+        const confirm = form ? form.confirm.value : '';
+        const planKey = form && form.planKey ? form.planKey.value : '';
+        const agreed = form ? form.agreed.checked === true : false;
+        this.signupError = null;
+        if (password.length < 10) { this.signupError = 'Use a password of at least 10 characters.'; return; }
+        if (password !== confirm) { this.signupError = 'The two passwords do not match.'; return; }
+        if (!agreed) { this.signupError = 'Please accept the Terms of Service to continue.'; return; }
+        this.signupBusy = true;
+        try {
+          await Reel.api('POST', '/public/signup', { centreName, ownerName, ownerEmail, password, planKey: planKey || undefined });
+          this.signupDone = true;
+        } catch (error) {
+          this.signupError = error.message || 'We could not create your account. Please check the fields and try again.';
+        } finally {
+          this.signupBusy = false;
+        }
+      },
+
       async submitResetPassword(event) {
         const form = event && event.target ? event.target : null;
         const token = (this.query && this.query.token) || '';
@@ -2064,7 +2089,12 @@
       loginBusy: false,
       signingOut: false,
       forgotOpen: false,
-      resetSent: null
+      resetSent: null,
+      signupBusy: false,
+      signupError: null,
+      signupDone: false,
+      signupPlans: [],
+      signupEnabled: false
     };
   }
 
