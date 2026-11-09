@@ -1079,6 +1079,7 @@ body.nav-open { overflow: hidden; }
     border-bottom: 1px solid var(--border-subtle);
     text-align: right;
     vertical-align: top;
+    overflow-wrap: anywhere;
   }
   .table tbody td:last-child { border-bottom: 0; }
   .table tbody td::before {
@@ -1208,3 +1209,16 @@ body.nav-open { overflow: hidden; }
 .banner-platform { flex:0 0 auto; }
 .impersonation-bar { position:sticky; top:0; z-index:100; display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 14px; background:#1a1a1a; color:#f7f7f7; font-size:0.85rem; border-bottom:1px solid rgba(255,255,255,0.12); box-shadow:0 2px 8px rgba(0,0,0,0.12); }
 .impersonation-bar .btn { margin-left:auto; }
+
+/* --- Responsive containment ----------------------------------------------
+   Prevent intrinsic sizes (chart canvases, images, long words) from
+   forcing grid/flex tracks wider than narrow viewports. */
+img, video, canvas, svg { max-width: 100%; }
+.split > *, .grid > *, .row > *, .stack { min-width: 0; }
+.card { overflow-wrap: anywhere; }
+.table tbody td { min-width: 0; }
+.table tbody td > * { min-width: 0; }
+.table .cell-sub { overflow-wrap: anywhere; }
+.cell-strong, .cell-sub { overflow-wrap: anywhere; }
+.message, .alert, .toast { min-width: 0; }
+.topbar > * { min-width: 0; }
