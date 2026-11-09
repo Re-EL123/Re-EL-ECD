@@ -146,7 +146,11 @@
 
     renderDetail(ctx, form, submissionCount, canManage) {
       const orgSlug = ctx.activeMembership.organisation.slug;
-      const fields = ((form.current || {}).schema_json || {}).fields || [];
+      const latest = form.latest || form.current || null;
+      const isDraft = Boolean(latest && form.current_version_id && latest.id !== form.current_version_id);
+      // Staff always see their newest saved fields — even when that version
+      // is still an unpublished draft — so nothing looks lost after a save.
+      const fields = ((latest || {}).schema_json || {}).fields || [];
       const payment = paymentSummary(form);
       const publicUrl = absolutePublicHref(orgSlug, form.slug);
       const actions = canManage
@@ -154,26 +158,28 @@
           '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'formSettings\',\'' + R.attr(form.id) + '\')">' + R.icon('settings') + ' Settings</button>' +
           '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'formFields\',\'' + R.attr(form.id) + '\')">' + R.icon('list-plus') + ' Edit fields</button>' +
           (form.status !== 'published'
-            ? '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/forms/' + R.attr(form.id) + '/publish\',{isPublic:true},{successMessage:\'Form published\'})">Publish</button>'
+            ? '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/forms/' + R.attr(form.id) + '/publish\',{versionId:\'' + R.attr((latest && latest.id) || form.current_version_id) + '\',isPublic:true},{successMessage:\'Form published\'})">' + R.icon('upload') + ' Publish</button>'
             : '<button class="btn btn-sm btn-secondary" @click="act(\'POST\',\'/forms/' + R.attr(form.id) + '/archive\',{},{successMessage:\'Form archived\'})">Archive</button>') +
           '</div>'
         : '';
       return R.card(form.name,
         '<div class="muted small" style="margin-bottom:10px">' + R.esc(form.description || 'No description yet.') + '</div>' +
         '<div class="form-badge-row">' + R.badge(form.status) +
+        (isDraft ? '<span class="badge badge-sun">Draft v' + R.number(latest.version_number) + ' — not live yet</span>' : '') +
         (form.is_public ? '<span class="badge badge-green">Public</span>' : '<span class="badge badge-muted">Private</span>') +
         (form.display_on_website !== false ? '<span class="badge badge-green">On website</span>' : '<span class="badge badge-muted">Not on website</span>') +
         payment.html + '</div>' +
         '<div class="form-meta-grid">' +
-        '<div class="form-meta"><span>Version</span><strong>v' + R.number(((form.current || {}).version_number) || 1) + '</strong></div>' +
+        '<div class="form-meta"><span>Version</span><strong>v' + R.number((latest && latest.version_number) || 1) + '</strong></div>' +
         '<div class="form-meta"><span>Submissions</span><strong>' + R.number(submissionCount) + '</strong></div>' +
         '<div class="form-meta"><span>Type</span><strong>' + R.esc(R.titleCase(form.form_type)) + '</strong></div>' +
         '<div class="form-meta"><span>Payment</span><strong>' + R.esc(payment.label) + '</strong></div>' +
         '</div>' +
+        (isDraft ? '<div class="alert alert-warning" style="margin-top:12px"><i data-lucide="alert-triangle"></i><span>You have an unpublished draft (v' + R.number(latest.version_number) + '). The fields below are the draft — the public form still uses the last published version. Publish to take them live.</span></div>' : '') +
         (form.payment_enabled ? '<div class="site-pay-summary">' + R.icon('credit-card') +
           '<span>PayFast checkout · ' + R.esc(R.money(form.payment_amount, form.payment_currency || 'ZAR')) +
           (form.payment_required === false ? ' (optional)' : ' (required)') + '</span></div>' : '') +
-        '<div class="section"></div><h3>Fields</h3>' +
+        '<div class="section"></div><h3>' + (isDraft ? 'Draft fields (not live yet)' : 'Fields') + '</h3>' +
         (fields.length
           ? '<div class="form-field-list">' + fields.map((field) =>
             '<div class="form-field-row"><span class="mono badge badge-muted">' + R.esc(field.key) + '</span>' +

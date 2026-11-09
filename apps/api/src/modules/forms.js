@@ -190,7 +190,7 @@ function register(router) {
       'SELECT * FROM form_versions WHERE form_definition_id = $1 ORDER BY version_number DESC', [form.id]
     );
     const current = versions.find((v) => v.id === form.current_version_id) || versions[0] || null;
-    return { ...form, versions, current };
+    return { ...form, versions, current, latest: versions[0] || null };
   }, { permission: ['forms.read.daycare', 'forms.manage.daycare'], permissionMode: 'any' });
 
   router.patch('/forms/:id', async (ctx) => {
@@ -284,8 +284,11 @@ function register(router) {
     const form = await ctx.db.one('SELECT * FROM form_definitions WHERE id = $1 AND organisation_id = $2',
       [ctx.params.id, ctx.organisationId]);
     if (!form) throw new AppError('NOT_FOUND');
-    let versionId = body.versionId || form.current_version_id;
+    let versionId = body.versionId;
     if (!versionId) {
+      // Publish the newest version so fields a member of staff just saved
+      // (for example a draft they expect to go live) are what actually goes
+      // live, rather than silently re-publishing the older current version.
       const latest = await ctx.db.one(
         'SELECT id FROM form_versions WHERE form_definition_id = $1 ORDER BY version_number DESC LIMIT 1', [form.id]
       );
@@ -333,6 +336,8 @@ function register(router) {
           await ctx.db.query("UPDATE form_definitions SET status = 'archived' WHERE id = $1", [form.id]);
           return { ok: true, metadata: { status: 'archived' } };
         }
+        // Publish the newest version so field edits made as drafts go live
+        // with them; only an explicit versionId overrides this.
         let versionId = form.current_version_id;
         if (!versionId) {
           const latest = await ctx.db.one(
@@ -341,8 +346,13 @@ function register(router) {
           if (!latest) return { ok: false, reason: 'no version to publish' };
           versionId = latest.id;
         }
-        if (form.status === 'published' && form.current_version_id === versionId) {
-          return { ok: false, reason: 'already published' };
+        if (form.status === 'published') {
+          const latest = await ctx.db.one(
+            'SELECT id FROM form_versions WHERE form_definition_id = $1 ORDER BY version_number DESC LIMIT 1', [form.id]
+          );
+          if (!latest) return { ok: false, reason: 'no version to publish' };
+          if (form.current_version_id === latest.id) return { ok: false, reason: 'already published' };
+          versionId = latest.id;
         }
         await ctx.db.withTransaction(async (client) => {
           await client.query(

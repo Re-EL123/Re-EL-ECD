@@ -239,6 +239,48 @@ test('form builder publishes a form that a parent can submit', async () => {
   assert.equal(submission.data.status, 'received');
 });
 
+test('staff see newly saved draft fields before publishing, and publish goes live with the latest version', async () => {
+  const { client, organisationId } = await principalContext();
+  const slug = 'draft-fields-' + Date.now();
+  const form = await client.post('/forms', {
+    name: 'Draft fields form',
+    slug,
+    formType: 'general',
+    fields: [{ key: 'first_name', label: 'First name', type: 'text', required: true }]
+  }, { organisationId });
+  assert.equal(form.status, 201, form.text);
+
+  // Save a second field as an unpublished draft version (the exact flow that
+  // made fields "disappear": the detail used to render only the current one).
+  const v2 = await client.post('/forms/' + form.data.id + '/versions', {
+    fields: [
+      { key: 'first_name', label: 'First name', type: 'text', required: true },
+      { key: 'consent_given', label: 'I consent', type: 'checkbox', required: true }
+    ],
+    publish: false
+  }, { organisationId });
+  assert.equal(v2.status, 201, v2.text);
+  assert.equal(v2.data.version_number, 2);
+
+  const detail = await client.get('/forms/' + form.data.id, { organisationId });
+  assert.equal(detail.status, 200, detail.text);
+  assert.equal(detail.data.current.version_number, 1, 'the draft is not live yet');
+  assert.deepEqual((detail.data.current.schema_json.fields || []).map((f) => f.key), ['first_name']);
+  assert.equal(detail.data.latest.version_number, 2, 'the newest saved fields are retrievable');
+  assert.deepEqual((detail.data.latest.schema_json.fields || []).map((f) => f.key), ['first_name', 'consent_given']);
+
+  // Publishing (without an explicit version) goes live with the latest fields.
+  const published = await client.post('/forms/' + form.data.id + '/publish', {}, { organisationId });
+  assert.equal(published.status, 200, published.text);
+  assert.equal(published.data.status, 'published');
+  assert.equal(published.data.current_version_id, v2.data.id);
+
+  const list = await client.get('/forms', { organisationId });
+  const row = list.data.find((f) => f.id === form.data.id);
+  assert.equal(row.version_number, 2);
+  assert.deepEqual((row.schema_json.fields || []).map((f) => f.key), ['first_name', 'consent_given']);
+});
+
 test('staff invitation is created with a one-time token and correct tenancy', async () => {
   const { client, organisationId } = await principalContext();
   const invitation = await client.post('/access/invitations', {
