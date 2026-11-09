@@ -1948,7 +1948,8 @@
           if (window.Alpine && window.Alpine.initTree) window.Alpine.initTree(root);
           this.renderIconsNow();
         } catch (error) {
-          root.innerHTML = '<div style="min-height:100vh;display:grid;place-items:center;padding:24px"><div class="card" style="max-width:520px;text-align:center"><h2>Website unavailable</h2><p class="muted">' + Reel.esc(error.message) + '</p><a class="btn btn-primary" href="#/login">Staff sign in</a></div></div>';
+          const homeLink = params && params.slug ? '#/site/' + encodeURIComponent(params.slug) : '#/login';
+          root.innerHTML = '<div style="min-height:100vh;display:grid;place-items:center;padding:24px"><div class="card" style="max-width:520px;text-align:center"><h2>Website unavailable</h2><p class="muted">' + Reel.esc(error.message) + '</p><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px"><a class="btn btn-primary" href="#/login">Parent sign-in</a><a class="btn btn-secondary" href="' + homeLink + '">Back to website</a></div></div></div>';
         }
       },
 

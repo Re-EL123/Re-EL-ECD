@@ -468,7 +468,7 @@ function register(router) {
   // --- Public forms -------------------------------------------------------
 
   router.get('/public/forms/:orgSlug/:formSlug', async (ctx) => {
-    const org = await ctx.db.one("SELECT id, name, slug, logo_url, primary_colour, secondary_colour, accent_colour, theme_tokens FROM organisations WHERE slug = $1 AND status = 'active'", [ctx.params.orgSlug]);
+    const org = await ctx.db.one("SELECT id, name, slug, logo_url, primary_colour, secondary_colour, accent_colour, theme_tokens FROM organisations WHERE slug = $1 AND status IN ('active','onboarding')", [ctx.params.orgSlug]);
     if (!org) throw new AppError('NOT_FOUND');
     const form = await ctx.db.one(
       `SELECT f.id, f.name, f.description, f.form_type, f.payment_enabled, f.payment_required,
@@ -496,7 +496,7 @@ function register(router) {
   router.post('/public/forms/:orgSlug/:formSlug/submit', async (ctx) => {
     const limit = rateLimit(`public-form:${ctx.ip}`, 10, 10 * 60 * 1000);
     if (!limit.allowed) throw new AppError('RATE_LIMITED');
-    const org = await ctx.db.one("SELECT id, name, slug FROM organisations WHERE slug = $1 AND status = 'active'", [ctx.params.orgSlug]);
+    const org = await ctx.db.one("SELECT id, name, slug FROM organisations WHERE slug = $1 AND status IN ('active','onboarding')", [ctx.params.orgSlug]);
     if (!org) throw new AppError('NOT_FOUND');
     const form = await ctx.db.one(
       `SELECT f.*, v.schema_json, v.id AS version_id FROM form_definitions f

@@ -850,6 +850,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: 0.86rem; min-wi
 .site-footer-links a, .site-footer-links span { color: var(--text-muted); }
 .site-footer-links a:hover { color: var(--brand-primary); }
 .site-footer-base { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 16px 0 22px; border-top: 1px solid var(--border-subtle); font-size: 0.8rem; color: var(--text-muted); }
+.site-footer-base .site-parent-link { font-weight: 700; color: var(--reel-green-700); }
 
 /* Website editor */
 .site-tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: var(--radius-md); background: var(--surface-2); border: 1px solid var(--border-subtle); }

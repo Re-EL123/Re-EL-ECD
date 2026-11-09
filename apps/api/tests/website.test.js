@@ -277,6 +277,61 @@ test('a slug request only adopts a custom host that the organisation owns', asyn
   assert.ok(spoofed.data.seo.canonical.includes('ecd.re-el.co.za'));
 });
 
+test('an onboarding centre still serves its public enquiry and form endpoints', async () => {
+  // Newly provisioned centres are born 'onboarding'. The public site itself
+  // loads for them, so enquiries and public forms must not 404 as well —
+  // otherwise the centre's own #/apply and #/forms links break.
+  const admin = createClient();
+  await admin.login('platform@re-el-ecd.local');
+  const slug = 'onboarding-web-' + Date.now();
+  const provisioned = await admin.post('/platform/organisations', {
+    name: 'Onboarding Web Centre',
+    slug,
+    ownerName: 'Onboarding Owner',
+    ownerEmail: 'owner@' + slug + '.local',
+    temporaryPassword: 'onboarding-pass-123'
+  });
+  assert.equal(provisioned.status, 201, provisioned.text);
+  assert.equal(provisioned.data.status, 'onboarding');
+
+  const anon = createClient();
+  const site = await anon.get('/public/daycares/' + slug);
+  assert.equal(site.status, 200, site.text);
+
+  const enquiryForm = await anon.get('/public/daycares/' + slug + '/enquiry-form');
+  assert.equal(enquiryForm.status, 200, enquiryForm.text);
+
+  const enquiry = await anon.post('/public/enquiries', {
+    organisationSlug: slug,
+    guardianName: 'Test Parent',
+    guardianEmail: 'parent@example.com',
+    message: 'Would love a tour.'
+  });
+  assert.equal(enquiry.status, 200, enquiry.text);
+  assert.equal(enquiry.data.received, true);
+
+  const owner = createClient();
+  await owner.login('owner@' + slug + '.local', 'onboarding-pass-123');
+  const form = await owner.post('/forms', {
+    name: 'Learner admission',
+    slug: 'learner-admission',
+    formType: 'enrolment',
+    fields: [{ key: 'child_name', label: 'Child name', type: 'text', required: true }]
+  });
+  assert.equal(form.status, 201, form.text);
+  const published = await owner.post('/forms/' + form.data.id + '/publish', { isPublic: true });
+  assert.equal(published.status, 200, published.text);
+
+  const publicForm = await anon.get('/public/forms/' + slug + '/learner-admission');
+  assert.equal(publicForm.status, 200, publicForm.text);
+  assert.equal(publicForm.data.form.name, 'Learner admission');
+  const submission = await anon.post('/public/forms/' + slug + '/learner-admission/submit', {
+    data: { child_name: 'Amelia' },
+    email: 'parent@example.com'
+  });
+  assert.equal(submission.status, 200, submission.text);
+});
+
 test.after(() => {
   domainService.resetResolverForTesting();
   domainService.setTlsProbeForTesting(null);

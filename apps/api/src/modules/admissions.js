@@ -178,7 +178,7 @@ function register(router) {
       message: { type: 'string', max: 2000, optional: true },
       website: { type: 'string', max: 200, optional: true }
     });
-    const org = await ctx.db.one("SELECT * FROM organisations WHERE slug = $1 AND status = 'active'", [body.organisationSlug]);
+    const org = await ctx.db.one("SELECT * FROM organisations WHERE slug = $1 AND status IN ('active','onboarding')", [body.organisationSlug]);
     if (!org) throw new AppError('NOT_FOUND');
     let branchId = body.branchId;
     if (branchId) {
@@ -251,7 +251,7 @@ function register(router) {
   }, { public: true });
 
   router.get('/public/daycares/:slug/enquiry-form', async (ctx) => {
-    const org = await ctx.db.one("SELECT * FROM organisations WHERE slug = $1 AND status = 'active'", [ctx.params.slug]);
+    const org = await ctx.db.one("SELECT * FROM organisations WHERE slug = $1 AND status IN ('active','onboarding')", [ctx.params.slug]);
     if (!org) throw new AppError('NOT_FOUND');
     const branches = await ctx.db.many("SELECT id, name FROM branches WHERE organisation_id = $1 AND status = 'active'", [org.id]);
     return {

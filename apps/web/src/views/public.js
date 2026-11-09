@@ -117,6 +117,26 @@
     return links.length ? '<div class="site-socials">' + links.join('') + '</div>' : '';
   }
 
+  /**
+   * Families sign in with the same credentials as staff — the portal decides
+   * which workspace to show. The daycare website speaks to parents first, so
+   * the prominent sign-in entry is the parent one; staff keep a smaller link.
+   */
+  function parentHref() {
+    return staffHref();
+  }
+
+  function missingSitePage(title, message, backHref, backLabel) {
+    return '<div class="public site site-missing"><div class="site-missing-card">' +
+      '<div class="brand-mark" style="margin:0 auto 16px">R</div>' +
+      '<h1>' + R.esc(title) + '</h1>' +
+      '<p class="lede">' + R.esc(message) + '</p>' +
+      '<div class="site-actions" style="justify-content:center">' +
+      '<a class="btn btn-primary" href="' + R.attr(parentHref()) + '">Parent sign-in</a>' +
+      (backHref ? '<a class="btn btn-secondary" href="' + R.attr(backHref) + '">' + R.esc(backLabel || 'Back to website') + '</a>' : '') +
+      '</div><p class="muted small" style="margin-top:12px">Centre staff? <a href="' + R.attr(staffHref()) + '">Sign in here</a>.</p></div></div>';
+  }
+
   function siteNav(slug, current, org) {
     const links = SITE_PAGES.map((page) => '<a class="' + (page.key === current ? 'active' : '') + '" href="' +
       R.attr(siteHref(slug, page.key)) + '" @click="siteMenuOpen = false">' + R.esc(page.label) + '</a>').join('');
@@ -126,8 +146,9 @@
       '<span class="brand-sub">Early learning centre</span></span></a>' +
       '<button type="button" class="site-nav-toggle" :aria-label="siteMenuOpen ? \'Close menu\' : \'Open menu\'" :aria-expanded="siteMenuOpen" @click="siteMenuOpen = !siteMenuOpen">' + R.icon('menu') + '</button>' +
       '<div class="links" :class="siteMenuOpen ? \'open\' : \'\'">' + links +
+      '<a class="btn btn-secondary btn-sm" href="' + R.attr(parentHref()) + '" @click="siteMenuOpen = false">' + R.icon('users') + ' Parent sign-in</a>' +
       '<a class="btn btn-primary btn-sm" href="#/site/' + R.attr(slug) + '/apply" @click="siteMenuOpen = false">Enquire</a>' +
-      '<a class="muted site-staff-link" href="' + R.attr(staffHref()) + '">Staff</a></div>' +
+      '<a class="muted site-staff-link" href="' + R.attr(staffHref()) + '" @click="siteMenuOpen = false">Staff</a></div>' +
       '</nav>';
   }
 
@@ -151,7 +172,7 @@
       '</div></div></div>' +
       '<div class="site-wrap site-footer-base"><span>© ' + new Date().getFullYear() + ' ' + R.esc(org.name || '') + '. All rights reserved.</span>' +
       '<span class="spacer"></span><a href="#/legal/terms">Terms</a><a href="#/legal/privacy">Privacy</a><a href="#/legal/cookies">Cookies</a><a href="#/legal">Legal</a><a href="#/site/' + R.attr(slug) + '/apply">Enquire about a place</a>' +
-      '<a href="' + R.attr(staffHref()) + '">Staff sign in</a></div>' +
+      '<a class="site-parent-link" href="' + R.attr(parentHref()) + '">Parent sign-in</a><a href="' + R.attr(staffHref()) + '">Staff sign in</a></div>' +
       '</footer>';
   }
 
@@ -306,13 +327,12 @@
 
     render(ctx, params, page) {
       if (page && page.missing) {
-        return '<div class="public site site-missing"><div class="site-missing-card">' +
-          '<div class="brand-mark" style="margin:0 auto 16px">R</div>' +
-          '<h1>No website at this address</h1>' +
-          '<p class="lede">We could not find a daycare website for <span class="mono">' + R.esc(page.requestedHost || 'this address') + '</span>. ' +
-          'The address may have changed, or the centre may not have published its site yet.</p>' +
-          '<div class="site-actions" style="justify-content:center"><a class="btn btn-primary" href="' + R.attr(staffHref()) + '">Staff sign in</a>' +
-          '<a class="btn btn-secondary" href="https://ecd.re-el.co.za">About Re-EL ECD</a></div></div></div>';
+        return missingSitePage(
+          'No website at this address',
+          'We could not find a daycare website for ' + (page.requestedHost || 'this address') + '. The address may have changed, or the centre may not have published its site yet.',
+          'https://ecd.re-el.co.za',
+          'About Re-EL ECD'
+        );
       }
 
       const content = (page && page.content) || {};
@@ -342,7 +362,7 @@
           '<p class="lede">' + R.esc(content.hero.subheadline) + '</p>' +
           contactCards(content.contact) +
           '<div class="site-actions"><a class="btn btn-primary" href="#/site/' + R.attr(slug) + '/apply">Send an enquiry</a>' +
-          '<a class="btn btn-secondary" href="#/login">Staff sign in</a></div></div></section>');
+          '<a class="btn btn-secondary" href="' + R.attr(parentHref()) + '">Parent sign-in</a></div></div></section>');
       }
 
       const renderer = {
@@ -552,13 +572,28 @@
       ctx.publicResult = null;
       ctx.publicError = null;
       ctx.siteMenuOpen = false;
-      const payload = await R.api('GET', '/public/daycares/' + encodeURIComponent(params.slug) +
-        (R.isPlatformHost && !R.isPlatformHost() ? '?host=' + encodeURIComponent(location.hostname) : ''));
-      const form = await R.api('GET', '/public/daycares/' + encodeURIComponent(params.slug) + '/enquiry-form');
-      return { site: payload.data, form: form.data };
+      try {
+        const payload = await R.api('GET', '/public/daycares/' + encodeURIComponent(params.slug) +
+          (R.isPlatformHost && !R.isPlatformHost() ? '?host=' + encodeURIComponent(location.hostname) : ''));
+        const form = await R.api('GET', '/public/daycares/' + encodeURIComponent(params.slug) + '/enquiry-form');
+        return { site: payload.data, form: form.data };
+      } catch (error) {
+        if (error instanceof R.ApiError && error.code === 'NOT_FOUND') {
+          return { missing: true };
+        }
+        throw error;
+      }
     },
 
     render(ctx, params, page) {
+      if (page && page.missing) {
+        return missingSitePage(
+          'We could not load the enquiry form',
+          'The daycare website at this address is unavailable or has not been published yet. Please try again later, or contact the centre directly.',
+          siteHref(params.slug, 'home'),
+          'Back to website'
+        );
+      }
       const site = page.site || {};
       const org = site.organisation || {};
       const branding = site.branding || {};
@@ -602,11 +637,26 @@
       ctx.siteMenuOpen = false;
       ctx.publicResult = null;
       ctx.publicError = null;
-      const payload = await R.api('GET', '/public/daycares/' + encodeURIComponent(params.slug));
-      return payload.data || {};
+      try {
+        const payload = await R.api('GET', '/public/daycares/' + encodeURIComponent(params.slug));
+        return payload.data || {};
+      } catch (error) {
+        if (error instanceof R.ApiError && error.code === 'NOT_FOUND') {
+          return { missing: true };
+        }
+        throw error;
+      }
     },
 
     render(ctx, params, page) {
+      if (page && page.missing) {
+        return missingSitePage(
+          'We could not load the forms',
+          'The daycare website at this address is unavailable or has not been published yet. Please try again later, or contact the centre directly.',
+          siteHref(params.slug, 'home'),
+          'Back to website'
+        );
+      }
       const org = page.organisation || {};
       const branding = page.branding || {};
       const content = page.content || {};
@@ -641,24 +691,39 @@
 
   V.publicForm = {
     async load(ctx, params) {
-      const payload = await R.api('GET', '/public/forms/' + encodeURIComponent(params.slug) + '/' + encodeURIComponent(params.formSlug));
-      const data = payload.data || {};
-      const fields = ((data.form && data.form.schema_json) || {}).fields || [];
-      ctx.publicFormData = {};
-      fields.forEach((f) => {
-        ctx.publicFormData[f.key] = f.type === 'checkbox' ? false : '';
-      });
-      ctx.publicPayerEmail = '';
-      ctx.publicPayerName = '';
-      ctx.publicCheckout = null;
-      ctx.publicResult = (ctx.query && ctx.query.payment === 'return')
-        ? 'Thank you. If your payment completed, the centre will confirm it shortly.'
-        : null;
-      ctx.publicError = null;
-      ctx.siteMenuOpen = false;
-      return data;
+      try {
+        const payload = await R.api('GET', '/public/forms/' + encodeURIComponent(params.slug) + '/' + encodeURIComponent(params.formSlug));
+        const data = payload.data || {};
+        const fields = ((data.form && data.form.schema_json) || {}).fields || [];
+        ctx.publicFormData = {};
+        fields.forEach((f) => {
+          ctx.publicFormData[f.key] = f.type === 'checkbox' ? false : '';
+        });
+        ctx.publicPayerEmail = '';
+        ctx.publicPayerName = '';
+        ctx.publicCheckout = null;
+        ctx.publicResult = (ctx.query && ctx.query.payment === 'return')
+          ? 'Thank you. If your payment completed, the centre will confirm it shortly.'
+          : null;
+        ctx.publicError = null;
+        ctx.siteMenuOpen = false;
+        return data;
+      } catch (error) {
+        if (error instanceof R.ApiError && error.code === 'NOT_FOUND') {
+          return { missing: true };
+        }
+        throw error;
+      }
     },
     render(ctx, params, page) {
+      if (page && page.missing) {
+        return missingSitePage(
+          'We could not find that form',
+          'This form is unavailable. It may not have been published yet, or the link may be incorrect. Please contact the centre and the team will help you.',
+          siteHref(params.slug, 'forms'),
+          'View all forms'
+        );
+      }
       const form = page.form || {};
       const fields = (form.schema_json && form.schema_json.fields) || [];
       const payment = form.payment || {};
