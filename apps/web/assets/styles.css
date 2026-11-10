@@ -1157,6 +1157,14 @@ body.nav-open { overflow: hidden; }
 .rep-cell input[type="checkbox"] { accent-color: var(--reel-green-600); align-self: flex-start; margin-top: 4px; }
 
 /* --- Form builder and public forms -------------------------------------- */
+.preset-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.preset-card { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 11px 13px; text-align: left;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-1); cursor: pointer; }
+.preset-card:hover { border-color: var(--reel-green-500); background: var(--surface-2); }
+.preset-card.active { border-color: var(--reel-green-600); background: var(--reel-green-100);
+  box-shadow: 0 0 0 2px rgba(47, 125, 74, 0.16); }
+.preset-title { font-size: 0.88rem; font-weight: 700; color: var(--text-strong); }
+.preset-sub { font-size: 0.75rem; color: var(--text-muted); overflow-wrap: anywhere; }
 .form-field-list { display: flex; flex-direction: column; gap: 8px; }
 .form-field-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm); background: var(--surface-1); }

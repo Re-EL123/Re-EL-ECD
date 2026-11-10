@@ -1426,6 +1426,36 @@
           : { value: option, label: String(option) }));
       },
 
+      fieldVisible(field) {
+        if (!field) return true;
+        if (typeof field.showIf !== 'function') return true;
+        try {
+          return field.showIf(this.modal ? this.modal.data : {}) !== false;
+        } catch {
+          return true;
+        }
+      },
+
+      applyFormPreset(key) {
+        if (!this.modal) return;
+        const field = (this.modal.fields || []).find((entry) => entry.type === 'preset');
+        const preset = field && (field.presets || []).find((entry) => entry.key === key);
+        if (!preset) return;
+        const hasRows = (this.modal.data.fields || []).length > 0;
+        if (hasRows && preset.fields && preset.fields.length &&
+          !window.confirm('Replace the questions you have already added with this template?')) {
+          return;
+        }
+        this.modal.data.preset = key;
+        if (preset.name) this.modal.data.name = preset.name;
+        if (preset.formType) this.modal.data.formType = preset.formType;
+        if (preset.isPublic !== undefined) this.modal.data.isPublic = preset.isPublic;
+        if (preset.displayOnWebsite !== undefined) this.modal.data.displayOnWebsite = preset.displayOnWebsite;
+        this.modal.data.fields = (preset.fields || []).map((row) => Object.assign({}, row, {
+          options: Array.isArray(row.options) ? row.options.join(', ') : (row.options || '')
+        }));
+      },
+
       addRepeaterRow(field) {
         if (!this.modal) return;
         const rows = (this.modal.data[field.name] || []).slice();
@@ -1710,7 +1740,7 @@
       async submitModal() {
         if (!this.modal || this.modal.saving) return;
         const missing = (this.modal.fields || []).filter((f) => {
-          if (!f.required) return false;
+          if (!f.required || !this.fieldVisible(f)) return false;
           const value = this.modal.data[f.name];
           if (Array.isArray(value)) return value.length === 0;
           return value === '' || value === null || value === undefined;

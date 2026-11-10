@@ -281,6 +281,45 @@ test('staff see newly saved draft fields before publishing, and publish goes liv
   assert.deepEqual((row.schema_json.fields || []).map((f) => f.key), ['first_name', 'consent_given']);
 });
 
+test('saving form settings and publishing a new version both succeed', async () => {
+  const { client, organisationId } = await principalContext();
+  const slug = 'publish-version-' + Date.now();
+  const form = await client.post('/forms', {
+    name: 'Publishing form',
+    slug,
+    formType: 'general',
+    fields: [{ key: 'first_name', label: 'First name', type: 'text', required: true }]
+  }, { organisationId });
+  assert.equal(form.status, 201, form.text);
+
+  // PATCH /forms/:id stamps updated_at. A missing column used to surface as a
+  // generic 500 in the form settings dialog.
+  const settings = await client.patch('/forms/' + form.data.id, {
+    name: 'Publishing form (updated)',
+    isPublic: true
+  }, { organisationId });
+  assert.equal(settings.status, 200, settings.text);
+  assert.equal(settings.data.name, 'Publishing form (updated)');
+
+  // Publishing a new version also stamps updated_at, so the same missing
+  // column broke "Save new version" with publish enabled.
+  const version = await client.post('/forms/' + form.data.id + '/versions', {
+    fields: [
+      { key: 'first_name', label: 'First name', type: 'text', required: true },
+      { key: 'notes', label: 'Notes', type: 'textarea' }
+    ],
+    publish: true
+  }, { organisationId });
+  assert.equal(version.status, 201, version.text);
+  assert.equal(version.data.version_number, 2);
+
+  const detail = await client.get('/forms/' + form.data.id, { organisationId });
+  assert.equal(detail.status, 200, detail.text);
+  assert.equal(detail.data.status, 'published');
+  assert.equal(detail.data.current_version_id, version.data.id);
+  assert.ok(detail.data.current.published_at);
+});
+
 test('staff invitation is created with a one-time token and correct tenancy', async () => {
   const { client, organisationId } = await principalContext();
   const invitation = await client.post('/access/invitations', {

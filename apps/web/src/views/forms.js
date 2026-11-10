@@ -20,12 +20,117 @@
   ];
 
   const FIELD_COLUMNS = [
-    { key: 'key', label: 'Key', placeholder: 'child_name' },
-    { key: 'label', label: 'Label', placeholder: 'Child full name' },
+    { key: 'label', label: 'Question / label', span: 2, placeholder: 'Child’s full name' },
+    { key: 'key', label: 'Key (optional)', placeholder: 'auto from label' },
     { key: 'type', label: 'Type', type: 'select', options: FIELD_TYPES },
     { key: 'required', label: 'Required', type: 'checkbox' },
     { key: 'options', label: 'Choices', span: 2, placeholder: 'Comma separated, for dropdowns and radio buttons' },
     { key: 'helpText', label: 'Help text', span: 2, placeholder: 'Optional guidance shown under the field' }
+  ];
+
+  /**
+   * Ready-made starting points. A centre should not have to invent an
+   * admission or medical form from an empty repeater, so each preset fills in
+   * sensible questions that they can rename, reorder or remove.
+   */
+  const FORM_PRESETS = [
+    {
+      key: 'blank',
+      label: 'Start from scratch',
+      description: 'Build your own questions',
+      name: '',
+      formType: 'general',
+      fields: []
+    },
+    {
+      key: 'admission',
+      label: 'Learner admission',
+      description: 'Child, guardian and starting details',
+      name: 'Learner admission',
+      formType: 'enrolment',
+      isPublic: true,
+      displayOnWebsite: true,
+      fields: [
+        { key: 'child_first_name', label: 'Child’s first name', type: 'text', required: true },
+        { key: 'child_surname', label: 'Child’s surname', type: 'text', required: true },
+        { key: 'date_of_birth', label: 'Date of birth', type: 'date', required: true },
+        { key: 'age_group', label: 'Age group', type: 'select', required: true, options: ['Baby room', 'Toddler room', 'Preschool'] },
+        { key: 'preferred_start_date', label: 'Preferred start date', type: 'date' },
+        { key: 'guardian_name', label: 'Parent or guardian name', type: 'text', required: true },
+        { key: 'guardian_email', label: 'Parent or guardian email', type: 'email', required: true },
+        { key: 'guardian_phone', label: 'Parent or guardian phone', type: 'phone', required: true },
+        { key: 'allergies', label: 'Allergies or medical needs', type: 'textarea', helpText: 'List anything the team must know before the first day.' },
+        { key: 'photo_consent', label: 'I consent to photos for internal use', type: 'checkbox' }
+      ]
+    },
+    {
+      key: 'medical',
+      label: 'Medical and allergies',
+      description: 'Health, medication and emergency contacts',
+      name: 'Medical information and allergies',
+      formType: 'medical',
+      fields: [
+        { key: 'child_name', label: 'Child’s full name', type: 'text', required: true },
+        { key: 'allergies', label: 'Allergies', type: 'textarea', required: true, helpText: 'Include food, medication and environmental allergies.' },
+        { key: 'medical_conditions', label: 'Medical conditions', type: 'textarea' },
+        { key: 'medication', label: 'Regular medication', type: 'textarea', helpText: 'Name, dose and when it should be given.' },
+        { key: 'emergency_contact', label: 'Emergency contact', type: 'text', required: true },
+        { key: 'emergency_phone', label: 'Emergency phone', type: 'phone', required: true },
+        { key: 'doctor_name', label: 'Doctor’s name', type: 'text' },
+        { key: 'doctor_phone', label: 'Doctor’s phone', type: 'phone' },
+        { key: 'treatment_consent', label: 'I consent to emergency treatment', type: 'checkbox', required: true }
+      ]
+    },
+    {
+      key: 'consent',
+      label: 'Photo and media consent',
+      description: 'Ask guardians what may be shared',
+      name: 'Photo and media consent',
+      formType: 'consent',
+      fields: [
+        { key: 'child_name', label: 'Child’s full name', type: 'text', required: true },
+        { key: 'guardian_name', label: 'Parent or guardian name', type: 'text', required: true },
+        { key: 'photos_internal', label: 'Photos for internal records', type: 'checkbox' },
+        { key: 'photos_social', label: 'Photos on social media', type: 'checkbox' },
+        { key: 'photos_website', label: 'Photos on the centre website', type: 'checkbox' },
+        { key: 'notes', label: 'Anything we should know', type: 'textarea' }
+      ]
+    },
+    {
+      key: 'incident',
+      label: 'Incident report',
+      description: 'Record what happened and what was done',
+      name: 'Incident report',
+      formType: 'incident',
+      fields: [
+        { key: 'child_name', label: 'Child’s full name', type: 'text', required: true },
+        { key: 'incident_date', label: 'Date of incident', type: 'date', required: true },
+        { key: 'incident_time', label: 'Time of incident', type: 'text', placeholder: '14:30' },
+        { key: 'location', label: 'Where it happened', type: 'text' },
+        { key: 'description', label: 'What happened', type: 'textarea', required: true },
+        { key: 'injury', label: 'Injury or damage', type: 'textarea' },
+        { key: 'action_taken', label: 'Action taken', type: 'textarea', required: true },
+        { key: 'staff_name', label: 'Staff member reporting', type: 'text', required: true },
+        { key: 'guardian_notified', label: 'Guardian was notified', type: 'checkbox' }
+      ]
+    },
+    {
+      key: 'feedback',
+      label: 'Family feedback',
+      description: 'A short satisfaction survey',
+      name: 'Family feedback',
+      formType: 'feedback',
+      isPublic: true,
+      displayOnWebsite: true,
+      fields: [
+        { key: 'your_name', label: 'Your name', type: 'text' },
+        { key: 'relationship', label: 'I am a…', type: 'select', options: ['Parent', 'Guardian', 'Grandparent', 'Other'] },
+        { key: 'rating', label: 'Overall experience', type: 'select', required: true, options: ['Excellent', 'Good', 'Fair', 'Needs improvement'] },
+        { key: 'what_went_well', label: 'What went well?', type: 'textarea' },
+        { key: 'what_could_improve', label: 'What could we improve?', type: 'textarea' },
+        { key: 'contact_me', label: 'Please contact me about my feedback', type: 'checkbox' }
+      ]
+    }
   ];
 
   function slugify(value) {
@@ -50,21 +155,40 @@
     }));
   }
 
-  /** Turn repeater rows back into the API's field schema. */
+  /**
+   * Turn repeater rows back into the API's field schema. Keys are generated
+   * from the label when left blank and de-duplicated automatically, so staff
+   * only have to write the question. A row without a label is a real mistake,
+   * not something to silently drop.
+   */
   function schemaFields(rows) {
-    return (rows || []).map((row, index) => {
+    const seen = new Set();
+    const result = [];
+    (rows || []).forEach((row, index) => {
+      const label = String((row && row.label) || '').trim();
+      if (!label) {
+        throw new Error('Field ' + (index + 1) + ' needs a question or label. Add one, or remove that field.');
+      }
+      let key = fieldKey(row.key || label, index);
+      if (seen.has(key)) {
+        let suffix = 2;
+        while (seen.has(key + '_' + suffix)) suffix += 1;
+        key = key + '_' + suffix;
+      }
+      seen.add(key);
       const type = row.type || 'text';
-      return {
-        key: fieldKey(row.key, index),
-        label: String(row.label || '').trim(),
+      result.push({
+        key,
+        label,
         type,
         required: row.required === true,
         helpText: String(row.helpText || '').trim(),
         options: ['select', 'radio'].includes(type)
           ? String(row.options || '').split(',').map((option) => option.trim()).filter(Boolean).slice(0, 50)
           : []
-      };
-    }).filter((field) => field.label);
+      });
+    });
+    return result;
   }
 
   function publicHref(orgSlug, formSlug) {
@@ -113,7 +237,7 @@
 
     render(ctx, params, page) {
       const tab = ctx.tab || 'forms';
-      return R.pageHead('Forms and consent', 'Collect information once, keep consent clear and review submissions in one place.',
+      return R.pageHead('Forms and consent', 'Start from a template, ask only what you need, and keep every submission in one place.',
         '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'consent\')">' + R.icon('shield-check') + ' Record consent</button>' +
         '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'form\')">' + R.icon('plus') + ' New form</button>') +
         R.tabs([{ key: 'forms', label: 'Form library' }, { key: 'submissions', label: 'Submissions' }, { key: 'consent', label: 'Consent' }], tab) +
@@ -123,10 +247,20 @@
     renderForms(ctx, page) {
       const forms = page.rows || [];
       const canManage = ctx.has('forms.manage.daycare');
+      const gettingStarted = forms.length ? '' :
+        '<div class="card"><h3>Create your first form in three steps</h3>' +
+        '<ol class="muted small" style="margin:10px 0 0 18px;line-height:1.7">' +
+        '<li><strong>Pick a template</strong> — learner admission, medical, photo consent, incident or feedback.</li>' +
+        '<li><strong>Adjust the questions</strong> — rename, reorder or remove anything. Keys are created for you.</li>' +
+        '<li><strong>Choose who can see it</strong> — staff-only, public link, or listed on your website.</li>' +
+        '</ol>' +
+        (canManage ? '<div style="margin-top:14px"><button class="btn btn-primary btn-sm" @click="openNamedModal(\'form\')">' + R.icon('plus') + ' Create a form</button></div>' : '') +
+        '</div>';
       return (canManage ? R.bulkBar([
         { label: 'Publish selected', icon: 'upload', path: '/forms/bulk', action: 'publish' },
         { label: 'Archive selected', icon: 'archive', path: '/forms/bulk', action: 'archive', tone: 'danger' }
       ], { hint: 'Forms without a version cannot be published.' }) : '') +
+        gettingStarted +
         '<div class="split"><div class="stack">' +
         R.card('Form library', R.table({ rows: forms, selectable: canManage, columns: [
           { label: 'Form', render: (f) => '<span class="cell-strong">' + R.esc(f.name) + '</span><span class="cell-sub mono">/' + R.esc(f.slug) + '</span>' },
@@ -138,9 +272,10 @@
           { label: 'Payment', render: (f) => paymentSummary(f).html },
           { label: 'Status', render: (f) => R.badge(f.status) },
           { label: '', align: 'right', render: (f) => '<button class="btn btn-sm btn-secondary" @click="setFilter(\'formId\',\'' + R.attr(f.id) + '\')">Open</button>' }
-        ], emptyTitle: 'No forms yet', emptyMessage: 'Create an enrolment, medical or consent form to collect information.' })) +
+        ], emptyTitle: 'No forms yet', emptyMessage: 'Create an enrolment, medical or consent form to collect information.',
+          emptyAction: canManage ? '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'form\')">' + R.icon('plus') + ' Create a form</button>' : '' })) +
         '</div><div class="stack">' +
-        (page.detail ? this.renderDetail(ctx, page.detail, page.submissions.length, canManage) : R.card('Form details', '<p class="muted small">Select a form to see its fields, payment settings and public link.</p>')) +
+        (page.detail ? this.renderDetail(ctx, page.detail, page.submissions.length, canManage) : R.card('Form details', '<p class="muted small">Select a form to see its questions, payment settings and public link.</p>')) +
         '</div></div>';
     },
 
@@ -233,23 +368,25 @@
           endpoint: '/forms',
           submitLabel: 'Create form',
           size: 'wide',
-          description: 'Build the fields visually, then choose whether the form is public and whether it takes a PayFast payment.',
+          description: 'Pick a ready-made template or start from scratch. Write questions in plain language — internal keys are generated for you.',
           fields: [
-            { name: 'name', label: 'Form name', required: true, placeholder: 'Learner enrolment' },
-            { name: 'slug', label: 'Public slug', placeholder: 'learner-enrolment', help: 'Leave blank to generate one from the name.' },
+            { name: 'preset', label: 'Start from a template', type: 'preset', span: 2, value: 'blank', presets: FORM_PRESETS, help: 'Choosing a template replaces the questions below with a sensible starting set. You can edit every one.' },
+            { name: 'name', label: 'Form name', required: true, placeholder: 'Learner enrolment', help: 'Shown to families and staff.' },
+            { name: 'slug', label: 'Public link slug', placeholder: 'learner-enrolment', help: 'Leave blank and we will create it from the name.' },
             { name: 'formType', label: 'Type', type: 'select', options: ['general', 'enrolment', 'medical', 'consent', 'incident', 'feedback'], value: 'general' },
             { name: 'description', label: 'Description', type: 'textarea', span: 2, placeholder: 'What this form is for, and who should complete it.' },
-            { name: 'isPublic', label: 'Public form', type: 'checkbox', value: false, help: 'Anyone with the link can submit' },
-            { name: 'displayOnWebsite', label: 'Show on the public website', type: 'checkbox', value: true, help: 'Lists the form on your website’s forms page' },
+            { name: 'isPublic', label: 'Public form', type: 'checkbox', value: false, help: 'Anyone with the link can submit. Leave off for staff-only forms.' },
+            { name: 'displayOnWebsite', label: 'Show on the public website', type: 'checkbox', value: true, help: 'Lists the form on your website’s forms page', showIf: (data) => data.isPublic === true },
             { name: 'paymentEnabled', label: 'Take a payment', type: 'checkbox', value: false, help: 'Send the payer to PayFast after submitting' },
-            { name: 'paymentRequired', label: 'Payment required', type: 'checkbox', value: true, help: 'The submission is still received if payment is skipped' },
-            { name: 'paymentAmount', label: 'Amount', type: 'number', min: 0, step: '0.01', placeholder: '250.00' },
-            { name: 'paymentCurrency', label: 'Currency', type: 'select', options: ['ZAR'], value: 'ZAR' },
-            { name: 'paymentDescription', label: 'Payment description', span: 2, placeholder: 'Enrolment deposit' },
-            { name: 'fields', label: 'Fields', type: 'repeater', span: 2, itemLabel: 'Field', addLabel: 'Add field', columns: FIELD_COLUMNS, template: () => ({ key: '', label: '', type: 'text', required: false, options: '', helpText: '' }) }
+            { name: 'paymentRequired', label: 'Payment required', type: 'checkbox', value: true, help: 'The submission is still received if payment is skipped', showIf: (data) => data.paymentEnabled === true },
+            { name: 'paymentAmount', label: 'Amount', type: 'number', min: 0, step: '0.01', placeholder: '250.00', help: 'Amount in rand, for example 250.00', showIf: (data) => data.paymentEnabled === true },
+            { name: 'paymentCurrency', label: 'Currency', type: 'select', options: ['ZAR'], value: 'ZAR', showIf: (data) => data.paymentEnabled === true },
+            { name: 'paymentDescription', label: 'Payment description', span: 2, placeholder: 'Enrolment deposit', showIf: (data) => data.paymentEnabled === true },
+            { name: 'fields', label: 'Questions', type: 'repeater', span: 2, itemLabel: 'Question', addLabel: 'Add question', columns: FIELD_COLUMNS, template: () => ({ key: '', label: '', type: 'text', required: false, options: '', helpText: '' }) }
           ],
           transform: (data) => {
             const body = Object.assign({}, data);
+            delete body.preset;
             body.slug = slugify(body.slug || body.name);
             body.fields = schemaFields(data.fields);
             if (!body.paymentEnabled) {
@@ -271,13 +408,13 @@
             { name: 'name', label: 'Form name', required: true, value: form.name },
             { name: 'formType', label: 'Type', type: 'select', options: ['general', 'enrolment', 'medical', 'consent', 'incident', 'feedback'], value: form.form_type || 'general' },
             { name: 'description', label: 'Description', type: 'textarea', span: 2, value: form.description || '' },
-            { name: 'isPublic', label: 'Public form', type: 'checkbox', value: form.is_public === true, help: 'Anyone with the link can submit' },
-            { name: 'displayOnWebsite', label: 'Show on the public website', type: 'checkbox', value: form.display_on_website !== false, help: 'Lists the form on your website’s forms page' },
+            { name: 'isPublic', label: 'Public form', type: 'checkbox', value: form.is_public === true, help: 'Anyone with the link can submit. Leave off for staff-only forms.' },
+            { name: 'displayOnWebsite', label: 'Show on the public website', type: 'checkbox', value: form.display_on_website !== false, help: 'Lists the form on your website’s forms page', showIf: (data) => data.isPublic === true },
             { name: 'paymentEnabled', label: 'Take a payment', type: 'checkbox', value: form.payment_enabled === true, help: 'Send the payer to PayFast after submitting' },
-            { name: 'paymentRequired', label: 'Payment required', type: 'checkbox', value: form.payment_required !== false, help: 'The submission is still received if payment is skipped' },
-            { name: 'paymentAmount', label: 'Amount', type: 'number', min: 0, step: '0.01', value: form.payment_amount === null || form.payment_amount === undefined ? '' : form.payment_amount, placeholder: '250.00' },
-            { name: 'paymentCurrency', label: 'Currency', type: 'select', options: ['ZAR'], value: form.payment_currency || 'ZAR' },
-            { name: 'paymentDescription', label: 'Payment description', span: 2, value: form.payment_description || '', placeholder: 'Enrolment deposit' }
+            { name: 'paymentRequired', label: 'Payment required', type: 'checkbox', value: form.payment_required !== false, help: 'The submission is still received if payment is skipped', showIf: (data) => data.paymentEnabled === true },
+            { name: 'paymentAmount', label: 'Amount', type: 'number', min: 0, step: '0.01', value: form.payment_amount === null || form.payment_amount === undefined ? '' : form.payment_amount, placeholder: '250.00', help: 'Amount in rand, for example 250.00', showIf: (data) => data.paymentEnabled === true },
+            { name: 'paymentCurrency', label: 'Currency', type: 'select', options: ['ZAR'], value: form.payment_currency || 'ZAR', showIf: (data) => data.paymentEnabled === true },
+            { name: 'paymentDescription', label: 'Payment description', span: 2, value: form.payment_description || '', placeholder: 'Enrolment deposit', showIf: (data) => data.paymentEnabled === true }
           ],
           transform: (data) => {
             const body = Object.assign({}, data);
@@ -291,14 +428,14 @@
       } else if (name === 'formFields' && form) {
         const currentFields = ((form.current || {}).schema_json || {}).fields || [];
         ctx.openModal({
-          title: 'Edit fields',
+          title: 'Edit questions',
           endpoint: '/forms/' + form.id + '/versions',
           submitLabel: 'Save new version',
           size: 'wide',
           description: 'Saving creates a new version. Publishing it replaces the version used by the public form.',
           fields: [
-            { name: 'fields', label: 'Fields', type: 'repeater', span: 2, required: true, itemLabel: 'Field', addLabel: 'Add field', columns: FIELD_COLUMNS, value: editableFields(currentFields), template: () => ({ key: '', label: '', type: 'text', required: false, options: '', helpText: '' }) },
-            { name: 'publish', label: 'Publish this version now', type: 'checkbox', value: form.status === 'published', help: 'The public form starts using these fields immediately' }
+            { name: 'fields', label: 'Questions', type: 'repeater', span: 2, required: true, itemLabel: 'Question', addLabel: 'Add question', columns: FIELD_COLUMNS, value: editableFields(currentFields), template: () => ({ key: '', label: '', type: 'text', required: false, options: '', helpText: '' }) },
+            { name: 'publish', label: 'Publish this version now', type: 'checkbox', value: form.status === 'published', help: 'The public form starts using these questions immediately' }
           ],
           transform: (data) => ({ fields: schemaFields(data.fields), publish: data.publish === true })
         });
