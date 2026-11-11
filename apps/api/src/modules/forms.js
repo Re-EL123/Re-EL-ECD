@@ -47,6 +47,10 @@ function validateSubmission(schema, data) {
       if (field.required) errors.push({ field: field.key, message: `${field.label} is required.` });
       continue;
     }
+    if (field.type === 'checkbox' && field.required === true && (value === false || value === 'false')) {
+      errors.push({ field: field.key, message: `${field.label} must be ticked to continue.` });
+      continue;
+    }
     if (field.type === 'checkbox' && typeof value !== 'boolean' && value !== 'true' && value !== 'false') {
       errors.push({ field: field.key, message: `${field.label} must be true or false.` });
       continue;
@@ -63,6 +67,14 @@ function validateSubmission(schema, data) {
       errors.push({ field: field.key, message: `${field.label} must be a number.` });
       continue;
     }
+    if (field.type === 'file' && !/^https?:\/\/\S+$/i.test(String(value))) {
+      errors.push({ field: field.key, message: `${field.label} must be a link starting with http:// or https://.` });
+      continue;
+    }
+    if (field.type === 'signature' && String(value).trim().length < 2) {
+      errors.push({ field: field.key, message: `${field.label} must include the person’s full name.` });
+      continue;
+    }
     if (field.options && field.options.length && ['select', 'radio'].includes(field.type) && !field.options.includes(String(value))) {
       errors.push({ field: field.key, message: `${field.label} contains an invalid option.` });
       continue;
@@ -71,7 +83,11 @@ function validateSubmission(schema, data) {
       errors.push({ field: field.key, message: `${field.label} is too long.` });
       continue;
     }
-    clean[field.key] = value;
+    // Store values in their natural type so reports, exports and the review
+    // drawer do not have to guess whether "4" or "true" was a string.
+    clean[field.key] = field.type === 'number' ? Number(value)
+      : field.type === 'checkbox' ? (value === true || value === 'true')
+        : value;
   }
   if (errors.length) throw new AppError('VALIDATION', errors);
   return clean;

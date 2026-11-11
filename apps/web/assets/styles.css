@@ -321,6 +321,7 @@ small, .small { font-size: 0.82rem; }
 .password-toggle svg { width: 18px; height: 18px; }
 .check { display: flex; align-items: center; gap: 8px; font-size: 0.86rem; cursor: pointer; }
 .check input { width: 17px; height: 17px; accent-color: var(--reel-green-600); }
+.radio-group { display: flex; flex-direction: column; gap: 7px; padding: 4px 0; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
 .form-grid .span-2 { grid-column: span 2; }
 .form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; flex-wrap: wrap; }

@@ -15,8 +15,8 @@
     { value: 'select', label: 'Dropdown' },
     { value: 'radio', label: 'Radio buttons' },
     { value: 'checkbox', label: 'Yes / no' },
-    { value: 'file', label: 'File upload' },
-    { value: 'signature', label: 'Signature' }
+    { value: 'file', label: 'Document link' },
+    { value: 'signature', label: 'Signature (typed)' }
   ];
 
   const FIELD_COLUMNS = [
@@ -263,14 +263,9 @@
         gettingStarted +
         '<div class="split"><div class="stack">' +
         R.card('Form library', R.table({ rows: forms, selectable: canManage, columns: [
-          { label: 'Form', render: (f) => '<span class="cell-strong">' + R.esc(f.name) + '</span><span class="cell-sub mono">/' + R.esc(f.slug) + '</span>' },
-          { label: 'Type', render: (f) => '<span class="badge badge-muted">' + R.esc(R.titleCase(f.form_type)) + '</span>' },
-          { label: 'Version', render: (f) => 'v' + R.number(f.version_number) },
-          { label: 'Submissions', align: 'right', render: (f) => R.number(f.submission_count) + (Number(f.pending_count) ? ' <span class="badge badge-sun">' + R.number(f.pending_count) + ' new</span>' : '') },
-          { label: 'Public', render: (f) => f.is_public ? '<span class="badge badge-green">Yes</span>' : '<span class="badge badge-muted">No</span>' },
-          { label: 'Website', render: (f) => f.display_on_website !== false && f.is_public ? '<span class="badge badge-green">Listed</span>' : '<span class="badge badge-muted">Hidden</span>' },
-          { label: 'Payment', render: (f) => paymentSummary(f).html },
-          { label: 'Status', render: (f) => R.badge(f.status) },
+          { label: 'Form', render: (f) => '<div><span class="cell-strong" style="overflow-wrap:normal">' + R.esc(f.name) + '</span> ' + R.badge(f.status) + '</div><span class="cell-sub mono" style="overflow-wrap:normal">/' + R.esc(f.slug) + ' · v' + R.number(f.version_number) + '</span>' },
+          { label: 'Submissions', align: 'right', render: (f) => '<span style="white-space:nowrap">' + R.number(f.submission_count) + (Number(f.pending_count) ? ' <span class="badge badge-sun">' + R.number(f.pending_count) + ' new</span>' : '') + '</span>' },
+          { label: 'Visibility', render: (f) => '<span style="white-space:nowrap">' + (f.is_public ? '<span class="badge badge-green">Public</span>' : '<span class="badge badge-muted">Private</span>') + (f.is_public && f.display_on_website !== false ? ' <span class="badge badge-green">Website</span>' : '') + '</span>' },
           { label: '', align: 'right', render: (f) => '<button class="btn btn-sm btn-secondary" @click="setFilter(\'formId\',\'' + R.attr(f.id) + '\')">Open</button>' }
         ], emptyTitle: 'No forms yet', emptyMessage: 'Create an enrolment, medical or consent form to collect information.',
           emptyAction: canManage ? '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'form\')">' + R.icon('plus') + ' Create a form</button>' : '' })) +
@@ -340,7 +335,7 @@
             : s.payment_status === 'unavailable' ? '<span class="badge badge-danger">Unavailable</span>'
               : '<span class="badge badge-muted">Free</span>' },
         { label: 'Status', render: (s) => R.badge(s.status) },
-        { label: '', align: 'right', render: (s) => '<div class="btn-group">' +
+        { label: '', align: 'right', render: (s) => '<div class="btn-group" style="flex-wrap:nowrap;white-space:nowrap">' +
           '<button class="btn btn-sm btn-secondary" @click="openNamedDetail(\'submission\',\'' + R.attr(s.id) + '\')">View</button>' +
           (s.status === 'received' ? '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'review\',\'' + R.attr(s.id) + '\')">Review</button>' : '') +
           '</div>' }
@@ -426,7 +421,9 @@
           }
         });
       } else if (name === 'formFields' && form) {
-        const currentFields = ((form.current || {}).schema_json || {}).fields || [];
+        // Edit the newest saved fields, including an unpublished draft, so
+        // reopening the builder never silently reverts to the live version.
+        const currentFields = (((form.latest || form.current) || {}).schema_json || {}).fields || [];
         ctx.openModal({
           title: 'Edit questions',
           endpoint: '/forms/' + form.id + '/versions',
@@ -464,6 +461,20 @@
       const submission = ((ctx.page || {}).submissions || []).find((s) => s.id === id);
       if (!submission) return { title: 'Submission', html: '<p class="muted">Submission not found.</p>' };
       const data = submission.submission_data || {};
+      const fieldSchema = ((((ctx.page || {}).detail || {}).latest || {}).schema_json || {}).fields || [];
+      const labelFor = (key) => {
+        const found = fieldSchema.find((field) => field.key === key);
+        return found ? found.label : R.titleCase(key);
+      };
+      const valueFor = (value) => {
+        if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+        if (Array.isArray(value)) return R.esc(value.join(', '));
+        const text = String(value);
+        if (/^https?:\/\//i.test(text)) {
+          return '<a href="' + R.attr(text) + '" target="_blank" rel="noopener">' + R.esc(text) + '</a>';
+        }
+        return R.esc(text);
+      };
       const payment = submission.payment_status === 'paid'
         ? '<span class="badge badge-green">Paid</span> ' + R.esc(R.money(submission.amount_paid, 'ZAR'))
         : submission.payment_status === 'pending' ? '<span class="badge badge-sun">Pending</span>'
@@ -478,7 +489,7 @@
           R.detailItem('Received', R.dateTime(submission.submitted_at)) +
           R.detailItem('Reviewed', R.dateTime(submission.reviewed_at)) +
           '</div><div class="section"></div><h3>Submitted data</h3><div class="detail-list">' +
-          Object.keys(data).map((key) => R.detailItem(R.titleCase(key), R.esc(typeof data[key] === 'object' ? R.json(data[key]) : data[key]))).join('') +
+          Object.keys(data).map((key) => R.detailItem(labelFor(key), valueFor(data[key]))).join('') +
           '</div>' + (submission.review_notes ? '<h3 style="margin-top:16px">Review notes</h3><p class="muted">' + R.esc(submission.review_notes) + '</p>' : '')
       };
     }

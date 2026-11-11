@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/styles.css?v=20261124">
+  <link rel="stylesheet" href="assets/styles.css?v=20261125">
   <link rel="icon" href="assets/branding/favicon-32.png" sizes="32x32" type="image/png">
   <link rel="icon" href="assets/branding/favicon-64.png" sizes="64x64" type="image/png">
   <link rel="apple-touch-icon" href="assets/branding/apple-touch-icon.png">
@@ -19,30 +19,30 @@
   <meta property="og:type" content="website">
   <!-- Vendor libraries are self-hosted: a blocked CDN must not stop the app booting. -->
   <!-- Icons are cosmetic: load them async so a slow request never delays boot. -->
-  <script src="vendor/lucide.min.js?v=20261124" async onload="if (window.lucide) window.lucide.createIcons()"></script>
-  <script src="vendor/gsap.min.js?v=20261124" defer></script>
-  <script src="vendor/chart.umd.min.js?v=20261124" defer></script>
-  <script src="config.js?v=20261124"></script>
-  <script src="src/utils.js?v=20261124" defer></script>
-  <script src="src/views/public.js?v=20261124" defer></script>
-  <script src="src/views/platform.js?v=20261124" defer></script>
-  <script src="src/views/overview.js?v=20261124" defer></script>
-  <script src="src/views/learners.js?v=20261124" defer></script>
-  <script src="src/views/admissions.js?v=20261124" defer></script>
-  <script src="src/views/curriculum.js?v=20261124" defer></script>
-  <script src="src/views/assessments.js?v=20261124" defer></script>
-  <script src="src/views/attendance.js?v=20261124" defer></script>
-  <script src="src/views/staff.js?v=20261124" defer></script>
-  <script src="src/views/forms.js?v=20261124" defer></script>
-  <script src="src/views/communications.js?v=20261124" defer></script>
-  <script src="src/views/finance.js?v=20261124" defer></script>
-  <script src="src/views/safety.js?v=20261124" defer></script>
-  <script src="src/views/operations.js?v=20261124" defer></script>
-  <script src="src/views/settings.js?v=20261124" defer></script>
-  <script src="src/views/parent.js?v=20261124" defer></script>
-  <script src="src/views/manuals.js?v=20261124" defer></script>
-  <script src="src/app.js?v=20261124" defer></script>
-  <script src="vendor/alpine.min.js?v=20261124" defer></script>
+  <script src="vendor/lucide.min.js?v=20261125" async onload="if (window.lucide) window.lucide.createIcons()"></script>
+  <script src="vendor/gsap.min.js?v=20261125" defer></script>
+  <script src="vendor/chart.umd.min.js?v=20261125" defer></script>
+  <script src="config.js?v=20261125"></script>
+  <script src="src/utils.js?v=20261125" defer></script>
+  <script src="src/views/public.js?v=20261125" defer></script>
+  <script src="src/views/platform.js?v=20261125" defer></script>
+  <script src="src/views/overview.js?v=20261125" defer></script>
+  <script src="src/views/learners.js?v=20261125" defer></script>
+  <script src="src/views/admissions.js?v=20261125" defer></script>
+  <script src="src/views/curriculum.js?v=20261125" defer></script>
+  <script src="src/views/assessments.js?v=20261125" defer></script>
+  <script src="src/views/attendance.js?v=20261125" defer></script>
+  <script src="src/views/staff.js?v=20261125" defer></script>
+  <script src="src/views/forms.js?v=20261125" defer></script>
+  <script src="src/views/communications.js?v=20261125" defer></script>
+  <script src="src/views/finance.js?v=20261125" defer></script>
+  <script src="src/views/safety.js?v=20261125" defer></script>
+  <script src="src/views/operations.js?v=20261125" defer></script>
+  <script src="src/views/settings.js?v=20261125" defer></script>
+  <script src="src/views/parent.js?v=20261125" defer></script>
+  <script src="src/views/manuals.js?v=20261125" defer></script>
+  <script src="src/app.js?v=20261125" defer></script>
+  <script src="vendor/alpine.min.js?v=20261125" defer></script>
 </head>
 <body x-data="reelApp()" x-init="boot()" @keydown.window.escape="closeOverlays()" @keydown.window.k="if (($event.metaKey || $event.ctrlKey) && !$event.shiftKey) { $event.preventDefault(); openCommand(); }">
 
@@ -294,8 +294,18 @@
                     </template>
                   </select>
                 </template>
+                <template x-if="field.type === 'radio'">
+                  <div class="radio-group">
+                    <template x-for="option in (field.options || [])" :key="option.value !== undefined ? option.value : option">
+                      <label class="check">
+                        <input type="radio" :name="field.name" :value="option.value !== undefined ? option.value : option" x-model="modal.data[field.name]">
+                        <span x-text="option.label !== undefined ? option.label : option"></span>
+                      </label>
+                    </template>
+                  </div>
+                </template>
                 <template x-if="field.type === 'checkbox'">
-                  <label class="check"><input type="checkbox" :id="'modal-' + field.name" x-model="modal.data[field.name]"><span x-text="field.help || 'Enabled'"></span></label>
+                  <label class="check"><input type="checkbox" :id="'modal-' + field.name" :required="field.required === true" x-model="modal.data[field.name]"><span x-text="field.help || 'Enabled'"></span></label>
                 </template>
                 <template x-if="field.type === 'media'">
                   <div class="media-field">
@@ -385,7 +395,7 @@
                             <label class="rep-cell" :class="column.span === 2 ? 'span-2' : ''">
                               <span class="rep-label" x-text="column.label"></span>
                               <template x-if="column.type === 'select'">
-                                <select class="select" x-model="row[column.key]">
+                                <select class="select" x-model="row[column.key]" x-init="$nextTick(() => { const want = row[column.key]; $el.value = want === undefined || want === null ? '' : String(want); })">
                                   <template x-for="opt in repOptions(column)" :key="opt.value">
                                     <option :value="opt.value" x-text="opt.label"></option>
                                   </template>
@@ -409,7 +419,7 @@
                     <button type="button" class="btn btn-sm btn-secondary" @click="addRepeaterRow(field)"><i data-lucide="plus"></i> <span x-text="field.addLabel || 'Add item'"></span></button>
                   </div>
                 </template>
-                <template x-if="!field.type || !['textarea','select','checkbox','media','colour','multiselect','repeater','preset'].includes(field.type)">
+                <template x-if="!field.type || !['textarea','select','checkbox','media','colour','multiselect','repeater','preset','radio'].includes(field.type)">
                   <input class="input" :id="'modal-' + field.name" :name="field.name" :type="field.type || 'text'" :required="field.required === true" :placeholder="field.placeholder || ''" :min="field.min" :max="field.max" :step="field.step" x-model="modal.data[field.name]">
                 </template>
                 <div class="hint" x-show="field.help && field.type !== 'checkbox'" x-text="field.type === 'media' && modal.mediaBusy && modal.mediaBusy[field.name] ? 'Uploading…' : (field.help || '')"></div>

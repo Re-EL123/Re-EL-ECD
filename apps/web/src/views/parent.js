@@ -374,10 +374,22 @@
       const fields = (schema.fields || []).map((field) => ({
         name: field.key,
         label: field.label,
-        type: field.type === 'textarea' ? 'textarea' : field.type === 'checkbox' ? 'checkbox' : field.type === 'select' || field.type === 'radio' ? 'select' : field.type === 'date' ? 'date' : field.type === 'number' ? 'number' : field.type === 'email' ? 'email' : 'text',
+        type: field.type === 'textarea' ? 'textarea'
+          : field.type === 'checkbox' ? 'checkbox'
+          : field.type === 'select' ? 'select'
+          : field.type === 'radio' ? 'radio'
+          : field.type === 'date' ? 'date'
+          : field.type === 'number' ? 'number'
+          : field.type === 'email' ? 'email'
+          : field.type === 'phone' ? 'tel'
+          : field.type === 'file' ? 'url'
+          : 'text',
         required: field.required === true,
         options: (field.options || []).map((o) => ({ value: o, label: o })),
-        help: field.helpText || null,
+        help: field.type === 'checkbox' ? (field.helpText || 'Yes') : (field.helpText || null),
+        placeholder: field.type === 'file' ? 'https://link-to-document'
+          : field.type === 'signature' ? 'Type your full name to sign'
+            : null,
         span: field.type === 'textarea' ? 2 : undefined,
         value: field.type === 'checkbox' ? false : ''
       }));

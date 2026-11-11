@@ -419,7 +419,12 @@
           this.platformBrand = payload.data || null;
           this.platformBanner = (this.platformBrand && this.platformBrand.banner && this.platformBrand.banner.message) ? this.platformBrand.banner : null;
           if (!this.platformBanner) this.bannerDismissed = true;
-          if (this.platformBrand && this.platformBrand.branding && Reel.applyTheme) {
+          // The platform palette belongs to signed-out surfaces and the
+          // platform console. Applying it to a signed-in tenant would clobber
+          // that centre's own colours (the tenant theme is applied in
+          // applySession before this async lookup returns).
+          const platformSurface = !this.session || this.isPlatformAdmin || this.isPlatformOrg;
+          if (platformSurface && this.platformBrand && this.platformBrand.branding && Reel.applyTheme) {
             Reel.applyTheme(this.platformBrand.branding);
           }
         } catch (error) {
@@ -726,9 +731,12 @@
         this.mode = 'public';
         this.loading = false;
         this.pageTitle = 'Page not found';
-        const html = '<div class="public"><nav class="public-nav">' +
-          '<a class="site-brand" href="#/login"><span class="brand-logo brand-logo-fallback">R</span>' +
-          '<span><span class="brand-name">Re-EL ECD</span><span class="brand-sub">Early childhood, elevated</span></span></a>' +
+        const platformOrg = (this.platformBrand && this.platformBrand.organisation) || {};
+        const brandLogo = platformOrg.logoUrl || Reel.PLATFORM_LOGO;
+        const brandTheme = (this.platformBrand && this.platformBrand.branding) || Reel.PLATFORM_BRAND.theme;
+        const html = '<div class="public site" ' + Reel.themeStyle(brandTheme) + '><nav class="public-nav site-nav">' +
+          '<a class="site-brand" href="#/login"><span class="auth-brand-logo"><img src="' + Reel.attr(brandLogo) + '" alt="' + Reel.attr(Reel.PLATFORM_BRAND.name) + '"></span>' +
+          '<span><span class="brand-name">' + Reel.esc(Reel.PLATFORM_BRAND.name) + '</span><span class="brand-sub">' + Reel.esc(Reel.PLATFORM_BRAND.tagline) + '</span></span></a>' +
           '<div class="links"><a href="#/login">Sign in</a></div></nav>' +
           '<section class="not-found"><div class="not-found-inner">' +
           '<div class="not-found-code">404</div>' +

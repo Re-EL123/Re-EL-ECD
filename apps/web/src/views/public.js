@@ -34,7 +34,7 @@
         '<div class="auth-screen" ' + style + '>' +
         '<div class="auth-art">' +
         '<video class="auth-art-video" src="assets/branding/login-hero.mp4" type="video/mp4" autoplay muted loop playsinline preload="metadata" aria-hidden="true" tabindex="-1"></video>' +
-        '<div><div class="row" style="gap:10px">' + logoMark + '<div><div class="brand-name" style="color:#fff">' + R.esc(name) + '</div><div class="brand-sub" style="color:rgba(255,255,255,0.7)">Early childhood, elevated</div></div></div>' +
+        '<div><div class="row" style="gap:10px">' + logoMark + '<div><div class="brand-name" style="color:#fff">' + R.esc(name) + '</div><div class="brand-sub" style="color:rgba(255,255,255,0.7)">' + R.esc(R.PLATFORM_BRAND.tagline) + '</div></div></div>' +
         '<h1 style="margin-top:56px">Every child\'s early years, held with care.</h1>' +
         '<p style="margin-top:16px">One calm workspace for enrolment, learning, attendance, families, finance and the everyday safety of the children in your care.</p></div>' +
         '<div><div class="auth-quote">“The way we care for our youngest children is the clearest statement of what we value.”</div>' +
@@ -126,9 +126,42 @@
     return staffHref();
   }
 
-  function missingSitePage(title, message, backHref, backLabel) {
-    return '<div class="public site site-missing"><div class="site-missing-card">' +
-      '<div class="brand-mark" style="margin:0 auto 16px">R</div>' +
+  /**
+   * Signed-out pages (sign-in, sign-up, password reset, legal) all share one
+   * platform lockup. The logo comes from Platform → Configuration when the
+   * super admin has uploaded one, so every surface updates together instead of
+   * some pages showing the bundled artwork and others a letter tile.
+   */
+  function platformBranding(ctx) {
+    return (ctx && ctx.platformBrand && ctx.platformBrand.branding) || R.PLATFORM_BRAND.theme;
+  }
+
+  function platformLogo(ctx) {
+    const organisation = (ctx && ctx.platformBrand && ctx.platformBrand.organisation) || {};
+    return organisation.logoUrl || R.PLATFORM_LOGO;
+  }
+
+  function platformLockup(ctx, tagline) {
+    const name = R.PLATFORM_BRAND.name;
+    return '<span class="auth-brand-logo"><img src="' + R.attr(platformLogo(ctx)) + '" alt="' + R.attr(name) + '"></span>' +
+      '<div><div class="brand-name">' + R.esc(name) + '</div><div class="brand-sub">' + R.esc(tagline || R.PLATFORM_BRAND.tagline) + '</div></div>';
+  }
+
+  function platformNav(ctx, links) {
+    return '<nav class="public-nav site-nav"><a class="site-brand" href="#/login">' + platformLockup(ctx) + '</a>' +
+      '<div class="links">' + (links || '<a href="#/login">Sign in</a>') + '</div></nav>';
+  }
+
+  function platformShell(ctx, body) {
+    // `site` carries the shared page-width and lockup rules, so signed-out
+    // platform pages line up with tenant websites instead of running to the
+    // viewport edge.
+    return '<div class="public site" ' + R.themeStyle(platformBranding(ctx)) + '>' + body + '</div>';
+  }
+
+  function missingSitePage(ctx, title, message, backHref, backLabel) {
+    return '<div class="public site site-missing" ' + R.themeStyle(platformBranding(ctx)) + '><div class="site-missing-card">' +
+      '<span class="auth-brand-logo" style="margin:0 auto 16px"><img src="' + R.attr(platformLogo(ctx)) + '" alt="' + R.attr(R.PLATFORM_BRAND.name) + '"></span>' +
       '<h1>' + R.esc(title) + '</h1>' +
       '<p class="lede">' + R.esc(message) + '</p>' +
       '<div class="site-actions" style="justify-content:center">' +
@@ -328,6 +361,7 @@
     render(ctx, params, page) {
       if (page && page.missing) {
         return missingSitePage(
+          ctx,
           'No website at this address',
           'We could not find a daycare website for ' + (page.requestedHost || 'this address') + '. The address may have changed, or the centre may not have published its site yet.',
           'https://ecd.re-el.co.za',
@@ -588,6 +622,7 @@
     render(ctx, params, page) {
       if (page && page.missing) {
         return missingSitePage(
+          ctx,
           'We could not load the enquiry form',
           'The daycare website at this address is unavailable or has not been published yet. Please try again later, or contact the centre directly.',
           siteHref(params.slug, 'home'),
@@ -651,6 +686,7 @@
     render(ctx, params, page) {
       if (page && page.missing) {
         return missingSitePage(
+          ctx,
           'We could not load the forms',
           'The daycare website at this address is unavailable or has not been published yet. Please try again later, or contact the centre directly.',
           siteHref(params.slug, 'home'),
@@ -718,6 +754,7 @@
     render(ctx, params, page) {
       if (page && page.missing) {
         return missingSitePage(
+          ctx,
           'We could not find that form',
           'This form is unavailable. It may not have been published yet, or the link may be incorrect. Please contact the centre and the team will help you.',
           siteHref(params.slug, 'forms'),
@@ -731,21 +768,29 @@
       const org = page.organisation || {};
       const input = (field) => {
         const model = 'publicFormData.' + field.key;
-        if (field.type === 'textarea') return '<textarea class="textarea" x-model="' + model + '" ' + (field.required ? 'required' : '') + '></textarea>';
-        if (field.type === 'select' || field.type === 'radio') return '<select class="select" x-model="' + model + '" ' + (field.required ? 'required' : '') + '><option value="">Select…</option>' + (field.options || []).map((o) => '<option value="' + R.attr(o) + '">' + R.esc(o) + '</option>').join('') + '</select>';
-        if (field.type === 'checkbox') return '<label class="check"><input type="checkbox" x-model="' + model + '"><span>' + R.esc(field.helpText || 'Yes') + '</span></label>';
-        if (field.type === 'date') return '<input class="input" type="date" x-model="' + model + '" ' + (field.required ? 'required' : '') + '>';
-        if (field.type === 'number') return '<input class="input" type="number" x-model="' + model + '" ' + (field.required ? 'required' : '') + '>';
-        if (field.type === 'email') return '<input class="input" type="email" x-model="' + model + '" ' + (field.required ? 'required' : '') + '>';
-        if (field.type === 'phone') return '<input class="input" type="tel" x-model="' + model + '" ' + (field.required ? 'required' : '') + '>';
-        return '<input class="input" type="text" x-model="' + model + '" ' + (field.required ? 'required' : '') + '>';
+        const required = field.required ? ' required' : '';
+        if (field.type === 'textarea') return '<textarea class="textarea" x-model="' + model + '"' + required + '></textarea>';
+        if (field.type === 'radio') {
+          return '<div class="radio-group">' + (field.options || []).map((option, index) =>
+            '<label class="check"><input type="radio" name="' + R.attr(field.key) + '" value="' + R.attr(option) + '" x-model="' + model + '"' + (field.required && index === 0 ? ' required' : '') + '><span>' + R.esc(option) + '</span></label>'
+          ).join('') + '</div>';
+        }
+        if (field.type === 'select') return '<select class="select" x-model="' + model + '"' + required + '><option value="">Select…</option>' + (field.options || []).map((o) => '<option value="' + R.attr(o) + '">' + R.esc(o) + '</option>').join('') + '</select>';
+        if (field.type === 'checkbox') return '<label class="check"><input type="checkbox" x-model="' + model + '"' + required + '><span>' + R.esc(field.helpText || 'Yes') + '</span></label>';
+        if (field.type === 'date') return '<input class="input" type="date" x-model="' + model + '"' + required + '>';
+        if (field.type === 'number') return '<input class="input" type="number" x-model="' + model + '"' + required + '>';
+        if (field.type === 'email') return '<input class="input" type="email" x-model="' + model + '"' + required + '>';
+        if (field.type === 'phone') return '<input class="input" type="tel" x-model="' + model + '" autocomplete="tel"' + required + '>';
+        if (field.type === 'file') return '<input class="input" type="url" x-model="' + model + '" placeholder="https://link-to-document"' + required + '>';
+        if (field.type === 'signature') return '<input class="input" type="text" x-model="' + model + '" autocomplete="name" placeholder="Type your full name to sign"' + required + '>';
+        return '<input class="input" type="text" x-model="' + model + '"' + required + '>';
       };
       const hasEmailField = fields.some((field) => field.type === 'email');
       return '<div class="public site" ' + R.themeStyle(branding) + '>' +
         siteNav(params.slug, 'forms', org) +
         '<section class="site-section"><div class="site-wrap site-narrow">' +
         '<a href="' + R.attr(siteHref(params.slug, 'forms')) + '" class="muted small">← All forms</a>' +
-        '<div class="site-eyebrow" style="margin-top:20px">Form</div>' +
+        '<div style="margin-top:20px"><div class="site-eyebrow">Form</div></div>' +
         '<h1>' + R.esc(form.name) + '</h1><p class="lede">' + R.esc(form.description || '') + '</p>' +
         (payment.enabled
           ? '<div class="site-pay-summary" style="margin-top:12px">' + R.icon('credit-card') +
@@ -789,9 +834,9 @@
           '<div class="row" style="margin-top:14px"><a class="muted small" href="#/login" x-show="resetDone">Go to sign in →</a></div>'
         : '<div class="alert alert-warning"><i data-lucide="alert-triangle"></i><span>This reset link is missing its token. Request a new link from the sign-in page.</span></div>' +
           '<a class="btn btn-primary" href="#/login">Back to sign in</a>';
-      return '<div class="public"><nav class="public-nav"><div class="row" style="gap:10px"><div class="brand-mark">R</div><div><div class="brand-name">Re-EL ECD</div><div class="brand-sub">Early childhood, elevated</div></div></div><div class="links"><a href="#/login">Sign in</a></div></nav>' +
+      return platformShell(ctx, platformNav(ctx) +
         '<section class="public-section" style="max-width:520px;margin:40px auto"><h1>Choose a new password</h1><p class="lede">Use at least 10 characters. Signing in elsewhere will be required again.</p>' +
-        '<div class="card glass" style="margin-top:16px">' + body + '</div></section></div>';
+        '<div class="card glass" style="margin-top:16px">' + body + '</div></section>');
     }
   };
 
@@ -813,9 +858,9 @@
           '<div class="row" style="margin-top:14px"><a class="muted small" href="#/login" x-show="inviteDone">Go to sign in →</a></div>'
         : '<div class="alert alert-warning"><i data-lucide="alert-triangle"></i><span>This invitation link is missing its token. Ask the centre administrator to send a new invitation.</span></div>' +
           '<a class="btn btn-primary" href="#/login">Back to sign in</a>';
-      return '<div class="public"><nav class="public-nav"><div class="row" style="gap:10px"><div class="brand-mark">R</div><div><div class="brand-name">Re-EL ECD</div><div class="brand-sub">Early childhood, elevated</div></div></div><div class="links"><a href="#/login">Sign in</a></div></nav>' +
+      return platformShell(ctx, platformNav(ctx) +
         '<section class="public-section" style="max-width:520px;margin:40px auto"><h1>Join your centre</h1><p class="lede">Set your name and a password to activate your Re-EL ECD account.</p>' +
-        '<div class="card glass" style="margin-top:16px">' + body + '</div></section></div>';
+        '<div class="card glass" style="margin-top:16px">' + body + '</div></section>');
     }
   };
 
@@ -855,9 +900,9 @@
         '<div class="row" style="margin-top:14px"><a class="muted small" href="#/login" x-show="signupDone">Go to sign in →</a></div>'
         : '<div class="alert alert-info"><i data-lucide="info"></i><span>New centres are currently created by invitation. Contact Re-EL ECD and we will set up your workspace.</span></div>' +
         '<a class="btn btn-primary" href="#/login">Back to sign in</a>';
-      return '<div class="public"><nav class="public-nav"><div class="row" style="gap:10px"><div class="brand-mark">R</div><div><div class="brand-name">Re-EL ECD</div><div class="brand-sub">Early childhood, elevated</div></div></div><div class="links"><a href="#/login">Sign in</a></div></nav>' +
+      return platformShell(ctx, platformNav(ctx) +
         '<section class="public-section" style="max-width:520px;margin:40px auto"><h1>Create your centre</h1><p class="lede">Start a 30-day trial. You become the owner of your workspace and can invite your team.</p>' +
-        '<div class="card glass" style="margin-top:16px">' + body + '</div></section></div>';
+        '<div class="card glass" style="margin-top:16px">' + body + '</div></section>');
     }
   };
 
@@ -995,43 +1040,39 @@
       render(ctx, params, page) {
         const base = LEGAL_PAGES[slug];
         const doc = (page && page.override) || base;
-        return renderLegalPage(slug, doc);
+        return renderLegalPage(ctx, slug, doc);
       }
     };
   }
 
-  function renderLegalPage(slug, docOverride) {
+  function renderLegalPage(ctx, slug, docOverride) {
     const doc = docOverride || LEGAL_PAGES[slug];
     if (!doc) return '<section class="site-section"><div class="site-wrap site-narrow"><h1>Legal page not found</h1><p><a href="#/legal">Back to the legal hub</a></p></div></section>';
     const sections = doc.sections.map((section) =>
       '<h2>' + R.esc(section[0]) + '</h2><div class="legal-body">' + section[1].map((p) => '<p>' + R.esc(p) + '</p>').join('') + '</div>'
     ).join('');
-    return '<div class="public">' +
-      '<nav class="public-nav"><div class="row" style="gap:10px"><div class="brand-mark">R</div><div><div class="brand-name">Re-EL ECD</div><div class="brand-sub">Early childhood, elevated</div></div></div><div class="links"><a href="#/login">Sign in</a><a href="#/legal">Legal</a></div></nav>' +
+    return platformShell(ctx, platformNav(ctx, '<a href="#/login">Sign in</a><a href="#/legal">Legal</a>') +
       '<header class="site-page-hero"><div class="site-wrap site-page-hero-inner"><div class="site-eyebrow">' + R.esc(doc.eyebrow) + '</div><h1>' + R.esc(doc.title) + '</h1><p class="lede">' + R.esc(doc.lede) + '</p><p class="small muted">Last updated ' + R.esc(LEGAL_UPDATED) + ' · ' + R.esc(LEGAL_ENTITY) + '</p></div></header>' +
       '<section class="public-section"><div class="site-wrap legal-layout">' + legalNavHtml('#/legal/' + slug) +
       '<article class="legal-article">' + doc.intro.map((p) => '<p>' + R.esc(p) + '</p>').join('') + sections +
       '<hr><p class="small muted">Questions about this document? Email legal@re-el.co.za. For personal information requests use privacy@re-el.co.za (see Privacy Policy).</p>' +
       '</article></div></section>' +
-      '<footer class="public-footer site-footer"><div class="site-wrap site-footer-base"><span>© ' + new Date().getFullYear() + ' ' + R.esc(LEGAL_ENTITY) + '. All rights reserved.</span><span class="spacer"></span><a href="#/legal/terms">Terms</a><a href="#/legal/privacy">Privacy</a><a href="#/legal/cookies">Cookies</a><a href="#/login">Sign in</a></div></footer>' +
-      '</div>';
+      '<footer class="public-footer site-footer"><div class="site-wrap site-footer-base"><span>© ' + new Date().getFullYear() + ' ' + R.esc(LEGAL_ENTITY) + '. All rights reserved.</span><span class="spacer"></span><a href="#/legal/terms">Terms</a><a href="#/legal/privacy">Privacy</a><a href="#/legal/cookies">Cookies</a><a href="#/login">Sign in</a></div></footer>');
   }
 
-  function renderLegalIndex() {
+  function renderLegalIndex(ctx) {
     const cards = LEGAL_NAV.slice(1).map((entry) => {
       const slug = entry[0].replace('/legal/', '');
       const doc = LEGAL_PAGES[slug];
       return '<article class="site-card legal-card"><div class="site-card-body"><div class="site-pill">' + R.esc(doc.eyebrow) + '</div><h3>' + R.esc(doc.title) + '</h3><p>' + R.esc(doc.lede) + '</p><a href="#' + entry[0] + '">Read policy →</a></div></article>';
     }).join('');
-    return '<div class="public">' +
-      '<nav class="public-nav"><div class="row" style="gap:10px"><div class="brand-mark">R</div><div><div class="brand-name">Re-EL ECD</div><div class="brand-sub">Early childhood, elevated</div></div></div><div class="links"><a href="#/login">Sign in</a></div></nav>' +
+    return platformShell(ctx, platformNav(ctx) +
       '<header class="site-page-hero"><div class="site-wrap site-page-hero-inner"><div class="site-eyebrow">Legal</div><h1>Legal hub</h1><p class="lede">Terms, privacy, cookies and the policies that govern Re-EL ECD in South Africa. Last updated ' + R.esc(LEGAL_UPDATED) + '.</p></div></header>' +
       '<section class="public-section"><div class="site-wrap">' + legalNavHtml('#/legal') + '<div class="site-card-grid" style="margin-top:18px">' + cards + '</div></div></section>' +
-      '<footer class="public-footer site-footer"><div class="site-wrap site-footer-base"><span>© ' + new Date().getFullYear() + ' ' + R.esc(LEGAL_ENTITY) + '. All rights reserved.</span><span class="spacer"></span><a href="#/legal/terms">Terms</a><a href="#/legal/privacy">Privacy</a><a href="#/legal/cookies">Cookies</a></div></footer>' +
-      '</div>';
+      '<footer class="public-footer site-footer"><div class="site-wrap site-footer-base"><span>© ' + new Date().getFullYear() + ' ' + R.esc(LEGAL_ENTITY) + '. All rights reserved.</span><span class="spacer"></span><a href="#/legal/terms">Terms</a><a href="#/legal/privacy">Privacy</a><a href="#/legal/cookies">Cookies</a></div></footer>');
   }
 
-  V.legalIndex = { render() { return renderLegalIndex(); } };
+  V.legalIndex = { render(ctx) { return renderLegalIndex(ctx); } };
   V.legalTerms = legalDocViews('terms');
   V.legalPrivacy = legalDocViews('privacy');
   V.legalCookies = legalDocViews('cookies');

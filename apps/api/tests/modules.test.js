@@ -320,6 +320,119 @@ test('saving form settings and publishing a new version both succeed', async () 
   assert.ok(detail.data.current.published_at);
 });
 
+test('every form field type survives publish, public submission and review', async () => {
+  const { client, organisationId } = await principalContext();
+  const slug = 'all-field-types-' + Date.now();
+  const fields = [
+    { key: 'full_name', label: 'Full name', type: 'text', required: true },
+    { key: 'about', label: 'Tell us about your child', type: 'textarea' },
+    { key: 'email', label: 'Email address', type: 'email', required: true },
+    { key: 'phone', label: 'Phone number', type: 'phone' },
+    { key: 'age', label: 'Age in years', type: 'number' },
+    { key: 'start_date', label: 'Preferred start date', type: 'date' },
+    { key: 'programme', label: 'Programme', type: 'select', options: ['Toddlers', 'Preschool', 'Aftercare'] },
+    { key: 'transport', label: 'Transport needed', type: 'radio', options: ['Yes', 'No', 'Sometimes'] },
+    { key: 'consent', label: 'I consent to photographs', type: 'checkbox' },
+    { key: 'document', label: 'Supporting document link', type: 'file' },
+    { key: 'signature', label: 'Parent signature', type: 'signature', required: true }
+  ];
+  const expectedTypes = ['text', 'textarea', 'email', 'phone', 'number', 'date', 'select', 'radio', 'checkbox', 'file', 'signature'];
+
+  const form = await client.post('/forms', {
+    name: 'All field types',
+    slug,
+    formType: 'general',
+    isPublic: true,
+    displayOnWebsite: true,
+    fields
+  }, { organisationId });
+  assert.equal(form.status, 201, form.text);
+  // Types are normalised but must never silently collapse to "text".
+  assert.deepEqual(form.data.schema_json.fields.map((f) => f.type), expectedTypes);
+
+  const published = await client.post('/forms/' + form.data.id + '/publish', {}, { organisationId });
+  assert.equal(published.status, 200, published.text);
+
+  const visitor = createClient();
+  const read = await visitor.get('/public/forms/little-sprouts/' + slug);
+  assert.equal(read.status, 200, read.text);
+  assert.deepEqual(read.data.form.schema_json.fields.map((f) => f.type), expectedTypes);
+
+  const submitted = await visitor.post('/public/forms/little-sprouts/' + slug + '/submit', {
+    data: {
+      full_name: 'Thandi Mokoena',
+      about: 'Allergic to peanuts.',
+      email: 'thandi@example.com',
+      phone: '0821234567',
+      age: 4,
+      start_date: '2026-12-01',
+      programme: 'Preschool',
+      transport: 'Sometimes',
+      consent: true,
+      document: 'https://example.com/immunisation.pdf',
+      signature: 'Thandi Mokoena'
+    }
+  });
+  assert.equal(submitted.status, 200, submitted.text);
+  assert.equal(submitted.data.received, true);
+  assert.ok(submitted.data.submissionId);
+
+  const list = await client.get('/forms/' + form.data.id + '/submissions', { organisationId });
+  assert.equal(list.status, 200, list.text);
+  const stored = list.data.find((row) => row.id === submitted.data.submissionId);
+  assert.ok(stored, 'the public submission is visible to staff');
+  assert.equal(stored.submission_data.age, 4);
+  assert.equal(stored.submission_data.consent, true);
+  assert.equal(stored.submission_data.transport, 'Sometimes');
+  assert.equal(stored.submission_data.document, 'https://example.com/immunisation.pdf');
+  assert.equal(stored.submission_data.signature, 'Thandi Mokoena');
+
+  const reviewed = await client.post('/forms/submissions/' + stored.id + '/review', {
+    decision: 'approved',
+    notes: 'All documents received.'
+  }, { organisationId });
+  assert.equal(reviewed.status, 200, reviewed.text);
+  assert.equal(reviewed.data.status, 'approved');
+  assert.equal(reviewed.data.review_notes, 'All documents received.');
+});
+
+test('a document link and typed signature are validated rather than stored blindly', async () => {
+  const { client, organisationId } = await principalContext();
+  const slug = 'validated-types-' + Date.now();
+  const form = await client.post('/forms', {
+    name: 'Validated types',
+    slug,
+    formType: 'general',
+    isPublic: true,
+    fields: [
+      { key: 'document', label: 'Document link', type: 'file' },
+      { key: 'signature', label: 'Signature', type: 'signature' }
+    ]
+  }, { organisationId });
+  assert.equal(form.status, 201, form.text);
+  const published = await client.post('/forms/' + form.data.id + '/publish', {}, { organisationId });
+  assert.equal(published.status, 200, published.text);
+
+  const visitor = createClient();
+  const badDocument = await visitor.post('/public/forms/little-sprouts/' + slug + '/submit', {
+    data: { document: 'not-a-link', signature: 'A B' }
+  });
+  assert.equal(badDocument.status, 422);
+  assert.equal(badDocument.error.details[0].field, 'document');
+
+  const badSignature = await visitor.post('/public/forms/little-sprouts/' + slug + '/submit', {
+    data: { document: 'https://example.com/file.pdf', signature: 'A' }
+  });
+  assert.equal(badSignature.status, 422);
+  assert.equal(badSignature.error.details[0].field, 'signature');
+
+  const good = await visitor.post('/public/forms/little-sprouts/' + slug + '/submit', {
+    data: { document: 'https://example.com/file.pdf', signature: 'Thandi Mokoena' }
+  });
+  assert.equal(good.status, 200, good.text);
+  assert.equal(good.data.received, true);
+});
+
 test('staff invitation is created with a one-time token and correct tenancy', async () => {
   const { client, organisationId } = await principalContext();
   const invitation = await client.post('/access/invitations', {
