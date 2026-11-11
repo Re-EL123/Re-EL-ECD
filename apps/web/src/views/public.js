@@ -95,11 +95,19 @@
     }
     if (/^(https?:\/\/|mailto:|tel:)/i.test(raw)) return raw;
     if (/^#\//.test(raw)) return raw;
-    const path = raw.replace(/^\/+/, '').replace(/\/+$/, '');
-    if (!path) return siteHref(slug, 'home');
-    if (path === 'apply') return '#/site/' + encodeURIComponent(slug) + '/apply';
+    // Internal path. Keep any query string or fragment so links such as
+    // /programmes?ref=home survive intact.
+    const withoutLeading = raw.replace(/^\/+/, '');
+    const hashIndex = withoutLeading.indexOf('#');
+    const hash = hashIndex >= 0 ? withoutLeading.slice(hashIndex) : '';
+    const pathWithQuery = hashIndex >= 0 ? withoutLeading.slice(0, hashIndex) : withoutLeading;
+    const queryIndex = pathWithQuery.indexOf('?');
+    const query = queryIndex >= 0 ? pathWithQuery.slice(queryIndex) : '';
+    const path = (queryIndex >= 0 ? pathWithQuery.slice(0, queryIndex) : pathWithQuery).replace(/\/+$/, '');
+    if (!path) return siteHref(slug, 'home') + query + hash;
+    if (path === 'apply') return '#/site/' + encodeURIComponent(slug) + '/apply' + query + hash;
     const page = SITE_PAGES.find((entry) => entry.key === path || entry.path === path);
-    return '#/site/' + encodeURIComponent(slug) + '/' + encodeURIComponent(page ? page.path : path);
+    return '#/site/' + encodeURIComponent(slug) + '/' + encodeURIComponent(page ? page.path : path) + query + hash;
   }
 
   function linkTarget(href) {
