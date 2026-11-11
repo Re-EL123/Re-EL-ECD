@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **337 routes** across 20 modules.
+Generated from the router: **341 routes** across 20 modules.
 
 ## Access
 
@@ -246,6 +246,8 @@ Generated from the router: **337 routes** across 20 modules.
 | POST | `/forms/:id/publish` | forms.manage.daycare |
 | GET | `/forms/:id/submissions` | forms.submissions.review.daycare |
 | POST | `/forms/:id/submit` | parent.forms.submit.own OR forms.read.daycare OR guardians.manage.daycare |
+| POST | `/forms/:id/uploads` | parent.forms.submit.own OR forms.read.daycare OR forms.manage.daycare |
+| POST | `/forms/:id/uploads/:assetId/complete` | parent.forms.submit.own OR forms.read.daycare OR forms.manage.daycare |
 | POST | `/forms/:id/versions` | forms.manage.daycare |
 | POST | `/forms/bulk` | forms.manage.daycare |
 | POST | `/forms/submissions/:id/review` | forms.submissions.review.daycare |
@@ -492,6 +494,8 @@ Generated from the router: **337 routes** across 20 modules.
 | POST | `/public/enquiries` | Public |
 | GET | `/public/forms/:orgSlug/:formSlug` | Public |
 | POST | `/public/forms/:orgSlug/:formSlug/submit` | Public |
+| POST | `/public/forms/:orgSlug/:formSlug/uploads` | Public |
+| POST | `/public/forms/:orgSlug/:formSlug/uploads/:assetId/complete` | Public |
 | POST | `/public/payfast/itn` | Public |
 | GET | `/public/payfast/return` | Public |
 | GET | `/public/platform` | Public |
