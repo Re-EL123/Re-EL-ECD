@@ -248,6 +248,9 @@
       siteDraft: null,
       siteTab: 'home',
       siteMenuOpen: false,
+      publicFormData: {},
+      publicFormSchema: [],
+      publicUploads: {},
       siteBusy: null,
       storageCheck: null,
       storageChecking: false,
@@ -1344,7 +1347,7 @@
         (config.fields || []).forEach((field) => {
           if (field.type === 'checkbox') {
             data[field.name] = field.value === undefined ? false : field.value;
-          } else if (field.type === 'multiselect' || field.type === 'repeater' || field.multiple) {
+          } else if (field.type === 'multiselect' || field.type === 'checkboxes' || field.type === 'repeater' || field.multiple) {
             const initial = field.value === undefined ? [] : field.value;
             const list = Array.isArray(initial) ? initial.slice() : (initial ? [initial] : []);
             data[field.name] = field.type === 'repeater'
@@ -1544,6 +1547,34 @@
             }
           }
           this.toast(files.length > 1 ? files.length + ' files uploaded.' : 'File uploaded.');
+        } catch (error) {
+          this.modal.error = error.message || 'The file could not be uploaded.';
+        } finally {
+          this.modal.mediaBusy[field.name] = false;
+          if (input) input.value = '';
+        }
+      },
+
+      toggleModalChoice(field, value, checked) {
+        if (!this.modal) return;
+        const current = Array.isArray(this.modal.data[field.name]) ? this.modal.data[field.name].slice() : [];
+        const index = current.indexOf(value);
+        if (checked && index === -1) current.push(value);
+        if (!checked && index !== -1) current.splice(index, 1);
+        this.modal.data[field.name] = current;
+      },
+
+      async uploadModalFormFile(field, event) {
+        const input = event && event.target;
+        const file = input && input.files && input.files[0];
+        if (!file || !this.modal) return;
+        this.modal.mediaBusy = this.modal.mediaBusy || {};
+        this.modal.mediaBusy[field.name] = true;
+        this.modal.error = null;
+        try {
+          const asset = await Reel.uploadFormFile(file, { formId: field.formId });
+          this.modal.data[field.name] = asset.url;
+          this.toast('File uploaded.');
         } catch (error) {
           this.modal.error = error.message || 'The file could not be uploaded.';
         } finally {
@@ -2026,10 +2057,53 @@
         }
       },
 
+      togglePublicChoice(key, value, checked) {
+        const list = Array.isArray(this.publicFormData[key]) ? this.publicFormData[key].slice() : [];
+        const index = list.indexOf(value);
+        if (checked && index === -1) list.push(value);
+        if (!checked && index !== -1) list.splice(index, 1);
+        this.publicFormData[key] = list;
+      },
+
+      removePublicFormFile(key) {
+        this.publicFormData[key] = '';
+      },
+
+      async uploadPublicFormFile(event, key, slug, formSlug) {
+        const input = event && event.target;
+        const file = input && input.files && input.files[0];
+        if (!file) return;
+        this.publicError = null;
+        this.publicUploads = this.publicUploads || {};
+        this.publicUploads[key] = true;
+        try {
+          const asset = await Reel.uploadFormFile(file, { orgSlug: slug, formSlug });
+          this.publicFormData[key] = asset.url;
+          if (input) input.value = '';
+        } catch (error) {
+          this.publicError = error.message || 'The file could not be uploaded. Please try again.';
+        } finally {
+          this.publicUploads[key] = false;
+        }
+      },
+
       async submitPublicForm(event, slug, formSlug) {
         this.publicError = null;
         this.publicResult = null;
         this.publicCheckout = null;
+        if (Object.keys(this.publicUploads || {}).some((key) => this.publicUploads[key])) {
+          this.publicError = 'Please wait for the file upload to finish.';
+          return;
+        }
+        const missing = (this.publicFormSchema || []).find((field) => {
+          if (!field.required) return false;
+          const value = this.publicFormData[field.key];
+          return value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0);
+        });
+        if (missing) {
+          this.publicError = missing.label + ' is required.';
+          return;
+        }
         try {
           const payload = await Reel.api('POST', '/public/forms/' + encodeURIComponent(slug) + '/' + encodeURIComponent(formSlug) + '/submit', {
             data: this.publicFormData,

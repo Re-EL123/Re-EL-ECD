@@ -665,6 +665,43 @@
     return completed.data;
   }
 
+  /**
+   * Upload a supporting document while completing a form. `target` is either
+   * { formId } for signed-in staff and parents or { orgSlug, formSlug } for a
+   * public visitor. Returns the completed media asset, whose `url` is what the
+   * form field stores.
+   */
+  async function uploadFormFile(file, target) {
+    const opts = target || {};
+    if (!file) throw new ApiError('Choose a file first.', 'VALIDATION', 422);
+    const base = opts.formId
+      ? '/forms/' + encodeURIComponent(opts.formId) + '/uploads'
+      : '/public/forms/' + encodeURIComponent(opts.orgSlug || '') + '/' + encodeURIComponent(opts.formSlug || '') + '/uploads';
+    const created = await api('POST', base, {
+      filename: file.name || 'upload',
+      contentType: file.type || 'application/octet-stream',
+      size: file.size
+    });
+    const payload = (created && created.data) || {};
+    const upload = payload.upload || {};
+    if (!upload.url) throw new ApiError('The storage service did not return an upload URL.', 'UPLOAD_FAILED', 502);
+    const response = await fetch(upload.url, {
+      method: upload.method || 'PUT',
+      headers: upload.headers || {},
+      body: file
+    });
+    if (!response.ok) {
+      const detail = response.status === 401 || response.status === 403
+        ? 'The storage service rejected the upload credentials. An administrator must check the R2 access key and secret.'
+        : response.status === 404
+          ? 'The storage bucket was not found. Check the R2 bucket name and public base URL.'
+          : 'The file could not be uploaded to storage. Check the bucket CORS settings and try again.';
+      throw new ApiError(detail, 'UPLOAD_FAILED', response.status);
+    }
+    const completed = await api('POST', base + '/' + encodeURIComponent(payload.asset.id) + '/complete', {});
+    return completed.data;
+  }
+
   Reel.ApiError = ApiError;
   Reel.api = api;
   Reel.setCsrf = setCsrf;
@@ -720,6 +757,7 @@
   Reel.mediaThumb = mediaThumb;
   Reel.mediaList = mediaList;
   Reel.uploadMedia = uploadMedia;
+  Reel.uploadFormFile = uploadFormFile;
 
   // -------------------------------------------------------------------------
   // Per-tenant SEO

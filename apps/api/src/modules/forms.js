@@ -11,9 +11,13 @@ const { rateLimit } = require('../middleware/rate-limit');
 const { parsePagination } = require('../utils/http');
 const branding = require('../services/branding-service');
 const bulk = require('../services/bulk-service');
+const storage = require('../services/storage-service');
 const { has, guardianLearnerIds, getLearner } = require('./helpers');
 
-const FIELD_TYPES = ['text', 'textarea', 'email', 'phone', 'number', 'date', 'select', 'checkbox', 'radio', 'file', 'signature'];
+const FIELD_TYPES = ['text', 'textarea', 'email', 'phone', 'number', 'date', 'select', 'checkbox', 'checkboxes', 'radio', 'file', 'signature'];
+// Uploads made while completing a form are owned by the form definition so
+// staff can find every supporting document from the form's submission list.
+const FORM_UPLOAD_OWNER = 'form_definition';
 
 function normaliseFields(fields) {
   if (!Array.isArray(fields)) return [];
@@ -47,12 +51,24 @@ function validateSubmission(schema, data) {
       if (field.required) errors.push({ field: field.key, message: `${field.label} is required.` });
       continue;
     }
-    if (field.type === 'checkbox' && field.required === true && (value === false || value === 'false')) {
-      errors.push({ field: field.key, message: `${field.label} must be ticked to continue.` });
-      continue;
-    }
     if (field.type === 'checkbox' && typeof value !== 'boolean' && value !== 'true' && value !== 'false') {
       errors.push({ field: field.key, message: `${field.label} must be true or false.` });
+      continue;
+    }
+    if (field.type === 'checkboxes') {
+      if (!Array.isArray(value)) {
+        errors.push({ field: field.key, message: `${field.label} must be a list of choices.` });
+        continue;
+      }
+      const chosen = value.map((entry) => String(entry));
+      const invalid = field.options && field.options.length
+        ? chosen.filter((entry) => !field.options.includes(entry))
+        : [];
+      if (invalid.length) {
+        errors.push({ field: field.key, message: `${field.label} contains an invalid option.` });
+        continue;
+      }
+      clean[field.key] = chosen.slice(0, 50);
       continue;
     }
     if (field.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value))) {
@@ -91,6 +107,58 @@ function validateSubmission(schema, data) {
   }
   if (errors.length) throw new AppError('VALIDATION', errors);
   return clean;
+}
+
+/**
+ * Reserve an upload for a form. The browser receives a presigned R2 URL and
+ * uploads the bytes directly; only the resulting URL and metadata are stored.
+ * Shared by staff, parent and public submissions so all three paths behave the
+ * same way.
+ */
+async function beginFormUpload(ctx, { organisationId, formId, uploadedBy, filename, contentType, size }) {
+  const described = storage.describeUpload({ filename, contentType, size });
+  if (!described.valid) fail('VALIDATION', [{ field: 'contentType', message: described.reason }]);
+  if (Number.isFinite(Number(size)) && Number(size) > described.maxBytes) {
+    fail('VALIDATION', [{
+      field: 'size',
+      message: `This file is too large. The limit is ${Math.round(described.maxBytes / (1024 * 1024))} MB.`
+    }]);
+  }
+  const key = storage.buildKey({
+    organisationId,
+    scope: 'general',
+    filename,
+    contentType: described.mime
+  });
+  const url = storage.publicUrl(key);
+  if (!url) fail('CONFLICT', null, 'File storage is not configured yet.');
+  const upload = storage.presignPut(key, { contentType: described.mime });
+  const asset = await ctx.db.one(
+    `INSERT INTO media_assets (organisation_id, uploaded_by, scope, owner_type, owner_id, original_filename,
+       storage_key, url, mime_type, size_bytes, kind, status)
+     VALUES ($1,$2,'general',$3,$4,$5,$6,$7,$8,$9,$10,'pending') RETURNING *`,
+    [organisationId, uploadedBy || null, FORM_UPLOAD_OWNER, formId, filename, key, url,
+      described.mime, Number.isFinite(Number(size)) ? Number(size) : null, described.kind]
+  );
+  return {
+    asset,
+    upload: { url: upload.url, method: upload.method, headers: upload.headers, expiresAt: upload.expiresAt }
+  };
+}
+
+async function completeFormUpload(ctx, { organisationId, formId, assetId }) {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(assetId || ''))) {
+    throw new AppError('NOT_FOUND');
+  }
+  const asset = await ctx.db.one(
+    `SELECT * FROM media_assets WHERE id = $1 AND organisation_id = $2 AND owner_type = $3 AND owner_id = $4`,
+    [assetId, organisationId, FORM_UPLOAD_OWNER, formId]
+  );
+  if (!asset || asset.status === 'deleted') throw new AppError('NOT_FOUND');
+  return ctx.db.one(
+    "UPDATE media_assets SET status = 'ready', completed_at = now() WHERE id = $1 RETURNING *",
+    [asset.id]
+  );
 }
 
 /**
@@ -384,6 +452,46 @@ function register(router) {
     });
   }, { permission: 'forms.manage.daycare' });
 
+  // Uploads for staff and signed-in parents. The same endpoints serve both:
+  // a parent only needs parent.forms.submit.own, while staff use their form
+  // permissions, and R2 credentials never leave the API.
+  router.post('/forms/:id/uploads', async (ctx) => {
+    const body = validate(ctx.body, {
+      filename: { type: 'string', min: 1, max: 255 },
+      contentType: { type: 'string', max: 120 },
+      size: { type: 'number', min: 1, max: 200 * 1024 * 1024, optional: true }
+    });
+    const form = await ctx.db.one('SELECT id FROM form_definitions WHERE id = $1 AND organisation_id = $2',
+      [ctx.params.id, ctx.organisationId]);
+    if (!form) throw new AppError('NOT_FOUND');
+    ctx.status = 201;
+    return beginFormUpload(ctx, {
+      organisationId: ctx.organisationId,
+      formId: form.id,
+      uploadedBy: ctx.user && ctx.user.id,
+      filename: body.filename,
+      contentType: body.contentType,
+      size: body.size
+    });
+  }, {
+    permission: ['parent.forms.submit.own', 'forms.read.daycare', 'forms.manage.daycare'],
+    permissionMode: 'any'
+  });
+
+  router.post('/forms/:id/uploads/:assetId/complete', async (ctx) => {
+    const form = await ctx.db.one('SELECT id FROM form_definitions WHERE id = $1 AND organisation_id = $2',
+      [ctx.params.id, ctx.organisationId]);
+    if (!form) throw new AppError('NOT_FOUND');
+    return completeFormUpload(ctx, {
+      organisationId: ctx.organisationId,
+      formId: form.id,
+      assetId: ctx.params.assetId
+    });
+  }, {
+    permission: ['parent.forms.submit.own', 'forms.read.daycare', 'forms.manage.daycare'],
+    permissionMode: 'any'
+  });
+
   router.get('/forms/:id/submissions', async (ctx) => {
     const form = await ctx.db.one('SELECT * FROM form_definitions WHERE id = $1 AND organisation_id = $2',
       [ctx.params.id, ctx.organisationId]);
@@ -608,6 +716,62 @@ function register(router) {
         ? { required: payment.required, amount: payment.amount, currency: payment.currency, available: payment.available, checkout }
         : null
     };
+  }, { public: true });
+
+  // Public uploads are deliberately separate from the media module: visitors
+  // have no session, so the organisation and form are resolved from the URL
+  // and the upload is rate limited like the public submission itself.
+  router.post('/public/forms/:orgSlug/:formSlug/uploads', async (ctx) => {
+    const limit = rateLimit(`public-form-upload:${ctx.ip}`, 30, 10 * 60 * 1000);
+    if (!limit.allowed) throw new AppError('RATE_LIMITED');
+    const body = validate(ctx.body, {
+      filename: { type: 'string', min: 1, max: 255 },
+      contentType: { type: 'string', max: 120 },
+      size: { type: 'number', min: 1, max: 200 * 1024 * 1024, optional: true }
+    });
+    const org = await ctx.db.one(
+      "SELECT id FROM organisations WHERE slug = $1 AND status IN ('active','onboarding')",
+      [ctx.params.orgSlug]
+    );
+    if (!org) throw new AppError('NOT_FOUND');
+    const form = await ctx.db.one(
+      `SELECT f.id FROM form_definitions f
+       JOIN form_versions v ON v.id = f.current_version_id
+       WHERE f.organisation_id = $1 AND f.slug = $2 AND f.status = 'published' AND f.is_public = true`,
+      [org.id, ctx.params.formSlug]
+    );
+    if (!form) throw new AppError('NOT_FOUND');
+    ctx.status = 201;
+    return beginFormUpload(ctx, {
+      organisationId: org.id,
+      formId: form.id,
+      uploadedBy: null,
+      filename: body.filename,
+      contentType: body.contentType,
+      size: body.size
+    });
+  }, { public: true });
+
+  router.post('/public/forms/:orgSlug/:formSlug/uploads/:assetId/complete', async (ctx) => {
+    const limit = rateLimit(`public-form-upload:${ctx.ip}`, 30, 10 * 60 * 1000);
+    if (!limit.allowed) throw new AppError('RATE_LIMITED');
+    const org = await ctx.db.one(
+      "SELECT id FROM organisations WHERE slug = $1 AND status IN ('active','onboarding')",
+      [ctx.params.orgSlug]
+    );
+    if (!org) throw new AppError('NOT_FOUND');
+    const form = await ctx.db.one(
+      `SELECT f.id FROM form_definitions f
+       JOIN form_versions v ON v.id = f.current_version_id
+       WHERE f.organisation_id = $1 AND f.slug = $2 AND f.status = 'published' AND f.is_public = true`,
+      [org.id, ctx.params.formSlug]
+    );
+    if (!form) throw new AppError('NOT_FOUND');
+    return completeFormUpload(ctx, {
+      organisationId: org.id,
+      formId: form.id,
+      assetId: ctx.params.assetId
+    });
   }, { public: true });
 
   // --- Consent ------------------------------------------------------------

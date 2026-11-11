@@ -333,10 +333,11 @@ test('every form field type survives publish, public submission and review', asy
     { key: 'programme', label: 'Programme', type: 'select', options: ['Toddlers', 'Preschool', 'Aftercare'] },
     { key: 'transport', label: 'Transport needed', type: 'radio', options: ['Yes', 'No', 'Sometimes'] },
     { key: 'consent', label: 'I consent to photographs', type: 'checkbox' },
+    { key: 'interests', label: 'Interests', type: 'checkboxes', options: ['Art', 'Music', 'Sport'] },
     { key: 'document', label: 'Supporting document link', type: 'file' },
     { key: 'signature', label: 'Parent signature', type: 'signature', required: true }
   ];
-  const expectedTypes = ['text', 'textarea', 'email', 'phone', 'number', 'date', 'select', 'radio', 'checkbox', 'file', 'signature'];
+  const expectedTypes = ['text', 'textarea', 'email', 'phone', 'number', 'date', 'select', 'radio', 'checkbox', 'checkboxes', 'file', 'signature'];
 
   const form = await client.post('/forms', {
     name: 'All field types',
@@ -369,6 +370,7 @@ test('every form field type survives publish, public submission and review', asy
       programme: 'Preschool',
       transport: 'Sometimes',
       consent: true,
+      interests: ['Art', 'Sport'],
       document: 'https://example.com/immunisation.pdf',
       signature: 'Thandi Mokoena'
     }
@@ -383,6 +385,7 @@ test('every form field type survives publish, public submission and review', asy
   assert.ok(stored, 'the public submission is visible to staff');
   assert.equal(stored.submission_data.age, 4);
   assert.equal(stored.submission_data.consent, true);
+  assert.deepEqual(stored.submission_data.interests, ['Art', 'Sport']);
   assert.equal(stored.submission_data.transport, 'Sometimes');
   assert.equal(stored.submission_data.document, 'https://example.com/immunisation.pdf');
   assert.equal(stored.submission_data.signature, 'Thandi Mokoena');
@@ -431,6 +434,75 @@ test('a document link and typed signature are validated rather than stored blind
   });
   assert.equal(good.status, 200, good.text);
   assert.equal(good.data.received, true);
+});
+
+test('checkboxes accept only their configured options', async () => {
+  const { client, organisationId } = await principalContext();
+  const slug = 'checkbox-options-' + Date.now();
+  const form = await client.post('/forms', {
+    name: 'Checkbox options',
+    slug,
+    formType: 'general',
+    isPublic: true,
+    fields: [
+      { key: 'interests', label: 'Interests', type: 'checkboxes', options: ['Art', 'Music', 'Sport'], required: true }
+    ]
+  }, { organisationId });
+  assert.equal(form.status, 201, form.text);
+  assert.equal(form.data.schema_json.fields[0].type, 'checkboxes');
+  await client.post('/forms/' + form.data.id + '/publish', {}, { organisationId });
+
+  const visitor = createClient();
+  const missing = await visitor.post('/public/forms/little-sprouts/' + slug + '/submit', { data: {} });
+  assert.equal(missing.status, 422);
+  assert.equal(missing.error.details[0].field, 'interests');
+
+  const invalid = await visitor.post('/public/forms/little-sprouts/' + slug + '/submit', {
+    data: { interests: ['Art', 'Coding'] }
+  });
+  assert.equal(invalid.status, 422);
+  assert.equal(invalid.error.details[0].field, 'interests');
+
+  const good = await visitor.post('/public/forms/little-sprouts/' + slug + '/submit', {
+    data: { interests: ['Art', 'Music'] }
+  });
+  assert.equal(good.status, 200, good.text);
+  assert.equal(good.data.received, true);
+});
+
+test('form file uploads are routed through storage for staff and public visitors', async () => {
+  const { client, organisationId } = await principalContext();
+  const slug = 'upload-form-' + Date.now();
+  const form = await client.post('/forms', {
+    name: 'Upload form',
+    slug,
+    formType: 'general',
+    isPublic: true,
+    fields: [{ key: 'document', label: 'Supporting document', type: 'file' }]
+  }, { organisationId });
+  assert.equal(form.status, 201, form.text);
+  await client.post('/forms/' + form.data.id + '/publish', {}, { organisationId });
+
+  // Storage is configured in production but not in the test environment. The
+  // route must still be wired: it either reserves an upload or explains that
+  // storage is missing, never 404/500.
+  const staffUpload = await client.post('/forms/' + form.data.id + '/uploads', {
+    filename: 'medical.pdf', contentType: 'application/pdf', size: 2048
+  }, { organisationId });
+  assert.ok([201, 409].includes(staffUpload.status), staffUpload.text);
+  if (staffUpload.status === 409) assert.equal(staffUpload.error.code, 'CONFLICT');
+
+  const visitor = createClient();
+  const publicUpload = await visitor.post('/public/forms/little-sprouts/' + slug + '/uploads', {
+    filename: 'medical.pdf', contentType: 'application/pdf', size: 2048
+  });
+  assert.ok([201, 409].includes(publicUpload.status), publicUpload.text);
+
+  const rejected = await visitor.post('/public/forms/little-sprouts/' + slug + '/uploads', {
+    filename: 'script.exe', contentType: 'application/x-msdownload', size: 2048
+  });
+  assert.equal(rejected.status, 422);
+  assert.equal(rejected.error.details[0].field, 'contentType');
 });
 
 test('staff invitation is created with a one-time token and correct tenancy', async () => {

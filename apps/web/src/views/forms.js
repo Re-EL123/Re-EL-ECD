@@ -15,7 +15,8 @@
     { value: 'select', label: 'Dropdown' },
     { value: 'radio', label: 'Radio buttons' },
     { value: 'checkbox', label: 'Yes / no' },
-    { value: 'file', label: 'Document link' },
+    { value: 'checkboxes', label: 'Checkboxes (multi-select)' },
+    { value: 'file', label: 'File upload' },
     { value: 'signature', label: 'Signature (typed)' }
   ];
 
@@ -24,7 +25,7 @@
     { key: 'key', label: 'Key (optional)', placeholder: 'auto from label' },
     { key: 'type', label: 'Type', type: 'select', options: FIELD_TYPES },
     { key: 'required', label: 'Required', type: 'checkbox' },
-    { key: 'options', label: 'Choices', span: 2, placeholder: 'Comma separated, for dropdowns and radio buttons' },
+    { key: 'options', label: 'Choices', span: 2, placeholder: 'Comma separated, for dropdowns, radio buttons and checkboxes' },
     { key: 'helpText', label: 'Help text', span: 2, placeholder: 'Optional guidance shown under the field' }
   ];
 
@@ -60,6 +61,8 @@
         { key: 'guardian_email', label: 'Parent or guardian email', type: 'email', required: true },
         { key: 'guardian_phone', label: 'Parent or guardian phone', type: 'phone', required: true },
         { key: 'allergies', label: 'Allergies or medical needs', type: 'textarea', helpText: 'List anything the team must know before the first day.' },
+        { key: 'attendance_days', label: 'Days your child will attend', type: 'checkboxes', options: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'], helpText: 'Choose every day that applies.' },
+        { key: 'supporting_documents', label: 'Supporting documents', type: 'file', helpText: 'Upload a birth certificate or immunisation record (PDF or image).' },
         { key: 'photo_consent', label: 'I consent to photos for internal use', type: 'checkbox' }
       ]
     },
@@ -183,7 +186,7 @@
         type,
         required: row.required === true,
         helpText: String(row.helpText || '').trim(),
-        options: ['select', 'radio'].includes(type)
+        options: ['select', 'radio', 'checkboxes'].includes(type)
           ? String(row.options || '').split(',').map((option) => option.trim()).filter(Boolean).slice(0, 50)
           : []
       });
@@ -328,7 +331,7 @@
       return R.card(form.name + ' submissions', R.table({ rows: page.submissions || [], columns: [
         { label: 'Received', render: (s) => '<span class="cell-strong">' + R.dateTime(s.submitted_at) + '</span><span class="cell-sub">' + R.relative(s.submitted_at) + '</span>' },
         { label: 'Submitter', render: (s) => R.esc(s.submitter_email || (s.first_name ? s.first_name + ' ' + s.last_name : 'Anonymous')) },
-        { label: 'Data', render: (s) => '<span class="muted small">' + R.esc(R.truncate(Object.values(s.submission_data || {}).filter((v) => typeof v === 'string').join(' · '), 100)) + '</span>' },
+        { label: 'Data', render: (s) => '<span class="muted small">' + R.esc(R.truncate(Object.values(s.submission_data || {}).map((v) => Array.isArray(v) ? v.join(', ') : typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v)).filter(Boolean).join(' · '), 100)) + '</span>' },
         { label: 'Payment', render: (s) => s.payment_status === 'paid'
           ? '<span class="badge badge-green">Paid</span>'
           : s.payment_status === 'pending' ? '<span class="badge badge-sun">Pending</span>'

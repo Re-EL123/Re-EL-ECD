@@ -732,8 +732,10 @@
         const data = payload.data || {};
         const fields = ((data.form && data.form.schema_json) || {}).fields || [];
         ctx.publicFormData = {};
+        ctx.publicFormSchema = fields;
+        ctx.publicUploads = {};
         fields.forEach((f) => {
-          ctx.publicFormData[f.key] = f.type === 'checkbox' ? false : '';
+          ctx.publicFormData[f.key] = f.type === 'checkboxes' ? [] : '';
         });
         ctx.publicPayerEmail = '';
         ctx.publicPayerName = '';
@@ -769,19 +771,38 @@
       const input = (field) => {
         const model = 'publicFormData.' + field.key;
         const required = field.required ? ' required' : '';
+        const key = R.attr(field.key);
         if (field.type === 'textarea') return '<textarea class="textarea" x-model="' + model + '"' + required + '></textarea>';
         if (field.type === 'radio') {
           return '<div class="radio-group">' + (field.options || []).map((option, index) =>
-            '<label class="check"><input type="radio" name="' + R.attr(field.key) + '" value="' + R.attr(option) + '" x-model="' + model + '"' + (field.required && index === 0 ? ' required' : '') + '><span>' + R.esc(option) + '</span></label>'
+            '<label class="check"><input type="radio" name="' + key + '" value="' + R.attr(option) + '" x-model="' + model + '"' + (field.required && index === 0 ? ' required' : '') + '><span>' + R.esc(option) + '</span></label>'
+          ).join('') + '</div>';
+        }
+        if (field.type === 'checkboxes') {
+          return '<div class="radio-group">' + (field.options || []).map((option) =>
+            '<label class="check"><input type="checkbox" value="' + R.attr(option) + '" :checked="(publicFormData.' + field.key + ' || []).includes(' + R.attr(JSON.stringify(option)) + ')" @change="togglePublicChoice(\'' + key + '\', ' + R.attr(JSON.stringify(option)) + ', $event.target.checked)"><span>' + R.esc(option) + '</span></label>'
           ).join('') + '</div>';
         }
         if (field.type === 'select') return '<select class="select" x-model="' + model + '"' + required + '><option value="">Select…</option>' + (field.options || []).map((o) => '<option value="' + R.attr(o) + '">' + R.esc(o) + '</option>').join('') + '</select>';
-        if (field.type === 'checkbox') return '<label class="check"><input type="checkbox" x-model="' + model + '"' + required + '><span>' + R.esc(field.helpText || 'Yes') + '</span></label>';
+        if (field.type === 'checkbox') {
+          // Yes/no is a real choice, not a lone tick box. It stores "true" or
+          // "false" so the API can coerce it to a boolean.
+          return '<div class="radio-group">' +
+            '<label class="check"><input type="radio" name="' + key + '" value="true" x-model="' + model + '"' + required + '><span>Yes</span></label>' +
+            '<label class="check"><input type="radio" name="' + key + '" value="false" x-model="' + model + '"><span>No</span></label>' +
+            '</div>';
+        }
         if (field.type === 'date') return '<input class="input" type="date" x-model="' + model + '"' + required + '>';
         if (field.type === 'number') return '<input class="input" type="number" x-model="' + model + '"' + required + '>';
         if (field.type === 'email') return '<input class="input" type="email" x-model="' + model + '"' + required + '>';
         if (field.type === 'phone') return '<input class="input" type="tel" x-model="' + model + '" autocomplete="tel"' + required + '>';
-        if (field.type === 'file') return '<input class="input" type="url" x-model="' + model + '" placeholder="https://link-to-document"' + required + '>';
+        if (field.type === 'file') {
+          return '<div class="file-field">' +
+            '<input class="input" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.txt,.csv" @change="uploadPublicFormFile($event, \'' + key + '\', \'' + R.attr(params.slug) + '\', \'' + R.attr(params.formSlug) + '\')">' +
+            '<div class="hint" x-show="publicUploads[\'' + key + '\']">Uploading…</div>' +
+            '<div class="hint" x-show="publicFormData.' + field.key + '"><a :href="publicFormData.' + field.key + '" target="_blank" rel="noopener">View uploaded file</a> · <button type="button" class="btn btn-sm btn-ghost" @click="removePublicFormFile(\'' + key + '\')">Remove</button></div>' +
+            '</div>';
+        }
         if (field.type === 'signature') return '<input class="input" type="text" x-model="' + model + '" autocomplete="name" placeholder="Type your full name to sign"' + required + '>';
         return '<input class="input" type="text" x-model="' + model + '"' + required + '>';
       };

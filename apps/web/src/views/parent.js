@@ -375,23 +375,25 @@
         name: field.key,
         label: field.label,
         type: field.type === 'textarea' ? 'textarea'
-          : field.type === 'checkbox' ? 'checkbox'
+          : field.type === 'checkbox' ? 'radio'
+          : field.type === 'checkboxes' ? 'checkboxes'
           : field.type === 'select' ? 'select'
           : field.type === 'radio' ? 'radio'
           : field.type === 'date' ? 'date'
           : field.type === 'number' ? 'number'
           : field.type === 'email' ? 'email'
           : field.type === 'phone' ? 'tel'
-          : field.type === 'file' ? 'url'
+          : field.type === 'file' ? 'formfile'
           : 'text',
         required: field.required === true,
-        options: (field.options || []).map((o) => ({ value: o, label: o })),
-        help: field.type === 'checkbox' ? (field.helpText || 'Yes') : (field.helpText || null),
-        placeholder: field.type === 'file' ? 'https://link-to-document'
-          : field.type === 'signature' ? 'Type your full name to sign'
-            : null,
+        options: field.type === 'checkbox'
+          ? [{ value: 'true', label: 'Yes' }, { value: 'false', label: 'No' }]
+          : (field.options || []).map((o) => ({ value: o, label: o })),
+        help: field.type === 'checkbox' ? null : (field.helpText || null),
+        placeholder: field.type === 'signature' ? 'Type your full name to sign' : null,
         span: field.type === 'textarea' ? 2 : undefined,
-        value: field.type === 'checkbox' ? false : ''
+        formId: form.id,
+        value: field.type === 'checkboxes' ? [] : ''
       }));
       ctx.openModal({
         title: form.name, endpoint: '/forms/' + id + '/submit', submitLabel: 'Submit form', size: 'wide',
