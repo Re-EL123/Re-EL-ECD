@@ -63,6 +63,22 @@ function safeEmail(value) {
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleaned) ? cleaned : '';
 }
 
+/**
+ * Links may point at an external site, a same-site path, a hash route or one
+ * of the known page keys. They are kept separate from image URLs so a button
+ * can safely use mailto:, tel: or #/site/... without widening what an image
+ * src accepts.
+ */
+function safeLink(value) {
+  const cleaned = text(value, LIMITS.url);
+  if (!cleaned) return '';
+  if (/^(https?:\/\/|mailto:|tel:)/i.test(cleaned)) return cleaned;
+  if (/^#\//.test(cleaned)) return cleaned;
+  if (/^\/(?!\/)/.test(cleaned)) return cleaned;
+  if (/^[a-z0-9][a-z0-9-]*$/i.test(cleaned)) return cleaned;
+  return '';
+}
+
 function safePhone(value) {
   return text(value, 60).replace(/[^\d+()\s.-]/g, '');
 }
@@ -100,9 +116,9 @@ function normaliseHero(input) {
     headline: text(source.headline, 180),
     subheadline: text(source.subheadline, LIMITS.medium),
     cta: text(source.cta, 60) || 'Book a visit',
-    ctaHref: safeUrl(source.ctaHref) || '',
+    ctaHref: safeLink(source.ctaHref) || '',
     secondaryCta: text(source.secondaryCta, 60) || 'Explore programmes',
-    secondaryHref: safeUrl(source.secondaryHref) || '',
+    secondaryHref: safeLink(source.secondaryHref) || '',
     image: safeUrl(source.image),
     stats: objects(source.stats, (row) => ({
       label: text(row.label, 60),
@@ -209,6 +225,7 @@ function normaliseAdmissions(input) {
     intro: text(source.intro, LIMITS.long),
     openDays: text(source.openDays, LIMITS.medium),
     cta: text(source.cta, 120),
+    ctaHref: safeLink(source.ctaHref) || '',
     checklist: stringList(source.checklist, 12, 160),
     steps: objects(source.steps, (row) => ({
       title: text(row.title || row.name, 140),
@@ -451,5 +468,6 @@ module.exports = {
   canonicalUrlForHost,
   deepMerge,
   safeUrl,
+  safeLink,
   text
 };

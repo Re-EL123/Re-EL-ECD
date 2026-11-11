@@ -117,6 +117,32 @@
 
   function attr(value) { return esc(value); }
 
+  /**
+   * Minimal, safe inline formatting for tenant-authored copy. Everything is
+   * escaped first, then *asterisks* become bold. Two asterisks work too, so
+   * people who reach for Markdown are not surprised.
+   */
+  function richText(value) {
+    const escaped = esc(value);
+    return escaped
+      .replace(/\*\*([^*\n]+)\*\*/g, '*$1*')
+      .replace(/\*([^*\n]+)\*/g, '<strong>$1</strong>');
+  }
+
+  /**
+   * Paragraph-aware rich text. A blank line starts a new paragraph and a
+   * single newline becomes a line break, so long descriptions stay readable
+   * instead of collapsing into one wall of text.
+   */
+  function richParagraphs(value, className) {
+    const raw = String(value === null || value === undefined ? '' : value).replace(/\r\n/g, '\n').trim();
+    if (!raw) return '';
+    const cls = className ? ' class="' + attr(className) + '"' : '';
+    return raw.split(/\n{2,}/).map((block) =>
+      '<p' + cls + '>' + richText(block).replace(/\n/g, '<br>') + '</p>'
+    ).join('');
+  }
+
   function titleCase(value) {
     if (value === null || value === undefined || value === '') return '';
     return String(value).replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -710,6 +736,8 @@
   Reel.exportButtons = exportButtons;
   Reel.esc = esc;
   Reel.attr = attr;
+  Reel.richText = richText;
+  Reel.richParagraphs = richParagraphs;
   Reel.titleCase = titleCase;
   Reel.initials = initials;
   Reel.money = money;

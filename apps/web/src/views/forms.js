@@ -296,7 +296,7 @@
           '</div>'
         : '';
       return R.card(form.name,
-        '<div class="muted small" style="margin-bottom:10px">' + R.esc(form.description || 'No description yet.') + '</div>' +
+        '<div class="form-description muted small" style="margin-bottom:10px">' + R.richParagraphs(form.description || 'No description yet.') + '</div>' +
         '<div class="form-badge-row">' + R.badge(form.status) +
         (isDraft ? '<span class="badge badge-sun">Draft v' + R.number(latest.version_number) + ' — not live yet</span>' : '') +
         (form.is_public ? '<span class="badge badge-green">Public</span>' : '<span class="badge badge-muted">Private</span>') +
@@ -372,7 +372,7 @@
             { name: 'name', label: 'Form name', required: true, placeholder: 'Learner enrolment', help: 'Shown to families and staff.' },
             { name: 'slug', label: 'Public link slug', placeholder: 'learner-enrolment', help: 'Leave blank and we will create it from the name.' },
             { name: 'formType', label: 'Type', type: 'select', options: ['general', 'enrolment', 'medical', 'consent', 'incident', 'feedback'], value: 'general' },
-            { name: 'description', label: 'Description', type: 'textarea', span: 2, placeholder: 'What this form is for, and who should complete it.' },
+            { name: 'description', label: 'Description', type: 'textarea', span: 2, placeholder: 'What this form is for, and who should complete it.', help: 'Shown above the form. Leave a blank line between paragraphs, and wrap words in *asterisks* to make them bold.' },
             { name: 'isPublic', label: 'Public form', type: 'checkbox', value: false, help: 'Anyone with the link can submit. Leave off for staff-only forms.' },
             { name: 'displayOnWebsite', label: 'Show on the public website', type: 'checkbox', value: true, help: 'Lists the form on your website’s forms page', showIf: (data) => data.isPublic === true },
             { name: 'paymentEnabled', label: 'Take a payment', type: 'checkbox', value: false, help: 'Send the payer to PayFast after submitting' },
@@ -405,7 +405,7 @@
           fields: [
             { name: 'name', label: 'Form name', required: true, value: form.name },
             { name: 'formType', label: 'Type', type: 'select', options: ['general', 'enrolment', 'medical', 'consent', 'incident', 'feedback'], value: form.form_type || 'general' },
-            { name: 'description', label: 'Description', type: 'textarea', span: 2, value: form.description || '' },
+            { name: 'description', label: 'Description', type: 'textarea', span: 2, value: form.description || '', help: 'Shown above the form. Leave a blank line between paragraphs, and wrap words in *asterisks* to make them bold.' },
             { name: 'isPublic', label: 'Public form', type: 'checkbox', value: form.is_public === true, help: 'Anyone with the link can submit. Leave off for staff-only forms.' },
             { name: 'displayOnWebsite', label: 'Show on the public website', type: 'checkbox', value: form.display_on_website !== false, help: 'Lists the form on your website’s forms page', showIf: (data) => data.isPublic === true },
             { name: 'paymentEnabled', label: 'Take a payment', type: 'checkbox', value: form.payment_enabled === true, help: 'Send the payer to PayFast after submitting' },

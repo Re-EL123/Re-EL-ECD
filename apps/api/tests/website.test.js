@@ -51,6 +51,30 @@ test('website content is normalised into a complete, safe shape', () => {
   assert.equal(content.seo.image, 'https://cdn.example.com/one.jpg');
 });
 
+test('button links keep safe destinations and reject script URLs', () => {
+  const content = websiteContent.normalise({
+    hero: {
+      headline: 'Where little minds grow',
+      ctaHref: '/apply',
+      secondaryHref: 'https://example.com/programmes'
+    },
+    admissions: { ctaHref: 'mailto:hello@example.co.za' }
+  }, { name: 'Little Sprouts', slug: 'little-sprouts' });
+
+  assert.equal(content.hero.ctaHref, '/apply');
+  assert.equal(content.hero.secondaryHref, 'https://example.com/programmes');
+  assert.equal(content.admissions.ctaHref, 'mailto:hello@example.co.za');
+
+  const unsafe = websiteContent.normalise({
+    hero: { ctaHref: 'javascript:alert(1)', secondaryHref: 'data:text/html,hi' },
+    admissions: { ctaHref: 'javascript:alert(2)' }
+  }, { name: 'Little Sprouts', slug: 'little-sprouts' });
+
+  assert.equal(unsafe.hero.ctaHref, '');
+  assert.equal(unsafe.hero.secondaryHref, '');
+  assert.equal(unsafe.admissions.ctaHref, '');
+});
+
 test('the public payload carries normalised content, pages and SEO', async () => {
   const client = createClient();
   const site = await client.get('/public/daycares/little-sprouts');
@@ -84,20 +108,25 @@ test('a principal can edit, preview and publish the whole website', async () => 
       hero: {
         headline: 'Bright beginnings start here',
         subheadline: 'A warm, play-based home in Rosebank.',
-        image: 'https://cdn.example.com/hero.jpg'
+        image: 'https://cdn.example.com/hero.jpg',
+        ctaHref: '/programmes',
+        secondaryHref: 'https://example.com/tour'
       },
       about: { body: 'Our educators know every child by name and follow their lead.' },
       programmes: [
         { name: 'Seedlings', ages: '18 months – 3 years', description: 'Gentle settling and sensory play.', image: 'https://cdn.example.com/seedlings.jpg', price: 'From R4 200' }
       ],
       gallery: [{ url: 'https://cdn.example.com/garden.jpg', caption: 'The play garden' }],
-      admissions: { checklist: ['Birth certificate', 'Allergy information'] },
+      admissions: { checklist: ['Birth certificate', 'Allergy information'], ctaHref: 'mailto:admissions@example.com' },
       seo: { keywords: 'creche rosebank, preschool johannesburg', description: 'A warm, play-based ECD centre in Rosebank.' }
     }
   }, { organisationId });
   assert.equal(draft.status, 200);
   assert.equal(draft.data.content.hero.headline, 'Bright beginnings start here');
   assert.equal(draft.data.content.hero.image, 'https://cdn.example.com/hero.jpg');
+  assert.equal(draft.data.content.hero.ctaHref, '/programmes');
+  assert.equal(draft.data.content.hero.secondaryHref, 'https://example.com/tour');
+  assert.equal(draft.data.content.admissions.ctaHref, 'mailto:admissions@example.com');
   assert.equal(draft.data.content.gallery[0].caption, 'The play garden');
   assert.equal(draft.data.content.admissions.checklist.length, 2);
   assert.ok(draft.data.content.seo.keywords.includes('creche rosebank'));
@@ -115,6 +144,9 @@ test('a principal can edit, preview and publish the whole website', async () => 
   const site = await client.get('/public/daycares/little-sprouts');
   assert.equal(site.status, 200);
   assert.equal(site.data.content.hero.headline, 'Bright beginnings start here');
+  assert.equal(site.data.content.hero.ctaHref, '/programmes');
+  assert.equal(site.data.content.hero.secondaryHref, 'https://example.com/tour');
+  assert.equal(site.data.content.admissions.ctaHref, 'mailto:admissions@example.com');
   assert.equal(site.data.content.gallery[0].caption, 'The play garden');
   assert.ok(site.data.seo.keywords.includes('preschool johannesburg'));
   assert.equal(site.data.seo.description, 'A warm, play-based ECD centre in Rosebank.');

@@ -1361,6 +1361,7 @@
           type: 'form',
           title: config.title,
           description: config.description || null,
+          descriptionHtml: config.descriptionHtml || null,
           fields: config.fields || [],
           data,
           submitLabel: config.submitLabel || 'Save',

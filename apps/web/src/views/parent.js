@@ -355,7 +355,7 @@
           const schema = f.schema_json || {};
           const fields = schema.fields || [];
           return R.card(f.name,
-            '<p class="muted small">' + R.esc(f.description || 'Please complete this form.') + '</p>' +
+            '<div class="form-description muted small">' + R.richParagraphs(f.description || 'Please complete this form.') + '</div>' +
             '<div class="row" style="margin-bottom:8px"><span class="badge badge-muted">' + R.number(fields.length) + ' questions</span>' +
             (fields.some((x) => x.required) ? '<span class="badge badge-sun">Required fields</span>' : '') + '</div>',
             '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'completeForm\',\'' + R.attr(f.id) + '\')">Complete form</button>');
@@ -397,7 +397,7 @@
       }));
       ctx.openModal({
         title: form.name, endpoint: '/forms/' + id + '/submit', submitLabel: 'Submit form', size: 'wide',
-        description: form.description || 'Complete every required question.',
+        descriptionHtml: R.richParagraphs(form.description || 'Complete every required question.'),
         fields: [
           ...(children.length ? [{ name: 'learnerId', label: 'Child this relates to', type: 'select', options: children.map((c) => ({ value: c.id, label: childLabel(c) })) }] : []),
           ...fields

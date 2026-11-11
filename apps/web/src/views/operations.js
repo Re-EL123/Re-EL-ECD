@@ -245,9 +245,28 @@
       ? '<textarea class="textarea" rows="' + (opts.rows || 3) + '" x-model="' + model + '"' +
         (opts.placeholder ? ' placeholder="' + R.attr(opts.placeholder) + '"' : '') + '></textarea>'
       : '<input class="input" type="' + (opts.type || 'text') + '" x-model="' + model + '"' +
-        (opts.placeholder ? ' placeholder="' + R.attr(opts.placeholder) + '"' : '') + '>';
+        (opts.placeholder ? ' placeholder="' + R.attr(opts.placeholder) + '"' : '') +
+        (opts.list ? ' list="' + R.attr(opts.list) + '"' : '') + '>';
     return '<div class="field' + (opts.span ? ' span-2' : '') + '"><label>' + R.esc(label) + '</label>' +
       control + (opts.help ? '<div class="hint">' + R.esc(opts.help) + '</div>' : '') + '</div>';
+  }
+
+  // Suggestions for the button-link fields. Any value is still allowed — these
+  // just save the owner from remembering the page paths.
+  const SITE_LINK_OPTIONS = [
+    { value: '/apply', label: 'Enquiry form' },
+    { value: '/', label: 'Home' },
+    { value: '/about', label: 'About' },
+    { value: '/programmes', label: 'Programmes' },
+    { value: '/admissions', label: 'Admissions' },
+    { value: '/gallery', label: 'Gallery' },
+    { value: '/contact', label: 'Contact' },
+    { value: '/forms', label: 'Forms' }
+  ];
+
+  function siteLinkDatalist() {
+    return '<datalist id="site-link-options">' + SITE_LINK_OPTIONS.map((option) =>
+      '<option value="' + R.attr(option.value) + '">' + R.esc(option.label) + '</option>').join('') + '</datalist>';
   }
 
   function editorImage(label, model, pathExpression, help) {
@@ -375,6 +394,8 @@
           '<a class="btn btn-secondary btn-sm" href="#/app/settings">' + R.icon('palette') + ' Manage branding</a>' +
           '</div>', pagePreview(slug, 'home')) +
         '<div class="site-tabs section">' + tabButtons + '</div>' +
+        siteLinkDatalist() +
+        '<p class="muted small" style="margin:-4px 0 14px">Wrap words in *asterisks* to make them bold, and leave a blank line between paragraphs. Button links can be a page path such as /programmes, a full https:// address, mailto: or tel:.</p>' +
         this.renderHomePanel(ctx, slug, canManage, config) +
         this.renderAboutPanel(ctx, slug, canManage) +
         this.renderProgrammesPanel(ctx, slug, canManage) +
@@ -395,7 +416,9 @@
           editorField('Headline', 'siteDraft.hero.headline', { span: true, placeholder: 'Where little minds grow' }) +
           editorField('Subheadline', 'siteDraft.hero.subheadline', { span: true, textarea: true, rows: 3, placeholder: 'A warm, play-based early learning home.' }) +
           editorField('Button label', 'siteDraft.hero.cta', { placeholder: 'Book a visit' }) +
+          editorField('First button link', 'siteDraft.hero.ctaHref', { list: 'site-link-options', placeholder: '/apply', help: 'Where the main button goes. Leave blank to use the enquiry form.' }) +
           editorField('Second button label', 'siteDraft.hero.secondaryCta', { placeholder: 'Explore programmes' }) +
+          editorField('Second button link', 'siteDraft.hero.secondaryHref', { list: 'site-link-options', placeholder: '/programmes', help: 'Where the second button goes. Leave blank to use the programmes page.' }) +
           editorImage('Hero image', 'siteDraft.hero.image', '\'hero.image\'', 'A bright, welcoming photo works best. It appears beside the headline on the home page.') +
           editorField('Announcement', 'siteDraft.announcement', { span: true, textarea: true, rows: 2, placeholder: 'Optional notice shown at the top of the home page' }) +
           '</div>', pagePreview(slug, 'home')) +
@@ -503,6 +526,7 @@
           editorField('Introduction', 'siteDraft.admissions.intro', { span: true, textarea: true, rows: 4 }) +
           editorField('Open days', 'siteDraft.admissions.openDays', { span: true, placeholder: 'Open mornings every Tuesday, 09:00 – 11:00' }) +
           editorField('Closing call to action', 'siteDraft.admissions.cta', { span: true, placeholder: 'Come and see us' }) +
+          editorField('Closing call to action link', 'siteDraft.admissions.ctaHref', { span: true, list: 'site-link-options', placeholder: '/apply', help: 'Where the closing button goes. Leave blank to use the enquiry form.' }) +
           '</div>', pagePreview(slug, 'admissions')) +
         editorCard('Admissions steps', '<template x-for="(step, index) in siteDraft.admissions.steps" :key="index"><div class="site-repeat">' +
           repeatHead('Step', 'admissions.steps', 'index') +

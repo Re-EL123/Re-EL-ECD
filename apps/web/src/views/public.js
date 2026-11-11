@@ -81,6 +81,32 @@
   }
 
   /**
+   * Turn an editor link into a real destination. Empty values keep the old
+   * sensible default, known page keys and /paths stay inside this centre's
+   * site, and full URLs, mailto: and tel: links pass through untouched.
+   */
+  function resolveSiteLink(slug, value, fallbackKey) {
+    const raw = String(value || '').trim();
+    if (!raw) {
+      // The enquiry page is not one of the standard page keys, so it needs
+      // its own fallback rather than going through siteHref.
+      if (fallbackKey === 'apply') return '#/site/' + encodeURIComponent(slug) + '/apply';
+      return siteHref(slug, fallbackKey);
+    }
+    if (/^(https?:\/\/|mailto:|tel:)/i.test(raw)) return raw;
+    if (/^#\//.test(raw)) return raw;
+    const path = raw.replace(/^\/+/, '').replace(/\/+$/, '');
+    if (!path) return siteHref(slug, 'home');
+    if (path === 'apply') return '#/site/' + encodeURIComponent(slug) + '/apply';
+    const page = SITE_PAGES.find((entry) => entry.key === path || entry.path === path);
+    return '#/site/' + encodeURIComponent(slug) + '/' + encodeURIComponent(page ? page.path : path);
+  }
+
+  function linkTarget(href) {
+    return /^https?:\/\//i.test(String(href || '')) ? ' target="_blank" rel="noopener"' : '';
+  }
+
+  /**
    * Staff sign-in always belongs to the product's own address. On a tenant's
    * custom domain the session cookie and CSRF token live on the platform
    * origin, so sending staff to the platform address avoids a confusing
@@ -194,7 +220,7 @@
       '<div class="site-wrap site-footer-grid">' +
       '<div class="site-footer-brand">' + logoMark(org, 46) +
       '<div><div class="strong">' + R.esc(org.name || 'Early learning centre') + '</div>' +
-      '<p class="muted small">' + R.esc((content && content.hero && content.hero.subheadline) || 'Play-based early learning, caring educators and a community where every child belongs.') + '</p>' +
+      R.richParagraphs((content && content.hero && content.hero.subheadline) || 'Play-based early learning, caring educators and a community where every child belongs.', 'muted small') +
       socialLinks(social) + '</div></div>' +
       '<div><div class="site-footer-title">Explore</div><div class="site-footer-links">' + links + '</div></div>' +
       '<div><div class="site-footer-title">Contact</div><div class="site-footer-links">' +
@@ -211,7 +237,7 @@
 
   function sectionHead(eyebrow, title, lede) {
     return '<div class="site-section-head">' + (eyebrow ? '<div class="site-eyebrow">' + R.esc(eyebrow) + '</div>' : '') +
-      '<h2>' + R.esc(title || '') + '</h2>' + (lede ? '<p class="lede">' + R.esc(lede) + '</p>' : '') + '</div>';
+      '<h2>' + R.richText(title || '') + '</h2>' + (lede ? R.richParagraphs(lede, 'lede') : '') + '</div>';
   }
 
   function pageHero(title, lede, image, eyebrow) {
@@ -219,7 +245,7 @@
       (safeImageUrl(image) ? imgTag(image, '', 'site-page-hero-image') : '') +
       '<div class="site-wrap site-page-hero-inner">' +
       (eyebrow ? '<div class="site-eyebrow">' + R.esc(eyebrow) + '</div>' : '') +
-      '<h1>' + R.esc(title || '') + '</h1>' + (lede ? '<p class="lede">' + R.esc(lede) + '</p>' : '') +
+      '<h1>' + R.richText(title || '') + '</h1>' + (lede ? R.richParagraphs(lede, 'lede') : '') +
       '</div></header>';
   }
 
@@ -234,7 +260,7 @@
       '<div class="site-card-body">' +
       (programme.ages ? '<div class="site-pill">' + R.esc(programme.ages) + '</div>' : '') +
       '<h3>' + R.esc(programme.name) + '</h3>' +
-      (programme.description ? '<p>' + R.esc(programme.description) + '</p>' : '') +
+      (programme.description ? R.richParagraphs(programme.description) : '') +
       (programme.price ? '<div class="site-price">' + R.esc(programme.price) + '</div>' : '') +
       '</div></article>').join('') + '</div>';
   }
@@ -244,14 +270,14 @@
     if (!rows.length) return '';
     return '<div class="site-gallery">' + rows.map((item) =>
       '<figure class="site-gallery-item">' + imgTag(item.url, item.caption || 'Centre photo', 'site-gallery-image') +
-      (item.caption ? '<figcaption>' + R.esc(item.caption) + '</figcaption>' : '') + '</figure>').join('') + '</div>';
+      (item.caption ? '<figcaption>' + R.richText(item.caption) + '</figcaption>' : '') + '</figure>').join('') + '</div>';
   }
 
   function valueCards(values) {
     if (!values || !values.length) return '';
     return '<div class="site-card-grid site-values">' + values.map((value) =>
       '<article class="site-value"><div class="site-value-mark">' + R.icon('sparkles') + '</div>' +
-      '<h3>' + R.esc(value.title) + '</h3><p>' + R.esc(value.description) + '</p></article>').join('') + '</div>';
+      '<h3>' + R.richText(value.title) + '</h3>' + R.richParagraphs(value.description) + '</article>').join('') + '</div>';
   }
 
   function contactCards(contact) {
@@ -303,10 +329,11 @@
 
   function ctaBand(slug, admissions, org) {
     const title = (admissions && admissions.cta) || 'Come and see us';
+    const ctaHref = resolveSiteLink(slug, admissions && admissions.ctaHref, 'apply');
     return '<section class="site-cta"><div class="site-wrap site-cta-inner">' +
-      '<div><div class="site-eyebrow">Admissions</div><h2>' + R.esc(title) + '</h2>' +
-      '<p>' + R.esc((admissions && admissions.intro) || ('Enquire about a place at ' + (org.name || 'our centre') + '. We will reply by email and arrange a visit.')) + '</p></div>' +
-      '<div class="site-actions"><a class="btn btn-primary" href="#/site/' + R.attr(slug) + '/apply">Enquire about a place</a>' +
+      '<div><div class="site-eyebrow">Admissions</div><h2>' + R.richText(title) + '</h2>' +
+      R.richParagraphs((admissions && admissions.intro) || ('Enquire about a place at ' + (org.name || 'our centre') + '. We will reply by email and arrange a visit.')) + '</div>' +
+      '<div class="site-actions"><a class="btn btn-primary" href="' + R.attr(ctaHref) + '"' + linkTarget(ctaHref) + '>Enquire about a place</a>' +
       '<a class="btn btn-secondary" href="' + R.attr(siteHref(slug, 'forms')) + '">Forms and payments</a></div>' +
       '</div></section>';
   }
@@ -419,17 +446,19 @@
       const testimonials = content.testimonials || [];
       const stats = hero.stats || [];
       const heroImage = safeImageUrl(hero.image) || safeImageUrl(content.images && content.images.hero);
+      const primaryHref = resolveSiteLink(slug, hero.ctaHref, 'apply');
+      const secondaryHref = resolveSiteLink(slug, hero.secondaryHref, 'programmes');
 
       const heroBlock = '<header class="site-hero">' +
-        (content.announcement ? '<div class="site-wrap"><div class="site-notice">' + R.icon('megaphone') + '<span>' + R.esc(content.announcement) + '</span></div></div>' : '') +
+        (content.announcement ? '<div class="site-wrap"><div class="site-notice">' + R.icon('megaphone') + '<span>' + R.richText(content.announcement) + '</span></div></div>' : '') +
         '<div class="site-wrap site-hero-grid">' +
         '<div class="site-hero-copy">' +
-        '<div class="site-eyebrow">' + R.icon('sprout') + ' ' + R.esc(hero.badge || 'Registered ECD centre') + '</div>' +
-        '<h1>' + R.esc(hero.headline) + '</h1>' +
-        '<p class="lede">' + R.esc(hero.subheadline) + '</p>' +
+        '<div class="site-eyebrow">' + R.icon('sprout') + ' ' + R.richText(hero.badge || 'Registered ECD centre') + '</div>' +
+        '<h1>' + R.richText(hero.headline) + '</h1>' +
+        R.richParagraphs(hero.subheadline, 'lede') +
         '<div class="site-actions">' +
-        '<a class="btn btn-primary" href="#/site/' + R.attr(slug) + '/apply">' + R.esc(hero.cta || 'Book a visit') + '</a>' +
-        '<a class="btn btn-secondary" href="' + R.attr(siteHref(slug, 'programmes')) + '">' + R.esc(hero.secondaryCta || 'Explore programmes') + '</a>' +
+        '<a class="btn btn-primary" href="' + R.attr(primaryHref) + '"' + linkTarget(primaryHref) + '>' + R.esc(hero.cta || 'Book a visit') + '</a>' +
+        '<a class="btn btn-secondary" href="' + R.attr(secondaryHref) + '"' + linkTarget(secondaryHref) + '>' + R.esc(hero.secondaryCta || 'Explore programmes') + '</a>' +
         '</div>' +
         (stats.length ? '<div class="site-stats">' + stats.map((stat) =>
           '<div><div class="site-stat-value">' + R.esc(stat.value) + '</div><div class="site-stat-label">' + R.esc(stat.label) + '</div></div>').join('') + '</div>' : '') +
@@ -444,8 +473,8 @@
         '<div class="site-split-media' + (safeImageUrl(about.image) ? '' : ' is-empty') + '">' +
         (safeImageUrl(about.image) ? imgTag(about.image, about.heading || org.name, 'site-split-image') : '<div class="site-hero-pattern"></div>') +
         '</div><div class="site-split-copy">' + sectionHead('About us', about.heading || ('About ' + org.name), '') +
-        '<p>' + R.esc(about.body) + '</p>' +
-        (about.approach ? '<div class="site-quote"><p>' + R.esc(about.approach) + '</p></div>' : '') +
+        R.richParagraphs(about.body) +
+        (about.approach ? '<div class="site-quote">' + R.richParagraphs(about.approach) + '</div>' : '') +
         '<a class="btn btn-secondary" href="' + R.attr(siteHref(slug, 'about')) + '">More about our centre</a>' +
         '</div></div></section>';
 
@@ -473,7 +502,7 @@
         ? '<section class="site-section"><div class="site-wrap">' +
           sectionHead('From our families', 'What parents tell us', '') +
           '<div class="site-card-grid site-testimonials">' + testimonials.map((item) =>
-            '<blockquote class="site-testimonial"><p>“' + R.esc(item.quote) + '”</p>' +
+            '<blockquote class="site-testimonial"><p>“' + R.richText(item.quote) + '”</p>' +
             '<footer><span class="strong">' + R.esc(item.author) + '</span>' +
             (item.role ? '<span class="muted small">' + R.esc(item.role) + '</span>' : '') + '</footer></blockquote>').join('') +
           '</div></div></section>'
@@ -496,14 +525,14 @@
       return pageHero(about.heading || ('About ' + org.name), 'A registered early learning centre built around play, relationships and the first six years.', about.image, 'About us') +
         '<section class="site-section"><div class="site-wrap site-split">' +
         '<div class="site-split-copy">' + sectionHead('Our story', 'A warm start for curious minds', '') +
-        '<p>' + R.esc(about.body) + '</p>' +
-        (about.mission ? '<p>' + R.esc(about.mission) + '</p>' : '') +
+        R.richParagraphs(about.body) +
+        (about.mission ? R.richParagraphs(about.mission) : '') +
         '</div><div class="site-split-media' + (safeImageUrl(about.image) ? '' : ' is-empty') + '">' +
         (safeImageUrl(about.image) ? imgTag(about.image, about.heading || org.name, 'site-split-image') : '<div class="site-hero-pattern"></div>') +
         '</div></div></section>' +
         (about.approach ? '<section class="site-section site-section-tint"><div class="site-wrap site-narrow">' +
           sectionHead('Our approach', 'Learning through play, held with care', '') +
-          '<p class="site-large-copy">' + R.esc(about.approach) + '</p></div></section>' : '') +
+          R.richParagraphs(about.approach, 'site-large-copy') + '</div></section>' : '') +
         (about.values && about.values.length ? '<section class="site-section"><div class="site-wrap">' +
           sectionHead('What we value', 'The things we never compromise on', '') + valueCards(about.values) +
           '</div></section>' : '') +
@@ -512,7 +541,7 @@
           '<div class="site-facility-grid">' + facilities.map((facility) =>
             '<div class="site-facility"><div class="site-facility-mark">' + R.icon('check') + '</div>' +
             '<div><div class="strong">' + R.esc(facility.name) + '</div>' +
-            (facility.description ? '<p class="muted small">' + R.esc(facility.description) + '</p>' : '') + '</div></div>').join('') +
+            (facility.description ? R.richParagraphs(facility.description, 'muted small') : '') + '</div></div>').join('') +
           '</div></div></section>' : '') +
         (routine.length ? '<section class="site-section"><div class="site-wrap site-narrow">' +
           sectionHead('Our day', 'A rhythm children can trust', '') +
@@ -531,17 +560,17 @@
         programmeCards(programmes) + '</div></section>' +
         '<section class="site-section site-section-tint"><div class="site-wrap site-narrow">' +
         sectionHead('Fees', 'Simple, transparent fees', '') +
-        (fees.summary ? '<p class="site-large-copy">' + R.esc(fees.summary) + '</p>' : '') +
+        (fees.summary ? R.richParagraphs(fees.summary, 'site-large-copy') : '') +
         (fees.items && fees.items.length ? '<div class="site-fee-table">' + fees.items.map((item) =>
           '<div class="site-fee-row"><div><div class="strong">' + R.esc(item.label) + '</div>' +
           (item.note ? '<div class="muted small">' + R.esc(item.note) + '</div>' : '') + '</div>' +
           '<div class="site-fee-amount">' + R.esc(item.amount) + '</div></div>').join('') + '</div>' : '') +
-        (fees.note ? '<p class="muted small">' + R.esc(fees.note) + '</p>' : '') +
+        (fees.note ? R.richParagraphs(fees.note, 'muted small') : '') +
         '</div></section>' +
         (faqs.length ? '<section class="site-section"><div class="site-wrap site-narrow">' +
           sectionHead('Questions', 'What families ask us', '') +
           '<div class="site-faqs">' + faqs.map((faq) =>
-            '<details class="site-faq"><summary>' + R.esc(faq.question) + '</summary><p>' + R.esc(faq.answer) + '</p></details>').join('') +
+            '<details class="site-faq"><summary>' + R.richText(faq.question) + '</summary>' + R.richParagraphs(faq.answer) + '</details>').join('') +
           '</div></div></section>' : '') +
         ctaBand(slug, content.admissions || {}, org);
     },
@@ -550,20 +579,21 @@
       const admissions = content.admissions || {};
       const contact = content.contact || {};
       const steps = admissions.steps || [];
+      const visitHref = resolveSiteLink(slug, admissions.ctaHref, 'apply');
       return pageHero(admissions.heading || 'Joining our centre', admissions.intro || 'A simple, personal admissions process.', '', 'Admissions') +
         '<section class="site-section"><div class="site-wrap">' +
         sectionHead('How it works', 'Three calm steps to a place', '') +
         '<div class="site-steps">' + steps.map((step, index) =>
           '<article class="site-step"><div class="site-step-number">' + (index + 1) + '</div>' +
-          '<h3>' + R.esc(step.title) + '</h3><p>' + R.esc(step.description) + '</p></article>').join('') + '</div>' +
+          '<h3>' + R.richText(step.title) + '</h3>' + R.richParagraphs(step.description) + '</article>').join('') + '</div>' +
         '</div></section>' +
         (admissions.checklist && admissions.checklist.length ? '<section class="site-section site-section-tint"><div class="site-wrap site-split">' +
           '<div>' + sectionHead('Before you start', 'What to have ready', 'You do not need everything on day one. We will guide you through the forms.') +
           '<ul class="site-checklist">' + admissions.checklist.map((item) =>
             '<li>' + R.icon('check-circle') + '<span>' + R.esc(item) + '</span></li>').join('') + '</ul></div>' +
-          '<div class="site-callout"><div class="site-eyebrow">Open days</div><h3>' + R.esc(admissions.openDays || 'Book a personal visit') + '</h3>' +
+          '<div class="site-callout"><div class="site-eyebrow">Open days</div><h3>' + R.richText(admissions.openDays || 'Book a personal visit') + '</h3>' +
           '<p>Meet the educators, see the rooms and ask anything. Visits are booked directly with the centre.</p>' +
-          '<a class="btn btn-primary" href="#/site/' + R.attr(slug) + '/apply">Book a visit</a></div>' +
+          '<a class="btn btn-primary" href="' + R.attr(visitHref) + '"' + linkTarget(visitHref) + '>Book a visit</a></div>' +
           '</div></section>' : '') +
         '<section class="site-section"><div class="site-wrap site-split site-contact-split">' +
         '<div>' + sectionHead('Talk to us', 'Questions about a place?', 'The admissions team replies by email, usually within one working day.') +
@@ -573,10 +603,11 @@
 
     renderGallery(slug, org, content) {
       const gallery = content.gallery || [];
+      const visitHref = resolveSiteLink(slug, (content.admissions || {}).ctaHref, 'apply');
       return pageHero('Gallery', 'A little look at the rooms, the garden and the everyday joy of learning through play.', (gallery[0] && gallery[0].url) || '', 'Life at our centre') +
         '<section class="site-section"><div class="site-wrap">' +
         (galleryGrid(gallery) || '<div class="site-empty">Photos are on their way. In the meantime, book a visit and see the centre for yourself.</div>') +
-        '<div class="site-section-foot"><a class="btn btn-primary" href="#/site/' + R.attr(slug) + '/apply">Book a visit</a></div>' +
+        '<div class="site-section-foot"><a class="btn btn-primary" href="' + R.attr(visitHref) + '"' + linkTarget(visitHref) + '>Book a visit</a></div>' +
         '</div></section>' + ctaBand(slug, content.admissions || {}, org);
     },
 
@@ -703,7 +734,7 @@
         return '<article class="public-card site-form-card">' +
           '<div class="site-eyebrow">' + R.esc(R.titleCase(form.formType || 'form')) + '</div>' +
           '<h3>' + R.esc(form.name) + '</h3>' +
-          '<p class="muted small">' + R.esc(form.description || 'Complete this form online. The centre will review your response.') + '</p>' +
+          '<div class="site-form-description muted small">' + R.richParagraphs(form.description || 'Complete this form online. The centre will review your response.') + '</div>' +
           (payment.enabled
             ? '<div class="site-pay-summary">' + R.icon('credit-card') + '<span>Pay ' +
               R.esc(R.money(payment.amount, payment.currency || 'ZAR')) + ' with PayFast</span></div>'
@@ -812,7 +843,7 @@
         '<section class="site-section"><div class="site-wrap site-narrow">' +
         '<a href="' + R.attr(siteHref(params.slug, 'forms')) + '" class="muted small">← All forms</a>' +
         '<div style="margin-top:20px"><div class="site-eyebrow">Form</div></div>' +
-        '<h1>' + R.esc(form.name) + '</h1><p class="lede">' + R.esc(form.description || '') + '</p>' +
+        '<h1>' + R.esc(form.name) + '</h1>' + (form.description ? '<div class="site-form-description lede">' + R.richParagraphs(form.description) + '</div>' : '') +
         (payment.enabled
           ? '<div class="site-pay-summary" style="margin-top:12px">' + R.icon('credit-card') +
             '<span>' + R.esc(R.money(payment.amount, payment.currency || 'ZAR')) +
