@@ -1182,11 +1182,11 @@ body.nav-open { overflow: hidden; }
 .site-form-card { display: flex; flex-direction: column; gap: 8px; height: 100%; }
 .site-form-card .site-form-foot { margin-top: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .site-form-description { margin: 0 0 10px; line-height: 1.6; }
-.site-form-description p { margin: 0 0 10px; line-height: 1.6; }
+.site-form-description p { margin: 0 0 10px; line-height: 1.6; white-space: pre-wrap; }
 .site-form-description p:last-child { margin-bottom: 0; }
 .site-form-description:last-child { margin-bottom: 0; }
 .site-form-description strong, .form-description strong { font-weight: 650; }
-.form-description p { margin: 0 0 8px; line-height: 1.6; }
+.form-description p { margin: 0 0 8px; line-height: 1.6; white-space: pre-wrap; }
 .form-description p:last-child { margin-bottom: 0; }
 .site-pay-summary { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: var(--radius-sm);
   background: var(--reel-green-100); color: var(--reel-green-800); font-weight: 600; font-size: 0.86rem; }

@@ -64,6 +64,7 @@ test('button links keep safe destinations and reject script URLs', () => {
   assert.equal(content.hero.ctaHref, '/apply');
   assert.equal(content.hero.secondaryHref, 'https://example.com/programmes');
   assert.equal(content.admissions.ctaHref, 'mailto:hello@example.co.za');
+  assert.equal(websiteContent.safeLink('/forms/learner-admission'), '/forms/learner-admission');
 
   const unsafe = websiteContent.normalise({
     hero: { ctaHref: 'javascript:alert(1)', secondaryHref: 'data:text/html,hi' },

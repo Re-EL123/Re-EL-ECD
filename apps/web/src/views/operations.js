@@ -264,8 +264,9 @@
     { value: '/forms', label: 'Forms' }
   ];
 
-  function siteLinkDatalist() {
-    return '<datalist id="site-link-options">' + SITE_LINK_OPTIONS.map((option) =>
+  function siteLinkDatalist(formLinks) {
+    const options = SITE_LINK_OPTIONS.concat(Array.isArray(formLinks) ? formLinks : []);
+    return '<datalist id="site-link-options">' + options.map((option) =>
       '<option value="' + R.attr(option.value) + '">' + R.esc(option.label) + '</option>').join('') + '</datalist>';
   }
 
@@ -323,6 +324,13 @@
       // the editor. A failure leaves `addresses` null and the card stays honest
       // by not claiming an address is live.
       const addresses = await R.api('GET', '/website/addresses').then((p) => p.data).catch(() => null);
+      // Public form paths are offered as link suggestions. A centre that does
+      // not grant the website editor forms-read permission still gets the
+      // static page suggestions and can type any path manually.
+      const formLinks = await R.api('GET', '/forms').then((p) => (p.data || [])
+        .filter((form) => form.is_public === true && form.display_on_website !== false)
+        .map((form) => ({ value: '/forms/' + form.slug, label: form.name })))
+        .catch(() => []);
       const config = payload.config;
       const content = payload.content || {};
       const seo = content.seo || payload.seo || {};
@@ -348,6 +356,7 @@
         pages: payload.pages || SITE_PAGE_LINKS.map((entry) => ({ key: entry.key, label: R.titleCase(entry.key), path: entry.path })),
         branding: payload.branding || {},
         addresses,
+        formLinks,
         organisation: payload.organisation || (ctx.activeMembership && ctx.activeMembership.organisation) || {}
       };
     },
@@ -394,8 +403,8 @@
           '<a class="btn btn-secondary btn-sm" href="#/app/settings">' + R.icon('palette') + ' Manage branding</a>' +
           '</div>', pagePreview(slug, 'home')) +
         '<div class="site-tabs section">' + tabButtons + '</div>' +
-        siteLinkDatalist() +
-        '<p class="muted small" style="margin:-4px 0 14px">Wrap words in *asterisks* to make them bold, and leave a blank line between paragraphs. Button links can be a page path such as /programmes, a full https:// address, mailto: or tel:.</p>' +
+        siteLinkDatalist(page.formLinks) +
+        '<p class="muted small" style="margin:-4px 0 14px">Wrap words in *asterisks* to make them bold, and leave a blank line between paragraphs. Button links can be a page path such as /programmes or /forms/learner-admission, a full https:// address, mailto: or tel:.</p>' +
         this.renderHomePanel(ctx, slug, canManage, config) +
         this.renderAboutPanel(ctx, slug, canManage) +
         this.renderProgrammesPanel(ctx, slug, canManage) +
@@ -416,9 +425,9 @@
           editorField('Headline', 'siteDraft.hero.headline', { span: true, placeholder: 'Where little minds grow' }) +
           editorField('Subheadline', 'siteDraft.hero.subheadline', { span: true, textarea: true, rows: 3, placeholder: 'A warm, play-based early learning home.' }) +
           editorField('Button label', 'siteDraft.hero.cta', { placeholder: 'Book a visit' }) +
-          editorField('First button link', 'siteDraft.hero.ctaHref', { list: 'site-link-options', placeholder: '/apply', help: 'Where the main button goes. Leave blank to use the enquiry form.' }) +
+          editorField('First button link', 'siteDraft.hero.ctaHref', { list: 'site-link-options', placeholder: '/apply', help: 'Where the main button goes. Use a page path such as /programmes or /forms/learner-admission, a full https:// address, mailto: or tel:. Leave blank to use the enquiry form.' }) +
           editorField('Second button label', 'siteDraft.hero.secondaryCta', { placeholder: 'Explore programmes' }) +
-          editorField('Second button link', 'siteDraft.hero.secondaryHref', { list: 'site-link-options', placeholder: '/programmes', help: 'Where the second button goes. Leave blank to use the programmes page.' }) +
+          editorField('Second button link', 'siteDraft.hero.secondaryHref', { list: 'site-link-options', placeholder: '/programmes', help: 'Where the second button goes. Use a page path such as /programmes or /forms/learner-admission, a full https:// address, mailto: or tel:. Leave blank to use the programmes page.' }) +
           editorImage('Hero image', 'siteDraft.hero.image', '\'hero.image\'', 'A bright, welcoming photo works best. It appears beside the headline on the home page.') +
           editorField('Announcement', 'siteDraft.announcement', { span: true, textarea: true, rows: 2, placeholder: 'Optional notice shown at the top of the home page' }) +
           '</div>', pagePreview(slug, 'home')) +
@@ -526,7 +535,7 @@
           editorField('Introduction', 'siteDraft.admissions.intro', { span: true, textarea: true, rows: 4 }) +
           editorField('Open days', 'siteDraft.admissions.openDays', { span: true, placeholder: 'Open mornings every Tuesday, 09:00 – 11:00' }) +
           editorField('Closing call to action', 'siteDraft.admissions.cta', { span: true, placeholder: 'Come and see us' }) +
-          editorField('Closing call to action link', 'siteDraft.admissions.ctaHref', { span: true, list: 'site-link-options', placeholder: '/apply', help: 'Where the closing button goes. Leave blank to use the enquiry form.' }) +
+          editorField('Closing call to action link', 'siteDraft.admissions.ctaHref', { span: true, list: 'site-link-options', placeholder: '/apply', help: 'Where the closing button goes. Use a page path such as /apply or /forms/learner-admission, a full https:// address, mailto: or tel:. Leave blank to use the enquiry form.' }) +
           '</div>', pagePreview(slug, 'admissions')) +
         editorCard('Admissions steps', '<template x-for="(step, index) in siteDraft.admissions.steps" :key="index"><div class="site-repeat">' +
           repeatHead('Step', 'admissions.steps', 'index') +
