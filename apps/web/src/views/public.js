@@ -107,7 +107,8 @@
     if (!path) return siteHref(slug, 'home') + query + hash;
     if (path === 'apply') return '#/site/' + encodeURIComponent(slug) + '/apply' + query + hash;
     const page = SITE_PAGES.find((entry) => entry.key === path || entry.path === path);
-    return '#/site/' + encodeURIComponent(slug) + '/' + encodeURIComponent(page ? page.path : path) + query + hash;
+    const target = (page ? page.path : path).split('/').map(encodeURIComponent).join('/');
+    return '#/site/' + encodeURIComponent(slug) + '/' + target + query + hash;
   }
 
   function linkTarget(href) {
