@@ -443,7 +443,7 @@
         gallery: this.renderGallery,
         contact: this.renderContact
       }[current.key];
-      return wrapper(renderer.call(this, slug, org, content, branches));
+      return wrapper(renderer.call(this, slug, org, content, branches, page));
     },
 
     renderHome(slug, org, content, branches) {
@@ -620,12 +620,33 @@
         '</div></section>' + ctaBand(slug, content.admissions || {}, org);
     },
 
-    renderContact(slug, org, content, branches) {
+    renderContact(slug, org, content, branches, page) {
       const contact = content.contact || {};
+      const branding = (page && page.branding) || {};
+      const seo = (page && page.seo) || {};
+      const canonical = seo.canonical || R.siteUrl(slug, '');
+      const primary = branding.primary || '#0B534A';
+      const secondary = branding.secondary || '#2B9A58';
+      const onPrimary = branding.onPrimary || '#FFFFFF';
+      const name = org.name || 'Your centre';
+      const logoUrl = org.logoUrl || '';
+      const qrData = 'data-qr-data="' + R.attr(canonical) + '" data-brand-primary="' + R.attr(primary) +
+        '" data-brand-secondary="' + R.attr(secondary) + '" data-on-primary="' + R.attr(onPrimary) +
+        '" data-logo-url="' + R.attr(logoUrl) + '" data-name="' + R.attr(name) + '" data-size="150"';
       return pageHero('Contact us', 'Book a visit, ask a question or start an enquiry. We would love to meet your family.', '', 'Get in touch') +
         '<section class="site-section"><div class="site-wrap">' +
         contactCards(contact) +
         (branches.length ? '<div class="site-section-head" style="margin-top:32px"><h2>Our centres</h2></div>' + branchCards(branches) : '') +
+        '</div></section>' +
+        '<section class="site-section site-section-tint"><div class="site-wrap site-contact-qr-wrap">' +
+          '<div class="site-contact-qr-card">' +
+            '<div class="site-contact-qr-copy"><div class="site-eyebrow">' + R.icon('share-2') + ' Share this centre</div>' +
+              '<h2>Scan to visit this website</h2>' +
+              '<p class="muted">A QR code that opens ' + R.esc(name) + '. Perfect for the gate, the foyer or a printed flyer.</p>' +
+              '<div class="site-contact-qr-url">' + R.esc(canonical) + '</div>' +
+            '</div>' +
+            '<div class="site-contact-qr-code" x-init="window.Reel.mountQr($el)" ' + qrData + '></div>' +
+          '</div>' +
         '</div></section>' +
         '<section class="site-section site-section-tint"><div class="site-wrap site-split site-contact-split">' +
         '<div>' + sectionHead('Send a message', 'Tell us about your family', 'We reply by email. If you would rather talk, call the centre during office hours.') +

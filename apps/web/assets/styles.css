@@ -810,6 +810,35 @@ table.table { width: 100%; border-collapse: collapse; font-size: 0.86rem; min-wi
 .site-socials { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .site-social { display: inline-flex; align-items: center; padding: 6px 11px; border-radius: var(--radius-pill); border: 1px solid var(--border-subtle); background: var(--surface-1); font-size: 0.78rem; font-weight: 600; }
 
+/* --- Shareable QR codes -------------------------------------------------- */
+.site-share-card { max-width: 460px; margin: 0 auto; border-radius: 22px; padding: 18px; border: 1px solid rgba(255,255,255,0.28); box-shadow: 0 18px 50px rgba(16, 35, 24, 0.22), inset 0 1px 0 rgba(255,255,255,0.35); }
+.site-share-inner { background: #ffffff; border-radius: 16px; padding: 22px 22px 18px; text-align: center; box-shadow: 0 10px 30px rgba(16, 35, 24, 0.18); }
+.site-share-brand { display: flex; align-items: center; gap: 12px; text-align: left; margin-bottom: 12px; }
+.site-share-logo { width: 48px; height: 48px; border-radius: 12px; object-fit: cover; flex: 0 0 auto; }
+.site-share-mark { width: 48px; height: 48px; border-radius: 12px; display: grid; place-items: center; font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; flex: 0 0 auto; }
+.site-share-brand-copy { min-width: 0; }
+.site-share-name { font-family: var(--font-display); font-weight: 600; font-size: 1.02rem; color: var(--text-strong); line-height: 1.15; overflow-wrap: break-word; }
+.site-share-tagline { color: var(--text-muted); font-size: 0.8rem; margin-top: 3px; overflow-wrap: break-word; }
+.site-share-qr { display: grid; place-items: center; margin: 8px auto 2px; }
+.site-share-qr canvas { border-radius: 12px; }
+.site-share-caption { font-size: 0.62rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-muted); font-weight: 800; margin-top: 8px; }
+.site-share-url { font-family: var(--font-mono, monospace); font-size: 0.66rem; color: var(--text-muted); word-break: break-all; margin-top: 4px; }
+.site-share-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: center; margin-top: 16px; }
+
+.site-contact-qr-wrap { display: grid; place-items: center; }
+.site-contact-qr-card { display: flex; align-items: center; gap: 24px; width: 100%; max-width: 720px; padding: 22px; border-radius: var(--radius-lg); background: var(--surface-1); border: 1px solid var(--border-subtle); box-shadow: var(--shadow-sm); }
+.site-contact-qr-copy { flex: 1; min-width: 0; }
+.site-contact-qr-copy h2 { font-family: var(--font-display); font-size: clamp(1.35rem, 2.4vw, 1.8rem); line-height: 1.1; letter-spacing: -0.02em; margin: 6px 0 8px; }
+.site-contact-qr-copy .muted { margin: 0; line-height: 1.6; }
+.site-contact-qr-url { font-family: var(--font-mono, monospace); font-size: 0.7rem; color: var(--text-muted); word-break: break-all; margin-top: 12px; }
+.site-contact-qr-code { flex: 0 0 auto; }
+.site-contact-qr-code canvas { border-radius: 14px; }
+@media (max-width: 720px) {
+  .site-contact-qr-card { flex-direction: column; text-align: center; gap: 18px; }
+  .site-contact-qr-copy { display: flex; flex-direction: column; align-items: center; }
+  .site-share-brand { text-align: center; }
+}
+
 .site-fee-table { margin-top: 20px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; background: var(--surface-1); }
 .site-fee-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 18px; border-bottom: 1px solid var(--border-subtle); }
 .site-fee-row:last-child { border-bottom: 0; }

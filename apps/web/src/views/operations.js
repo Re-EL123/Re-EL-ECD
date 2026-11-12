@@ -377,6 +377,7 @@
         { key: 'admissions', label: 'Admissions' },
         { key: 'gallery', label: 'Gallery' },
         { key: 'contact', label: 'Contact' },
+        { key: 'share', label: 'Share' },
         { key: 'seo', label: 'SEO' },
         { key: 'domains', label: 'Domains' }
       ];
@@ -411,6 +412,7 @@
         this.renderAdmissionsPanel(ctx, slug, canManage) +
         this.renderGalleryPanel(ctx, slug, canManage) +
         this.renderContactPanel(ctx, slug, canManage) +
+        this.renderSharePanel(ctx, slug, canManage, page) +
         this.renderSeoPanel(ctx, slug, canManage) +
         '<div class="site-editor-panel" x-show="siteTab === \'domains\'" x-cloak>' + this.renderDomains(ctx, page) + '</div>' +
         (canManage ? '<div class="site-save-bar"><span class="muted small">Changes stay private until you publish.</span><span class="spacer"></span>' +
@@ -565,6 +567,51 @@
           '</div></div></template>' +
           '</div>' +
           repeatAdd('Add a photo', 'siteAdd(\'gallery\', { url: \'\', caption: \'\' })'), pagePreview(slug, 'gallery')) +
+        '</div>';
+    },
+
+    renderSharePanel(ctx, slug, canManage, page) {
+      const organisation = page.organisation || {};
+      const branding = page.branding || {};
+      const content = page.content || {};
+      const seo = page.seo || {};
+      const canonical = seo.canonical || R.siteUrl(slug, '');
+      const primary = branding.primary || '#0B534A';
+      const secondary = branding.secondary || '#2B9A58';
+      const onPrimary = branding.onPrimary || '#FFFFFF';
+      const name = organisation.name || 'Your centre';
+      const initials = R.initials(name);
+      const logoUrl = organisation.logoUrl || '';
+      const headline = (content.hero && content.hero.headline) || 'Where little minds grow';
+      const filename = (String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'website') + '-qr';
+      const qrAttrs = 'data-qr-data="' + R.attr(canonical) + '" data-brand-primary="' + R.attr(primary) +
+        '" data-brand-secondary="' + R.attr(secondary) + '" data-on-primary="' + R.attr(onPrimary) +
+        '" data-logo-url="' + R.attr(logoUrl) + '" data-name="' + R.attr(name) + '" data-filename="' + R.attr(filename) + '"';
+      const qrContainerAttrs = qrAttrs + ' data-size="220"';
+      const qrButtonAttrs = qrAttrs + ' data-size="640"';
+      return '<div class="site-editor-panel" x-show="siteTab === \'share\'" x-cloak>' +
+        editorCard('Share this website',
+          '<div class="site-share-card" style="background:linear-gradient(140deg, ' + R.attr(primary) + ' 0%, ' + R.attr(R.shade(primary, -0.25)) + ' 55%, ' + R.attr(secondary) + ' 140%)">' +
+            '<div class="site-share-inner">' +
+              '<div class="site-share-brand">' +
+                (logoUrl
+                  ? '<img class="site-share-logo" src="' + R.attr(logoUrl) + '" alt="">'
+                  : '<span class="site-share-mark" style="background:' + R.attr(primary) + ';color:' + R.attr(onPrimary) + '">' + R.esc(initials) + '</span>') +
+                '<div class="site-share-brand-copy"><div class="site-share-name">' + R.esc(name) + '</div>' +
+                '<div class="site-share-tagline">' + R.esc(headline) + '</div></div>' +
+              '</div>' +
+              '<div class="site-share-qr" x-init="window.Reel.mountQr($el)" ' + qrContainerAttrs + '></div>' +
+              '<div class="site-share-caption">Scan to visit our website</div>' +
+              '<div class="site-share-url">' + R.esc(canonical) + '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="site-share-actions">' +
+            '<button type="button" class="btn btn-secondary" @click="copyToClipboard(' + R.attr(JSON.stringify(canonical)) + ', \'Link\')">' + R.icon('copy') + ' Copy link</button>' +
+            '<button type="button" class="btn btn-secondary" @click="window.Reel.downloadQr($el, \'svg\')" ' + qrButtonAttrs + '>' + R.icon('file-down') + ' Download SVG</button>' +
+            '<button type="button" class="btn btn-primary" @click="window.Reel.downloadQr($el, \'png\')" ' + qrButtonAttrs + '>' + R.icon('download') + ' Download PNG</button>' +
+          '</div>' +
+          '<p class="muted small" style="margin-top:12px">Print the QR code for the gate, the foyer or a flyer. Anyone who scans it lands straight on your website. The code is generated in your browser with your colours and logo — nothing leaves this page.</p>',
+          pagePreview(slug, 'home')) +
         '</div>';
     },
 

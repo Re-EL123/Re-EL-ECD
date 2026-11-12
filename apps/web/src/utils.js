@@ -924,10 +924,157 @@
     return origin + '/#/site/' + encodeURIComponent(slug || '') + (pagePath ? '/' + String(pagePath).replace(/^\/+/, '') : '');
   }
 
+  /**
+   * A QR code that opens this centre's public website. The code is generated
+   * locally with the centre's logo baked into the middle, so a printed code is
+   * recognisable and nothing is ever requested from a third-party service.
+   */
+  function qrLogoDataUrl(options) {
+    const opts = options || {};
+    const primary = isHex(opts.primary) ? opts.primary : PLATFORM_BRAND.theme.primary;
+    const onPrimary = isHex(opts.onPrimary) ? opts.onPrimary : onColour(primary);
+    const size = 180;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const context = canvas.getContext('2d');
+    const drawBadge = (logoImage) => {
+      context.clearRect(0, 0, size, size);
+      // White outer ring keeps the mark readable on any background.
+      context.fillStyle = '#FFFFFF';
+      context.beginPath();
+      context.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = primary;
+      context.beginPath();
+      context.arc(size / 2, size / 2, size / 2 - 10, 0, Math.PI * 2);
+      context.fill();
+      if (logoImage) {
+        context.save();
+        context.beginPath();
+        context.arc(size / 2, size / 2, size / 2 - 10, 0, Math.PI * 2);
+        context.clip();
+        const scale = Math.max((size - 24) / (logoImage.width || 1), (size - 24) / (logoImage.height || 1));
+        const width = (logoImage.width || 1) * scale;
+        const height = (logoImage.height || 1) * scale;
+        context.drawImage(logoImage, (size - width) / 2, (size - height) / 2, width, height);
+        context.restore();
+        return;
+      }
+      context.fillStyle = onPrimary;
+      context.font = '700 ' + Math.round(size * 0.32) + 'px Fraunces, Georgia, serif';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillText(initials(opts.name || 'R'), size / 2, size / 2 + 2);
+    };
+    if (!opts.logoUrl) {
+      drawBadge(null);
+      return Promise.resolve(canvas.toDataURL('image/png'));
+    }
+    return new Promise((resolve) => {
+      const image = new Image();
+      image.crossOrigin = 'anonymous';
+      image.onload = () => {
+        try {
+          drawBadge(image);
+          resolve(canvas.toDataURL('image/png'));
+        } catch (error) {
+          // A CORS-tainted logo cannot be used inside the QR, so fall back to
+          // the centre's initials instead of failing the whole code.
+          drawBadge(null);
+          resolve(canvas.toDataURL('image/png'));
+        }
+      };
+      image.onerror = () => {
+        drawBadge(null);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      image.src = opts.logoUrl;
+    });
+  }
+
+  function qrOptions(options, type, width) {
+    const opts = options || {};
+    const primary = isHex(opts.primary) ? opts.primary : PLATFORM_BRAND.theme.primary;
+    const dark = shade(primary, -0.35);
+    const size = Number(width || opts.size) || 220;
+    return {
+      type,
+      shape: 'square',
+      width: size,
+      height: size,
+      margin: Math.max(6, Math.round(size / 26)),
+      data: String(opts.data || ''),
+      qrOptions: { errorCorrectionLevel: 'H' },
+      dotsOptions: { type: 'extra-rounded', color: primary, roundSize: true },
+      cornersSquareOptions: { type: 'extra-rounded', color: dark },
+      cornersDotOptions: { type: 'extra-rounded', color: dark },
+      backgroundOptions: { color: '#FFFFFF' },
+      imageOptions: { hideBackgroundDots: true, imageSize: 0.38, margin: 2, crossOrigin: 'anonymous' }
+    };
+  }
+
+  async function mountQr(container, options) {
+    if (!container) return null;
+    if (!window.QRCodeStyling) {
+      container.innerHTML = '<div class="muted small">QR code unavailable.</div>';
+      return null;
+    }
+    container.innerHTML = '';
+    const opts = options || {};
+    const primary = isHex(opts.primary) ? opts.primary : PLATFORM_BRAND.theme.primary;
+    const image = await qrLogoDataUrl(Object.assign({}, opts, {
+      primary,
+      onPrimary: isHex(opts.onPrimary) ? opts.onPrimary : onColour(primary)
+    }));
+    const config = qrOptions(Object.assign({}, opts, { primary }), 'canvas', opts.size || 220);
+    config.image = image;
+    const qr = new window.QRCodeStyling(config);
+    qr.append(container);
+    return qr;
+  }
+
+  function qrOptionsFromElement(element) {
+    const dataset = (element && element.dataset) || {};
+    return {
+      data: dataset.qrData,
+      primary: dataset.brandPrimary,
+      secondary: dataset.brandSecondary,
+      accent: dataset.brandAccent,
+      onPrimary: dataset.onPrimary,
+      logoUrl: dataset.logoUrl,
+      name: dataset.name,
+      size: dataset.size ? Number(dataset.size) : undefined
+    };
+  }
+
+  function mountQrFromElement(element) {
+    return mountQr(element, qrOptionsFromElement(element));
+  }
+
+  async function downloadQr(element, extension) {
+    if (!window.QRCodeStyling) return;
+    const dataset = (element && element.dataset) || {};
+    const opts = qrOptionsFromElement(element);
+    const ext = String(extension || 'png').toLowerCase();
+    const primary = isHex(opts.primary) ? opts.primary : PLATFORM_BRAND.theme.primary;
+    const image = await qrLogoDataUrl(Object.assign({}, opts, {
+      primary,
+      onPrimary: isHex(opts.onPrimary) ? opts.onPrimary : onColour(primary)
+    }));
+    const config = qrOptions(Object.assign({}, opts, { primary, size: 640 }), ext === 'svg' ? 'svg' : 'canvas', 640);
+    config.image = image;
+    const qr = new window.QRCodeStyling(config);
+    const name = dataset.filename || 'website-qr';
+    await qr.download({ name, extension: ext === 'svg' ? 'svg' : 'png' });
+  }
+
   Reel.applySeo = applySeo;
   Reel.resetSeo = resetSeo;
   Reel.siteUrl = siteUrl;
   Reel.isPlatformHost = isPlatformHost;
+  Reel.mountQr = mountQrFromElement;
+  Reel.downloadQr = downloadQr;
 
   /** Fetches a list endpoint and normalises { rows, meta }. */
   async function list(path) {
