@@ -6,7 +6,7 @@ const { recordAudit } = require('../services/audit-service');
 const { createNotification } = require('../services/notification-service');
 const payfast = require('../services/payfast-service');
 const { createInvoiceIntent, createStatementIntent, outstandingFor, isPayable, guardianForInvoice } = require('../services/payment-intent-service');
-const { has, guardianLearnerIds, guardianForLearner, today, roundMoney } = require('./helpers');
+const { has, guardianLearnerIds, guardianForLearner, today, dateOnly, roundMoney } = require('./helpers');
 const { progressFor } = require('./assessments');
 
 async function childOrFail(ctx, learnerId) {
@@ -147,6 +147,28 @@ function register(router) {
         rate: rows.length ? Math.round((present / rows.length) * 100) : null
       }
     };
+  }, { permission: 'parent.read.own' });
+
+  router.get('/parent/children/:id/calendar', async (ctx) => {
+    const { learner } = await childOrFail(ctx, ctx.params.id);
+    const from = dateOnly(ctx.query.from);
+    const to = dateOnly(ctx.query.to);
+    if (!from || !to) fail('VALIDATION', [{ field: 'from', message: 'Provide a from and to date.' }]);
+    if (to < from) fail('VALIDATION', [{ field: 'to', message: 'The end date must be after the start date.' }]);
+    const rows = await ctx.db.many(
+      `SELECT sa.id, sa.title, sa.starts_at, sa.ends_at, sa.status, sa.classroom_id,
+              a.title AS activity_title, lp.title AS lesson_plan_title,
+              ap.participation_status
+       FROM scheduled_activities sa
+       LEFT JOIN activities a ON a.id = sa.activity_id
+       LEFT JOIN lesson_plans lp ON lp.id = sa.lesson_plan_id
+       LEFT JOIN activity_participation ap ON ap.scheduled_activity_id = sa.id AND ap.learner_id = $4
+       WHERE sa.organisation_id = $1 AND sa.starts_at >= $2::timestamptz AND sa.starts_at < ($3::date + 1)
+         AND (sa.classroom_id = $5 OR ($5::uuid IS NULL AND sa.branch_id = $6))
+       ORDER BY sa.starts_at`,
+      [ctx.organisationId, `${from}T00:00:00Z`, to, learner.id, learner.classroom_id, learner.branch_id]
+    );
+    return rows;
   }, { permission: 'parent.read.own' });
 
   router.get('/parent/children/:id/progress', async (ctx) => {

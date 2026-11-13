@@ -596,24 +596,59 @@ function register(router) {
       activitiesSummary: { type: 'string', max: 2000, optional: true },
       notes: { type: 'string', max: 2000, optional: true },
       photoUrl: { type: 'string', max: 500, optional: true },
+      photoUrls: { type: 'array', of: 'string', max: 20, optional: true },
       sharedWithGuardians: { type: 'boolean', optional: true }
     });
     const learner = await getLearner(ctx, ctx.params.id);
     const date = body.reportDate || new Date().toISOString().slice(0, 10);
     const existing = await ctx.db.one('SELECT id FROM daily_reports WHERE learner_id = $1 AND report_date = $2', [learner.id, date]);
     if (existing) fail('CONFLICT', null, 'A daily report already exists for this date. Edit the existing report instead.');
+    const photoUrls = Array.isArray(body.photoUrls) && body.photoUrls.length
+      ? body.photoUrls
+      : (body.photoUrl ? [body.photoUrl] : []);
     const report = await ctx.db.one(
       `INSERT INTO daily_reports (organisation_id, learner_id, report_date, mood, meals, naps, toileting,
         activities_summary, notes, photo_urls, shared_with_guardians, recorded_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [ctx.organisationId, learner.id, date, body.mood || null, body.meals || null, body.naps || null,
         body.toileting || null, body.activitiesSummary || null, body.notes || null,
-        JSON.stringify(body.photoUrl ? [body.photoUrl] : []),
+        JSON.stringify(photoUrls),
         body.sharedWithGuardians === true, ctx.user.id]
     );
     await recordAudit(ctx.db, ctx, { action: 'learner.daily_report_created', resourceType: 'learner', resourceId: learner.id });
     ctx.status = 201;
     return report;
+  }, { permission: ['attendance.record.assigned', 'learners.update.daycare'], permissionMode: 'any' });
+
+  router.patch('/learners/:id/daily-reports/:reportId', async (ctx) => {
+    const body = validate(ctx.body, {
+      mood: { type: 'string', max: 40, optional: true },
+      meals: { type: 'string', max: 1000, optional: true },
+      naps: { type: 'string', max: 1000, optional: true },
+      toileting: { type: 'string', max: 1000, optional: true },
+      activitiesSummary: { type: 'string', max: 2000, optional: true },
+      notes: { type: 'string', max: 2000, optional: true },
+      photoUrls: { type: 'array', of: 'string', max: 20, optional: true },
+      sharedWithGuardians: { type: 'boolean', optional: true }
+    });
+    const learner = await getLearner(ctx, ctx.params.id);
+    const report = await ctx.db.one('SELECT * FROM daily_reports WHERE id = $1 AND organisation_id = $2 AND learner_id = $3',
+      [ctx.params.reportId, ctx.organisationId, learner.id]);
+    if (!report) throw new AppError('NOT_FOUND');
+    const photoUrls = body.photoUrls === undefined ? undefined : body.photoUrls;
+    await ctx.db.query(
+      `UPDATE daily_reports SET mood = COALESCE($1,mood), meals = COALESCE($2,meals),
+        naps = COALESCE($3,naps), toileting = COALESCE($4,toileting),
+        activities_summary = COALESCE($5,activities_summary), notes = COALESCE($6,notes),
+        photo_urls = COALESCE($7,photo_urls), shared_with_guardians = COALESCE($8,shared_with_guardians),
+        updated_at = now()
+       WHERE id = $9`,
+      [body.mood || null, body.meals || null, body.naps || null, body.toileting || null,
+        body.activitiesSummary || null, body.notes || null,
+        photoUrls ? JSON.stringify(photoUrls) : null,
+        body.sharedWithGuardians === undefined ? null : body.sharedWithGuardians, report.id]
+    );
+    return ctx.db.one('SELECT * FROM daily_reports WHERE id = $1', [report.id]);
   }, { permission: ['attendance.record.assigned', 'learners.update.daycare'], permissionMode: 'any' });
 
   router.get('/learners/:id/consents', async (ctx) => {

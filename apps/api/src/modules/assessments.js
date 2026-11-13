@@ -102,6 +102,70 @@ function register(router) {
     return ctx.db.one('SELECT * FROM learner_observations WHERE id = $1', [observation.id]);
   }, { permission: ['assessments.create.assigned', 'assessments.read.daycare'], permissionMode: 'any' });
 
+  router.post('/assessments/observations/:id/submit', async (ctx) => {
+    const observation = await ctx.db.one('SELECT * FROM learner_observations WHERE id = $1 AND organisation_id = $2',
+      [ctx.params.id, ctx.organisationId]);
+    if (!observation) throw new AppError('NOT_FOUND');
+    if (!['draft', 'submitted'].includes(observation.assessment_status)) {
+      fail('CONFLICT', null, 'Only draft or submitted observations can be submitted for review.');
+    }
+    if (observation.recorded_by !== ctx.user.id && !has(ctx, 'assessments.read.daycare')) throw new AppError('FORBIDDEN');
+    await ctx.db.query(
+      `UPDATE learner_observations SET assessment_status = 'submitted', updated_at = now() WHERE id = $1`,
+      [observation.id]
+    );
+    await recordAudit(ctx.db, ctx, {
+      action: 'assessment.observation_submitted', resourceType: 'learner_observation', resourceId: observation.id
+    });
+    return ctx.db.one('SELECT * FROM learner_observations WHERE id = $1', [observation.id]);
+  }, { permission: ['assessments.create.assigned', 'assessments.read.daycare'], permissionMode: 'any' });
+
+  router.post('/assessments/observations/bulk', async (ctx) => {
+    const body = validate(ctx.body, {
+      ids: { type: 'array', of: 'uuid', max: 200 },
+      action: { type: 'string', enum: ['submit', 'publish'] }
+    });
+    if (!body.ids.length) fail('VALIDATION', [{ field: 'ids', message: 'Select at least one observation.' }]);
+    if (body.action === 'publish' && !has(ctx, 'assessments.publish.daycare')) throw new AppError('FORBIDDEN');
+    const results = await ctx.db.withTransaction(async (client) => {
+      const updated = [];
+      const skipped = [];
+      for (const id of body.ids) {
+        const observation = (await client.query(
+          'SELECT * FROM learner_observations WHERE id = $1 AND organisation_id = $2', [id, ctx.organisationId])).rows[0];
+        if (!observation) { skipped.push({ id, reason: 'not found' }); continue; }
+        if (body.action === 'submit') {
+          if (!['draft', 'submitted'].includes(observation.assessment_status)) { skipped.push({ id, reason: 'not draft' }); continue; }
+          if (observation.recorded_by !== ctx.user.id && !has(ctx, 'assessments.read.daycare')) { skipped.push({ id, reason: 'not yours' }); continue; }
+          await client.query(
+            `UPDATE learner_observations SET assessment_status = 'submitted', updated_at = now() WHERE id = $1`,
+            [id]
+          );
+          updated.push(id);
+        } else {
+          if (observation.assessment_status === 'published') { skipped.push({ id, reason: 'already published' }); continue; }
+          await client.query(
+            `UPDATE learner_observations SET assessment_status = 'published', visibility_status = 'published',
+              reviewed_by = $1, published_at = now(), updated_at = now() WHERE id = $2`,
+            [ctx.user.id, id]
+          );
+          updated.push(id);
+        }
+      }
+      return { updated, skipped };
+    });
+    const published = body.action === 'publish' ? results.updated : [];
+    for (const id of published) {
+      const observation = await ctx.db.one('SELECT * FROM learner_observations WHERE id = $1', [id]);
+      await notifyGuardians(ctx, observation.learner_id, observation);
+    }
+    await recordAudit(ctx.db, ctx, {
+      action: 'assessment.observations_bulk_' + body.action, resourceType: 'learner_observation',
+      metadata: { updated: results.updated.length, skipped: results.skipped.length }
+    });
+    return { updated: results.updated.length, skipped: results.skipped };
+  }, { permission: ['assessments.create.assigned', 'assessments.read.daycare'], permissionMode: 'any' });
+
   router.post('/assessments/observations/:id/publish', async (ctx) => {
     const observation = await ctx.db.one('SELECT * FROM learner_observations WHERE id = $1 AND organisation_id = $2',
       [ctx.params.id, ctx.organisationId]);

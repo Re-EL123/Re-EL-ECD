@@ -359,6 +359,129 @@ const tenantResources = {
     }
   },
 
+  observations: {
+    permission: 'assessments.read.daycare',
+    title: 'Observations',
+    filename: 'observations',
+    sheet: 'Observations',
+    subtitle: 'Observation records grouped by child',
+    columns: [
+      { key: 'child', label: 'Child', width: 24 },
+      { key: 'objective_code', label: 'Objective', width: 16 },
+      { key: 'domain', label: 'Domain', width: 22 },
+      { key: 'observation_date', label: 'Date', format: 'date', width: 12 },
+      { key: 'status', label: 'Status', width: 12 },
+      { key: 'visibility_status', label: 'Visibility', width: 12 },
+      { key: 'context', label: 'Context', width: 24 },
+      { key: 'observation_text', label: 'Observation', width: 60 },
+      { key: 'recorded_by', label: 'Recorded by', width: 22 }
+    ],
+    query(ctx) {
+      return ctx.db.many(
+        `SELECT (l.first_name || ' ' || l.last_name) AS child, ob.code AS objective_code,
+                d.name AS domain, o.observation_date, o.assessment_status AS status, o.visibility_status,
+                o.context, o.observation_text, u.display_name AS recorded_by
+         FROM learner_observations o
+         JOIN learners l ON l.id = o.learner_id
+         LEFT JOIN learning_objectives ob ON ob.id = o.objective_id
+         LEFT JOIN curriculum_domains d ON d.id = ob.domain_id
+         LEFT JOIN users u ON u.id = o.recorded_by
+         WHERE o.organisation_id = $1
+         ORDER BY o.observation_date DESC LIMIT $2`,
+        [ctx.organisationId, MAX_ROWS]
+      );
+    }
+  },
+
+  'lesson-plans': {
+    permission: 'curriculum.read.daycare',
+    title: 'Lesson plans',
+    filename: 'lesson-plans',
+    sheet: 'Plans',
+    subtitle: 'Lesson plans and their delivery status',
+    columns: [
+      { key: 'title', label: 'Plan', width: 30 },
+      { key: 'theme', label: 'Theme', width: 18 },
+      { key: 'classroom', label: 'Classroom', width: 20 },
+      { key: 'branch', label: 'Branch', width: 20 },
+      { key: 'status', label: 'Status', width: 12 },
+      { key: 'published_at', label: 'Published', format: 'datetime', width: 18 },
+      { key: 'delivered_at', label: 'Delivered', format: 'datetime', width: 18 }
+    ],
+    query(ctx) {
+      return ctx.db.many(
+        `SELECT lp.title, lp.theme, c.name AS classroom, b.name AS branch,
+                lp.status, lp.published_at, lp.delivered_at
+         FROM lesson_plans lp
+         LEFT JOIN classrooms c ON c.id = lp.classroom_id
+         LEFT JOIN branches b ON b.id = lp.branch_id
+         WHERE lp.organisation_id = $1
+         ORDER BY lp.created_at DESC LIMIT $2`,
+        [ctx.organisationId, MAX_ROWS]
+      );
+    }
+  },
+
+  'activity-participation': {
+    permission: 'curriculum.read.daycare',
+    title: 'Activity participation',
+    filename: 'activity-participation',
+    sheet: 'Participation',
+    subtitle: 'Who attended each scheduled activity and how',
+    columns: [
+      { key: 'starts_at', label: 'When', format: 'datetime', width: 18 },
+      { key: 'activity', label: 'Activity', width: 28 },
+      { key: 'classroom', label: 'Classroom', width: 20 },
+      { key: 'child', label: 'Child', width: 24 },
+      { key: 'participation_status', label: 'Status', width: 16 },
+      { key: 'observation_summary', label: 'Notes', width: 40 }
+    ],
+    query(ctx) {
+      return ctx.db.many(
+        `SELECT sa.starts_at, COALESCE(a.title, sa.title) AS activity, c.name AS classroom,
+                (l.first_name || ' ' || l.last_name) AS child,
+                ap.participation_status, ap.observation_summary
+         FROM activity_participation ap
+         JOIN scheduled_activities sa ON sa.id = ap.scheduled_activity_id
+         LEFT JOIN activities a ON a.id = sa.activity_id
+         LEFT JOIN classrooms c ON c.id = sa.classroom_id
+         JOIN learners l ON l.id = ap.learner_id
+         WHERE ap.organisation_id = $1
+         ORDER BY sa.starts_at DESC LIMIT $2`,
+        [ctx.organisationId, MAX_ROWS]
+      );
+    }
+  },
+
+  'term-assessments': {
+    permission: 'assessments.read.daycare',
+    title: 'Term assessments',
+    filename: 'term-assessments',
+    sheet: 'Assessments',
+    subtitle: 'Domain assessments per term',
+    columns: [
+      { key: 'learner', label: 'Child', width: 24 },
+      { key: 'period', label: 'Period', width: 18 },
+      { key: 'domain', label: 'Domain', width: 22 },
+      { key: 'assessment_status', label: 'Status', width: 12 },
+      { key: 'summary', label: 'Summary', width: 60 },
+      { key: 'published_at', label: 'Published', format: 'datetime', width: 18 }
+    ],
+    query(ctx) {
+      return ctx.db.many(
+        `SELECT (l.first_name || ' ' || l.last_name) AS learner, ap.name AS period,
+                d.name AS domain, la.assessment_status, la.summary, la.published_at
+         FROM learner_assessments la
+         JOIN learners l ON l.id = la.learner_id
+         LEFT JOIN assessment_periods ap ON ap.id = la.assessment_period_id
+         LEFT JOIN curriculum_domains d ON d.id = la.domain_id
+         WHERE la.organisation_id = $1
+         ORDER BY la.published_at DESC NULLS LAST, l.last_name LIMIT $2`,
+        [ctx.organisationId, MAX_ROWS]
+      );
+    }
+  },
+
   'subscription-invoices': {
     permission: 'organisation.settings.manage',
     title: 'Subscription invoices',

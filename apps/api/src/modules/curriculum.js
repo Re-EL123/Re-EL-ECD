@@ -286,6 +286,50 @@ function register(router) {
     return activity;
   }, { permission: 'curriculum.create.daycare' });
 
+  router.patch('/curriculum/activities/:id', async (ctx) => {
+    const body = validate(ctx.body, {
+      branchId: { type: 'string', uuid: true, optional: true },
+      title: { type: 'string', min: 3, max: 200, optional: true },
+      description: { type: 'string', max: 4000, optional: true },
+      ageGroup: { type: 'string', max: 60, optional: true },
+      durationMinutes: { type: 'number', min: 1, max: 480, optional: true },
+      materials: { type: 'string', max: 2000, optional: true },
+      safetyNotes: { type: 'string', max: 2000, optional: true },
+      activityType: { type: 'string', max: 60, optional: true }
+    });
+    const activity = await ctx.db.one('SELECT * FROM activities WHERE id = $1 AND organisation_id = $2',
+      [ctx.params.id, ctx.organisationId]);
+    if (!activity) throw new AppError('NOT_FOUND');
+    if (body.branchId) {
+      const branch = await ctx.db.one('SELECT id FROM branches WHERE id = $1 AND organisation_id = $2',
+        [body.branchId, ctx.organisationId]);
+      if (!branch) throw new AppError('NOT_FOUND');
+    }
+    await ctx.db.query(
+      `UPDATE activities SET branch_id = COALESCE($1,branch_id), title = COALESCE($2,title),
+        description = COALESCE($3,description), age_group = COALESCE($4,age_group),
+        duration_minutes = COALESCE($5,duration_minutes), materials = COALESCE($6,materials),
+        safety_notes = COALESCE($7,safety_notes), activity_type = COALESCE($8,activity_type),
+        updated_at = now() WHERE id = $9`,
+      [body.branchId || null, body.title || null, body.description || null, body.ageGroup || null,
+        body.durationMinutes || null, body.materials || null, body.safetyNotes || null,
+        body.activityType || null, activity.id]
+    );
+    return ctx.db.one('SELECT * FROM activities WHERE id = $1', [activity.id]);
+  }, { permission: 'curriculum.create.daycare' });
+
+  router.post('/curriculum/activities/:id/archive', async (ctx) => {
+    const activity = await ctx.db.one('SELECT * FROM activities WHERE id = $1 AND organisation_id = $2',
+      [ctx.params.id, ctx.organisationId]);
+    if (!activity) throw new AppError('NOT_FOUND');
+    await ctx.db.query(
+      `UPDATE activities SET status = 'archived', updated_at = now() WHERE id = $1`, [activity.id]);
+    await recordAudit(ctx.db, ctx, {
+      action: 'curriculum.activity_archived', resourceType: 'activity', resourceId: activity.id
+    });
+    return ctx.db.one('SELECT * FROM activities WHERE id = $1', [activity.id]);
+  }, { permission: 'curriculum.create.daycare' });
+
   router.get('/curriculum/calendar', async (ctx) => {
     const from = ctx.query.from || new Date().toISOString().slice(0, 10);
     const to = ctx.query.to || new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
