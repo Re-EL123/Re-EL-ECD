@@ -237,10 +237,11 @@ function normaliseAdmissions(input) {
 function normaliseGallery(input) {
   return objects(input, (row, original) => {
     if (typeof original === 'string') return { url: safeUrl(original), caption: '' };
-    return {
-      url: safeUrl(row.url || row.image),
-      caption: text(row.caption || row.title, 200)
-    };
+    const url = safeUrl(row.url || row.image);
+    const kind = ['image', 'video'].includes(row.kind) ? row.kind : undefined;
+    const item = { url, caption: text(row.caption || row.title, 200) };
+    if (kind) item.kind = kind;
+    return item;
   }, 40).filter((row) => row.url);
 }
 

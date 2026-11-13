@@ -277,9 +277,15 @@
   function galleryGrid(gallery, limit) {
     const rows = (gallery || []).filter((item) => safeImageUrl(item.url)).slice(0, limit || 99);
     if (!rows.length) return '';
-    return '<div class="site-gallery">' + rows.map((item) =>
-      '<figure class="site-gallery-item">' + imgTag(item.url, item.caption || 'Centre photo', 'site-gallery-image') +
-      (item.caption ? '<figcaption>' + R.richText(item.caption) + '</figcaption>' : '') + '</figure>').join('') + '</div>';
+    return '<div class="site-gallery">' + rows.map((item) => {
+      const url = item.url;
+      const kind = item.kind || R.kindForUrl(url, 'image');
+      const media = kind === 'video'
+        ? '<video class="site-gallery-image" src="' + R.attr(url) + '" controls playsinline preload="metadata"></video>'
+        : imgTag(url, item.caption || 'Centre photo', 'site-gallery-image');
+      return '<figure class="site-gallery-item">' + media +
+        (item.caption ? '<figcaption>' + R.richText(item.caption) + '</figcaption>' : '') + '</figure>';
+    }).join('') + '</div>';
   }
 
   function valueCards(values) {

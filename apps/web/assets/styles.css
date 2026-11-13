@@ -775,6 +775,8 @@ table.table { width: 100%; border-collapse: collapse; font-size: 0.86rem; min-wi
 .site-gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
 .site-gallery-item { margin: 0; border-radius: var(--radius-md); overflow: hidden; background: var(--surface-2); border: 1px solid var(--border-subtle); }
 .site-gallery-image { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
+.site-gallery-item video.site-gallery-image { object-fit: cover; background: #0f172a; }
+.site-gallery-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 12px 0 16px; }
 .site-gallery-item figcaption { padding: 9px 12px; font-size: 0.78rem; color: var(--text-muted); }
 .site-testimonial { margin: 0; padding: 24px; border-radius: var(--radius-lg); background: var(--surface-1); border: 1px solid var(--border-subtle); }
 .site-testimonial p { margin: 0 0 14px; font-size: 1rem; line-height: 1.7; font-style: italic; }

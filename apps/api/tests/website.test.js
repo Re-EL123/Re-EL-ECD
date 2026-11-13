@@ -51,6 +51,21 @@ test('website content is normalised into a complete, safe shape', () => {
   assert.equal(content.seo.image, 'https://cdn.example.com/one.jpg');
 });
 
+test('gallery items keep video markers and default to images', () => {
+  const content = websiteContent.normalise({
+    gallery: [
+      { url: 'https://cdn.example.com/tour.mp4', caption: 'A video tour', kind: 'video' },
+      { url: 'https://cdn.example.com/photo.jpg', caption: 'A photo' },
+      'https://cdn.example.com/legacy.jpg'
+    ]
+  }, { name: 'Little Sprouts', slug: 'little-sprouts' });
+
+  assert.equal(content.gallery[0].kind, 'video');
+  assert.equal(content.gallery[0].caption, 'A video tour');
+  assert.equal(content.gallery[1].kind, undefined);
+  assert.equal(content.gallery[2].kind, undefined);
+});
+
 test('button links keep safe destinations and reject script URLs', () => {
   const content = websiteContent.normalise({
     hero: {

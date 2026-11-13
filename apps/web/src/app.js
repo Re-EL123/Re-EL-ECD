@@ -1677,6 +1677,60 @@
         }
       },
 
+      /** Upload one website media file and place its URL and kind at the given draft path. */
+      async uploadSiteMedia(path, event) {
+        const input = event && event.target;
+        const file = input && input.files ? input.files[0] : null;
+        if (!file) return;
+        this.siteBusy = path;
+        this.siteError = null;
+        try {
+          const asset = await Reel.uploadMedia(file, { scope: 'website' });
+          this.setSiteValue(path, asset.url);
+          // The companion `kind` field lives next to the url on gallery items.
+          if (/\.url$/.test(path)) this.setSiteValue(path.replace(/\.url$/, '.kind'),
+            asset.kind || Reel.kindForUrl(asset.url));
+          this.toast('Media uploaded. Save the draft to keep it.');
+        } catch (error) {
+          this.siteError = error.message || 'The file could not be uploaded.';
+          this.toast(this.siteError, 'error');
+        } finally {
+          this.siteBusy = null;
+          if (input) input.value = '';
+        }
+      },
+
+      /** Upload several website media files at once and append them to the gallery. */
+      async uploadSiteGallery(event) {
+        const input = event && event.target;
+        const files = input && input.files ? Array.from(input.files) : [];
+        if (!files.length) return;
+        this.siteBusy = 'gallery';
+        this.siteError = null;
+        const added = [];
+        try {
+          for (const file of files) {
+            const asset = await Reel.uploadMedia(file, { scope: 'website' });
+            added.push({
+              url: asset.url,
+              caption: '',
+              kind: asset.kind || Reel.kindForUrl(asset.url)
+            });
+          }
+          const current = this.siteValue('gallery');
+          const next = Array.isArray(current) ? current.slice() : [];
+          next.push(...added);
+          this.setSiteValue('gallery', next);
+          this.toast(added.length + (added.length === 1 ? ' file' : ' files') + ' uploaded. Save the draft to keep them.');
+        } catch (error) {
+          this.siteError = error.message || 'The files could not be uploaded.';
+          this.toast(this.siteError, 'error');
+        } finally {
+          this.siteBusy = null;
+          if (input) input.value = '';
+        }
+      },
+
       async saveSiteDraft(options) {
         if (!this.siteDraft) return null;
         const opts = options || {};

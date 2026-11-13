@@ -557,16 +557,34 @@
 
     renderGalleryPanel(ctx, slug, canManage) {
       return '<div class="site-editor-panel" x-show="siteTab === \'gallery\'" x-cloak>' +
-        editorCard('Gallery', '<p class="muted small">Upload as many photos as you like. The first photo is also used as the social sharing image when no dedicated image is set.</p>' +
+        editorCard('Gallery', '<p class="muted small">Upload as many photos and videos as you like. Select several files at once and each one becomes a gallery item — you can add captions afterwards. The first item is also used as the social sharing image when no dedicated image is set.</p>' +
+          '<div class="site-gallery-actions">' +
+            '<label class="btn btn-primary site-file-btn">' + R.icon('upload') + ' Upload multiple photos & videos' +
+              '<input type="file" multiple accept="image/*,video/*" @change="uploadSiteGallery($event)">' +
+            '</label>' +
+            '<span class="muted small" x-show="siteBusy === \'gallery\'">Uploading…</span>' +
+          '</div>' +
           '<div class="site-gallery-edit">' +
           '<template x-for="(item, index) in siteDraft.gallery" :key="index"><div class="site-repeat">' +
-          repeatHead('Photo', 'gallery', 'index') +
+          repeatHead('Media', 'gallery', 'index') +
           '<div class="form-grid">' +
-          editorImage('Photo', 'item.url', '\'gallery.\' + index + \'.url\'') +
+          '<div class="field span-2"><label>Media</label>' +
+            '<div class="site-image-row">' +
+              '<input class="input" type="url" x-model="item.url" placeholder="https://… or /assets/…" @input="item.kind = window.Reel.kindForUrl(item.url)">' +
+              '<label class="btn btn-secondary btn-sm site-file-btn">' + R.icon('upload') + ' Upload' +
+                '<input type="file" accept="image/*,video/*" @change="uploadSiteMedia(\'gallery.\' + index + \'.url\', $event)">' +
+              '</label>' +
+              '<button type="button" class="btn btn-ghost btn-sm" x-show="item.url" @click="item.url = \'\'; item.kind = \'image\'" aria-label="Remove media">' + R.icon('x') + '</button>' +
+            '</div>' +
+            '<div class="hint" x-show="siteBusy === \'gallery.\' + index + \'.url\'">Uploading…</div>' +
+            '<div class="hint">Photo or video, or paste a direct URL.</div>' +
+            '<template x-if="item.url && (item.kind || window.Reel.kindForUrl(item.url)) === \'video\'"><video class="site-edit-thumb" :src="item.url" controls muted playsinline preload="metadata"></video></template>' +
+            '<template x-if="item.url && (item.kind || window.Reel.kindForUrl(item.url)) !== \'video\'"><img class="site-edit-thumb" :src="item.url" alt=""></template>' +
+          '</div>' +
           '<div class="field span-2"><label>Caption</label><input class="input" x-model="item.caption" placeholder="Our outdoor play garden"></div>' +
           '</div></div></template>' +
           '</div>' +
-          repeatAdd('Add a photo', 'siteAdd(\'gallery\', { url: \'\', caption: \'\' })'), pagePreview(slug, 'gallery')) +
+          repeatAdd('Add media', 'siteAdd(\'gallery\', { url: \'\', caption: \'\', kind: \'image\' })'), pagePreview(slug, 'gallery')) +
         '</div>';
     },
 
