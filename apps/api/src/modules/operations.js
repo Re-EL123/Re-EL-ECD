@@ -747,6 +747,410 @@ function register(router) {
     return summary;
   }, { permission: 'organisation.settings.manage' });
 
+  // --- Family engagement: the silent 20% -----------------------------------
+  // Staff see who is enjoying the app; guardians get a gentle nudge before
+  // the silence turns into a withdrawn child and an unpaid balance.
+
+  async function quietFamilyRows(db, organisationId, days, limit) {
+    const windowDays = Math.max(1, Math.min(30, Number(days) || 7));
+    const rows = await db.many(
+      `SELECT g.id AS user_id,
+              g.display_name AS guardian_name,
+              array_agg(DISTINCT l.first_name ORDER BY l.first_name) AS children,
+              m.digest_opened_at,
+              MAX(GREATEST(
+                COALESCE(o.parent_viewed_at, 'epoch'::timestamptz),
+                COALESCE(r.parent_viewed_at, 'epoch'::timestamptz)
+              )) AS last_content_view,
+              MAX((m.activation->>'lastVisitAt')::timestamptz) AS last_visit
+       FROM memberships m
+       JOIN membership_roles mr ON mr.membership_id = m.id
+       JOIN roles rol ON rol.id = mr.role_id AND rol.role_key = 'parent_guardian'
+       JOIN users g ON g.id = m.user_id
+       JOIN learner_guardians lg ON lg.organisation_id = $1 AND lg.portal_access_status = 'active'
+         AND (lg.ends_at IS NULL OR lg.ends_at >= CURRENT_DATE)
+       JOIN guardians gg ON gg.id = lg.guardian_id AND gg.user_id = g.id
+       JOIN learners l ON l.id = lg.learner_id
+       LEFT JOIN learner_observations o ON o.learner_id = l.id
+       LEFT JOIN daily_reports r ON r.learner_id = l.id
+       WHERE m.organisation_id = $1 AND m.status = 'active' AND g.email IS NOT NULL
+       GROUP BY g.id, g.display_name, m.digest_opened_at, m.activation
+       ORDER BY 5 ASC NULLS FIRST
+       LIMIT 200`,
+      [organisationId]
+    );
+    const cutoff = Date.now() - windowDays * 86400000;
+    const out = [];
+    for (const row of rows) {
+      const lastContent = row.last_content_view && new Date(row.last_content_view).getTime() > 0 ? new Date(row.last_content_view) : null;
+      const lastVisit = row.last_visit ? new Date(row.last_visit) : null;
+      const lastDigest = row.digest_opened_at ? new Date(row.digest_opened_at) : null;
+      const candidates = [lastContent, lastVisit, lastDigest].filter(Boolean);
+      const lastEngagement = candidates.length ? new Date(Math.max(...candidates.map((d) => d.getTime()))) : null;
+      if (lastEngagement && lastEngagement.getTime() >= cutoff) continue;
+      out.push({
+        userId: row.user_id,
+        guardianName: row.guardian_name,
+        children: row.children,
+        lastEngagement: lastEngagement ? lastEngagement.toISOString() : null,
+        daysQuiet: lastEngagement ? Math.floor((Date.now() - lastEngagement.getTime()) / 86400000) : null
+      });
+      if (out.length >= (limit || 100)) break;
+    }
+    return out;
+  }
+
+  router.get('/reports/engagement/quiet', async (ctx) => {
+    const days = Math.max(1, Math.min(30, Number(ctx.query.days || 7)));
+    const families = await quietFamilyRows(ctx.db, ctx.organisationId, days, 100);
+    return { families, count: families.length, windowDays: days };
+  }, { permission: 'reports.read.daycare' });
+
+  async function nudgeFamily(db, organisation, userId, days) {
+    const guardian = await db.one(
+      `SELECT u.display_name, u.email FROM users u
+       JOIN memberships m ON m.user_id = u.id AND m.organisation_id = $2 AND m.status = 'active'
+       WHERE u.id = $1`, [userId, organisation.id]);
+    if (!guardian || !guardian.email) return { sent: false, error: 'No email address on file.' };
+    const children = await db.many(
+      `SELECT l.first_name FROM learner_guardians lg
+       JOIN guardians g ON g.id = lg.guardian_id
+       JOIN learners l ON l.id = lg.learner_id
+       WHERE lg.organisation_id = $1 AND g.user_id = $2 AND lg.portal_access_status = 'active'
+         AND (lg.ends_at IS NULL OR lg.ends_at >= CURRENT_DATE) ORDER BY l.first_name`,
+      [organisation.id, userId]);
+    const firstChild = children[0] ? children[0].first_name : 'your child';
+    const childList = children.map((c) => c.first_name).join(', ') || firstChild;
+    try {
+      const { sendTemplate } = require('../services/email-service');
+      const result = await sendTemplate(db, 'familyNudge', {
+        to: guardian.email,
+        organisationId: organisation.id,
+        data: {
+          organisationName: organisation.name,
+          guardianName: guardian.display_name,
+          firstChild,
+          message: childList + ' had a wonderful week and the app has more than the numbers tell — fresh photos, little moments and Friday’s note are all on the family portal. Open it when you have a quiet minute.'
+        },
+        metadata: { kind: 'family_nudge', days: days || 7 }
+      });
+      await createNotification(db, null, {
+        recipientUserIds: [userId], type: 'family_nudge', organisationId: organisation.id,
+        title: 'A note from your centre',
+        body: childList + ' had a wonderful week — the photos and moments are waiting on the family portal.',
+        url: '/parent/overview'
+      });
+      return { sent: !!(result && result.status === 'sent'), emailed: guardian.email };
+    } catch (error) {
+      return { sent: false, error: error.message };
+    }
+  }
+
+  router.post('/reports/engagement/nudge', async (ctx) => {
+    const body = validate(ctx.body, {
+      userId: { type: 'string', uuid: true },
+      days: { type: 'number', optional: true }
+    });
+    const result = await nudgeFamily(ctx.db, ctx.organisation, body.userId, body.days || 7);
+    if (!result.emailed && result.error) throw new AppError('NOT_FOUND', null, result.error);
+    await recordAudit(ctx.db, ctx, { action: 'reports.family_nudged', resourceType: 'user', resourceId: body.userId, metadata: { days: body.days || 7 } });
+    return result;
+  }, { permission: 'organisation.settings.manage' });
+
+  router.post('/reports/engagement/nudge-all', async (ctx) => {
+    const days = Math.max(1, Math.min(30, Number((ctx.body && ctx.body.days) || 7)));
+    const families = await quietFamilyRows(ctx.db, ctx.organisationId, days, 100);
+    let sent = 0;
+    const failed = [];
+    for (const family of families) {
+      const result = await nudgeFamily(ctx.db, ctx.organisation, family.userId, days);
+      if (result.sent) sent += 1; else failed.push({ userId: family.userId, error: result.error || 'not sent' });
+    }
+    await recordAudit(ctx.db, ctx, { action: 'reports.family_nudge_all', resourceType: 'organisation', resourceId: ctx.organisationId, metadata: { sent, total: families.length, days } });
+    return { sent, total: families.length, failed };
+  }, { permission: 'organisation.settings.manage' });
+
+  // --- Family onboarding cohort (first 60 days) ------------------------------
+  // Three markers of value landed: push enabled, a report opened, a return
+  // visit. The owner watches the cohort; the silent households get a nudge.
+
+  router.get('/reports/family-onboarding', async (ctx) => {
+    const rows = await ctx.db.many(
+      `SELECT g.id AS user_id,
+              g.display_name AS guardian_name,
+              m.created_at AS joined_at,
+              m.digest_opened_at,
+              jsonb_array_length(COALESCE(m.activation->'visitDates', '[]'::jsonb)) AS visit_days,
+              EXISTS (SELECT 1 FROM push_subscriptions ps WHERE ps.user_id = g.id) AS push_enabled,
+              EXISTS (
+                SELECT 1 FROM learners l
+                JOIN learner_guardians lg ON lg.learner_id = l.id AND lg.organisation_id = $1 AND lg.portal_access_status = 'active'
+                JOIN guardians gg ON gg.id = lg.guardian_id AND gg.user_id = g.id
+                WHERE (SELECT COUNT(*) FROM daily_reports dr WHERE dr.learner_id = l.id AND dr.parent_viewed_at IS NOT NULL)
+                    + (SELECT COUNT(*) FROM learner_observations o WHERE o.learner_id = l.id AND o.parent_viewed_at IS NOT NULL) > 0
+              ) AS report_opened,
+              (SELECT array_agg(l.first_name ORDER BY l.first_name) FROM learners l
+               JOIN learner_guardians lg2 ON lg2.learner_id = l.id AND lg2.organisation_id = $1 AND lg2.portal_access_status = 'active'
+               JOIN guardians gg2 ON gg2.id = lg2.guardian_id AND gg2.user_id = g.id) AS children
+       FROM memberships m
+       JOIN membership_roles mr ON mr.membership_id = m.id
+       JOIN roles rol ON rol.id = mr.role_id AND rol.role_key = 'parent_guardian'
+       JOIN users g ON g.id = m.user_id
+       WHERE m.organisation_id = $1 AND m.status = 'active'
+         AND m.created_at > now() - interval '60 days'
+       ORDER BY m.created_at DESC`,
+      [ctx.organisationId]
+    );
+    const families = rows.map((row) => ({
+      userId: row.user_id,
+      guardianName: row.guardian_name,
+      joinedAt: row.joined_at,
+      daysSinceJoin: Math.floor((Date.now() - new Date(row.joined_at).getTime()) / 86400000),
+      pushEnabled: Boolean(row.push_enabled),
+      reportOpened: Boolean(row.report_opened),
+      returnVisit: Number(row.visit_days) >= 2,
+      visitDays: Number(row.visit_days) || 0,
+      digestOpenedAt: row.digest_opened_at || null,
+      children: row.children
+    }));
+    const total = families.length;
+    const pct = (n) => (total ? Math.round((n / total) * 100) : 0);
+    return {
+      total,
+      pushPct: pct(families.filter((f) => f.pushEnabled).length),
+      reportOpenedPct: pct(families.filter((f) => f.reportOpened).length),
+      returnVisitPct: pct(families.filter((f) => f.returnVisit).length),
+      digestOpenedPct: pct(families.filter((f) => f.digestOpenedAt).length),
+      families
+    };
+  }, { permission: 'reports.read.daycare' });
+
+  // --- Pickup brief (15:00 on weekdays) --------------------------------------
+  // Three lines a parent can read while unbuckling the child seat: mood,
+  // meals, and one question about the week's most recent moment.
+
+  async function pickupAll(innerCtx, triggeredBy) {
+    const organisations = await innerCtx.db.many("SELECT * FROM organisations WHERE status = 'active'");
+    let sent = 0;
+    const detail = [];
+    for (const organisation of organisations) {
+      const candidates = await innerCtx.db.many(
+        `SELECT l.id AS learner_id, l.first_name, l.last_name
+         FROM learners l
+         WHERE l.organisation_id = $1 AND l.status = 'enrolled'
+           AND (EXISTS (SELECT 1 FROM daily_reports r WHERE r.learner_id = l.id AND r.report_date = CURRENT_DATE)
+             OR EXISTS (SELECT 1 FROM learner_observations o WHERE o.learner_id = l.id
+                        AND o.assessment_status IN ('published','amended')
+                        AND o.observation_date >= CURRENT_DATE - interval '7 days'))`,
+        [organisation.id]
+      );
+      let orgSent = 0;
+      for (const child of candidates) {
+        const report = await innerCtx.db.one(
+          'SELECT * FROM daily_reports WHERE learner_id = $1 AND report_date = CURRENT_DATE',
+          [child.learner_id]
+        );
+        const moment = await innerCtx.db.one(
+          `SELECT o.id, o.observation_text, o.context, o.observation_date,
+                  d.name AS domain_name, ob.description AS objective_description
+           FROM learner_observations o
+           LEFT JOIN learning_objectives ob ON ob.id = o.objective_id
+           LEFT JOIN curriculum_domains d ON d.id = ob.domain_id
+           WHERE o.learner_id = $1 AND o.organisation_id = $2
+             AND o.assessment_status IN ('published','amended')
+           ORDER BY o.observation_date DESC, o.created_at DESC LIMIT 1`,
+          [child.learner_id, organisation.id]
+        );
+        const guardians = await innerCtx.db.many(
+          `SELECT DISTINCT g.user_id, g.first_name
+           FROM learner_guardians lg JOIN guardians g ON g.id = lg.guardian_id
+           WHERE lg.learner_id = $1 AND lg.organisation_id = $2 AND lg.portal_access_status = 'active'
+             AND lg.can_receive_reports = true AND g.user_id IS NOT NULL`,
+          [child.learner_id, organisation.id]
+        );
+        if (!guardians.length) continue;
+        const first = child.first_name;
+        const lines = ['🌤 ' + first + ' had ' + (report && report.mood ? 'a ' + report.mood + ' day' : 'a lovely day') + '.'];
+        if (report && report.meals) lines.push('🍎 Meals: ' + String(report.meals).replace(/\s+/g, ' ').slice(0, 110) + '.');
+        if (report && report.naps) lines.push('😴 Naps: ' + String(report.naps).replace(/\s+/g, ' ').slice(0, 90) + '.');
+        const subject = moment
+          ? String(moment.objective_description || moment.context || moment.domain_name || String(moment.observation_text).split('\n')[0])
+              .replace(/[.…]\s*$/, '').trim().slice(0, 80)
+          : null;
+        lines.push(subject
+          ? '💬 Ask ' + first + ' about “' + subject + '” — dinner will bring out something special.'
+          : '💬 Ask ' + first + ' to show you something from today — the moment is in the app.');
+        const title = 'Tonight at pickup: ' + first;
+        const body = lines.join('\n');
+        for (const guardian of guardians) {
+          const dupe = await innerCtx.db.one(
+            `SELECT 1 FROM notifications
+             WHERE recipient_user_id = $1 AND notification_type = 'pickup_brief'
+               AND title = $2 AND created_at::date = CURRENT_DATE LIMIT 1`,
+            [guardian.user_id, title]
+          ).catch(() => null);
+          if (dupe) continue;
+          await createNotification(innerCtx.db, innerCtx, {
+            recipientUserIds: [guardian.user_id], type: 'pickup_brief', organisationId: organisation.id,
+            title, body, url: '/parent/activities',
+            resourceType: moment ? 'learner_observation' : 'daily_report',
+            resourceId: moment ? moment.id : (report && report.id) || null
+          });
+          orgSent += 1;
+        }
+      }
+      detail.push({ organisation: organisation.name, sent: orgSent });
+      sent += orgSent;
+    }
+    await recordAudit(innerCtx.db, innerCtx, { action: 'automation.pickup_brief', resourceType: 'organisation', resourceId: innerCtx.organisationId, metadata: { sent, organisations: detail.length, triggeredBy } });
+    return { sent, organisations: detail };
+  }
+
+  router.post('/automation/pickup-brief', async (ctx) => {
+    return pickupAll(ctx, 'manual');
+  }, { permission: 'organisation.settings.manage' });
+
+  router.post('/cron/pickup-brief', async (ctx) => {
+    const secret = String(process.env.CRON_SECRET || '').trim();
+    const header = String((ctx.req.headers['authorization'] || ctx.req.headers['x-cron-secret'] || '')).trim();
+    const presented = header.replace(/^Bearer\s+/i, '');
+    if (!secret || presented !== secret) throw new AppError('FORBIDDEN');
+    return pickupAll(ctx, 'cron');
+  }, { public: true });
+
+  // --- Week-one onboarding sweep (daily 07:00) --------------------------------
+  // Day 1: welcome. Day 3: the first moment. Day 5: preview digest.
+  // Day 7: the first-week recap. Markers are stored on the membership.
+
+  async function onboardingAll(innerCtx, triggeredBy) {
+    const organisations = await innerCtx.db.many("SELECT * FROM organisations WHERE status = 'active'");
+    const { sendTemplate } = require('../services/email-service');
+    const summary = { welcome: 0, day3: 0, preview: 0, day7: 0, organisations: organisations.length };
+    for (const organisation of organisations) {
+      const guardians = await innerCtx.db.many(
+        `SELECT DISTINCT m.user_id, u.email, u.display_name, m.created_at AS joined_at,
+                COALESCE(m.activation, '{}'::jsonb) AS activation
+         FROM memberships m JOIN users u ON u.id = m.user_id
+         JOIN membership_roles mr ON mr.membership_id = m.id
+         JOIN roles rol ON rol.id = mr.role_id AND rol.role_key = 'parent_guardian'
+         WHERE m.organisation_id = $1 AND m.status = 'active' AND u.email IS NOT NULL`,
+        [organisation.id]
+      );
+      for (const guardian of guardians) {
+        const days = Math.floor((Date.now() - new Date(guardian.joined_at).getTime()) / 86400000);
+        const activation = guardian.activation || {};
+        const children = await innerCtx.db.many(
+          `SELECT l.id, l.first_name FROM learner_guardians lg
+           JOIN guardians g ON g.id = lg.guardian_id
+           JOIN learners l ON l.id = lg.learner_id
+           WHERE lg.organisation_id = $1 AND g.user_id = $2 AND lg.portal_access_status = 'active'
+             AND (lg.ends_at IS NULL OR lg.ends_at >= CURRENT_DATE)`,
+          [organisation.id, guardian.user_id]
+        );
+        if (!children.length) continue;
+        const firstChild = children[0].first_name;
+        const childIds = children.map((c) => c.id);
+        const saveActivation = (patch) => innerCtx.db.query(
+          `UPDATE memberships SET activation = COALESCE(activation, '{}'::jsonb) || $1::jsonb
+           WHERE user_id = $2 AND organisation_id = $3`,
+          [JSON.stringify(patch), guardian.user_id, organisation.id]
+        );
+        try {
+          if (days >= 1 && !activation.welcomeSentAt) {
+            await sendTemplate(innerCtx.db, 'parentWelcome', {
+              to: guardian.email, organisationId: organisation.id,
+              data: { organisationName: organisation.name, guardianName: guardian.display_name, firstChild },
+              metadata: { kind: 'parent_welcome' }
+            });
+            await createNotification(innerCtx.db, innerCtx, {
+              recipientUserIds: [guardian.user_id], type: 'parent_welcome', organisationId: organisation.id,
+              title: 'Welcome to ' + organisation.name,
+              body: 'Your family portal is ready — photos and moments from ' + firstChild + '’s classroom are on the way.',
+              url: '/parent/overview'
+            });
+            await saveActivation({ welcomeSentAt: new Date().toISOString() });
+            summary.welcome += 1;
+          } else if (days >= 3 && !activation.day3SentAt) {
+            const moment = await innerCtx.db.one(
+              `SELECT o.id, o.observation_text FROM learner_observations o
+               WHERE o.organisation_id = $1 AND o.learner_id = ANY($2::uuid[])
+                 AND o.assessment_status IN ('published','amended')
+               ORDER BY o.observation_date DESC, o.created_at DESC LIMIT 1`,
+              [organisation.id, childIds]
+            );
+            if (moment) {
+              await createNotification(innerCtx.db, innerCtx, {
+                recipientUserIds: [guardian.user_id], type: 'moment', organisationId: organisation.id,
+                title: 'A moment from ' + firstChild,
+                body: String(moment.observation_text).split('\n')[0].slice(0, 140),
+                resourceType: 'learner_observation', resourceId: moment.id, url: '/parent/activities'
+              });
+            } else {
+              await sendTemplate(innerCtx.db, 'parentFirstMoment', {
+                to: guardian.email, organisationId: organisation.id,
+                data: { organisationName: organisation.name, guardianName: guardian.display_name, firstChild },
+                metadata: { kind: 'parent_day3' }
+              });
+            }
+            await saveActivation({ day3SentAt: new Date().toISOString() });
+            summary.day3 += 1;
+          } else if (days >= 5 && !activation.previewDigestSentAt) {
+            const { sendWeeklyDigest } = require('../services/digest-service');
+            await sendWeeklyDigest(innerCtx.db, { organisation, triggeredBy: 'onboarding', onlyUserId: guardian.user_id, includeOptedOut: true, preview: true });
+            await saveActivation({ previewDigestSentAt: new Date().toISOString() });
+            summary.preview += 1;
+          } else if (days >= 7 && !activation.day7SentAt) {
+            const attendance = await innerCtx.db.one(
+              `SELECT COUNT(*)::int AS recorded,
+                      COUNT(CASE WHEN attendance_status IN ('present','late') THEN 1 END)::int AS present
+               FROM learner_attendance
+               WHERE organisation_id = $1 AND learner_id = ANY($2::uuid[])
+                 AND attendance_date >= CURRENT_DATE - interval '7 days'`,
+              [organisation.id, childIds]
+            );
+            const observations = await innerCtx.db.one(
+              `SELECT COUNT(*)::int AS count FROM learner_observations
+               WHERE organisation_id = $1 AND learner_id = ANY($2::uuid[])
+                 AND assessment_status IN ('published','amended')
+                 AND observation_date >= CURRENT_DATE - interval '7 days'`,
+              [organisation.id, childIds]
+            );
+            await sendTemplate(innerCtx.db, 'parentFirstWeek', {
+              to: guardian.email, organisationId: organisation.id,
+              data: {
+                organisationName: organisation.name, guardianName: guardian.display_name, firstChild,
+                stats: [
+                  { label: 'Days at the centre this week', value: String(attendance.present || 0) + ' of ' + String(attendance.recorded || 0) },
+                  { label: 'Moments shared with you', value: String(observations.count || 0) },
+                  { label: 'Fridays from now on', value: 'Every week' }
+                ]
+              },
+              metadata: { kind: 'parent_day7' }
+            });
+            await saveActivation({ day7SentAt: new Date().toISOString() });
+            summary.day7 += 1;
+          }
+        } catch (error) {
+          console.warn(JSON.stringify({ level: 'warn', message: 'onboarding step failed', organisationId: organisation.id, userId: guardian.user_id, error: error.message }));
+        }
+      }
+    }
+    await recordAudit(innerCtx.db, innerCtx, { action: 'automation.parent_onboarding', resourceType: 'organisation', resourceId: innerCtx.organisationId, metadata: { ...summary, triggeredBy } });
+    return summary;
+  }
+
+  router.post('/automation/parent-onboarding', async (ctx) => {
+    return onboardingAll(ctx, 'manual');
+  }, { permission: 'organisation.settings.manage' });
+
+  router.post('/cron/parent-onboarding', async (ctx) => {
+    const secret = String(process.env.CRON_SECRET || '').trim();
+    const header = String((ctx.req.headers['authorization'] || ctx.req.headers['x-cron-secret'] || '')).trim();
+    const presented = header.replace(/^Bearer\s+/i, '');
+    if (!secret || presented !== secret) throw new AppError('FORBIDDEN');
+    return onboardingAll(ctx, 'cron');
+  }, { public: true });
+
   // --- Weekly family digest -------------------------------------------------
   // Sends Friday's “week at the centre” email to every parent who opted in.
   // Called by Vercel Cron (Authorization: Bearer CRON_SECRET) or manually.

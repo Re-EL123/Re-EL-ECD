@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **380 routes** across 24 modules.
+Generated from the router: **395 routes** across 24 modules.
 
 ## Access
 
@@ -68,6 +68,8 @@ Generated from the router: **380 routes** across 24 modules.
 | --- | --- | --- |
 | POST | `/assessments/learner` | assessments.create.assigned OR assessments.publish.daycare |
 | GET | `/assessments/learner/:learnerId` | assessments.read.daycare OR assessments.read.assigned |
+| GET | `/assessments/monthly-arcs` | assessments.create.assigned OR assessments.read.assigned OR assessments.create.daycare OR organisation.settings.manage |
+| PUT | `/assessments/monthly-arcs` | assessments.create.assigned OR assessments.create.daycare OR organisation.settings.manage |
 | GET | `/assessments/observations` | assessments.read.daycare OR assessments.read.assigned |
 | POST | `/assessments/observations` | assessments.create.assigned OR assessments.read.daycare |
 | PATCH | `/assessments/observations/:id` | assessments.create.assigned OR assessments.read.daycare |
@@ -80,6 +82,7 @@ Generated from the router: **380 routes** across 24 modules.
 | GET | `/assessments/overview` | assessments.read.daycare |
 | GET | `/assessments/periods` | assessments.read.daycare |
 | POST | `/assessments/periods` | assessments.publish.daycare |
+| POST | `/assessments/quick-moments` | assessments.create.assigned OR assessments.create.daycare |
 | POST | `/assessments/reports/generate` | assessments.read.daycare OR parent.read.own |
 
 ## Audit
@@ -106,6 +109,8 @@ Generated from the router: **380 routes** across 24 modules.
 
 | Method | Path | Access |
 | --- | --- | --- |
+| POST | `/automation/parent-onboarding` | organisation.settings.manage |
+| POST | `/automation/pickup-brief` | organisation.settings.manage |
 | POST | `/automation/portfolio-digest` | organisation.settings.manage |
 | POST | `/automation/sweep` | organisation.settings.manage |
 | POST | `/automation/weekly-digest` | organisation.settings.manage |
@@ -171,6 +176,8 @@ Generated from the router: **380 routes** across 24 modules.
 
 | Method | Path | Access |
 | --- | --- | --- |
+| POST | `/cron/parent-onboarding` | Public |
+| POST | `/cron/pickup-brief` | Public |
 | POST | `/cron/portfolio-digest` | Public |
 | POST | `/cron/weekly-digest` | Public |
 
@@ -189,6 +196,7 @@ Generated from the router: **380 routes** across 24 modules.
 | POST | `/curriculum/calendar/events/:id/complete` | curriculum.create.daycare |
 | GET | `/curriculum/calendar/events/:id/participation` | curriculum.read.daycare |
 | POST | `/curriculum/calendar/events/:id/start` | curriculum.create.daycare |
+| GET | `/curriculum/domains` | curriculum.read.assigned OR curriculum.read.daycare OR assessments.read.assigned OR assessments.create.assigned |
 | POST | `/curriculum/domains` | curriculum.create.daycare |
 | GET | `/curriculum/frameworks` | curriculum.read.daycare |
 | POST | `/curriculum/frameworks` | curriculum.create.daycare |
@@ -470,7 +478,10 @@ Generated from the router: **380 routes** across 24 modules.
 | POST | `/parent/invoices/:id/pay` | parent.finance.read.own |
 | POST | `/parent/observations/:id/read` | parent.read.own |
 | GET | `/parent/overview` | parent.read.own |
+| GET | `/parent/reactions` | parent.read.own |
+| POST | `/parent/reactions` | parent.read.own |
 | POST | `/parent/reports/:id/read` | parent.read.own |
+| POST | `/parent/visit` | parent.read.own |
 
 ## Payments
 
@@ -561,6 +572,10 @@ Generated from the router: **380 routes** across 24 modules.
 | --- | --- | --- |
 | GET | `/reports` | reports.read.daycare OR reports.read.assigned |
 | GET | `/reports/:key` | reports.read.daycare OR reports.read.assigned |
+| POST | `/reports/engagement/nudge` | organisation.settings.manage |
+| POST | `/reports/engagement/nudge-all` | organisation.settings.manage |
+| GET | `/reports/engagement/quiet` | reports.read.daycare |
+| GET | `/reports/family-onboarding` | reports.read.daycare |
 | POST | `/reports/jobs` | reports.export.daycare |
 
 ## Safety

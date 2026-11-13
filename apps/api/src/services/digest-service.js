@@ -9,16 +9,49 @@
 const { sendTemplate } = require('./email-service');
 const { recordAudit } = require('./audit-service');
 
-async function guardianMemberships(db, organisationId) {
+async function guardianMemberships(db, organisationId, { onlyUserId = null, includeOptedOut = false } = {}) {
+  const params = [organisationId];
+  let extra = '';
+  if (!includeOptedOut) extra += ' AND COALESCE(m.email_digest, true) = true';
+  if (onlyUserId) { params.push(onlyUserId); extra += ' AND m.user_id = $2'; }
   return db.many(
     `SELECT DISTINCT m.user_id, u.email, u.display_name
      FROM memberships m JOIN users u ON u.id = m.user_id
      JOIN membership_roles mr ON mr.membership_id = m.id
      JOIN roles r ON r.id = mr.role_id
      WHERE m.organisation_id = $1 AND m.status = 'active'
-       AND r.role_key = 'parent_guardian' AND COALESCE(m.email_digest, true) = true
+       AND r.role_key = 'parent_guardian'${extra}
        AND u.email IS NOT NULL`,
-    [organisationId]
+    params
+  );
+}
+
+function firstPhotoUrl(value) {
+  let list = value;
+  if (typeof value === 'string') {
+    try { list = JSON.parse(value); } catch { list = [value]; }
+  }
+  if (!Array.isArray(list)) return null;
+  for (const url of list) {
+    const text = String(url || '');
+    if (/^https?:\/\//i.test(text)) return text;
+  }
+  return null;
+}
+
+/** The week's most vivid moment for a child (published/amended), or null. */
+async function latestMoment(db, organisationId, learnerId) {
+  return db.one(
+    `SELECT o.id, o.observation_text, o.photo_urls, o.observation_date, o.context,
+            d.name AS domain_name, u.display_name AS teacher_name
+     FROM learner_observations o
+     LEFT JOIN curriculum_domains d ON d.id = o.domain_id
+     LEFT JOIN users u ON u.id = o.recorded_by
+     WHERE o.organisation_id = $1 AND o.learner_id = $2
+       AND o.assessment_status IN ('published','amended')
+       AND o.observation_date >= CURRENT_DATE - interval '7 days'
+     ORDER BY o.observation_date DESC, o.created_at DESC LIMIT 1`,
+    [organisationId, learnerId]
   );
 }
 
@@ -84,8 +117,8 @@ function lineFor(stats) {
 }
 
 /** Build and send the digest for one organisation. Returns the number sent. */
-async function sendWeeklyDigest(db, { organisation, triggeredBy }) {
-  const memberships = await guardianMemberships(db, organisation.id);
+async function sendWeeklyDigest(db, { organisation, triggeredBy, onlyUserId = null, includeOptedOut = false, preview = false } = {}) {
+  const memberships = await guardianMemberships(db, organisation.id, { onlyUserId, includeOptedOut });
   const highlight = await highlights(db, organisation.id);
   let sent = 0;
   for (const membership of memberships) {
@@ -94,7 +127,31 @@ async function sendWeeklyDigest(db, { organisation, triggeredBy }) {
     const childRows = [];
     for (const child of children) {
       const stats = await weekStats(db, organisation.id, child.id);
-      childRows.push({ name: child.first_name + ' ' + child.last_name, line: lineFor(stats) });
+      const moment = await latestMoment(db, organisation.id, child.id);
+      const firstName = child.first_name;
+      childRows.push({
+        id: child.id,
+        firstName,
+        name: child.first_name + ' ' + child.last_name,
+        line: lineFor(stats),
+        stats: {
+          activities: stats.activities,
+          observations: stats.observations,
+          attendancePresent: stats.attendancePresent,
+          attendanceRecorded: stats.attendanceRecorded
+        },
+        moment: moment && moment.observation_text
+          ? {
+            id: moment.id,
+            text: String(moment.observation_text).split('\n')[0].slice(0, 220),
+            photoUrl: firstPhotoUrl(moment.photo_urls),
+            teacherFirst: String(moment.teacher_name || '').trim().split(' ')[0] || 'Your child’s teacher',
+            date: moment.observation_date,
+            domain: moment.domain_name || null
+          }
+          : null,
+        link: '/#/parent/children/' + child.id + '?src=weekly-digest'
+      });
     }
     const outstanding = await db.one(
       `SELECT COUNT(*)::int AS count FROM learners l
@@ -115,9 +172,10 @@ async function sendWeeklyDigest(db, { organisation, triggeredBy }) {
           children: childRows,
           highlight,
           feesUrl: due ? '/#/parent/finance' : null,
-          ctaUrl: '/#/parent/overview'
+          ctaUrl: '/#/parent/overview?src=weekly-digest',
+          preview
         },
-        metadata: { kind: 'weekly_digest', children: childRows.length, triggeredBy: triggeredBy || 'schedule' }
+        metadata: { kind: 'weekly_digest', children: childRows.length, preview, triggeredBy: triggeredBy || 'schedule' }
       });
       if (result && result.status === 'sent') sent += 1;
     } catch (error) {
@@ -152,15 +210,23 @@ async function observationsThisMonth(db, organisationId, learnerId) {
   );
 }
 
-function portfolioPdf(organisation, learner, observations, periodLabel) {
+function portfolioPdf(organisation, learner, observations, periodLabel, monthArc, monthLabel) {
   const sections = [];
-  sections.push({
-    heading: 'Month at a glance',
-    paragraphs: [
-      'Here is a calm snapshot of ' + learner.first_name + ' this ' + periodLabel + ' — moments we recorded, outcomes we saw and tiny triumphs worth celebrating.',
-      'Observations this month: ' + observations.length + '.'
-    ]
-  });
+  if (monthArc && monthArc.paragraph) {
+    const author = monthArc.author ? String(monthArc.author).trim().split(' ')[0] : null;
+    sections.push({
+      heading: (monthLabel || periodLabel) + ' at a glance',
+      paragraphs: [monthArc.paragraph, author ? '— ' + author + ', your child’s teacher' : '']
+    });
+  } else {
+    sections.push({
+      heading: 'Month at a glance',
+      paragraphs: [
+        'Here is a calm snapshot of ' + learner.first_name + ' this ' + periodLabel + ' — moments we recorded, outcomes we saw and tiny triumphs worth celebrating.',
+        'Observations this month: ' + observations.length + '.'
+      ]
+    });
+  }
   if (observations.length) {
     for (const observation of observations.slice(0, 30)) {
       const heading = observation.objective_code
@@ -219,6 +285,7 @@ async function sendPortfolioDigest(db, { organisation, triggeredBy }) {
     const pdfAttachments = [];
     let childIntro = '';
     let totalObservations = 0;
+    let arcPreview = null;
     for (const child of children) {
       const link = await db.one(
         `SELECT can_receive_reports FROM learner_guardians lg JOIN guardians g ON g.id = lg.guardian_id
@@ -227,10 +294,18 @@ async function sendPortfolioDigest(db, { organisation, triggeredBy }) {
       );
       if (link && link.can_receive_reports === false) continue;
       const observations = await observationsThisMonth(db, organisation.id, child.id);
+      const arc = await db.one(
+        `SELECT a.paragraph, u.display_name AS author
+         FROM monthly_arcs a LEFT JOIN users u ON u.id = a.created_by
+         WHERE a.organisation_id = $1 AND a.learner_id = $2
+           AND a.period_month = date_trunc('month', CURRENT_DATE)::date`,
+        [organisation.id, child.id]
+      ).catch(() => null);
       totalObservations += observations.length;
+      if (arc && arc.paragraph && !arcPreview) arcPreview = arc.paragraph;
       pdfAttachments.push({
         filename: String(child.first_name || 'Child').toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-progress-' + new Date().toISOString().slice(0, 10) + '.pdf',
-        content: portfolioPdf(organisation, child, observations, monthLabel)
+        content: portfolioPdf(organisation, child, observations, monthLabel, arc, monthLabel)
       });
       childIntro += child.first_name + ' · ' + observations.length + ' observation' + (observations.length === 1 ? '' : 's') + '\n';
     }
@@ -243,7 +318,8 @@ async function sendPortfolioDigest(db, { organisation, triggeredBy }) {
           organisationName: organisation.name,
           childName: children[0].first_name + (children.length > 1 ? ' + ' + (children.length - 1) + ' more' : ''),
           periodLabel: monthLabel,
-          observationCount: totalObservations
+          observationCount: totalObservations,
+          teacherNote: arcPreview
         },
         attachments: pdfAttachments,
         metadata: { kind: 'portfolio_digest', children: pdfAttachments.length, triggeredBy: triggeredBy || 'schedule' }
@@ -256,4 +332,4 @@ async function sendPortfolioDigest(db, { organisation, triggeredBy }) {
   return { recipients: guardians.length, sent };
 }
 
-module.exports = { sendWeeklyDigest, sendPortfolioDigest };
+module.exports = { sendWeeklyDigest, sendPortfolioDigest, weekStats, childrenOf };

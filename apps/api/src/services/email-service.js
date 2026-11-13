@@ -279,24 +279,52 @@ const templates = {
 
   weeklyDigest(data) {
     const weekLabel = data.weekLabel || 'This week at ' + (data.organisationName || 'the centre');
-    const rows = (data.children || []).map((child) => ({
-      label: child.name,
-      value: child.line || 'A lovely week of play and learning.'
-    }));
+    const accent = '#3A7D44';
+    const escRaw = esc;
+    const photoFor = (child) => (child.moment && child.moment.photoUrl) || null;
+    const section = (child) => {
+      const moment = child.moment;
+      const stats = child.stats || {};
+      const photo = photoFor(child);
+      const counts = [];
+      if (stats.attendanceRecorded) counts.push(stats.attendancePresent + ' of ' + stats.attendanceRecorded + ' days at the centre');
+      if (stats.activities) counts.push(stats.activities + ' activit' + (stats.activities === 1 ? 'y' : 'ies'));
+      if (stats.observations !== undefined) counts.push(stats.observations + ' moment' + (stats.observations === 1 ? '' : 's') + ' shared');
+      const dateLabel = moment && moment.date
+        ? new Date(moment.date).toLocaleDateString('en-ZA', { weekday: 'long', day: 'numeric', month: 'long' })
+        : null;
+      const inner = moment
+        ? '<p style="margin:0 0 6px;font-size:15px;line-height:1.5;color:#16211a">&ldquo;' + escRaw(String(moment.text || '').trim().replace(/\.$/, '')) + '.&rdquo;</p>' +
+          '<div style="font-size:12px;color:#8a968c;margin-bottom:10px">Moment shared by ' + escRaw(moment.teacherFirst || 'your child’s teacher') + (dateLabel ? ' · ' + escRaw(dateLabel) : '') + '</div>' +
+          (photo ? '<img src="' + escRaw(photo) + '" alt="' + escRaw(child.firstName + ' at the centre') + '" style="width:100%;max-width:420px;border-radius:12px;display:block;margin:0 0 10px">' : '')
+        : '<p style="margin:0 0 10px;font-size:14px;line-height:1.6;color:#46524a">A gentler week — mostly play, rest and quiet wins. We will share more moments as the month unfolds.</p>';
+      return '<div style="border:1px solid #e2e8df;border-radius:14px;padding:14px 16px;margin:0 0 12px">' +
+        '<div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8a968c;margin-bottom:8px">' + escRaw(child.name) + '</div>' +
+        inner +
+        '<div style="font-size:12px;color:#5d6b5f">' + escRaw(counts.join(' · ') || 'A lovely week') + '</div>' +
+        '<div style="margin-top:10px"><a href="' + escRaw(appLink(child.link || '/#/parent/overview?src=weekly-digest')) + '" style="display:inline-block;padding:9px 14px;border-radius:10px;background:' + accent + ';color:#ffffff;text-decoration:none;font-size:13px;font-weight:600">See ' + escRaw(child.firstName || 'your child') + '&rsquo;s week &rarr;</a></div>' +
+      '</div>';
+    };
+    const sections = (data.children || []).map(section).join('');
+    const body = (data.preview
+        ? '<p style="background:#FFF7E6;border:1px solid #F5D98B;border-radius:10px;padding:10px 12px;font-size:13px;color:#6b5318;margin:0 0 12px">This is a one-time preview of the family digest. It lands every Friday from now on — reply to this email to stay, or tell us to stop.</p>'
+        : '') +
+      sections +
+      (data.highlight ? '<p style="white-space:pre-wrap;margin:4px 0 10px;color:#46524a">' + esc(data.highlight) + '</p>' : '') +
+      (data.feesUrl ? '<p style="margin-top:10px;color:#46524a">Outstanding balance? <a href="' + esc(appLink(data.feesUrl)) + '">Pay online in under a minute</a>.</p>' : '');
+    const cta = data.ctaUrl || '/#/parent/overview?src=weekly-digest';
     return {
-      subject: weekLabel + ' — ' + data.organisationName,
+      subject: (data.preview ? 'A preview for you — ' : '') + weekLabel + ' — ' + data.organisationName,
       html: layout({
         brand: data.brand,
         heading: weekLabel,
-        intro: 'Here is a short note about how your children spent their week at ' + data.organisationName + ' — activities, achievements and anything you should know.',
-        rows: rows.length ? rows : [{ label: 'The week in brief', value: 'Children explored, played and showed off wonderful curiosity - more on your parent portal.' }],
-        body: (data.highlight ? '<p style="white-space:pre-wrap">' + esc(data.highlight) + '</p>' : '') +
-          (data.feesUrl ? '<p style="margin-top:10px">Outstanding balance? <a href="' + esc(data.feesUrl) + '">Pay online in under a minute</a>.</p>' : ''),
+        intro: 'A little note about how your children spent their week at ' + data.organisationName + ' — the moments we saw, not just the numbers.',
+        body,
         ctaLabel: 'Open the parent portal',
-        ctaUrl: appLink(data.ctaUrl || '/#/parent/overview'),
+        ctaUrl: appLink(cta),
         footer: 'You are receiving this because you have a child registered at ' + data.organisationName + '. Reply to this email any time - we read everything.'
       }),
-      text: plain([weekLabel, data.organisationName, ...rows.map((r) => r.label + ': ' + r.value), data.feesUrl ? 'Pay online: ' + data.feesUrl : ''])
+      text: plain([weekLabel, data.organisationName, ...(data.children || []).flatMap((child) => [child.name + ':', child.moment ? 'Moment: ' + child.moment.text : 'A lovely week of play and learning.', 'See the week: ' + appLink(child.link || '/#/parent/overview?src=weekly-digest')]), data.feesUrl ? 'Pay online: ' + appLink(data.feesUrl) : ''])
     };
   },
 
@@ -312,11 +340,83 @@ const templates = {
           { label: 'Period', value: data.periodLabel || 'This month' },
           { label: 'Observations shared', value: String(data.observationCount || 0) }
         ],
+        body: data.teacherNote
+          ? '<div style="border-left:3px solid #3A7D44;padding:4px 0 4px 12px;margin:6px 0 0;font-size:14px;line-height:1.6;color:#16211a"><div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8a968c;margin-bottom:4px">From ' + esc(String(data.childName || 'your child').split(' ')[0]) + '&rsquo;s teacher</div>&ldquo;' + esc(data.teacherNote) + '&rdquo;</div>'
+          : '',
         ctaLabel: 'Open the parent portal',
         ctaUrl: appLink('/#/parent/overview'),
         footer: 'You receive this because you are linked as a guardian and opted in to communication from ' + data.organisationName + '.'
       }),
       text: plain([data.childName || 'Progress digest', 'Child: ' + data.childName, 'Period: ' + (data.periodLabel || 'This month')])
+    };
+  },
+
+  familyNudge(data) {
+    return {
+      subject: 'A quick note from ' + data.organisationName,
+      html: layout({
+        brand: data.brand,
+        heading: 'We miss seeing you on the app',
+        intro: 'Hello ' + (data.guardianName || 'there') + ' — a gentle note from ' + data.organisationName + '.',
+        body: '<p style="white-space:pre-wrap">' + esc(data.message || 'Your children had a wonderful week. We share photos, moments and Friday notes on the family portal — we would love you to open it when you have a minute.') + '</p>',
+        ctaLabel: 'Open the family portal',
+        ctaUrl: appLink('/#/parent/overview?src=nudge'),
+        footer: 'You are receiving this because you are linked as a guardian at ' + data.organisationName + '. If you would rather not receive these, reply to this email and we will stop.'
+      }),
+      text: plain(['Family portal at ' + data.organisationName, data.message || 'Your children had a wonderful week.'])
+    };
+  },
+
+  parentWelcome(data) {
+    return {
+      subject: 'Welcome to ' + data.organisationName + ' — you are connected',
+      html: layout({
+        brand: data.brand,
+        heading: 'Welcome to ' + data.organisationName,
+        intro: 'Hello ' + (data.guardianName || 'there') + ' — your family portal is ready. From now on you will receive photos, moments and a short note every Friday about ' + (data.firstChild || 'your child') + '’s week.',
+        rows: [
+          { label: 'Notifications', value: 'Tap Enable when the app asks — it is where moments land first' },
+          { label: 'Read receipts', value: 'Tick ✓ on a report so the teachers know it reached you' },
+          { label: 'Anything to ask', value: 'Reply to this email — we read everything' }
+        ],
+        ctaLabel: 'Open the family portal',
+        ctaUrl: appLink('/#/parent/overview'),
+        footer: 'You are receiving this because you were linked as a guardian at ' + data.organisationName + '.'
+      }),
+      text: plain(['Welcome to ' + data.organisationName, 'Your family portal is ready.', 'Open it: ' + appLink('/#/parent/overview')])
+    };
+  },
+
+  parentFirstMoment(data) {
+    return {
+      subject: 'Day 3 at ' + data.organisationName,
+      html: layout({
+        brand: data.brand,
+        heading: 'Three days in — settling beautifully',
+        intro: 'Hello ' + (data.guardianName || 'there') + ' — ' + (data.firstChild || 'your child') + ' is finding their rhythm. Paint drying racks included.',
+        body: '<p>Moments and photos from the classroom will start landing in your portal this week. If you have not enabled notifications yet, do it now — a single tap and the good stuff arrives on its own.</p>',
+        ctaLabel: 'See the family portal',
+        ctaUrl: appLink('/#/parent/overview'),
+        footer: 'You are receiving this because you were linked as a guardian at ' + data.organisationName + '.'
+      }),
+      text: plain(['Day 3 at ' + data.organisationName, 'Moments and photos will start landing in your portal this week.'])
+    };
+  },
+
+  parentFirstWeek(data) {
+    return {
+      subject: 'Your first week at ' + data.organisationName,
+      html: layout({
+        brand: data.brand,
+        heading: 'Your first week, wrapped up',
+        intro: 'Hello ' + (data.guardianName || 'there') + ' — one week down. Here is what it looked like from our side.',
+        rows: (data.stats || []).map((s) => ({ label: s.label, value: s.value })),
+        body: '<p style="margin-top:4px;color:#46524a">If you only do one thing this weekend: open the portal and see ' + (data.firstChild || 'your child') + '’s moments — the teachers put care into every one.</p>',
+        ctaLabel: 'Open the family portal',
+        ctaUrl: appLink('/#/parent/overview'),
+        footer: 'You are receiving this because you were linked as a guardian at ' + data.organisationName + '.'
+      }),
+      text: plain(['Your first week at ' + data.organisationName, ...(data.stats || []).map((s) => s.label + ': ' + s.value)])
     };
   },
 

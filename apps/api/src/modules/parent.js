@@ -51,6 +51,119 @@ function register(router) {
     return { parentViewedAt: updated.parent_viewed_at };
   }, { permission: 'parent.read.own' });
 
+  router.post('/parent/visit', async (ctx) => {
+    const body = ctx.body || {};
+    const source = String(body.source || '').trim() || null;
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const rows = await ctx.db.many(
+      `SELECT id, COALESCE(activation, '{}'::jsonb) AS activation
+       FROM memberships WHERE user_id = $1 AND organisation_id = $2 AND status = 'active'`,
+      [ctx.user.id, ctx.organisationId]
+    );
+    for (const row of rows) {
+      const activation = row.activation || {};
+      const dates = Array.isArray(activation.visitDates) ? activation.visitDates : [];
+      const next = [...new Set([...dates.map(String), todayIso])].slice(-60);
+      const patch = { visitDates: next, visitCount: next.length, lastVisitAt: new Date().toISOString() };
+      await ctx.db.query(
+        `UPDATE memberships
+         SET activation = COALESCE(activation, '{}'::jsonb) || $1::jsonb,
+             digest_opened_at = CASE WHEN $2 = 'weekly-digest' THEN now() ELSE digest_opened_at END
+         WHERE id = $3`,
+        [JSON.stringify(patch), source, row.id]
+      );
+    }
+    return { ok: true };
+  }, { permission: 'parent.read.own' });
+
+  router.get('/parent/reactions', async (ctx) => {
+    const ids = await guardianLearnerIds(ctx);
+    if (!ids.length) return { mine: {}, counts: {} };
+    const rows = await ctx.db.many(
+      `SELECT r.resource_type, r.resource_id,
+              COUNT(*)::int AS total,
+              COUNT(CASE WHEN r.reaction = 'heart' THEN 1 END)::int AS heart,
+              COUNT(CASE WHEN r.reaction = 'thumb' THEN 1 END)::int AS thumb,
+              COUNT(CASE WHEN r.reaction = 'more' THEN 1 END)::int AS more,
+              MAX(CASE WHEN r.guardian_user_id = $3 THEN r.reaction END) AS mine
+       FROM guardian_reactions r
+       WHERE r.organisation_id = $1 AND r.learner_id = ANY($2::uuid[])
+       GROUP BY r.resource_type, r.resource_id`,
+      [ctx.organisationId, ids, ctx.user.id]
+    );
+    const counts = {};
+    const mine = {};
+    for (const row of rows) {
+      const key = row.resource_type + ':' + row.resource_id;
+      counts[key] = { heart: row.heart, thumb: row.thumb, more: row.more, total: row.total };
+      if (row.mine) mine[key] = row.mine;
+    }
+    return { mine, counts };
+  }, { permission: 'parent.read.own' });
+
+  router.post('/parent/reactions', async (ctx) => {
+    const body = validate(ctx.body, {
+      resourceType: { type: 'string', enum: ['observation', 'daily_report'] },
+      resourceId: { type: 'string', uuid: true },
+      reaction: { type: 'string', enum: ['heart', 'thumb', 'more'] }
+    });
+    let resource = null;
+    if (body.resourceType === 'observation') {
+      resource = await ctx.db.one(
+        `SELECT id, learner_id, recorded_by, observation_date AS shared_at
+         FROM learner_observations
+         WHERE id = $1 AND organisation_id = $2 AND assessment_status IN ('published','amended')`,
+        [body.resourceId, ctx.organisationId]);
+    } else {
+      resource = await ctx.db.one(
+        `SELECT id, learner_id, recorded_by, report_date AS shared_at
+         FROM daily_reports
+         WHERE id = $1 AND organisation_id = $2 AND shared_with_guardians = true`,
+        [body.resourceId, ctx.organisationId]);
+    }
+    if (!resource) throw new AppError('NOT_FOUND');
+    await childOrFail(ctx, resource.learner_id);
+    const existing = await ctx.db.one(
+      'SELECT id, reaction FROM guardian_reactions WHERE resource_type = $1 AND resource_id = $2 AND guardian_user_id = $3',
+      [body.resourceType, body.resourceId, ctx.user.id]);
+    if (existing) {
+      if (existing.reaction === body.reaction) {
+        await ctx.db.query('DELETE FROM guardian_reactions WHERE id = $1', [existing.id]);
+        return { reacted: false, reaction: body.reaction };
+      }
+      await ctx.db.query('DELETE FROM guardian_reactions WHERE id = $1', [existing.id]);
+      await ctx.db.query(
+        `INSERT INTO guardian_reactions (organisation_id, resource_type, resource_id, guardian_user_id, learner_id, reaction)
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [ctx.organisationId, body.resourceType, body.resourceId, ctx.user.id, resource.learner_id, body.reaction]);
+      return { reacted: true, reaction: body.reaction };
+    }
+    await ctx.db.query(
+      `INSERT INTO guardian_reactions (organisation_id, resource_type, resource_id, guardian_user_id, learner_id, reaction)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [ctx.organisationId, body.resourceType, body.resourceId, ctx.user.id, resource.learner_id, body.reaction]);
+    const learner = await ctx.db.one('SELECT first_name FROM learners WHERE id = $1', [resource.learner_id]);
+    const guardian = await ctx.db.one('SELECT display_name FROM users WHERE id = $1', [ctx.user.id]);
+    const guardianFirst = String((guardian && guardian.display_name) || 'A parent').split(' ')[0];
+    const childFirst = learner.first_name;
+    if (resource.recorded_by && resource.recorded_by !== ctx.user.id) {
+      const sharedDate = resource.shared_at
+        ? new Date(resource.shared_at).toLocaleDateString('en-ZA', { day: 'numeric', month: 'long' })
+        : 'this week';
+      const verb = { heart: 'loved', thumb: 'gave a thumbs-up to', more: 'wants to know more about' }[body.reaction];
+      await createNotification(ctx.db, ctx, {
+        recipientUserIds: [resource.recorded_by], type: 'guardian_reaction',
+        title: guardianFirst + ' ' + verb + ' ' + childFirst + '’s moment',
+        body: body.reaction === 'more'
+          ? guardianFirst + ' asked to know more about the ' + (body.resourceType === 'observation' ? 'observation' : 'daily report') + ' from ' + sharedDate + ' — one short reply goes a long way.'
+          : guardianFirst + ' was moved by your update for ' + childFirst + ' from ' + sharedDate + '.',
+        resourceType: body.resourceType === 'observation' ? 'learner_observation' : 'daily_report',
+        resourceId: resource.id, url: '/app/overview'
+      });
+    }
+    return { reacted: true, reaction: body.reaction };
+  }, { permission: 'parent.read.own' });
+
   router.get('/parent/overview', async (ctx) => {
     const ids = await guardianLearnerIds(ctx);
     const children = [];

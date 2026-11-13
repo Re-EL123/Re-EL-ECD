@@ -84,6 +84,116 @@ function register(router) {
       [ctx.organisationId, ctx.user.id]
     );
 
+    const children = learnerRows.map((row) => ({
+      id: row.id,
+      name: row.first_name + ' ' + row.last_name,
+      firstName: row.first_name,
+      classroom: row.classroom_name || null
+    }));
+
+    const momentsThisWeek = ids.length
+      ? await ctx.db.many(
+          `SELECT learner_id, COUNT(*)::int AS count
+           FROM learner_observations
+           WHERE organisation_id = $1 AND learner_id = ANY($2::uuid[])
+             AND assessment_status IN ('published','amended')
+             AND date_trunc('week', observation_date) = date_trunc('week', CURRENT_DATE)
+           GROUP BY learner_id`,
+          [ctx.organisationId, ids]
+        )
+      : [];
+    const momentMap = new Map(momentsThisWeek.map((row) => [row.learner_id, row.count]));
+    const momentsChildren = children.map((child) => ({
+      ...child,
+      thisWeek: momentMap.get(child.id) || 0,
+      done: (momentMap.get(child.id) || 0) >= 1
+    }));
+    // Streak: consecutive weeks where EVERY assigned child had ≥1 moment.
+    const weekCounts = ids.length
+      ? await ctx.db.many(
+          `SELECT date_trunc('week', observation_date)::date AS week, COUNT(DISTINCT learner_id)::int AS covered
+           FROM learner_observations
+           WHERE organisation_id = $1 AND learner_id = ANY($2::uuid[])
+             AND assessment_status IN ('published','amended')
+           GROUP BY 1 ORDER BY 1 DESC LIMIT 26`,
+          [ctx.organisationId, ids]
+        )
+      : [];
+    let streak = 0;
+    for (const row of weekCounts) {
+      if (row.covered >= (expected || 1)) streak += 1; else break;
+    }
+
+    const unopenedObservations = ids.length
+      ? await ctx.db.many(
+          `SELECT DISTINCT ON (o.learner_id)
+                  o.id, o.learner_id, o.observation_date, o.context, o.observation_text,
+                  (SELECT g.first_name FROM learner_guardians lg JOIN guardians g ON g.id = lg.guardian_id
+                   WHERE lg.learner_id = o.learner_id AND lg.portal_access_status = 'active' AND g.user_id IS NOT NULL LIMIT 1) AS guardian_first
+           FROM learner_observations o
+           WHERE o.organisation_id = $1 AND o.learner_id = ANY($2::uuid[])
+             AND o.assessment_status IN ('published','amended')
+             AND o.parent_viewed_at IS NULL
+             AND o.published_at IS NOT NULL AND o.published_at < now() - interval '48 hours'
+           ORDER BY o.learner_id, o.observation_date DESC`,
+          [ctx.organisationId, ids]
+        )
+      : [];
+    const lastDigest = await ctx.db.one(
+      "SELECT MAX(sent_at) AS sent FROM email_deliveries WHERE organisation_id = $1 AND template = 'weeklyDigest' AND status = 'sent'",
+      [ctx.organisationId]
+    ).catch(() => null);
+    let unopenedDigest = [];
+    if (lastDigest && lastDigest.sent && new Date(lastDigest.sent).getTime() < Date.now() - 48 * 3600000) {
+      unopenedDigest = ids.length
+        ? await ctx.db.many(
+            `SELECT DISTINCT g.first_name AS guardian_first, l.first_name AS child_first
+             FROM learner_guardians lg
+             JOIN guardians g ON g.id = lg.guardian_id
+             JOIN learners l ON l.id = lg.learner_id
+             JOIN memberships m ON m.user_id = g.user_id AND m.organisation_id = $1 AND m.status = 'active'
+             WHERE lg.learner_id = ANY($2::uuid[]) AND lg.portal_access_status = 'active'
+               AND g.user_id IS NOT NULL
+               AND COALESCE(m.digest_opened_at, 'epoch'::timestamptz) < $3
+             LIMIT 4`,
+            [ctx.organisationId, ids, lastDigest.sent]
+          )
+        : [];
+    }
+    const unopened = [
+      ...unopenedObservations.map((row) => ({
+        kind: 'observation',
+        guardianFirst: row.guardian_first || 'A parent',
+        childName: (children.find((c) => c.id === row.learner_id) || {}).name || '',
+        detail: (row.context ? row.context + ' · ' : '') + String(row.observation_text || '').split('\n')[0].slice(0, 90),
+        sharedAt: row.observation_date
+      })),
+      ...unopenedDigest.map((row) => ({
+        kind: 'digest',
+        guardianFirst: row.guardian_first,
+        childName: row.child_first,
+        detail: 'Hasn’t opened this week’s digest yet',
+        sharedAt: null
+      }))
+    ].slice(0, 5);
+
+    const reactions = ids.length
+      ? await ctx.db.many(
+          `SELECT r.reaction, r.created_at, r.resource_type,
+                  l.first_name AS child_first,
+                  u.display_name AS guardian_name,
+                  o.observation_date, o.context, o.observation_text
+           FROM guardian_reactions r
+           JOIN learners l ON l.id = r.learner_id
+           JOIN users u ON u.id = r.guardian_user_id
+           LEFT JOIN learner_observations o ON r.resource_type = 'observation' AND o.id = r.resource_id
+           WHERE r.organisation_id = $1 AND r.learner_id = ANY($2::uuid[])
+             AND r.created_at > now() - interval '7 days'
+           ORDER BY r.created_at DESC LIMIT 4`,
+          [ctx.organisationId, ids]
+        )
+      : [];
+
     const obsPublishedThisMonth = ids.length
       ? await ctx.db.one(
           `SELECT COUNT(DISTINCT learner_id)::int AS count FROM learner_observations
@@ -120,6 +230,22 @@ function register(router) {
         reportsPendingSignoff: reportsPendingSignoff.count,
         tasksDueToday: tasksDueToday.count
       },
+      children,
+      moments: {
+        target: 1,
+        children: momentsChildren,
+        allDone: momentsChildren.length > 0 && momentsChildren.every((c) => c.done),
+        streak
+      },
+      unopened,
+      reactions: reactions.map((row) => ({
+        reaction: row.reaction,
+        guardianName: row.guardian_name,
+        guardianFirst: String(row.guardian_name || '').trim().split(' ')[0],
+        childFirst: row.child_first,
+        date: row.observation_date || row.created_at,
+        detail: String(row.observation_text || '').split('\n')[0].slice(0, 90)
+      })),
       unmarkedIds: ids.filter((id) => !presence.find((row) => row.learner_id === id)),
       rings: {
         registerPct: expected ? Math.round((present / expected) * 100) : 0,

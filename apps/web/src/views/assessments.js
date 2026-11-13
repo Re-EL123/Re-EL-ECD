@@ -50,7 +50,11 @@
       const objectives = frameworks.flatMap((f) => (f.domains || []).map((d) => ({ domain: d, framework: f })));
       const allObjectives = await R.api('GET', '/curriculum/objectives').then((p) => p.data).catch(() => []);
       const domains = (frameworks || []).flatMap((f) => (f.domains || []).map((d) => ({ id: d.id, name: d.name, framework: f.name })));
-      return { overview, observations, periods, learners, frameworks, classrooms, objectives: allObjectives, domains, canPublish, observationTemplates };
+      const canArc = ctx.has(['assessments.create.assigned', 'assessments.create.daycare', 'organisation.settings.manage']);
+      const arc = canArc
+        ? await R.api('GET', '/assessments/monthly-arcs?month=' + new Date().toISOString().slice(0, 7)).then((p) => p.data).catch(() => ({ children: [], month: '' }))
+        : { children: [], month: '' };
+      return { overview, observations, periods, learners, frameworks, classrooms, objectives: allObjectives, domains, canPublish, observationTemplates, arc, canArc };
     },
 
     render(ctx, params, page) {
@@ -63,6 +67,7 @@
       ];
       if (page.canPublish) tabs.push({ key: 'review', label: 'Review queue' });
       tabs.push({ key: 'periods', label: 'Periods' });
+      if (page.canArc) tabs.push({ key: 'arc', label: 'This month' });
       tabs.push({ key: 'reports', label: 'Reports' });
       tabs.push({ key: 'termAssessments', label: 'Term assessments' });
       return R.pageHead('Assessments', 'Observe, record and understand each child\'s development.',
@@ -79,6 +84,7 @@
         (tab === 'observations' ? this.renderObservations(ctx, page)
           : tab === 'review' ? this.renderReview(ctx, page)
           : tab === 'periods' ? this.renderPeriods(page)
+          : tab === 'arc' ? this.renderArc(page)
           : tab === 'reports' ? this.renderReports(ctx, page)
           : tab === 'termAssessments' ? this.renderTermAssessments(page)
           : this.renderOverview(page));
@@ -156,6 +162,30 @@
         '<div class="kpi-row"><span class="kpi-label">Domains</span><span class="kpi-value">' + R.number(domains.length) + '</span></div></div>' +
         (periods.length ? '' : '<div class="alert alert-warn" style="margin-top:12px"><i data-lucide="alert-triangle"></i><span>Create an assessment period first.</span></div>'),
         '<div class="btn-group">' + R.exportButtons('/exports/term-assessments') + '<button class="btn btn-primary" @click="openNamedModal(\'termAssessment\')">' + R.icon('clipboard-plus') + ' Record assessment</button></div>');
+    },
+
+    renderArc(page) {
+      const arc = page.arc || { children: [], month: '' };
+      const children = arc.children || [];
+      const monthLabel = arc.month
+        ? new Date(arc.month + '-01T00:00:00').toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })
+        : 'this month';
+      if (!children.length) {
+        return R.emptyState('No children to write for', 'Once learners are enrolled and assigned to a classroom they will appear here.', '', 'users');
+      }
+      return R.card('The month’s story — ' + monthLabel,
+        '<p class="muted small" style="margin:0 0 12px">One short paragraph per child, written for their family. It travels inside the portfolio report on the 15th. Ten honest sentences beat a page of forms.</p>' +
+        '<div class="stack">' + children.map((child) =>
+          '<div style="border:1px solid var(--border-subtle);border-radius:14px;padding:12px 14px">' +
+            '<div class="row" style="justify-content:space-between;align-items:baseline;margin-bottom:6px;gap:10px">' +
+              '<div style="min-width:0"><span class="strong">' + R.esc(child.firstName + ' ' + child.lastName) + '</span>' + (child.classroom ? '<span class="muted small" style="margin-left:8px">' + R.esc(child.classroom) + '</span>' : '') + '</div>' +
+              (child.updatedAt ? '<span class="badge badge-green" style="white-space:nowrap">Saved ' + R.relative(child.updatedAt) + '</span>' : '<span class="badge badge-sun" style="white-space:nowrap">Not written yet</span>') +
+            '</div>' +
+            '<textarea class="input" id="arc-' + R.attr(child.id) + '" rows="2" style="width:100%" maxlength="1200" placeholder="In November, ' + R.attr(child.firstName) + ' moved from parallel play to cooperative play — here is the evidence…">' + R.esc(child.paragraph || '') + '</textarea>' +
+            '<div class="row" style="justify-content:space-between;margin-top:6px"><span class="muted small">One paragraph. Families keep these.</span>' +
+              '<button class="btn btn-secondary btn-sm" @click="saveArc(\'' + R.attr(child.id) + '\')">' + R.icon('save') + ' Save</button></div>' +
+          '</div>').join('') + '</div>',
+        '<span class="badge badge-sky">Monthly digest</span>');
     },
 
     renderPeriods(page) {

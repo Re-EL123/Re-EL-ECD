@@ -6,6 +6,7 @@ const { recordAudit } = require('../services/audit-service');
 const { parsePagination } = require('../utils/http');
 const bulk = require('../services/bulk-service');
 const { getLearner, assertLearnerWrite, assertPermission, has, assignedClassroomIds } = require('./helpers');
+const { createNotification } = require('../services/notification-service');
 
 function register(router) {
   router.get('/learners', async (ctx) => {
@@ -635,6 +636,7 @@ function register(router) {
     const report = await ctx.db.one('SELECT * FROM daily_reports WHERE id = $1 AND organisation_id = $2 AND learner_id = $3',
       [ctx.params.reportId, ctx.organisationId, learner.id]);
     if (!report) throw new AppError('NOT_FOUND');
+    const shareTransition = body.sharedWithGuardians === true && !report.shared_with_guardians;
     const photoUrls = body.photoUrls === undefined ? undefined : body.photoUrls;
     await ctx.db.query(
       `UPDATE daily_reports SET mood = COALESCE($1,mood), meals = COALESCE($2,meals),
@@ -648,6 +650,24 @@ function register(router) {
         photoUrls ? JSON.stringify(photoUrls) : null,
         body.sharedWithGuardians === undefined ? null : body.sharedWithGuardians, report.id]
     );
+    if (shareTransition) {
+      const guardians = await ctx.db.many(
+        `SELECT DISTINCT g.user_id
+         FROM learner_guardians lg JOIN guardians g ON g.id = lg.guardian_id
+         WHERE lg.learner_id = $1 AND lg.can_receive_reports = true AND lg.portal_access_status = 'active'
+           AND g.user_id IS NOT NULL`,
+        [learner.id]
+      );
+      const mood = body.mood || report.mood;
+      if (guardians.length) {
+        await createNotification(ctx.db, ctx, {
+          recipientUserIds: guardians.map((g) => g.user_id), type: 'daily_report_shared',
+          title: 'Daily report for ' + learner.first_name,
+          body: (mood ? 'Mood today: ' + mood + '. ' : '') + 'Meals, naps and the moments are on the portal now.',
+          resourceType: 'daily_report', resourceId: report.id, url: '/parent/activities'
+        });
+      }
+    }
     return ctx.db.one('SELECT * FROM daily_reports WHERE id = $1', [report.id]);
   }, { permission: ['attendance.record.assigned', 'learners.update.daycare'], permissionMode: 'any' });
 

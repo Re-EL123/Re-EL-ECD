@@ -72,6 +72,7 @@
               ((morning.unmarkedIds || []).length
                 ? '<button class="btn btn-primary btn-sm" @click="markMorningAllPresent()">' + R.icon('check-check') + ' Mark all present (' + morning.unmarkedIds.length + ')</button>'
                 : '<span class="badge badge-green">Register done</span>') +
+              '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'quickMoment\')">' + R.icon('camera') + ' Moment</button>' +
             '</div>' +
             (focusChildren.length
               ? '<div class="section"></div><div class="muted small" style="margin-bottom:6px">Children who could use an observation today:</div><div class="stack">' +
@@ -82,6 +83,31 @@
               : '') +
             (absentees.length
               ? '<div class="section"></div><div class="muted small" style="margin-bottom:6px">Away today:</div><div class="row" style="gap:8px;flex-wrap:wrap">' + absentees.map((a) => '<span class="badge badge-danger">' + R.esc(a.name) + (a.reason ? ' · ' + R.esc(R.truncate(a.reason, 40)) : '') + '</span>').join('') + '</div>'
+              : '') +
+            '<div class="section"></div><div class="muted small" style="margin-bottom:6px">Moments this week — one per child keeps families close:</div>' +
+            '<div class="row" style="gap:8px;flex-wrap:wrap;align-items:center">' +
+              ((morning.moments && morning.moments.children) || []).map((child) =>
+                '<span class="badge ' + (child.done ? 'badge-green' : 'badge-muted') + '" style="gap:6px">' + (child.done ? '✓ ' : '○ ') + R.esc(child.firstName || child.name) + '</span>').join('') +
+              (morning.moments && morning.moments.streak ? '<span class="badge badge-sun">🔥 ' + R.number(morning.moments.streak) + ' week streak</span>' : '') +
+              (morning.moments && morning.moments.allDone ? '<span class="badge badge-sky">Every child seen this week</span>' : '') +
+            '</div>' +
+            ((morning.unopened || []).length
+              ? '<div class="section"></div><div class="muted small" style="margin-bottom:6px">Waiting to be seen — mention these at pickup:</div><div class="stack">' +
+                  (morning.unopened || []).map((u) => '<div class="row" style="gap:10px;justify-content:space-between;padding:8px 10px;background:var(--surface-2);border-radius:12px">' +
+                    '<div style="min-width:0"><span class="strong" style="font-size:0.86rem">' + R.esc(u.guardianFirst) + (u.childName ? ' · ' + R.esc(u.childName) : '') + '</span><div class="muted small">' + R.esc(R.truncate(u.detail || '', 90)) + '</div></div>' +
+                    '<span class="badge ' + (u.kind === 'digest' ? 'badge-sky' : 'badge-sun') + '">' + (u.kind === 'digest' ? 'Digest' : 'New') + '</span></div>').join('') +
+                  '</div>'
+              : '') +
+            ((morning.reactions || []).length
+              ? '<div class="section"></div><div class="muted small" style="margin-bottom:6px">Loved by families this week:</div><div class="stack">' +
+                  (morning.reactions || []).map((r) => {
+                    const emoji = r.reaction === 'heart' ? '❤️' : r.reaction === 'thumb' ? '👍' : '💬';
+                    const verb = r.reaction === 'more' ? 'wants to know more about' : r.reaction === 'heart' ? 'loved' : 'gave a thumbs-up to';
+                    return '<div class="row" style="gap:10px;padding:8px 10px;background:var(--surface-2);border-radius:12px">' +
+                      '<span style="font-size:1.1rem">' + emoji + '</span>' +
+                      '<div style="min-width:0"><div class="strong" style="font-size:0.86rem">' + R.esc(r.guardianFirst || r.guardianName) + ' ' + verb + ' ' + R.esc(r.childFirst) + '’s moment</div>' +
+                      (r.detail ? '<div class="muted small">' + R.esc(R.truncate(r.detail, 80)) + '</div>' : '') + '</div></div>';
+                  }).join('') + '</div>'
               : '') +
             '<div class="section"></div><div class="grid grid-2">' +
               '<div class="card" style="margin:0"><h4 style="margin-top:0;margin-bottom:8px">Your rhythm this month</h4>' +
@@ -171,6 +197,26 @@
           R.api('GET', '/templates?kind=observation').then((p) => (p.data && p.data.data) || []).catch(() => [])
         ]).then(([objectives, learners, observationTemplates]) => {
           V.assessments.observationModal({ ...ctx, page: Object.assign({}, ctx.page || {}, { objectives, learners, observationTemplates }) }, id);
+        });
+        return;
+      }
+      if (name === 'quickMoment') {
+        const children = ((((ctx.page || {}).morning || {}).children) || []);
+        const options = children.map((child) => ({ value: child.id, label: child.name + (child.classroom ? ' · ' + child.classroom : '') }));
+        R.api('GET', '/curriculum/domains').then((p) => p.data).catch(() => []).then((domains) => {
+          ctx.openModal({
+            title: 'Capture a moment',
+            description: 'One photo, one tag, one sentence — the family sees it in moments.',
+            endpoint: '/assessments/quick-moments',
+            submitLabel: 'Share with the family',
+            successMessage: 'Moment shared — the family will see it shortly.',
+            fields: [
+              { name: 'learnerId', label: 'Child', type: 'select', required: true, options },
+              { name: 'domainId', label: 'What was it about? (optional)', type: 'select', options: (domains || []).map((d) => ({ value: d.id, label: d.name })), placeholder: 'Pick the domain it showed' },
+              { name: 'photoUrls', label: 'Photo', type: 'media', multiple: true, accept: 'image/*', capture: 'environment', scope: 'observation', ownerType: 'learner', ownerId: options.length === 1 ? options[0].value : undefined },
+              { name: 'note', label: 'One sentence', type: 'textarea', span: 2, placeholder: 'Mia comforted a new friend at snack and was our kindness star.', help: 'Leave blank and we will write “Captured a lovely moment in the classroom.”' }
+            ]
+          });
         });
         return;
       }

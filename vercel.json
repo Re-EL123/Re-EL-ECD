@@ -56,6 +56,14 @@
     {
       "path": "/api/v1/cron/portfolio-digest",
       "schedule": "0 16 15 * *"
+    },
+    {
+      "path": "/api/v1/cron/pickup-brief",
+      "schedule": "0 13 * * 1-5"
+    },
+    {
+      "path": "/api/v1/cron/parent-onboarding",
+      "schedule": "0 5 * * *"
     }
   ]
 }

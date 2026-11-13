@@ -181,7 +181,14 @@
         report = await R.api('GET', '/reports/' + encodeURIComponent(selected) + '?from=' + from + '&to=' + to)
           .then((p) => p.data).catch(() => null);
       }
-      return { catalogue: list, jobs: catalogue.jobs || [], selected, report, from, to };
+      const isOwner = ctx.has('organisation.settings.manage');
+      const [quiet, onboarding] = isOwner
+        ? await Promise.all([
+            R.api('GET', '/reports/engagement/quiet?days=7').then((p) => p.data).catch(() => ({ families: [], count: 0 })),
+            R.api('GET', '/reports/family-onboarding').then((p) => p.data).catch(() => ({ total: 0, families: [] }))
+          ])
+        : [{ families: [], count: 0 }, { total: 0, families: [] }];
+      return { catalogue: list, jobs: catalogue.jobs || [], selected, report, from, to, quiet, onboarding };
     },
 
     render(ctx, params, page) {
@@ -193,7 +200,41 @@
             '<div class="btn-group">' +
               '<button type="button" class="btn btn-primary btn-sm" @click="runWeeklyDigest()" :disabled="automationDigestBusy"><span class="spinner" x-show="automationDigestBusy" style="width:14px;height:14px"></span><i data-lucide="mail" x-show="!automationDigestBusy"></i> Send weekly digest now</button>' +
               '<button type="button" class="btn btn-secondary btn-sm" @click="runPortfolioDigest()" :disabled="automationDigestBusy"><span class="spinner" x-show="automationDigestBusy" style="width:14px;height:14px"></span><i data-lucide="file-text" x-show="!automationDigestBusy"></i> Send monthly portfolio digest now</button>' +
+            '</div>' +
+            '<div class="btn-group" style="margin-top:8px">' +
+              '<button type="button" class="btn btn-ghost btn-sm" @click="runPickupBrief()" :disabled="automationDigestBusy"><i data-lucide="sun"></i> Send pickup briefs now</button>' +
+              '<button type="button" class="btn btn-ghost btn-sm" @click="runOnboardingSweep()" :disabled="automationDigestBusy"><i data-lucide="sparkles"></i> Run onboarding sweep now</button>' +
             '</div>', '<span class="badge badge-sun">Email + PDF</span>')
+        : '';
+      const quiet = page.quiet || { families: [], count: 0 };
+      const onboarding = page.onboarding || { total: 0, families: [] };
+      const isOwner = ctx.has('organisation.settings.manage');
+      const cohortBar = (label, pct) => {
+        const v = Math.max(0, Math.min(100, Number(pct) || 0));
+        return '<div class="metric-bar"><span>' + R.esc(label) + '</span><div class="bar"><span style="width:' + Math.max(2, v) + '%"></span></div><span class="val">' + v + '%</span></div>';
+      };
+      const cohortChip = (ok, label) => '<span class="badge ' + (ok ? 'badge-green' : 'badge-muted') + '">' + (ok ? '✓' : '○') + ' ' + R.esc(label) + '</span>';
+      const ownerCards = isOwner
+        ? '<div class="grid grid-2 section">' +
+            R.card('Every family, from day one',
+              '<p class="muted small" style="margin:0 0 12px">How the first 60 days land: notifications enabled, a report opened, a return visit. The silent ones are the ones who quietly withdraw.</p>' +
+              (onboarding.total ? cohortBar('Push enabled', onboarding.pushPct) + cohortBar('Opened a report or moment', onboarding.reportOpenedPct) + cohortBar('Returned within 60 days', onboarding.returnVisitPct) + '<div class="stack" style="margin-top:12px">' +
+                  (onboarding.families || []).slice(0, 8).map((f) => '<div class="row" style="justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--border-subtle)">' +
+                    '<div style="min-width:0"><div class="strong" style="font-size:0.86rem">' + R.esc(f.guardianName) + '</div><div class="muted small">' + R.esc((f.children || []).join(', ')) + ' · day ' + R.number(f.daysSinceJoin) + '</div></div>' +
+                    '<div class="row" style="gap:4px">' + cohortChip(f.pushEnabled, 'push') + cohortChip(f.reportOpened, 'opened') + cohortChip(f.returnVisit, 'visited') + '</div></div>').join('') + '</div>'
+                  : '<p class="muted small">No new guardian families in the last 60 days.</p>'),
+              '<span class="badge badge-plum">Onboarding</span>') +
+            R.card('Quiet families this week',
+              '<p class="muted small" style="margin:0 0 12px">Guardians with no views, no digest opens and no visits in 7 days. A warm one-line nudge brings most of them back.</p>' +
+              (quiet.count
+                ? '<div class="stack">' + (quiet.families || []).slice(0, 8).map((f) =>
+                    '<div class="row" style="justify-content:space-between;gap:10px;padding:8px 10px;background:var(--surface-2);border-radius:12px">' +
+                      '<div style="min-width:0"><div class="strong" style="font-size:0.86rem">' + R.esc(f.guardianName) + '</div><div class="muted small">' + R.esc((f.children || []).join(', ')) + (f.daysQuiet === null ? ' · never opened yet' : ' · quiet for ' + R.number(f.daysQuiet) + ' days') + '</div></div>' +
+                      '<button class="btn btn-sm btn-secondary" @click="nudgeFamily(\'' + R.attr(f.userId) + '\',\'' + R.attr(f.guardianName) + '\')">' + R.icon('send') + ' Nudge</button></div>').join('') + '</div>'
+                  + '<div class="row" style="margin-top:12px;justify-content:space-between;align-items:center"><span class="badge badge-sun">' + R.number(quiet.count) + ' quiet</span><button class="btn btn-primary btn-sm" @click="nudgeQuietAll()">' + R.icon('send-horizontal') + ' Nudge all quiet families</button></div>'
+                : '<div class="alert alert-success" style="align-items:center">' + R.icon('check-circle-2') + '<div style="flex:1">Every family engaged this week.</div></div>'),
+              '<span class="badge badge-clay">Retention</span>') +
+          '</div>'
         : '';
       const selected = page.selected;
       const rows = (report && report.rows) || [];
@@ -212,6 +253,7 @@
       return R.pageHead('Reports', 'The numbers behind the decisions — exported, dated and auditable.',
         R.exportButtons('/reports/' + (selected || 'enrolment_summary'), 'from=' + encodeURIComponent(page.from) + '&to=' + encodeURIComponent(page.to))) +
         digestSection +
+        ownerCards +
         '<div class="grid grid-3 section">' + catalogue.map((c) => R.card(c.name,
           '<p class="muted small" style="margin:0 0 10px">' + R.esc(c.description) + '</p>' +
           '<div class="row"><span class="badge badge-muted mono">' + R.esc(c.key) + '</span>' +

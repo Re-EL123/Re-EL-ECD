@@ -641,6 +641,12 @@
         this.pageTitle = matched.route.title;
         if (query.tab) this.tab = query.tab;
 
+        if (matched.route.area === 'parent' && this.session) {
+          // Activation journey: log the visit, remember the digest open when
+          // the parent came from Friday's email (src=weekly-digest).
+          Reel.api('POST', '/parent/visit', { source: query.src || null }).catch(() => null);
+        }
+
         if (matched.route.area === 'public') {
           this.mode = 'public';
           this.loading = false;
@@ -1139,21 +1145,44 @@
         }
       },
 
-      async runDigest(endpoint) {
+      async runDigest(endpoint, label) {
         this.automationDigestBusy = true;
         try {
           const result = await Reel.api('POST', endpoint, {});
           const data = result.data || {};
-          this.toast('Digest sent to ' + R.number(data.sent || 0) + ' guardians.');
+          this.toast((label || 'Done') + ' — sent to ' + R.number(data.sent || 0) + ' recipients.');
         } catch (error) {
-          this.toast(error.message || 'The digest could not be sent.', 'error');
+          this.toast(error.message || 'The job could not be run.', 'error');
         } finally {
           this.automationDigestBusy = false;
         }
       },
 
-      runWeeklyDigest() { return this.runDigest('/automation/weekly-digest'); },
-      runPortfolioDigest() { return this.runDigest('/automation/portfolio-digest'); },
+      runWeeklyDigest() { return this.runDigest('/automation/weekly-digest', 'Weekly digest sent'); },
+      runPortfolioDigest() { return this.runDigest('/automation/portfolio-digest', 'Portfolio digest sent'); },
+      runPickupBrief() { return this.runDigest('/automation/pickup-brief', 'Pickup briefs sent'); },
+      runOnboardingSweep() { return this.runDigest('/automation/parent-onboarding', 'Onboarding sweep done'); },
+
+      async nudgeFamily(userId, name) {
+        try {
+          const result = await Reel.api('POST', '/reports/engagement/nudge', { userId });
+          this.toast(result.data && result.data.sent ? 'A note is on its way to ' + (name || 'the family') + '.' : 'The email was accepted but not delivered — check the provider settings.', result.data && result.data.sent ? undefined : 'warn');
+          await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'Could not send that note.', 'error');
+        }
+      },
+
+      async nudgeQuietAll() {
+        try {
+          const result = await Reel.api('POST', '/reports/engagement/nudge-all', { days: 7 });
+          const data = result.data || {};
+          this.toast('Nudges sent to ' + R.number(data.sent || 0) + ' of ' + R.number(data.total || 0) + ' quiet families.');
+          await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'Could not send the nudges.', 'error');
+        }
+      },
 
       async runAutomationSweep() {
         this.automationSweepBusy = true;
@@ -2297,6 +2326,28 @@
           await this.navigate(true);
         } catch (error) {
           this.toast(error.message || 'Could not change the digest.', 'error');
+        }
+      },
+
+      async saveArc(childId) {
+        const field = document.getElementById('arc-' + childId);
+        const paragraph = field ? field.value.trim() : '';
+        const month = new Date().toISOString().slice(0, 7);
+        try {
+          await Reel.api('PUT', '/assessments/monthly-arcs', { learnerId: childId, month, paragraph });
+          this.toast(paragraph ? 'Saved — ' + month + ' arc will travel with the portfolio.' : 'Cleared.');
+          await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'Could not save the paragraph.', 'error');
+        }
+      },
+
+      async react(resourceType, resourceId, reaction) {
+        try {
+          await Reel.api('POST', '/parent/reactions', { resourceType, resourceId, reaction });
+          await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'Could not send your reaction.', 'error');
         }
       },
 

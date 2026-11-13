@@ -230,6 +230,145 @@ function register(router) {
     return ctx.db.one('SELECT * FROM learner_observations WHERE id = $1', [observation.id]);
   }, { permission: 'assessments.publish.daycare' });
 
+  // --- Quick moment: the 10-second publish ---------------------------------
+  // Camera roll, one domain tag, one sentence. Auto-publishes to families,
+  // respecting photo consent. This is the path that keeps parents fed.
+
+  router.post('/assessments/quick-moments', async (ctx) => {
+    const body = validate(ctx.body, {
+      learnerId: { type: 'string', uuid: true },
+      domainId: { type: 'string', uuid: true, optional: true },
+      photoUrls: { type: 'array', of: 'string', max: 10, optional: true },
+      note: { type: 'string', max: 600, optional: true }
+    });
+    const learner = await getLearner(ctx, body.learnerId);
+    if (!has(ctx, 'assessments.create.daycare') && !has(ctx, 'assessments.publish.daycare')) {
+      const classrooms = await assignedClassroomIds(ctx);
+      if (!learner.classroom_id || !classrooms.includes(learner.classroom_id)) throw new AppError('FORBIDDEN');
+    }
+    const photos = Array.isArray(body.photoUrls) ? body.photoUrls.filter((u) => /^https?:\/\//i.test(String(u))) : [];
+    const note = String(body.note || '').trim();
+    const text = note.length >= 3 ? note : 'Captured a lovely moment in the classroom.';
+    let domainId = null;
+    if (body.domainId) {
+      const domain = await ctx.db.one('SELECT id FROM curriculum_domains WHERE id = $1', [body.domainId]);
+      if (!domain) fail('VALIDATION', [{ field: 'domainId', message: 'Unknown curriculum domain.' }]);
+      domainId = domain.id;
+    }
+    // Photos only reach families when the centre holds photo consent.
+    let publishedPhotos = [];
+    let photoWithheld = false;
+    if (photos.length) {
+      const consent = await ctx.db.one(
+        `SELECT id FROM consent_records
+         WHERE learner_id = $1 AND organisation_id = $2
+           AND consent_type = 'photographs' AND status = 'granted'
+           AND (withdrawn_at IS NULL) LIMIT 1`,
+        [learner.id, ctx.organisationId]
+      );
+      if (consent) publishedPhotos = photos; else photoWithheld = true;
+    }
+    const observation = await ctx.db.one(
+      `INSERT INTO learner_observations (organisation_id, branch_id, learner_id, objective_id, domain_id,
+        observation_date, context, observation_text, assessment_status, visibility_status, recorded_by, reviewed_by, published_at, photo_urls)
+       VALUES ($1,$2,$3,NULL,$4,CURRENT_DATE,'Moment captured',$5,'published','published',$6,$6,now(),$7) RETURNING *`,
+      [ctx.organisationId, learner.branch_id, learner.id, domainId, text, ctx.user.id, JSON.stringify(publishedPhotos)]
+    );
+    await notifyGuardians(ctx, learner.id, observation);
+    await recordAudit(ctx.db, ctx, {
+      action: 'assessment.quick_moment_published', resourceType: 'learner_observation', resourceId: observation.id,
+      branchId: learner.branch_id, metadata: { photosShared: publishedPhotos.length, photosWithheld: photoWithheld }
+    });
+    ctx.status = 201;
+    return {
+      ...observation,
+      photosWithheld: photoWithheld,
+      message: photoWithheld
+        ? 'Moment shared without the photo — the centre does not yet hold photo consent for this child.'
+        : (publishedPhotos.length ? 'Moment shared with ' + publishedPhotos.length + ' photo' + (publishedPhotos.length === 1 ? '' : 's') + '.' : 'Moment shared without a photo.')
+    };
+  }, { permission: ['assessments.create.assigned', 'assessments.create.daycare'], permissionMode: 'any' });
+
+  // --- The month, in one paragraph -------------------------------------------
+  // Teachers write the arc; the 15th portfolio digest carries it straight
+  // into the family's inbox.
+
+  async function assignedLearners(ctx) {
+    if (has(ctx, 'assessments.create.daycare') || has(ctx, 'learners.read.daycare')) {
+      return ctx.db.many(
+        `SELECT l.id, l.first_name, l.last_name, l.classroom_id, c.name AS classroom_name
+         FROM learners l LEFT JOIN classrooms c ON c.id = l.classroom_id
+         WHERE l.organisation_id = $1 AND l.status = 'enrolled' ORDER BY l.first_name`,
+        [ctx.organisationId]
+      );
+    }
+    const classrooms = await assignedClassroomIds(ctx);
+    if (!classrooms.length) return [];
+    return ctx.db.many(
+      `SELECT l.id, l.first_name, l.last_name, l.classroom_id, c.name AS classroom_name
+       FROM learners l LEFT JOIN classrooms c ON c.id = l.classroom_id
+       WHERE l.organisation_id = $1 AND l.status = 'enrolled' AND l.classroom_id = ANY($2::uuid[])
+       ORDER BY l.first_name`,
+      [ctx.organisationId, classrooms]
+    );
+  }
+
+  router.get('/assessments/monthly-arcs', async (ctx) => {
+    const month = String(ctx.query.month || new Date().toISOString().slice(0, 7));
+    if (!/^\d{4}-\d{2}$/.test(month)) fail('VALIDATION', [{ field: 'month', message: 'Use YYYY-MM.' }]);
+    const learners = await assignedLearners(ctx);
+    const arcs = learners.length
+      ? await ctx.db.many(
+        `SELECT * FROM monthly_arcs
+         WHERE organisation_id = $1 AND learner_id = ANY($2::uuid[]) AND period_month = $3::date`,
+        [ctx.organisationId, learners.map((l) => l.id), month + '-01']
+      )
+      : [];
+    const byLearner = new Map(arcs.map((a) => [a.learner_id, a]));
+    return {
+      month,
+      children: learners.map((l) => ({
+        id: l.id,
+        firstName: l.first_name,
+        lastName: l.last_name,
+        classroom: l.classroom_name || null,
+        paragraph: (byLearner.get(l.id) || {}).paragraph || '',
+        updatedAt: (byLearner.get(l.id) || {}).updated_at || null
+      }))
+    };
+  }, { permission: ['assessments.create.assigned', 'assessments.read.assigned', 'assessments.create.daycare', 'organisation.settings.manage'], permissionMode: 'any' });
+
+  router.put('/assessments/monthly-arcs', async (ctx) => {
+    const body = validate(ctx.body, {
+      learnerId: { type: 'string', uuid: true },
+      month: { type: 'string', regex: /^\d{4}-\d{2}$/ },
+      paragraph: { type: 'string', max: 1200 }
+    });
+    const learner = await getLearner(ctx, body.learnerId);
+    if (!has(ctx, 'assessments.create.daycare') && !has(ctx, 'organisation.settings.manage')) {
+      const classrooms = await assignedClassroomIds(ctx);
+      if (!learner.classroom_id || !classrooms.includes(learner.classroom_id)) throw new AppError('FORBIDDEN');
+    }
+    const paragraph = String(body.paragraph || '').trim();
+    if (!paragraph) {
+      await ctx.db.query(
+        'DELETE FROM monthly_arcs WHERE organisation_id = $1 AND learner_id = $2 AND period_month = $3::date',
+        [ctx.organisationId, learner.id, body.month + '-01']
+      );
+      return { learnerId: learner.id, paragraph: '', saved: false };
+    }
+    if (paragraph.length < 10) fail('VALIDATION', [{ field: 'paragraph', message: 'Give us at least a sentence — ten characters minimum.' }]);
+    await ctx.db.query(
+      `INSERT INTO monthly_arcs (organisation_id, learner_id, period_month, paragraph, created_by)
+       VALUES ($1,$2,$3::date,$4,$5)
+       ON CONFLICT (organisation_id, learner_id, period_month)
+       DO UPDATE SET paragraph = EXCLUDED.paragraph, updated_at = now(), created_by = EXCLUDED.created_by`,
+      [ctx.organisationId, learner.id, body.month + '-01', paragraph, ctx.user.id]
+    );
+    await recordAudit(ctx.db, ctx, { action: 'assessment.monthly_arc_saved', resourceType: 'learner', resourceId: learner.id, metadata: { month: body.month } });
+    return { learnerId: learner.id, paragraph, saved: true };
+  }, { permission: ['assessments.create.assigned', 'assessments.create.daycare', 'organisation.settings.manage'], permissionMode: 'any' });
+
   router.post('/assessments/observations/:id/amend', async (ctx) => {
     const body = validate(ctx.body, {
       observationText: { type: 'string', min: 10, max: 5000 },
@@ -482,7 +621,7 @@ async function notifyGuardians(ctx, learnerId, observation) {
   if (portalGuardians.length) {
     await createNotification(ctx.db, ctx, {
       recipientUserIds: portalGuardians.map((g) => g.user_id),
-      type: 'progress_published',
+      type: 'moment',
       title: 'New progress update',
       body: `A new observation for ${learner.first_name} has been published to your portal.`,
       resourceType: 'learner_observation',

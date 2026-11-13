@@ -147,7 +147,7 @@ static output. Configure these environment variables in Vercel:
 | `PAYFAST_IP_ALLOWLIST` | No | Comma-separated IPs allowed to post ITNs. |
 | `PAYFAST_VALIDATE` | No | Defaults to `true` (server-to-server ITN confirmation). |
 | `PAYMENT_CREDENTIALS_KEY` | For tenant-owned PayFast accounts | Long random string (32+ characters). Encrypts tenant merchant keys, passphrases and payout account numbers at rest. Generate one with `openssl rand -base64 32`; never reuse it across deployments because existing ciphertext cannot be opened with a different key. |
-| `CRON_SECRET` | For subscription reminders | Shared secret for `GET /api/v1/internal/subscription-reminders`. Any scheduler that knows it can flip past-due subscriptions and email owners a reminder. Leave unset to disable the endpoint (it returns 404). |
+| `CRON_SECRET` | For scheduled jobs | Shared secret for the Vercel Cron endpoints (`/api/v1/cron/*`). Anything that knows it can run the jobs; anything that does not gets a 403. Required for the weekly digest, portfolio digest, pickup brief and onboarding sweep. |
 | `R2_ACCOUNT_ID` | For media | Cloudflare account id. Used to derive the R2 S3 endpoint. |
 | `R2_ACCESS_KEY_ID` | For media | R2 S3 access key id. |
 | `R2_SECRET_ACCESS_KEY` | For media | R2 S3 secret access key. |
@@ -339,6 +339,26 @@ Two deployment choices affect who holds tenant money:
   `Authorization: Bearer <CRON_SECRET>` to flip past-due subscriptions and
   email owners a weekly reminder; without `CRON_SECRET` the endpoint returns
   404 and nothing happens.
+
+### Scheduled jobs
+
+`vercel.json` registers these Vercel Cron paths; all of them also have a
+manual `POST` equivalent on the Reports page (`organisation.settings.manage`).
+The scheduler must present `Authorization: Bearer <CRON_SECRET>` (a wrong or
+missing secret gets 403).
+
+| Schedule (UTC) | Cron path | Manual trigger | What it does |
+| --- | --- | --- | --- |
+| Fridays 15:00 | `/api/v1/cron/weekly-digest` | Reports → Send weekly digest now | Friday “week at the centre” email to every opted-in guardian — a story per child: the week’s strongest moment, the teacher’s name, a photo and a deep link, with the counts in the small print. Opens are stamped on the parent portal (`src=weekly-digest`). |
+| 15th of month 16:00 | `/api/v1/cron/portfolio-digest` | Reports → Send monthly portfolio digest now | Branded per-child PDF of the month’s observations, with the teacher’s one-paragraph arc (“This month’s story”) leading the document; emailed to every opted-in guardian. |
+| Weekdays 13:00 (15:00 SAST) | `/api/v1/cron/pickup-brief` | Reports → Send pickup briefs now | “Tonight at pickup”: mood, meals, naps and one question about the week’s most recent moment — one push plus an in-app notification per linked guardian who can receive reports. |
+| Daily 05:00 (07:00 SAST) | `/api/v1/cron/parent-onboarding` | Reports → Run onboarding sweep now | Week-one journey for guardian memberships: day 1 welcome email + push, day 3 the first moment (or a gentle fallback email), day 5 a one-time preview of the digest regardless of opt-in, day 7 the first-week recap. Markers stored in `memberships.activation`. |
+
+Parent-engagement signals (quiet families this week, first-60-day cohort with
+push/report-opened/return-visit markers, one-click nudge emails) live on the
+Reports page under “Every family, from day one” and “Quiet families this
+week”. Reactions from families (❤️ 👍 💬) arrive on the teacher’s morning
+cockpit and as `guardian_reaction` notifications.
 
 Deploy with the Vercel Git integration (recommended) or:
 

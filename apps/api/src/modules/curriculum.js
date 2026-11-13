@@ -123,6 +123,18 @@ function register(router) {
     return result;
   }, { permission: 'curriculum.create.daycare' });
 
+  router.get('/curriculum/domains', async (ctx) => {
+    const includeOfficial = await officialEnabled(ctx);
+    return ctx.db.many(
+      `SELECT DISTINCT d.id, d.name, d.description, d.sort_order
+       FROM curriculum_domains d
+       JOIN curriculum_frameworks f ON f.id = d.framework_id
+       WHERE f.organisation_id = $1 OR ($2::boolean AND f.organisation_id IS NULL)
+       ORDER BY d.sort_order, d.name`,
+      [ctx.organisationId, includeOfficial]
+    );
+  }, { permission: ['curriculum.read.assigned', 'curriculum.read.daycare', 'assessments.read.assigned', 'assessments.create.assigned'], permissionMode: 'any' });
+
   router.post('/curriculum/domains', async (ctx) => {
     const body = validate(ctx.body, {
       frameworkId: { type: 'string', uuid: true },

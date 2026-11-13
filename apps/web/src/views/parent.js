@@ -14,6 +14,43 @@
     return (children || []).find((c) => c.id === id) || (children || [])[0] || null;
   }
 
+  const PLAIN_DOMAINS = [
+    ['physical', 'Moving, climbing & playing hard'],
+    ['cognitive', 'Thinking, counting & figuring out'],
+    ['language', 'Talking, stories & new words'],
+    ['social', 'Playing with friends & big feelings'],
+    ['creative', 'Drawing, painting, music & imagination'],
+    ['knowledge', 'Exploring the world around them'],
+    ['life', 'Managing themselves & caring for others'],
+    ['personal', 'Managing themselves & caring for others'],
+    ['outdoor', 'Exploring the world outside'],
+    ['health', 'Sleep, food & feeling well'],
+    ['identity', 'Who I am & where I belong'],
+    ['belonging', 'Who I am & where I belong'],
+    ['well', 'Sleep, food & feeling well'],
+    ['play', 'Playing with friends & big feelings'],
+    ['creat', 'Drawing, painting, music & imagination']
+  ];
+  function plainDomain(name) {
+    const needle = String(name || '').toLowerCase();
+    for (const pair of PLAIN_DOMAINS) if (needle.includes(pair[0])) return pair[1];
+    return name || 'Learning';
+  }
+
+  function reactionRow(page, type, id) {
+    const key = type + ':' + id;
+    const all = (page.reactions && page.reactions.counts) || {};
+    const mine = (page.reactions && page.reactions.mine) || {};
+    const counts = all[key] || { heart: 0, thumb: 0, more: 0 };
+    const my = mine[key];
+    const btn = (reaction, emoji) => '<button type="button" class="btn btn-sm ' + (my === reaction ? 'btn-primary' : 'btn-ghost')
+      + '" style="gap:6px;padding:6px 10px" @click="react(\'' + type + '\',\'' + R.attr(id) + '\',\'' + reaction + '\')">' + emoji + ' <span>' + R.number(counts[reaction] || 0) + '</span></button>';
+    return '<div class="row" style="gap:6px;margin-top:10px">' +
+      btn('heart', '❤️') + btn('thumb', '👍') + btn('more', '💬') +
+      '<span class="muted small" style="align-self:center">' + (my ? 'You reacted — tap again to undo' : 'Show the centre you saw this') + '</span>' +
+      '</div>';
+  }
+
   function markRead(items, path) {
     (items || []).filter((item) => item && !item.parent_viewed_at)
       .forEach((item) => { R.api('POST', path + '/' + item.id + '/read').catch(() => {}); });
@@ -104,7 +141,8 @@
         R.api('GET', '/parent/children/' + encodeURIComponent(params.id) + '/portfolio').then((p) => p.data),
         R.api('GET', '/parent/children/' + encodeURIComponent(params.id) + '/assessments').then((p) => p.data),
         R.api('GET', '/parent/children/' + encodeURIComponent(params.id) + '/daily-reports').then((p) => p.data),
-        R.api('GET', '/parent/children/' + encodeURIComponent(params.id) + '/calendar?from=' + weekFrom.toISOString().slice(0, 10) + '&to=' + weekTo.toISOString().slice(0, 10)).then((p) => p.data)
+        R.api('GET', '/parent/children/' + encodeURIComponent(params.id) + '/calendar?from=' + weekFrom.toISOString().slice(0, 10) + '&to=' + weekTo.toISOString().slice(0, 10)).then((p) => p.data),
+        R.api('GET', '/parent/reactions').then((p) => p.data).catch(() => ({ mine: {}, counts: {} }))
       ]);
       const progress = settled[0].status === 'fulfilled' ? settled[0].value : null;
       const reports = settled[3].status === 'fulfilled' ? settled[3].value : [];
@@ -116,7 +154,8 @@
         portfolio: settled[1].status === 'fulfilled' ? settled[1].value : [],
         assessments: settled[2].status === 'fulfilled' ? settled[2].value : [],
         reports,
-        calendar: settled[4].status === 'fulfilled' ? settled[4].value : []
+        calendar: settled[4].status === 'fulfilled' ? settled[4].value : [],
+        reactions: settled[5].status === 'fulfilled' ? settled[5].value : { mine: {}, counts: {} }
       };
     },
 
@@ -192,19 +231,27 @@
       const assessments = page.assessments || [];
       return '<div class="grid grid-2 section">' + domains.map((d) => {
         const pct = d.total ? Math.round((d.observed / d.total) * 100) : 0;
-        return R.card(d.name,
-          '<div class="metric-bar"><span>Observed</span><div class="bar"><span style="width:' + pct + '%"></span></div><span class="val">' + d.observed + '/' + d.total + '</span></div>' +
-          '<div class="stack" style="margin-top:10px">' + (d.objectives || []).slice(0, 8).map((o) =>
-            '<div class="row" style="justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border-subtle)">' +
-            '<span style="font-size:0.84rem">' + R.esc(o.description) + '</span>' +
-            (o.observed ? '<span class="badge badge-green">Seen</span>' : '<span class="badge badge-muted">Not yet</span>') + '</div>').join('') + '</div>');
+        const seenObjectives = (d.objectives || []).filter((o) => o.observed);
+        const nextObjective = (d.objectives || []).find((o) => !o.observed);
+        return R.card(plainDomain(d.name),
+          '<div class="metric-bar"><span>Moments we’ve seen</span><div class="bar"><span style="width:' + pct + '%"></span></div><span class="val">' + d.observed + '/' + d.total + '</span></div>' +
+          (nextObjective
+            ? '<div class="alert alert-info" style="margin-top:12px;align-items:center;font-size:0.86rem">' + R.icon('sparkles') + '<div style="flex:1"><span class="muted small">We’re watching for next</span><div class="strong">' + R.esc(nextObjective.description) + '</div></div></div>'
+            : '<div class="alert alert-success" style="margin-top:12px;align-items:center;font-size:0.86rem">' + R.icon('check-circle-2') + '<div style="flex:1"><strong>Walking confidently in this domain</strong><div class="muted small">Everything we hoped to see, we’ve seen.</div></div></div>') +
+          (seenObjectives.length
+            ? '<div class="stack" style="margin-top:12px"><div class="muted small" style="margin-bottom:4px">Seen in the classroom — small wins we noticed:</div>' + seenObjectives.slice(0, 6).map((o) =>
+                '<div class="row" style="justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border-subtle);gap:10px">' +
+                '<span style="font-size:0.84rem">' + R.esc(o.description) + '</span>' +
+                '<span class="badge badge-green" style="white-space:nowrap">Seen ' + R.date((o.lastObservation && o.lastObservation.observation_date) || new Date()) + '</span></div>').join('') + '</div>'
+            : '<p class="muted small" style="margin-top:12px">Fresh eyes on this one — expect our first moments soon.</p>'));
       }).join('') + '</div>' +
         '<div class="section"></div>' + R.card('Recent observations', (progress.observations || []).length ? '<div class="stack">' + (progress.observations || []).slice(0, 10).map((o) =>
           '<div class="row" style="gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border-subtle)">' +
-            '<div style="min-width:92px"><div class="strong">' + R.date(o.observation_date) + '</div><div class="muted small">' + R.esc(o.domain_name || 'Observation') + '</div></div>' +
+            '<div style="min-width:92px"><div class="strong">' + R.date(o.observation_date) + '</div><div class="muted small">' + R.esc(plainDomain(o.domain_name)) + '</div></div>' +
             '<div style="flex:1;min-width:0">' +
               '<p style="white-space:pre-wrap;margin:0 0 8px">' + R.esc(o.observation_text) + '</p>' +
               (R.mediaList(o.photo_urls).length ? '<div class="media-grid">' + R.mediaList(o.photo_urls).map((url) => '<div class="media-card">' + R.mediaHtml(url, R.kindForUrl(url), { alt: 'Observation photo' }) + '</div>').join('') + '</div>' : '') +
+              reactionRow(page, 'observation', o.id) +
             '</div>' +
           '</div>').join('') + '</div>' : '<p class="muted small">No observations published yet.</p>') +
         '<div class="section"></div>' + R.card('Published assessments', R.table({ rows: assessments, columns: [
@@ -238,7 +285,8 @@
         (r.activities_summary ? '<p class="muted small" style="margin-top:10px"><strong>Activities:</strong> ' + R.esc(r.activities_summary) + '</p>' : '') +
         (r.notes ? '<p class="muted small" style="white-space:pre-wrap"><strong>Notes:</strong> ' + R.esc(r.notes) + '</p>' : '') +
         (R.mediaList(r.photo_urls).length ? '<div class="media-grid" style="margin-top:10px">' +
-          R.mediaList(r.photo_urls).map((url) => '<div class="media-card">' + R.mediaHtml(url, R.kindForUrl(url), { alt: 'Daily report photo' }) + '</div>').join('') + '</div>' : ''))).join('') + '</div>' +
+          R.mediaList(r.photo_urls).map((url) => '<div class="media-card">' + R.mediaHtml(url, R.kindForUrl(url), { alt: 'Daily report photo' }) + '</div>').join('') + '</div>' : '') +
+        reactionRow(page, 'daily_report', r.id))).join('') + '</div>' +
         (reports.length ? '' : R.emptyState('No daily reports yet', 'Daily reports appear once a teacher shares one.', '', 'notebook-pen'));
     }
   };
@@ -249,6 +297,7 @@
       const reports = [];
       const portfolio = [];
       const announcements = await R.api('GET', '/parent/announcements').then((p) => p.data).catch(() => []);
+      const reactions = await R.api('GET', '/parent/reactions').then((p) => p.data).catch(() => ({ mine: {}, counts: {} }));
       for (const child of children || []) {
         const [r, p] = await Promise.allSettled([
           R.api('GET', '/parent/children/' + encodeURIComponent(child.id) + '/daily-reports').then((x) => x.data),
@@ -257,7 +306,7 @@
         if (r.status === 'fulfilled') (r.value || []).forEach((row) => reports.push(Object.assign({ childName: childLabel(child) }, row)));
         if (p.status === 'fulfilled') (p.value || []).forEach((row) => portfolio.push(Object.assign({ childName: childLabel(child) }, row)));
       }
-      return { reports, portfolio, announcements: announcements || [], children: children || [] };
+      return { reports, portfolio, announcements: announcements || [], children: children || [], reactions };
     },
 
     render(ctx, params, page) {
@@ -269,7 +318,8 @@
         R.card('Daily reports', reports.length ? '<div class="timeline">' + reports.slice(0, 12).map((r) =>
           '<div class="timeline-item"><div class="t-time">' + R.date(r.report_date) + ' · ' + R.esc(r.childName) + '</div>' +
           '<div class="t-title">' + R.esc(r.mood ? R.titleCase(r.mood) : 'Daily report') + '</div>' +
-          '<div class="t-body">' + R.esc(R.truncate(r.activities_summary || r.notes || '', 140)) + '</div></div>').join('') + '</div>' :
+          '<div class="t-body">' + R.esc(R.truncate(r.activities_summary || r.notes || '', 140)) + '</div>' +
+          reactionRow(page, 'daily_report', r.id) + '</div>').join('') + '</div>' :
           '<p class="muted small">No daily reports yet.</p>') +
         R.card('Portfolio moments', portfolio.length ? '<div class="grid grid-2">' + portfolio.slice(0, 6).map((item) =>
           '<div class="detail-item"><div class="d-label">' + R.esc(item.childName) + ' · ' + R.relative(item.created_at) + '</div>' +
@@ -308,11 +358,19 @@
         R.selectFilter(ctx, 'childId', children.map((c) => ({ value: c.id, label: childLabel(c) })), 'Choose a child')) +
         (progress ? '<div class="grid grid-2 section">' + domains.map((d) => {
           const pct = d.total ? Math.round((d.observed / d.total) * 100) : 0;
-          return R.card(d.name, '<div class="metric-bar"><span>Observed</span><div class="bar"><span style="width:' + pct + '%"></span></div><span class="val">' + d.observed + '/' + d.total + '</span></div>' +
-            '<div class="stack" style="margin-top:10px">' + (d.objectives || []).map((o) =>
-              '<div class="row" style="justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border-subtle)">' +
-              '<span style="font-size:0.84rem">' + R.esc(o.description) + '</span>' +
-              (o.observed ? '<span class="badge badge-green">Seen ' + R.number(o.observationCount) + '×</span>' : '<span class="badge badge-muted">Not yet</span>') + '</div>').join('') + '</div>');
+          const seenObjectives = (d.objectives || []).filter((o) => o.observed);
+          const nextObjective = (d.objectives || []).find((o) => !o.observed);
+          return R.card(plainDomain(d.name),
+            '<div class="metric-bar"><span>Moments we’ve seen</span><div class="bar"><span style="width:' + pct + '%"></span></div><span class="val">' + d.observed + '/' + d.total + '</span></div>' +
+            (nextObjective
+              ? '<div class="alert alert-info" style="margin-top:10px;align-items:center;font-size:0.86rem">' + R.icon('sparkles') + '<div style="flex:1"><span class="muted small">We’re watching for next</span><div class="strong">' + R.esc(nextObjective.description) + '</div></div></div>'
+              : '<div class="alert alert-success" style="margin-top:10px;align-items:center;font-size:0.86rem">' + R.icon('check-circle-2') + '<div style="flex:1"><strong>Walking confidently</strong><div class="muted small">Everything we hoped to see, we’ve seen.</div></div></div>') +
+            (seenObjectives.length
+              ? '<div class="stack" style="margin-top:10px">' + seenObjectives.slice(0, 6).map((o) =>
+                  '<div class="row" style="justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border-subtle);gap:10px">' +
+                  '<span style="font-size:0.84rem">' + R.esc(o.description) + '</span>' +
+                  '<span class="badge badge-green" style="white-space:nowrap">Seen ' + R.number(o.observationCount) + '×</span></div>').join('') + '</div>'
+              : '<p class="muted small" style="margin-top:10px">Fresh eyes on this one — expect our first moments soon.</p>'));
         }).join('') + '</div>' : R.emptyState('Progress not shared', 'The centre has not enabled progress reports for your account.', '', 'lock')) +
         '<div class="section"></div>' + R.card('Published assessments', R.table({ rows: page.assessments || [], columns: [
           { label: 'Period', render: (a) => R.esc(a.period_name || '—') },
