@@ -1288,3 +1288,16 @@ img, video, canvas, svg { max-width: 100%; }
 .cell-strong, .cell-sub { overflow-wrap: anywhere; }
 .message, .alert, .toast { min-width: 0; }
 .topbar > * { min-width: 0; }
+
+/* ============ Lesson guide player ============ */
+.guide-modal .modal-body { max-height: 74vh; overflow-y: auto; }
+.guide-progress { height: 6px; border-radius: 999px; background: var(--surface-3); overflow: hidden; margin-bottom: 12px; }
+.guide-progress span { display: block; height: 100%; background: var(--reel-green-600); border-radius: inherit; transition: width .25s ease; }
+.guide-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 14px; }
+.guide-pill { width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--border-strong); background: var(--surface-1); color: var(--text); font-weight: 700; cursor: pointer; }
+.guide-pill:hover { border-color: var(--reel-green-600); }
+.guide-pill.active { background: var(--reel-green-700); border-color: var(--reel-green-700); color: var(--text-inverse); }
+.guide-step { padding: 8px 2px 2px; min-height: 200px; }
+.guide-step-title { font-size: 1.3rem; margin: 0 0 8px; color: var(--text-strong); font-weight: 700; }
+.guide-body { white-space: pre-wrap; line-height: 1.75; color: var(--text-strong); font-size: 1.02rem; margin: 0; }
+.guide-offline { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 16px; border-top: 1px solid var(--border-subtle); padding-top: 12px; flex-wrap: wrap; }

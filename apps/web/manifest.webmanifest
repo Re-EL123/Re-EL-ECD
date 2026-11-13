@@ -1,0 +1,13 @@
+{
+  "name": "Re-EL ECD",
+  "short_name": "Re-EL ECD",
+  "description": "The all-in-one operating system for early childhood development centres.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FDFBF7",
+  "theme_color": "#0B534A",
+  "icons": [
+    { "src": "assets/branding/logo-re-el-ecd-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/branding/favicon-64.png", "sizes": "64x64", "type": "image/png", "purpose": "any" }
+  ]
+}

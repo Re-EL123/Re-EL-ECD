@@ -191,6 +191,7 @@
         { label: '', align: 'right', render: (plan) => '<div class="btn-group">' +
           (plan.canMoveUp && !official ? '<button class="btn btn-sm btn-ghost" title="Move earlier" @click="act(\'POST\',\'/learning-modules/' + R.attr(id) + '/plans/reorder\',{planIds:' + plan.moveUpPayload + '},{successMessage:\'Order saved\'})">' + R.icon('arrow-up') + '</button>' : '') +
           (plan.canMoveDown && !official ? '<button class="btn btn-sm btn-ghost" title="Move later" @click="act(\'POST\',\'/learning-modules/' + R.attr(id) + '/plans/reorder\',{planIds:' + plan.moveDownPayload + '},{successMessage:\'Order saved\'})">' + R.icon('arrow-down') + '</button>' : '') +
+          '<button class="btn btn-sm btn-secondary" @click="openGuide(\'' + R.attr(plan.id) + '\')">Guide</button>' +
           (canCreate && !official ? '<button class="btn btn-sm btn-ghost" @click="act(\'DELETE\',\'/learning-modules/' + R.attr(id) + '/plans/' + R.attr(plan.id) + '\',{},{successMessage:\'Removed from module\'})">Remove</button>' : '') +
           '</div>' }
       ], emptyTitle: 'No plans yet', emptyMessage: 'Add the first plan to this module.' });

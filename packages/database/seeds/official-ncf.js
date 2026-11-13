@@ -17,6 +17,7 @@
  * the catalogue owns it.
  */
 
+const STEP_DEFS = require('./official-ncf-steps.json');
 const SOURCE = 'ncf';
 const VERSION = '1.0';
 const BANDS = { infant: '0-18 months', toddler: '18-36 months', preschool: '3-4 years' };
@@ -362,6 +363,7 @@ async function seedOfficialNcf(pool) {
 
   // --- plans ------------------------------------------------------------------------
   const plansPerModule = {};
+  const planIdsByKey = {};
   for (const [moduleKey, key, title, theme, objectiveCodes, notes] of PLAN_DEFS) {
     const objectiveIds = objectiveCodes.map((code) => objectiveIdsByCode[code]).filter(Boolean);
     let plan = await one(
@@ -385,9 +387,31 @@ async function seedOfficialNcf(pool) {
       'UPDATE lesson_plans SET module_position = $1 WHERE id = $2',
       [plansPerModule[moduleKey], plan.id]
     );
+    planIdsByKey[key] = plan.id;
   }
 
-  return { framework: frameworkName, version: VERSION };
+  // --- steps -----------------------------------------------------------------------
+  const stepsByPlan = {};
+  for (const step of STEP_DEFS) {
+    if (!stepsByPlan[step.plan]) stepsByPlan[step.plan] = [];
+    stepsByPlan[step.plan].push(step);
+  }
+  let stepCount = 0;
+  for (const [planKey, steps] of Object.entries(stepsByPlan)) {
+    const planId = planIdsByKey[planKey];
+    if (!planId) continue;
+    await db.query('DELETE FROM lesson_steps WHERE lesson_plan_id = $1', [planId]);
+    for (const step of steps) {
+      await db.query(
+        `INSERT INTO lesson_steps (organisation_id, lesson_plan_id, position, step_type, title, body, duration_minutes)
+         VALUES (NULL,$1,$2,$3,$4,$5,$6)`,
+        [planId, step.position, step.type, step.title, step.body, step.durationMinutes || null]
+      );
+      stepCount += 1;
+    }
+  }
+
+  return { framework: frameworkName, version: VERSION, steps: stepCount };
 }
 
 module.exports.seedOfficialNcf = seedOfficialNcf;

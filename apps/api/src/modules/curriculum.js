@@ -13,6 +13,18 @@ async function findOfficialPlan(ctx, id) {
   return ctx.db.one('SELECT * FROM lesson_plans WHERE id = $1 AND organisation_id IS NULL', [id]);
 }
 
+async function copySteps(db, fromPlanId, toPlanId, organisationId) {
+  const steps = await db.many('SELECT * FROM lesson_steps WHERE lesson_plan_id = $1 ORDER BY position', [fromPlanId]);
+  for (const step of steps) {
+    await db.query(
+      `INSERT INTO lesson_steps (organisation_id, lesson_plan_id, position, step_type, title, body, media_url, duration_minutes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [organisationId, toPlanId, step.position, step.step_type, step.title, step.body, step.media_url || null, step.duration_minutes || null]
+    );
+  }
+  return steps.length;
+}
+
 async function resolveFrameworkTemplate(ctx, templateId) {
   const builtin = BUILTIN_TEMPLATES.find((template) => template.id === templateId && template.kind === 'framework');
   if (builtin) return builtin;
@@ -257,6 +269,35 @@ function register(router) {
     return plan;
   }, { permission: 'curriculum.read.daycare' });
 
+  // Step-by-step multimedia lesson guide for a plan (official or the
+  // tenant's own). Steps are the actual teaching script: songs written out,
+  // stories to read aloud, activities to run and what to notice afterwards.
+  router.get('/curriculum/lesson-plans/:id/guide', async (ctx) => {
+    let plan = await ctx.db.one('SELECT * FROM lesson_plans WHERE id = $1 AND organisation_id = $2',
+      [ctx.params.id, ctx.organisationId]);
+    if (!plan) plan = await findOfficialPlan(ctx, ctx.params.id);
+    if (!plan) throw new AppError('NOT_FOUND');
+    const steps = await ctx.db.many(
+      `SELECT id, position, step_type, title, body, media_url, duration_minutes FROM lesson_steps
+       WHERE lesson_plan_id = $1 ORDER BY position`,
+      [plan.id]
+    );
+    const module = plan.module_id
+      ? await ctx.db.one('SELECT id, title, theme FROM learning_modules WHERE id = $1', [plan.module_id])
+      : null;
+    ctx.meta = { steps: steps.length };
+    return {
+      plan: {
+        id: plan.id, title: plan.title, theme: plan.theme,
+        objectiveIds: plan.objective_ids || [],
+        preparationNotes: plan.preparation_notes,
+        isOfficial: Boolean(plan.organisation_id === null)
+      },
+      module,
+      steps
+    };
+  }, { permission: 'curriculum.read.daycare' });
+
   router.patch('/curriculum/lesson-plans/:id', async (ctx) => {
     const body = validate(ctx.body, {
       title: { type: 'string', min: 3, max: 200, optional: true },
@@ -468,7 +509,8 @@ function register(router) {
         [ctx.organisationId, branch.id, official.title, official.theme || null,
           JSON.stringify(official.objective_ids || []), official.preparation_notes || null, official.source || 'ncf', official.source_version || '1.0']
       );
-      await recordAudit(ctx.db, ctx, { action: 'curriculum.adopted_plan', resourceType: 'lesson_plan', resourceId: plan.id, metadata: { sourceKey: official.source_key || null } });
+      const copied = await copySteps(ctx.db, official.id, plan.id, ctx.organisationId);
+      await recordAudit(ctx.db, ctx, { action: 'curriculum.adopted_plan', resourceType: 'lesson_plan', resourceId: plan.id, metadata: { sourceKey: official.source_key || null, steps: copied } });
       ctx.status = 201;
       return plan;
     }
@@ -505,20 +547,30 @@ function register(router) {
         [official.id]
       );
       let position = 0;
+      let stepCount = 0;
       for (const plan of plans.rows) {
         position += 1;
-        await client.query(
+        const inserted = await client.query(
           `INSERT INTO lesson_plans (organisation_id, branch_id, classroom_id, academic_period_id, title, theme,
             objective_ids, preparation_notes, status, module_id, module_position, source, source_version)
-           VALUES ($1,$2,NULL,NULL,$3,$4,$5,$6,'draft',$7,$8,$9,$10)`,
+           VALUES ($1,$2,NULL,NULL,$3,$4,$5,$6,'draft',$7,$8,$9,$10) RETURNING id`,
           [ctx.organisationId, branch.id, plan.title, plan.theme || null,
             JSON.stringify(plan.objective_ids || []), plan.preparation_notes || null,
             module.id, position, plan.source || 'ncf', plan.source_version || '1.0']
         );
+        const steps = await client.query('SELECT * FROM lesson_steps WHERE lesson_plan_id = $1 ORDER BY position', [plan.id]);
+        for (const step of steps.rows) {
+          await client.query(
+            `INSERT INTO lesson_steps (organisation_id, lesson_plan_id, position, step_type, title, body, media_url, duration_minutes)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+            [ctx.organisationId, inserted.rows[0].id, step.position, step.step_type, step.title, step.body, step.media_url || null, step.duration_minutes || null]
+          );
+          stepCount += 1;
+        }
       }
-      return { module, planCount: position };
+      return { module, planCount: position, stepCount };
     });
-    await recordAudit(ctx.db, ctx, { action: 'curriculum.adopted_module', resourceType: 'learning_module', resourceId: created.module.id, metadata: { sourceKey: official.source_key || null, plans: created.planCount } });
+    await recordAudit(ctx.db, ctx, { action: 'curriculum.adopted_module', resourceType: 'learning_module', resourceId: created.module.id, metadata: { sourceKey: official.source_key || null, plans: created.planCount, steps: created.stepCount } });
     ctx.status = 201;
     return created;
   }, { permission: 'curriculum.create.daycare' });

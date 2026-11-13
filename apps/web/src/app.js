@@ -229,6 +229,7 @@
       notifLoading: false,
       theme: 'light',
       commandOpen: false,
+      guide: null,
       commandQuery: '',
       commandResults: [],
       commandIndex: 0,
@@ -1564,6 +1565,144 @@
           endpoint: opts.endpoint, method: opts.method || 'POST', body: opts.body || {},
           successMessage: opts.successMessage || 'Done.', saving: false, error: null
         };
+      },
+
+      async openGuide(planId) {
+        try {
+          let payload;
+          try {
+            payload = await Reel.api('GET', '/curriculum/lesson-plans/' + encodeURIComponent(planId) + '/guide');
+          } catch (error) {
+            // Offline fallback: a guide saved for offline still opens with no network.
+            try {
+              const saved = localStorage.getItem('reel.guide.' + planId);
+              if (saved) payload = { data: JSON.parse(saved) };
+            } catch { /* corrupted cache — fall through to the error toast */ }
+            if (!payload) throw error;
+          }
+          const data = payload.data || {};
+          const steps = (data.steps || []).slice().sort((a, b) => (a.position || 0) - (b.position || 0));
+          if (!steps.length) {
+            this.toast('This plan does not have a lesson guide yet.', 'warn');
+            return;
+          }
+          let downloaded = false;
+          try {
+            const saved = JSON.parse(localStorage.getItem('reel.guidesDownloaded') || '[]');
+            downloaded = saved.some((entry) => entry && entry.id === planId);
+          } catch { downloaded = false; }
+          this.guide = {
+            planId, title: (data.plan && data.plan.title) || 'Lesson guide',
+            theme: (data.plan && data.plan.theme) || '', moduleTitle: (data.module && data.module.title) || '',
+            steps, index: 0, downloaded
+          };
+          this.renderIconsNow();
+        } catch (error) {
+          this.toast(error.message || 'The lesson guide could not be opened.', 'error');
+        }
+      },
+
+      closeGuide() {
+        this.guide = null;
+      },
+
+      guideProgress() {
+        if (!this.guide || !this.guide.steps.length) return 0;
+        return Math.round(((this.guide.index + 1) / this.guide.steps.length) * 100);
+      },
+
+      guideStepLabel(type) {
+        return ({ intro: 'Intro', text: 'Step', song: 'Song', rhyme: 'Rhyme', story: 'Story', activity: 'Activity', reflection: 'Reflect', audio: 'Listen', video: 'Watch', image: 'Look', book: 'Book' })[type] || 'Step';
+      },
+
+      guideStepTone(type) {
+        if (type === 'song' || type === 'rhyme' || type === 'audio') return 'badge-sky';
+        if (type === 'story' || type === 'book') return 'badge-sun';
+        if (type === 'activity') return 'badge-green';
+        if (type === 'reflection') return 'badge-plum';
+        return 'badge-muted';
+      },
+
+      guideNext() {
+        if (!this.guide) return;
+        this.guide.index = Math.min(this.guide.steps.length - 1, this.guide.index + 1);
+        this.scrollGuideToTop();
+      },
+
+      guideBack() {
+        if (!this.guide) return;
+        this.guide.index = Math.max(0, this.guide.index - 1);
+        this.scrollGuideToTop();
+      },
+
+      guideGoTo(index) {
+        if (!this.guide) return;
+        this.guide.index = Math.max(0, Math.min(this.guide.steps.length - 1, index));
+        this.scrollGuideToTop();
+      },
+
+      scrollGuideToTop() {
+        this.$nextTick(() => {
+          const body = document.querySelector('.guide-modal .modal-body');
+          if (body) body.scrollTop = 0;
+        });
+      },
+
+      speechSupported() {
+        return typeof window !== 'undefined' && 'speechSynthesis' in window;
+      },
+
+      speakCurrentStep() {
+        if (!this.guide || !this.speechSupported()) return;
+        const step = this.guide.steps[this.guide.index];
+        if (!step || !step.body) return;
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance((step.title ? step.title + '. ' : '') + step.body);
+        utterance.lang = 'en-ZA';
+        utterance.rate = 0.95;
+        window.speechSynthesis.speak(utterance);
+      },
+
+      guideOfflineDownloaded() {
+        if (!this.guide) return false;
+        if (this.guide.downloaded) return true;
+        try {
+          const saved = JSON.parse(localStorage.getItem('reel.guidesDownloaded') || '[]');
+          return saved.some((entry) => entry && entry.id === this.guide.planId);
+        } catch {
+          return false;
+        }
+      },
+
+      guideOfflineStatus() {
+        if (!this.guide) return '';
+        return this.guideOfflineDownloaded()
+          ? 'Saved for offline — this guide works with no connection.'
+          : 'Download first, then this guide works with zero data.';
+      },
+
+      async downloadGuideOffline() {
+        if (!this.guide) return;
+        const planId = this.guide.planId;
+        try {
+          const payload = await Reel.api('GET', '/curriculum/lesson-plans/' + encodeURIComponent(planId) + '/guide');
+          localStorage.setItem('reel.guide.' + planId, JSON.stringify(payload.data));
+          const saved = JSON.parse(localStorage.getItem('reel.guidesDownloaded') || '[]').filter((entry) => entry && entry.id !== planId);
+          saved.push({ id: planId, title: this.guide.title, downloadedAt: new Date().toISOString() });
+          localStorage.setItem('reel.guidesDownloaded', JSON.stringify(saved));
+          if (this.guide && this.guide.planId === planId) this.guide.downloaded = true;
+          // Also fill the shell cache so the guide and app assets work with no network.
+          try {
+            if (window.caches) {
+              const cache = await caches.open('reel-shell-v1');
+              await cache.put('/api/v1/curriculum/lesson-plans/' + encodeURIComponent(planId) + '/guide',
+                new Response(JSON.stringify(payload.data), { headers: { 'Content-Type': 'application/json' } }));
+            }
+          } catch { /* localStorage copy is authoritative */ }
+          this.toast('Guide downloaded — it now works offline.');
+        } catch (error) {
+          this.toast(error.message || 'The guide could not be downloaded.', 'error');
+        }
       },
 
       closeModal() {

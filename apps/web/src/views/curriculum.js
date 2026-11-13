@@ -327,7 +327,8 @@
           '</div><div class="section"></div><h3>Objectives</h3>' +
           (objectives.length ? '<ul class="list-clean">' + objectives.map((o) => '<li><span class="mono badge badge-muted">' + R.esc(o.code) + '</span><span>' + R.esc(o.description) + '</span></li>').join('') + '</ul>' : '<p class="muted">No objectives linked.</p>') +
           '<h3 style="margin-top:16px">Preparation</h3><p class="muted">' + R.esc(plan.preparation_notes || 'No notes.') + '</p>' +
-          (plan.delivery_notes ? '<h3>Delivery notes</h3><p class="muted">' + R.esc(plan.delivery_notes) + '</p>' : '')
+          (plan.delivery_notes ? '<h3>Delivery notes</h3><p class="muted">' + R.esc(plan.delivery_notes) + '</p>' : '') +
+          '<div class="section"></div><button class="btn btn-primary" @click="openGuide(\'' + R.attr(plan.id) + '\')">' + R.icon('play-circle') + ' Open lesson guide</button>'
       };
     }
   };

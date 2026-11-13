@@ -1,0 +1,802 @@
+[
+ {
+  "plan": "ncf-plan-welcome",
+  "position": 1,
+  "type": "intro",
+  "title": "What this week does",
+  "body": "New children are deciding, every day, whether this place is safe. This plan makes arrival predictable and warm so the nervous system can rest. Greet every child by name at the gate, walk with them to the same spot, and let the child keep a small comfort object close by.",
+  "durationMinutes": 10
+ },
+ {
+  "plan": "ncf-plan-welcome",
+  "position": 2,
+  "type": "song",
+  "title": "Here We Are Together",
+  "body": "To the tune of \"Are You Sleeping\" (Frère Jacques):\n\nHere we are together, here we are together,\nCome on in, come on in,\nEveryone is welcome, everyone is welcome,\nSit with me, sit with me.\n\nRepeat daily at arrival for the first weeks. Children learn the arrival script in their bodies before they learn it in words.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-welcome",
+  "position": 3,
+  "type": "story",
+  "title": "Little Sprout's First Morning",
+  "body": "Once there was a little sprout in a big garden. Every morning the sun came out and said \"Good morning, little sprout.\" At first the sprout hid under the soil. But a bird came and sang, and a ladybug walked on a leaf, and soon the sprout peeked up a little. One morning the sprout waved hello to everyone. It was happy to find its place in the garden.\n\nRead it slowly with pauses. Ask: \"What helped the sprout feel brave?\"",
+  "durationMinutes": 8
+ },
+ {
+  "plan": "ncf-plan-welcome",
+  "position": 4,
+  "type": "activity",
+  "title": "Photo wall and greeting circle",
+  "body": "Put each family's photos on the wall at child height with the child's name. Sit in a circle, hold the greeting stone gently to each child: \"Good morning, [name].\" The child answers \"Good morning.\" End with the arrival song, every time.",
+  "durationMinutes": 20
+ },
+ {
+  "plan": "ncf-plan-welcome",
+  "position": 5,
+  "type": "reflection",
+  "title": "What to notice",
+  "body": "Settles within minutes of arrival; waves at the gate; seeks a familiar adult when overwhelmed; joins the greeting circle by the end of the week. Note anything that tells you this child is deciding we are safe — that note is your assessment.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-family",
+  "position": 1,
+  "type": "intro",
+  "title": "Why families matter",
+  "body": "A child's family is their first curriculum. When the centre knows the family, the child feels seen as a whole person. This week each child gets to be the expert on their family.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-family",
+  "position": 2,
+  "type": "song",
+  "title": "A Song of My Family",
+  "body": "To the tune of \"Row, Row, Row Your Boat\" (original words):\n\nMama, papa, baby, too,\nEveryone belongs.\nBrother, sister, aunty, granny,\nWe sing this song.\n\nInvite children to add their own family. Children love adding their own relatives to the verse.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-family",
+  "position": 3,
+  "type": "activity",
+  "title": "Family photo wall show and tell",
+  "body": "Each child shows their family with photos and tells one thing about them. Ask open questions: \"Who is this?\" \"What do you do together?\" \"What food do you love?\" Keep it flowing; never correct facts.",
+  "durationMinutes": 30
+ },
+ {
+  "plan": "ncf-plan-family",
+  "position": 4,
+  "type": "story",
+  "title": "In My House",
+  "body": "Explain: everyone's house has different people inside. Some houses have many people, some have one big aunty, some have a grandmother, some have a dog. No house is wrong. Ask: \"What does your house sound like in the morning?\"",
+  "durationMinutes": 8
+ },
+ {
+  "plan": "ncf-plan-family",
+  "position": 5,
+  "type": "reflection",
+  "title": "What to notice",
+  "body": "Can name family members; shows pride in family photos; settles when talking about family; speaks the home language. Note who needs more warmth this week.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-feelings",
+  "position": 1,
+  "type": "intro",
+  "title": "Why feelings come first",
+  "body": "A brain in overwhelm cannot learn. Teaching children to name feelings gives them a tool before they need one. This week we make feelings normal, nameable and safe.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-feelings",
+  "position": 2,
+  "type": "song",
+  "title": "Are You Happy and You Know It",
+  "body": "Are you happy and you know it? Clap your hands!\nAre you happy and you know it? Clap your hands!\nAre you happy and you know it\nAnd you really want to show it\nAre you happy and you know it? Clap your hands!\n\nChange the emotion each verse: angry (stomp feet), sad (wipe eyes), scared (shiver), calm (long breath out).",
+  "durationMinutes": 8
+ },
+ {
+  "plan": "ncf-plan-feelings",
+  "position": 3,
+  "type": "story",
+  "title": "The Feeling Monster",
+  "body": "Tell the tale of a little monster who had every colour of feeling inside: red anger, blue sadness, yellow happiness, grey scared. One day the monster learned that naming a feeling made it smaller. Ask each child: \"What colour is your feeling today?\"",
+  "durationMinutes": 8
+ },
+ {
+  "plan": "ncf-plan-feelings",
+  "position": 4,
+  "type": "activity",
+  "title": "Feelings card matching game",
+  "body": "Spread feeling faces on the floor. Call a feeling; the child finds and holds the matching face; the group copies the face together. Label it in the child's home language too.",
+  "durationMinutes": 20
+ },
+ {
+  "plan": "ncf-plan-feelings",
+  "position": 5,
+  "type": "reflection",
+  "title": "What to notice",
+  "body": "Names feelings with words or gestures; seeks adult help when upset (instead of only crying); notices peers' feelings. Note strategies that calm each child — they differ.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-belong",
+  "position": 1,
+  "type": "intro",
+  "title": "The belonging week",
+  "body": "Children who belong try harder, recover faster and play longer. Whole-class membership is not automatic; it is taught. This week we deliberately build \"our class family\".",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-belong",
+  "position": 2,
+  "type": "story",
+  "title": "The Rainbow Class",
+  "body": "A class of children from many homes discovered they could not sit in one colour but always sat in a rainbow. Each child is one stripe of the class rainbow. Remind every child: \"Without your stripe, the rainbow is not complete.\"",
+  "durationMinutes": 8
+ },
+ {
+  "plan": "ncf-plan-belong",
+  "position": 3,
+  "type": "activity",
+  "title": "Our Class Family mural",
+  "body": "Give each child a large paper body tracing. Label it with their name, their family's names, their favourite food, their home language. Hang every body on the classroom wall as one class crowd.",
+  "durationMinutes": 40
+ },
+ {
+  "plan": "ncf-plan-belong",
+  "position": 4,
+  "type": "activity",
+  "title": "Fairness game: taking turns",
+  "body": "One beloved toy, many children. Set a sand timer for one minute per turn. Talk about what turn-taking feels like. Praise noticing even more than sharing: \"I see you saw Mpho waiting.\"",
+  "durationMinutes": 20
+ },
+ {
+  "plan": "ncf-plan-belong",
+  "position": 5,
+  "type": "reflection",
+  "title": "What to notice",
+  "body": "Invites peers into play; comforts another child; uses names; waits turns (sometimes!). Note who is being left out and intervene with the buddy system.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-healthy",
+  "position": 1,
+  "type": "intro",
+  "title": "Taking care of our bodies",
+  "body": "Healthy bodies carry curious brains. Toothbrushing, handwashing, resting and eating well are curriculum — not housekeeping.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-healthy",
+  "position": 2,
+  "type": "song",
+  "title": "This is the Way We Wash Our Hands",
+  "body": "To the tune of \"Here We Go Round the Mulberry Bush\":\n\nThis is the way we wash our hands, wash our hands, wash our hands,\nThis is the way we wash our hands, so early in the morning.\n\nFollow with: \"This is the way we brush our teeth… This is the way we eat our greens…\" Silly voices encouraged.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-healthy",
+  "position": 3,
+  "type": "activity",
+  "title": "Doctor role play and hygiene station",
+  "body": "Set up a doctor corner with stethoscope and bandages. Create hygiene before snack: one helper opens doors, washes hands, dries with a towel, sits. Record who helped each day; celebrate every role.",
+  "durationMinutes": 30
+ },
+ {
+  "plan": "ncf-plan-healthy",
+  "position": 4,
+  "type": "story",
+  "title": "The Teeth Song",
+  "body": "Druss is a tiny tooth doctor who visits every child's body at night. She checks whether the sweets and the oranges and the spinach left the teeth shiny or sticky. Children open mouths wide for Druss. Ask: \"What did Druss find in your mouth today?\"",
+  "durationMinutes": 8
+ },
+ {
+  "plan": "ncf-plan-healthy",
+  "position": 5,
+  "type": "reflection",
+  "title": "What to notice",
+  "body": "Washes hands without prompting by the third day; chooses vegetables sometimes; rests when tired; knows one or two hygiene rules. Note what the family says about home habits.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-rhyme",
+  "position": 1,
+  "type": "intro",
+  "title": "Why rhymes build brains",
+  "body": "Rhyme develops phonological awareness — the single best predictor of early reading. Every syllable a child hears and echoes is a deposit in that bank.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-rhyme",
+  "position": 2,
+  "type": "rhyme",
+  "title": "Twinkle Twinkle Little Star",
+  "body": "Twinkle, twinkle, little star,\nHow I wonder what you are.\nUp above the world so high,\nLike a diamond in the sky.\nTwinkle, twinkle, little star,\nHow I wonder what you are.\n\nPause before the last line and let children supply it. Whisper the first and loudest the last.",
+  "durationMinutes": 8
+ },
+ {
+  "plan": "ncf-plan-rhyme",
+  "position": 3,
+  "type": "rhyme",
+  "title": "The Itsy Bitsy Spider",
+  "body": "Incy, wincy, spider,\nClimbed up the water spout,\nDown came the rain and washed the spider out.\nOut came the sun and dried up all the rain,\nAnd the incy, wincy spider climbed up the spout again.\n\nFull hand-play: finger-walk, rain, sun, then climb again with a loud triumphant ending.",
+  "durationMinutes": 8
+ },
+ {
+  "plan": "ncf-plan-rhyme",
+  "position": 4,
+  "type": "activity",
+  "title": "Shaker rhythm game",
+  "body": "Give each child a shaker. Clap a rhythm; children copy; grow the pattern. Add the rhymes above with the children drumming softly and loudly. End with silence: the children close their eyes and listen for the quietest sound.",
+  "durationMinutes": 20
+ },
+ {
+  "plan": "ncf-plan-rhyme",
+  "position": 5,
+  "type": "reflection",
+  "title": "What to notice",
+  "body": "Keeps a simple beat; echoes syllable patterns; joins in with actions; shows pleasure in the ritual. Note children who do not respond to sound at distance — flag for a hearing check.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-story",
+  "position": 1,
+  "type": "intro",
+  "title": "Stories are the curriculum",
+  "body": "Story time is the moment children learn to listen, remember sequence and understand emotions. Fifteen minutes a day changes vocabulary trajectories.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-story",
+  "position": 2,
+  "type": "story",
+  "title": "Read The Gruffalo (Julia Donaldson)",
+  "body": "Read it slowly. Let the rhymes land. Pause before the Gruffalo appears and ask: \"What do you think lives in the wood?\" Do not explain — let the pictures work.",
+  "durationMinutes": 12
+ },
+ {
+  "plan": "ncf-plan-story",
+  "position": 3,
+  "type": "story",
+  "title": "Retell with props",
+  "body": "Put out stick puppets or felt shapes: mouse, owl, fox, snake, Gruffalo. Re-read with the children voicing each animal. Celebrate every attempt, even wrong order — confidence before accuracy.",
+  "durationMinutes": 15
+ },
+ {
+  "plan": "ncf-plan-story",
+  "position": 4,
+  "type": "activity",
+  "title": "Make your own Gruffalo",
+  "body": "Draw a Gruffalo outline on big paper. Each child adds one body part (feet, tail, eyes, teeth). Label the parts as the children name them; the class names the Gruffalo together and agrees a fierce name for him.",
+  "durationMinutes": 30
+ },
+ {
+  "plan": "ncf-plan-story",
+  "position": 5,
+  "type": "reflection",
+  "title": "What to notice",
+  "body": "Predictions and excitement before the scary part; retells with prompts; engages with repeated phrases. Note who hides behind a hand during the scary part — that is feeling vocabulary at work.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-sounds",
+  "position": 1,
+  "type": "intro",
+  "title": "Sounds are everywhere",
+  "body": "Listening is faster and more reliable than sight. Training ears this week builds comprehension, storytelling and print awareness later.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-sounds",
+  "position": 2,
+  "type": "activity",
+  "title": "Sound walk",
+  "body": "Walk slowly around the centre or garden. Stop and whisper-listen. Count five sounds. Name them: \"Bird singing, wind, car, clank, whoosh.\" Record on the listening map in chalk: symbol per sound.",
+  "durationMinutes": 25
+ },
+ {
+  "plan": "ncf-plan-sounds",
+  "position": 3,
+  "type": "activity",
+  "title": "Sound jars",
+  "body": "Two jars each of rice, paper clips, stones, beans. Children shake, compare, sort into loud and soft. Match pairs by sound with eyes closed. The last game: teacher shakes behind a screen; children guess the jar.",
+  "durationMinutes": 20
+ },
+ {
+  "plan": "ncf-plan-sounds",
+  "position": 4,
+  "type": "song",
+  "title": "Listen, Listen",
+  "body": "Original song, sung to \"Frère Jacques\":\n\nListen, listen, quiet, quiet,\nQuiet, quiet, quiet,\nWhat can you hear, what can you hear?\nShhhhh.\n\nSing it low and slow, getting lower and slower until the room is silent except for the children laughing.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-sounds",
+  "position": 5,
+  "type": "reflection",
+  "title": "What to notice",
+  "body": "Listens attentively for at least a minute; can identify two sounds; matches jars by sound; enjoys the quiet game. Note who needs quieter spaces or more distance from noisy peers.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-letters",
+  "position": 1,
+  "type": "intro",
+  "title": "Marks before letters",
+  "body": "Early writing begins with marks with meaning, not penmanship. A child who scribbles and says \"it says my name\" is writing.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-letters",
+  "position": 2,
+  "type": "activity",
+  "title": "Name card matching",
+  "body": "Make a small name card for each child. Scatter them on the floor; children find and pair them. Then every child holds their name card to their chest like a shield of honour.",
+  "durationMinutes": 15
+ },
+ {
+  "plan": "ncf-plan-letters",
+  "position": 3,
+  "type": "activity",
+  "title": "Interest trays for mark making",
+  "body": "Trays of salt, shaving foam, sand and oatmeal. Children trace shapes, then letters of their own name, with fingers, then sticks. No letters before shapes: lines and curves first.",
+  "durationMinutes": 30
+ },
+ {
+  "plan": "ncf-plan-letters",
+  "position": 4,
+  "type": "rhyme",
+  "title": "Six Little Ducks",
+  "body": "Six little ducks that I once knew,\nFat ones, skinny ones, fair ones too.\nBut one little duck with a feather on his back\nHe led the others with a quack, quack, quack.\n\nFive little ducks… Four little ducks… (counting rhyme — children track the falling numbers on their fingers).",
+  "durationMinutes": 8
+ },
+ {
+  "plan": "ncf-plan-letters",
+  "position": 5,
+  "type": "reflection",
+  "title": "What to notice",
+  "body": "Makes confident marks; shows interest in print; identifies at least the first letter of own name; holds pencil or crayon in a functional grip. Note the grip now — it takes a year to change it later.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-songs",
+  "position": 1,
+  "type": "intro",
+  "title": "Songs from every home",
+  "body": "A child's home language is their first superpower. Songs from home unlock it in the classroom. Every family has one; every family can give us one.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-songs",
+  "position": 2,
+  "type": "activity",
+  "title": "Song collection",
+  "body": "Send a note home: \"Teach us a song in your language.\" Collect audio recordings by WhatsApp or sung by a parent at drop-off. Compile the class songbook with the words and drawings.",
+  "durationMinutes": 15
+ },
+ {
+  "plan": "ncf-plan-songs",
+  "position": 3,
+  "type": "song",
+  "title": "Head, Shoulders, Knees and Toes",
+  "body": "Head, shoulders, knees and toes, knees and toes,\nHead, shoulders, knees and toes, knees and toes,\nAnd eyes and ears and mouth and nose,\nHead, shoulders, knees and toes, knees and toes.\n\nSpeed up each round until everyone collapses into giggles; slow down until the class is silent and still.",
+  "durationMinutes": 8
+ },
+ {
+  "plan": "ncf-plan-songs",
+  "position": 4,
+  "type": "activity",
+  "title": "Class songbook",
+  "body": "Bind the collected songs into a big-book version (pictures or family-drawn illustrations). Read it like a story on Fridays; children request their home-language song by raising hands.",
+  "durationMinutes": 30
+ },
+ {
+  "plan": "ncf-plan-songs",
+  "position": 5,
+  "type": "reflection",
+  "title": "What to notice",
+  "body": "Attempts songs in own language; requests favourite songs; sings with intonation; shares culture with pride. Suspend judgement of accent or accuracy entirely.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-numbers",
+  "position": 1,
+  "type": "intro",
+  "title": "Numbers are everywhere",
+  "body": "Number confidence before four is built entirely from handling things: spoons, buttons, cups, stones. Never worksheets.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-numbers",
+  "position": 2,
+  "type": "song",
+  "title": "One, Two, Buckle My Shoe",
+  "body": "One, two, buckle my shoe.\nThree, four, shut the door.\nFive, six, pick up sticks.\nSeven, eight, lay them straight.\nNine, ten, a big fat hen.\n\nClap each line louder and louder. Substitute children's own items (spoons, stones) for the rhymes when reading aloud.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-numbers",
+  "position": 3,
+  "type": "activity",
+  "title": "Snack-time counting",
+  "body": "Hand out spoons by counting aloud; count cups, chairs, raisins. Ask: \"How many spoons? How many children? Who has more, us or chairs?\" Wrong answers get celebrated for thinking, not corrected.",
+  "durationMinutes": 20
+ },
+ {
+  "plan": "ncf-plan-numbers",
+  "position": 4,
+  "type": "activity",
+  "title": "Number parade",
+  "body": "Walk through the room: touch every table and call the number, step-step-one, step-step-two. Hold up fingers: \"Show me three! Show me seven!\" End with jumping numbers: jump 3, pause, jump 5.",
+  "durationMinutes": 15
+ },
+ {
+  "plan": "ncf-plan-numbers",
+  "position": 5,
+  "type": "reflection",
+  "title": "What to notice",
+  "body": "Counts to 10 with 1:1 correspondence; fingers for small quantities; matches numerals to sets of objects; corrects own counting mistakes given time. Note children comparing amounts in daily play.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-shapes",
+  "position": 1,
+  "type": "intro",
+  "title": "Shapes before letters",
+  "body": "Children see shapes long before print makes sense. Naming circles and squares unlocks literacy and maths simultaneously.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-shapes",
+  "position": 2,
+  "type": "rhyme",
+  "title": "Round and Round the Garden",
+  "body": "Round and round the garden,\nLike a teddy bear.\nOne step, two step,\nTickly under there!\n\nTrace shape paths on each child's open palm. Circle, square and triangle each get their own path pattern.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-shapes",
+  "position": 3,
+  "type": "activity",
+  "title": "Shape hunt",
+  "body": "Hide circle, square, triangle cards around the room. Children find them and place them in matching containers. Celebrate \"Circle-face\" the monster whose body is made of shapes on the wall — each child adds one.",
+  "durationMinutes": 25
+ },
+ {
+  "plan": "ncf-plan-shapes",
+  "position": 4,
+  "type": "activity",
+  "title": "Shape prints",
+  "body": "Paint sponges into circles, squares and triangles. Children print wallpaper borders on long paper rolls and proudly date them. Count the stamps: \"How many circles did you make?\"",
+  "durationMinutes": 30
+ },
+ {
+  "plan": "ncf-plan-shapes",
+  "position": 5,
+  "type": "reflection",
+  "title": "What to notice",
+  "body": "Names at least circle and square; copies shapes with lines; finds shapes in the environment; sorts by shape. Note children who name colours but not shapes — shapes need more play.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-patterns",
+  "position": 1,
+  "type": "intro",
+  "title": "Patterns are the maths literacy",
+  "body": "Pattern recognition predicts mathematical achievement better than early counting. Beads, blocks and daily routines build it invisibly.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-patterns",
+  "position": 2,
+  "type": "activity",
+  "title": "Bead strings",
+  "body": "Big beads and strings. Teacher starts red-blue-red-blue; children complete, then invent. Advanced: ABAB to ABCABC. Celebrate the children who notice when the pattern breaks.",
+  "durationMinutes": 25
+ },
+ {
+  "plan": "ncf-plan-patterns",
+  "position": 3,
+  "type": "activity",
+  "title": "Pattern snake",
+  "body": "Cut a paper snake with repeating body segments. Children decorate each segment to continue the pattern: spots, stripes, zigzags. Hang them in the corridor like a museum tour.",
+  "durationMinutes": 20
+ },
+ {
+  "plan": "ncf-plan-patterns",
+  "position": 4,
+  "type": "rhyme",
+  "title": "One, Two, Three, Four, Five",
+  "body": "One, two, three, four, five,\nOnce I caught a fish alive.\nSix, seven, eight, nine, ten,\nThen I let it go again.\n\nClap on every number word; children alternate clapping and stepping on the number words.",
+  "durationMinutes": 6
+ },
+ {
+  "plan": "ncf-plan-patterns",
+  "position": 5,
+  "type": "reflection",
+  "title": "What to notice",
+  "body": "Continues an AB pattern; predicts the next element; copies pattern error and fixes it; finds patterns in routines. Note children who need the adult to confirm each step — scaffold then fade.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-counting-walk",
+  "position": 1,
+  "type": "intro",
+  "title": "Why outside",
+  "body": "The NCF deliberately places outdoor learning inside the curriculum — movement, senses and maths at once. A fence, a gate and a path are all maths instruments.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-counting-walk",
+  "position": 2,
+  "type": "activity",
+  "title": "Counting walk with chalk",
+  "body": "Walk the route. Count every fence pale, gate, pillar, bird. On return, chalk-tally the counts on the pavement: 5 birds, 23 fence pales, 2 gates. Cheer every tally mark.",
+  "durationMinutes": 35
+ },
+ {
+  "plan": "ncf-plan-counting-walk",
+  "position": 3,
+  "type": "song",
+  "title": "The Wheels on the Bus",
+  "body": "The wheels on the bus go round and round,\nRound and round, round and round.\nThe wheels on the bus go round and round,\nAll through the town.\n\nChildren substitute buses, cars and bicycles spotted on the walk, plus train sounds, biker bells.",
+  "durationMinutes": 8
+ },
+ {
+  "plan": "ncf-plan-counting-walk",
+  "position": 4,
+  "type": "activity",
+  "title": "Counting backwards",
+  "body": "Line up at the gate. Count back from 10 as you walk in. 10, 9, 8… 2, 1. Clap on one. Repeat from 5. Older children close eyes and whisper backwards from 20.",
+  "durationMinutes": 10
+ },
+ {
+  "plan": "ncf-plan-counting-walk",
+  "position": 5,
+  "type": "reflection",
+  "title": "What to notice",
+  "body": "Counts beyond 10 outdoors where it counts; tracks tallies; enjoys physical counting; notices numbers in the environment. Outdoor maths should never feel like school.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-blocks",
+  "position": 1,
+  "type": "intro",
+  "title": "Why blocks build brains",
+  "body": "Block play is the highest-quality unstructured learning in any room: spatial reasoning, balance, cause and effect, fine motor, and collaboration. Never tidy blocks in the morning.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-blocks",
+  "position": 2,
+  "type": "activity",
+  "title": "Tower challenge",
+  "body": "Make groups of 3. Challenge: build a tower taller than the tallest child. Negotiation happens naturally. Ask between attempts: \"Why did it fall? What worked?\"",
+  "durationMinutes": 25
+ },
+ {
+  "plan": "ncf-plan-blocks",
+  "position": 3,
+  "type": "activity",
+  "title": "Bridge for the car",
+  "body": "Spans and tunnels. Provide a cardboard car; children must build a bridge tall enough for the car underneath. Test. Improve. This is engineering with zero worksheets.",
+  "durationMinutes": 25
+ },
+ {
+  "plan": "ncf-plan-blocks",
+  "position": 4,
+  "type": "rhyme",
+  "title": "Humpty Dumpty",
+  "body": "Humpty Dumpty sat on a wall,\nHumpty Dumpty had a great fall.\nAll the king's horses and all the king's men\nCouldn't put Humpty together again.\n\nAfter the fall, ask: \"What if we built him again out of blocks?\" — and the children rebuild him.",
+  "durationMinutes": 6
+ },
+ {
+  "plan": "ncf-plan-blocks",
+  "position": 5,
+  "type": "reflection",
+  "title": "What to notice",
+  "body": "Persists through collapse; reasons about stability (\"base bigger\"); works with one other; builds taller structures over weeks; uses positional words (under, over, next to). Note children who build alone every day.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-nature",
+  "position": 1,
+  "type": "intro",
+  "title": "Nature is the classroom",
+  "body": "NCF deliberately places outdoor learning inside the curriculum. The garden, weather and insects are teaching aids produced free by nature.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-nature",
+  "position": 2,
+  "type": "activity",
+  "title": "Insect traffic stop",
+  "body": "Find a busy patch: under leaves, near compost, in the grass. Sit completely still. Count every ant, beetle, worm and spider visible in five minutes. Draw the traffic.",
+  "durationMinutes": 35
+ },
+ {
+  "plan": "ncf-plan-nature",
+  "position": 3,
+  "type": "story",
+  "title": "The Hungry Caterpillar",
+  "body": "Read it with a felt caterpillar or a puppet. Ask after each day: \"What did he eat on Tuesday?\" Celebrate Monday through Sunday; children shout the days together.",
+  "durationMinutes": 10
+ },
+ {
+  "plan": "ncf-plan-nature",
+  "position": 4,
+  "type": "song",
+  "title": "Incy Wincy Variations",
+  "body": "Spin new verses about the butterfly, the ladybird, the bee. Each child names an insect and a place it might live. The class sings the substituted verse together; silly endings encouraged.",
+  "durationMinutes": 6
+ },
+ {
+  "plan": "ncf-plan-nature",
+  "position": 5,
+  "type": "reflection",
+  "title": "What to notice",
+  "body": "Observes intently (a minute or more); asks questions; handles living things gently; names common creatures; remembers weather changes. Note children afraid of bugs — confidence first, touch later.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-weather",
+  "position": 1,
+  "type": "intro",
+  "title": "Why weather matters",
+  "body": "Weather connects children to time, seasons and pattern-recognition — tomorrow is a prediction game they play every day for free.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-weather",
+  "position": 2,
+  "type": "activity",
+  "title": "Weather chart start",
+  "body": "Four weather cards: sun, cloud, rain, wind. Every child does today's job: pick the card, place it on the chart, draw a face for how they feel about it. By Friday you have a week.",
+  "durationMinutes": 15
+ },
+ {
+  "plan": "ncf-plan-weather",
+  "position": 3,
+  "type": "song",
+  "title": "Rain, Rain, Go Away",
+  "body": "Rain, rain, go away,\nCome again another day.\nLittle [name] wants to play,\nRain, rain, go away.\n\nOne verse per child, each with their own name. Then sing it the other way: \"Rain, rain, please come in…\" for the children who want the rain.",
+  "durationMinutes": 7
+ },
+ {
+  "plan": "ncf-plan-weather",
+  "position": 4,
+  "type": "activity",
+  "title": "Cloud and sun paintings",
+  "body": "Finger paint: blue paper, white clouds, yellow sponge suns. Add faces to the weather: angry storm cloud, sleepy sun, giggling wind. Hang in the corridor as the Weather Gallery.",
+  "durationMinutes": 25
+ },
+ {
+  "plan": "ncf-plan-weather",
+  "position": 5,
+  "type": "reflection",
+  "title": "What to notice",
+  "body": "Predicts weather accurately after a week; names four weather kinds; matches mood to weather (safely). Note children who love storms — they may have watched them at home.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-helpers",
+  "position": 1,
+  "type": "intro",
+  "title": "Why community helpers",
+  "body": "The centre door does not mark the edge of a child's world. People in uniforms keep everyone safe; children who know them approach them with confidence.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-helpers",
+  "position": 2,
+  "type": "activity",
+  "title": "Helper visit or dress-up",
+  "body": "If possible, invite a community helper: nurse, police officer, librarian, refuse collector. Alternative: picture books and role-play uniforms. Children interview the helper with prepared questions.",
+  "durationMinutes": 30
+ },
+ {
+  "plan": "ncf-plan-helpers",
+  "position": 3,
+  "type": "story",
+  "title": "The Night Watch",
+  "body": "Tell a story of the town at night: the nurse at the clinic, the police officer driving through, the refuse collectors starting their route, the security guard at the gate, the cleaner starting in the school. Ask: \"What would happen if they slept in?\"",
+  "durationMinutes": 8
+ },
+ {
+  "plan": "ncf-plan-helpers",
+  "position": 4,
+  "type": "song",
+  "title": "The Bus Song",
+  "body": "The wheels go round and round,\nThe bus drivers wave at us,\nThe librarians say shhhhh,\nThe nurses go check-check,\nThe police go wee-woo,\nAnd we go to work!\n\nChildren make each helper's sound and driver gesture; build one verse per helper.",
+  "durationMinutes": 6
+ },
+ {
+  "plan": "ncf-plan-helpers",
+  "position": 5,
+  "type": "reflection",
+  "title": "What to notice",
+  "body": "Names at least four helpers; describes one job; shows respect for workers; identifies uniforms. Consider a field trip next term: the library or the clinic.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-garden",
+  "position": 1,
+  "type": "intro",
+  "title": "Gardens teach patience",
+  "body": "Seeds give children a reason to wait — roots grow downward, shoots grow upward, and a three-week-old bean is a miracle nobody can speed up.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-garden",
+  "position": 2,
+  "type": "activity",
+  "title": "Beans in cups",
+  "body": "Each child plants two beans in a clear cup of soil. Label with name and date. Water daily; mark with a stick. Watch the roots through the clear plastic; photograph weekly.",
+  "durationMinutes": 20
+ },
+ {
+  "plan": "ncf-plan-garden",
+  "position": 3,
+  "type": "story",
+  "title": "The Giant Carrot",
+  "body": "A traditional tale of many hands pulling one enormous carrot. Each child takes a role; the whole class pulls together on the final line. Ask: \"Who helped? What if only one person pulled?\"",
+  "durationMinutes": 8
+ },
+ {
+  "plan": "ncf-plan-garden",
+  "position": 4,
+  "type": "activity",
+  "title": "Compost bucket",
+  "body": "Start a classroom compost bucket with vegetable scraps. Bury a cupful outdoors. Talk about what the earth returns. Tie to snack: apple cores, banana skins.",
+  "durationMinutes": 15
+ },
+ {
+  "plan": "ncf-plan-garden",
+  "position": 5,
+  "type": "reflection",
+  "title": "What to notice",
+  "body": "Cares for plants; asks \"Can I see?\"; sticks to watering duty; names what plants need (water, sun, soil). Note children who name neglect and who want to repot everything.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-neighbours",
+  "position": 1,
+  "type": "intro",
+  "title": "Maps and neighbours",
+  "body": "Understanding \"where\" builds abstract geography: children who can map their street can map continents by eight.",
+  "durationMinutes": 5
+ },
+ {
+  "plan": "ncf-plan-neighbours",
+  "position": 2,
+  "type": "activity",
+  "title": "Model street",
+  "body": "Build a cardboard street in the classroom: houses, shop, clinic, park, school. Toy people move in and out of houses with pretend mornings. Children from many homes recognise themselves in it.",
+  "durationMinutes": 35
+ },
+ {
+  "plan": "ncf-plan-neighbours",
+  "position": 3,
+  "type": "story",
+  "title": "A Walk Through Our Town",
+  "body": "Narrate a walk down your actual street (use the walk you took on the sound walk). Ask: whose house, which shop, what school, where the bus leaves from. Pause for children to point with fingers at each building.",
+  "durationMinutes": 8
+ },
+ {
+  "plan": "ncf-plan-neighbours",
+  "position": 4,
+  "type": "song",
+  "title": "The Neighbour Song",
+  "body": "Original song to \"Twinkle, Twinkle\" tune:\n\nNeighbour, neighbour, living close,\nWave and smile as we pass,\nEvery house a different story,\nEvery door a different door.\n\nInvite each child to name one neighbour and one thing they see outside their window.",
+  "durationMinutes": 6
+ },
+ {
+  "plan": "ncf-plan-neighbours",
+  "position": 5,
+  "type": "reflection",
+  "title": "What to notice",
+  "body": "Orients on the street map; matches occupations to community buildings; describes routines of neighbours; knows where home sits relative to school. Note children new to the area who need the map most.",
+  "durationMinutes": 5
+ }
+]
