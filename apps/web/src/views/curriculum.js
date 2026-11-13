@@ -14,7 +14,7 @@
 
   V.curriculum = {
     async load(ctx) {
-      const [overview, frameworks, plans, objectives, periods, classrooms, planTemplates, activityTemplates] = await Promise.all([
+      const [overview, frameworks, plans, objectives, periods, classrooms, planTemplates, activityTemplates, frameworkTemplates] = await Promise.all([
         R.api('GET', '/curriculum/overview').then((p) => p.data).catch(() => ({})),
         R.api('GET', '/curriculum/frameworks').then((p) => p.data).catch(() => []),
         R.api('GET', '/curriculum/lesson-plans').then((p) => p.data).catch(() => []),
@@ -22,9 +22,10 @@
         R.api('GET', '/curriculum/periods').then((p) => p.data).catch(() => []),
         R.api('GET', '/classrooms').then((p) => p.data).catch(() => []),
         R.api('GET', '/templates?kind=lesson_plan').then((p) => (p.data && p.data.data) || []).catch(() => []),
-        R.api('GET', '/templates?kind=activity').then((p) => (p.data && p.data.data) || []).catch(() => [])
+        R.api('GET', '/templates?kind=activity').then((p) => (p.data && p.data.data) || []).catch(() => []),
+        R.api('GET', '/templates?kind=framework').then((p) => (p.data && p.data.data) || []).catch(() => [])
       ]);
-      return { overview, frameworks, plans, objectives, periods, classrooms, planTemplates, activityTemplates };
+      return { overview, frameworks, plans, objectives, periods, classrooms, planTemplates, activityTemplates, frameworkTemplates };
     },
 
     render(ctx, params, page) {
@@ -44,7 +45,7 @@
           { key: 'plans', label: 'Lesson plans' }, { key: 'frameworks', label: 'Frameworks' },
           { key: 'objectives', label: 'Objectives' }, { key: 'periods', label: 'Periods' }
         ], tab) +
-        (tab === 'plans' ? this.renderPlans(ctx, page) : tab === 'frameworks' ? this.renderFrameworks(page) : tab === 'objectives' ? this.renderObjectives(page) : this.renderPeriods(page));
+        (tab === 'plans' ? this.renderPlans(ctx, page) : tab === 'frameworks' ? this.renderFrameworks(ctx, page) : tab === 'objectives' ? this.renderObjectives(page) : this.renderPeriods(page));
     },
 
     renderPlans(ctx, page) {
@@ -61,6 +62,7 @@
         R.table({ rows: page.plans || [], selectable: actions.length > 0, columns: [
         { label: 'Plan', render: (p) => '<span class="cell-strong">' + R.esc(p.title) + '</span><span class="cell-sub">' + R.esc(p.theme || '') + '</span>' },
         { label: 'Classroom', render: (p) => R.esc(p.classroom_name || '—') },
+        { label: 'Module', render: (p) => p.module_id ? '<a href="#/app/modules/' + R.attr(p.module_id) + '">' + R.esc(p.module_title || 'Module') + '</a>' : '<span class="muted">—</span>' },
         { label: 'Objectives', render: (p) => '<span class="badge badge-muted">' + ((p.objective_ids || []).length) + '</span>' },
         { label: 'Status', render: (p) => R.badge(p.status) },
         { label: 'Created', render: (p) => R.date(p.created_at) },
@@ -73,11 +75,11 @@
       ], emptyTitle: 'No lesson plans', emptyMessage: 'Plan the week around your children\'s interests and the framework.' });
     },
 
-    renderFrameworks(page) {
+    renderFrameworks(ctx, page) {
       return '<div class="grid grid-2">' + (page.frameworks || []).map((f) => R.card(f.name,
         '<div class="muted small" style="margin-bottom:10px">Version ' + R.esc(f.version) + ' · ' + R.esc(f.description || '') + '</div>' +
         '<div class="stack">' + (f.domains || []).map((d) => '<div class="row" style="gap:10px"><span class="dot"></span><div style="flex:1"><div class="strong" style="font-size:0.88rem">' + R.esc(d.name) + '</div><div class="muted small">' + R.esc(d.description || '') + '</div></div><span class="badge badge-muted">' + R.number((page.objectives || []).filter((o) => o.domain_id === d.id).length) + ' objectives</span></div>').join('') + '</div>',
-        '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'domain\',\'' + R.attr(f.id) + '\')">' + R.icon('plus') + ' Domain</button>')).join('') +
+        '<div class="btn-group">' + (ctx.has('curriculum.create.daycare') ? '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'saveFrameworkTemplate\',\'' + R.attr(f.id) + '\')">Save template</button>' : '') + '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'domain\',\'' + R.attr(f.id) + '\')">' + R.icon('plus') + ' Domain</button>' + '</div>')).join('') +
         ((page.frameworks || []).length ? '' : R.emptyState('No frameworks', 'Create a framework to organise domains and objectives.', '<button class="btn btn-primary" @click="openNamedModal(\'framework\')">New framework</button>', 'book-open')) + '</div>';
     },
 
@@ -106,11 +108,65 @@
       const page = ctx.page || {};
       const frameworks = page.frameworks || [];
       if (name === 'framework') {
-        ctx.openModal({ title: 'New curriculum framework', endpoint: '/curriculum/frameworks', submitLabel: 'Create framework', fields: [
-          { name: 'name', label: 'Name', required: true, span: 2 },
-          { name: 'version', label: 'Version', value: '1.0', required: true },
-          { name: 'description', label: 'Description', type: 'textarea', span: 2 }
-        ] });
+        const frameworkTemplates = page.frameworkTemplates || [];
+        ctx.openModal({ title: 'New curriculum framework', endpoint: '/curriculum/frameworks', submitLabel: 'Create framework', size: 'wide',
+          description: 'Pick a template to create the domains and objectives in one go, or start from a blank framework.',
+          fields: [
+            { name: 'template', label: 'Start from template', type: 'select', span: 2, options: frameworkTemplates.map((t) => ({ value: t.id, label: t.name })), help: 'The domains and objectives from the template are created for you — you can edit them afterwards.',
+              onChange: (event, data) => {
+                const tpl = frameworkTemplates.find((t) => t.id === event.target.value);
+                if (!tpl) return;
+                const payload = tpl.payload || {};
+                if (payload.name) data.name = payload.name;
+                if (payload.version) data.version = payload.version;
+                if (payload.description) data.description = payload.description;
+              } },
+            { name: 'name', label: 'Name', required: true, span: 2 },
+            { name: 'version', label: 'Version', value: '1.0', required: true },
+            { name: 'description', label: 'Description', type: 'textarea', span: 2 }
+          ],
+          transform: (data) => {
+            const out = Object.assign({}, data);
+            delete out.template;
+            return out;
+          },
+          onSubmit: async (body, data) => {
+            if (data.template) await R.api('POST', '/curriculum/frameworks/from-template', { templateId: data.template, name: body.name });
+            else await R.api('POST', '/curriculum/frameworks', body);
+          }
+        });
+      } else if (name === 'saveFrameworkTemplate' && id) {
+        const framework = frameworks.find((f) => f.id === id) || {};
+        const objectives = page.objectives || [];
+        const domains = (framework.domains || []).map((d) => ({
+          name: d.name,
+          description: d.description || '',
+          objectives: objectives.filter((o) => o.domain_id === d.id).map((o) => ({
+            code: o.code,
+            description: o.description,
+            expected_observation_context: o.expected_observation_context || null,
+            ageGroup: o.age_group || null
+          }))
+        }));
+        ctx.openModal({
+          title: 'Save as framework template', endpoint: '/templates', submitLabel: 'Save template', size: 'wide',
+          description: 'Saves the framework with every domain and objective as a reusable starting point for other centres or future frameworks.',
+          fields: [
+            { name: 'templateName', label: 'Template name', required: true, span: 2, value: 'Copy of ' + (framework.name || 'Framework') },
+            { name: 'description', label: 'Description', type: 'textarea', span: 2, placeholder: 'When to use this template…' }
+          ],
+          transform: (data) => ({
+            kind: 'framework',
+            name: data.templateName,
+            description: data.description || null,
+            payload: {
+              name: framework.name,
+              version: framework.version || '1.0',
+              description: framework.description || '',
+              domains
+            }
+          })
+        });
       } else if (name === 'domain' && id) {
         ctx.openModal({ title: 'Add domain', endpoint: '/curriculum/domains', submitLabel: 'Add domain', fields: [
           { name: 'frameworkId', label: 'Framework', type: 'select', options: frameworks.map((f) => ({ value: f.id, label: f.name })), value: id, required: true },
@@ -130,9 +186,12 @@
       } else if (name === 'plan') {
         const objectives = page.objectives || [];
         const planTemplates = page.planTemplates || [];
+        const moduleId = id || null;
         ctx.openModal({
-          title: 'New lesson plan', endpoint: '/curriculum/lesson-plans', submitLabel: 'Create plan', size: 'wide',
-          description: 'Pick the objectives this plan works towards. Search by code, domain or phrase.',
+          title: moduleId ? 'New plan in module' : 'New lesson plan', endpoint: '/curriculum/lesson-plans', submitLabel: 'Create plan', size: 'wide',
+          description: moduleId
+            ? 'This plan joins the end of the module sequence. Pick the objectives it works towards.'
+            : 'Pick the objectives this plan works towards. Search by code, domain or phrase.',
           fields: [
             { name: 'template', label: 'Start from template', type: 'select', options: planTemplates.map((t) => ({ value: t.id, label: t.name })), span: 2, help: 'Applying a template fills the fields below — you can still edit them.',
               onChange: (event, data) => {
@@ -161,6 +220,7 @@
           transform: (data) => {
             const out = Object.assign({}, data);
             delete out.template;
+            if (moduleId) out.moduleId = moduleId;
             return out;
           }
         });
@@ -425,6 +485,8 @@
         { name: 'assignedStaffId', label: 'Lead staff', type: 'select', options: (page.staff || []).map((s) => ({ value: s.id, label: s.display_name })) },
         { name: 'startsAt', label: 'Starts at', type: 'datetime-local', required: true },
         { name: 'endsAt', label: 'Ends at', type: 'datetime-local', required: true },
+        { name: 'recurrence', label: 'Repeat', type: 'select', options: [{ value: 'none', label: 'Does not repeat' }, { value: 'daily', label: 'Every day' }, { value: 'weekly', label: 'Every week' }, { value: 'biweekly', label: 'Every 2 weeks' }, { value: 'monthly', label: 'Every month' }], value: 'none', help: 'Repeats are created in advance, up to 26 occurrences.' },
+        { name: 'repeatUntil', label: 'Repeats until', type: 'date', help: 'Required when a repeat is chosen. Occurrences after this date are not created.' },
         { name: 'notes', label: 'Notes', type: 'textarea', span: 2 }
       ] });
       } else if (name === 'complete' && id) {

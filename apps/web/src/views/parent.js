@@ -283,6 +283,7 @@
       const progress = page.progress;
       const domains = (progress && progress.domains) || [];
       return R.pageHead('Development', 'Observations recorded by teachers, shown without judgement.',
+        (page.child ? '<button class="btn btn-primary btn-sm" @click="downloadParentProgress(\'' + R.attr(page.child.id) + '\')">' + R.icon('file-down') + ' Download PDF</button>' : '') +
         R.selectFilter(ctx, 'childId', children.map((c) => ({ value: c.id, label: childLabel(c) })), 'Choose a child')) +
         (progress ? '<div class="grid grid-2 section">' + domains.map((d) => {
           const pct = d.total ? Math.round((d.observed / d.total) * 100) : 0;

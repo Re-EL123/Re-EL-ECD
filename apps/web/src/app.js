@@ -52,6 +52,8 @@
     route('/app/curriculum', 'app', 'curriculum', 'curriculum.read.daycare', 'Curriculum'),
     route('/app/activities', 'app', 'activities', 'curriculum.read.daycare', 'Activities'),
     route('/app/calendar', 'app', 'calendar', 'curriculum.read.daycare', 'Calendar'),
+    route('/app/modules', 'app', 'modules', 'curriculum.read.daycare', 'Learning modules'),
+    route('/app/modules/:id', 'app', 'moduleDetail', 'curriculum.read.daycare', 'Learning module'),
     route('/app/assessments', 'app', 'assessments', ['assessments.read.daycare', 'assessments.read.assigned'], 'Assessments'),
     route('/app/learner-attendance', 'app', 'attendance', ['attendance.read.daycare', 'attendance.read.assigned'], 'Learner attendance'),
     route('/app/staff', 'app', 'staff', 'staff.read.daycare', 'Staff'),
@@ -143,6 +145,7 @@
         { path: '/app/curriculum', label: 'Curriculum', icon: 'book-open', permission: 'curriculum.read.daycare' },
         { path: '/app/activities', label: 'Activities', icon: 'puzzle', permission: 'curriculum.read.daycare' },
         { path: '/app/calendar', label: 'Calendar', icon: 'calendar-days', permission: 'curriculum.read.daycare' },
+        { path: '/app/modules', label: 'Modules', icon: 'blocks', permission: 'curriculum.read.daycare' },
         { path: '/app/assessments', label: 'Assessments', icon: 'clipboard-list', permission: ['assessments.read.daycare', 'assessments.read.assigned'] }
       ] },
       { label: 'People', items: [
@@ -230,6 +233,7 @@
       commandResults: [],
       commandIndex: 0,
       quickOpen: false,
+      automationSweepBusy: false,
       modal: null,
       toasts: [],
       unread: 0,
@@ -1102,6 +1106,40 @@
 
       act(method, path, body, options) {
         return this.apiAction(method, path, body, options);
+      },
+
+      async downloadParentProgress(learnerId) {
+        try {
+          const payload = await Reel.api('POST', '/assessments/reports/generate', { learnerId, format: 'pdf' });
+          const report = payload.data && payload.data.report;
+          if (!report || !report.pdf) throw new Error('The report could not be generated.');
+          const bytes = Uint8Array.from(atob(report.pdf), (c) => c.charCodeAt(0));
+          const blob = new Blob([bytes], { type: 'application/pdf' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = 'progress-report.pdf';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          this.toast('Progress report downloaded.');
+        } catch (error) {
+          this.toast(error.message || 'The report could not be generated.', 'error');
+        }
+      },
+
+      async runAutomationSweep() {
+        this.automationSweepBusy = true;
+        try {
+          const p = await Reel.api('POST', '/automation/sweep', {});
+          const d = p.data || {};
+          this.toast('Sweep: ' + (d.childrenWithoutObservations || 0) + ' children need observations · ' + (d.plansAwaitingReview || 0) + ' plans waiting for review · ' + (d.overdueActivities || 0) + ' activities overdue. Notifications sent.');
+        } catch (error) {
+          this.toast(error.message || 'The sweep failed.', 'error');
+        } finally {
+          this.automationSweepBusy = false;
+        }
       },
 
       // -----------------------------------------------------------------------

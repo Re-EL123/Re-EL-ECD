@@ -6,7 +6,7 @@ const { recordAudit } = require('../services/audit-service');
 const { createNotification } = require('../services/notification-service');
 const { sendTemplate } = require('../services/email-service');
 const { parsePagination } = require('../utils/http');
-const { getLearner, has, assignedClassroomIds } = require('./helpers');
+const { getLearner, has, assignedClassroomIds, guardianLearnerIds } = require('./helpers');
 const exportService = require('../services/export-service');
 
 function register(router) {
@@ -298,6 +298,13 @@ function register(router) {
       ? Array.from(new Set(body.learnerIds))
       : (body.learnerId ? [body.learnerId] : []);
     if (!learnerIds.length) fail('VALIDATION', [{ field: 'learnerIds', message: 'Choose at least one child.' }]);
+    const isStaffReport = has(ctx, 'assessments.read.daycare');
+    if (!isStaffReport) {
+      // Parents may generate reports for their own children only.
+      const own = await guardianLearnerIds(ctx);
+      const disallowed = learnerIds.filter((id) => !own.includes(id));
+      if (disallowed.length) throw new AppError('FORBIDDEN');
+    }
     let period = null;
     if (body.assessmentPeriodId) {
       period = await ctx.db.one('SELECT * FROM assessment_periods WHERE id = $1 AND organisation_id = $2',
@@ -350,14 +357,8 @@ function register(router) {
       if (body.format === 'pdf') {
         const learnerName = report.learner.firstName + ' ' + report.learner.lastName;
         const periodLabel = report.period ? report.period.name : 'All recorded observations';
-        report.pdf = exportService.toPdf({
-          title: 'Developmental progress report',
-          subtitle: learnerName + ' — ' + periodLabel,
-          columns: table.columns,
-          rows: table.rows,
-          footer: 'Re-EL ECD — ' + (ctx.organisation && ctx.organisation.name ? ctx.organisation.name : ''),
-          generatedAt: report.generatedAt
-        }).toString('base64');
+        report.pdf = exportService.toDocumentPdf(progressDocument(ctx, report)).toString('base64');
+        report.layout = 'document';
       }
       const job = await ctx.db.one(
         `INSERT INTO report_jobs (organisation_id, report_key, parameters, status, requested_by, completed_at, row_count)
@@ -374,13 +375,13 @@ function register(router) {
 
     const results = [];
     for (const learnerId of learnerIds) {
-      const learner = await getLearner(ctx, learnerId);
+      const learner = await getLearner(ctx, learnerId, { parent: !isStaffReport });
       results.push(await buildReport(learner));
     }
     ctx.status = 201;
     if (learnerIds.length === 1 && !body.learnerIds) return results[0];
     return { reports: results.map((entry) => entry.report), jobs: results.map((entry) => entry.job), count: results.length };
-  }, { permission: 'assessments.read.daycare' });
+  }, { permission: ['assessments.read.daycare', 'parent.read.own'], permissionMode: 'any' });
 
   router.get('/assessments/overview', async (ctx) => {
     const learners = await ctx.db.one(
@@ -578,6 +579,65 @@ function renderProgressReport(ctx, report) {
     domainBlocks +
     (narrative ? '<section><h3>Observation narrative</h3><ul>' + narrative + '</ul></section>' : '') +
     '<footer><p class="muted">' + escapeHtml(report.note) + '</p></footer></article>';
+}
+
+function progressDocument(ctx, report) {
+  const learnerName = report.learner.firstName + ' ' + report.learner.lastName;
+  const periodLabel = report.period ? report.period.name + ' (' + report.period.startsOn + ' to ' + report.period.endsOn + ')' : 'All recorded observations';
+  const orgName = (ctx.organisation && ctx.organisation.name) || '';
+  const totals = report.totals || {};
+  const sections = [];
+  sections.push({
+    heading: 'How to read this report',
+    paragraphs: [
+      learnerName + ' is making progress towards the centre\'s learning objectives. This report summarises ' + totals.observations +
+        ' published observation' + (totals.observations === 1 ? '' : 's') + (report.period ? ' during ' + periodLabel + '.' : ' on record.'),
+      'Overall: ' + totals.observed + ' of ' + totals.objectives + ' learning objectives observed (' + totals.coverage + '% coverage). ' + report.note
+    ]
+  });
+  for (const domain of report.domains) {
+    const paragraphs = [domain.observed + ' of ' + domain.objectives.length + ' objectives observed in this domain.'];
+    for (const objective of domain.objectives) {
+      paragraphs.push(
+        objective.code + ' — ' + objective.description + ' — ' +
+        (objective.lastObservation
+          ? 'observed on ' + dayOf(objective.lastObservation.observation_date) + ' (' + objective.observationCount + ' observation' + (objective.observationCount === 1 ? '' : 's') + ').'
+          : 'not yet observed.')
+      );
+    }
+    sections.push({ heading: domain.name, paragraphs });
+  }
+  if (report.observations.length) {
+    sections.push({
+      heading: 'Recent observations',
+      paragraphs: report.observations.slice(0, 12).map((observation) =>
+        dayOf(observation.observation_date) + ' — ' +
+        (observation.objective_code ? observation.objective_code + ' — ' : '') +
+        observation.observation_text)
+    });
+  }
+  if (report.assessments.length) {
+    sections.push({
+      heading: 'Term assessments',
+      paragraphs: report.assessments.map((assessment) =>
+        [assessment.period_name, assessment.domain_name].filter(Boolean).join(' · ') +
+        ' — ' + R_titleCaseLite(assessment.assessment_status) + (assessment.published_at ? ' (published ' + dayOf(assessment.published_at) + ')' : ''))
+    });
+  }
+  return {
+    title: 'Developmental Progress Report',
+    subtitle: learnerName + ' - ' + periodLabel,
+    organisationName: orgName,
+    intro: ['Developmental progress is based on observations recorded by the educators who know ' + report.learner.firstName + ' best. A skill without an observation is not treated as a developmental concern — it simply has not been seen yet, and is worth revisiting.'],
+    sections,
+    updatedAt: report.generatedAt,
+    footer: 'Re-EL ECD - ' + (orgName || 'Your centre') + ' - Shared with the family'
+  };
+}
+
+function R_titleCaseLite(value) {
+  const text = String(value || '').replace(/_/g, ' ').trim();
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : '';
 }
 
 function progressTable(report) {

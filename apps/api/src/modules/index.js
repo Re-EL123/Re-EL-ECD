@@ -9,6 +9,7 @@ const modules = [
   require('./learners'),
   require('./admissions'),
   require('./curriculum'),
+  require('./learning-modules'),
   require('./assessments'),
   require('./attendance'),
   require('./staff'),

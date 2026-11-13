@@ -219,6 +219,7 @@
             { label: 'Date', render: (o) => R.date(o.observation_date) },
             { label: 'Domain', render: (o) => R.esc(o.domain_name || '—') },
             { label: 'Observation', render: (o) => R.esc(R.truncate(o.observation_text, 100)) },
+            { label: 'Media', render: (o) => { const media = R.mediaList(o.photo_urls); return media.length ? '<div class="row" style="gap:4px;flex-wrap:wrap">' + media.slice(0, 3).map((url) => R.mediaThumb(url, 'Observation media')).join('') + (media.length > 3 ? ' <span class="muted small">+' + (media.length - 3) + '</span>' : '') + '</div>' : '<span class="muted">—</span>'; } },
             { label: 'Status', render: (o) => R.badge(o.assessment_status) }
           ], emptyTitle: 'No observations' }), '<a class="btn btn-sm btn-ghost" href="#/app/assessments">Assessments ' + R.icon('arrow-right') + '</a>');
       } else if (tab === 'daily') {

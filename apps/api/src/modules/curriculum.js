@@ -6,6 +6,17 @@ const { recordAudit } = require('../services/audit-service');
 const { parsePagination } = require('../utils/http');
 const bulk = require('../services/bulk-service');
 const { has } = require('./helpers');
+const { BUILTIN_TEMPLATES } = require('./templates');
+
+async function resolveFrameworkTemplate(ctx, templateId) {
+  const builtin = BUILTIN_TEMPLATES.find((template) => template.id === templateId && template.kind === 'framework');
+  if (builtin) return builtin;
+  const row = await ctx.db.one(
+    "SELECT * FROM content_templates WHERE id = $1 AND organisation_id = $2 AND kind = 'framework'",
+    [templateId, ctx.organisationId]
+  );
+  return row ? { id: row.id, kind: 'framework', builtin: false, name: row.name, payload: row.payload || {} } : null;
+}
 
 const PLAN_TRANSITIONS = {
   draft: ['submitted', 'approved', 'cancelled'],
@@ -45,6 +56,53 @@ function register(router) {
     await recordAudit(ctx.db, ctx, { action: 'curriculum.framework_created', resourceType: 'curriculum_framework', resourceId: framework.id });
     ctx.status = 201;
     return framework;
+  }, { permission: 'curriculum.create.daycare' });
+
+  router.post('/curriculum/frameworks/from-template', async (ctx) => {
+    const body = validate(ctx.body, {
+      templateId: { type: 'string', min: 1, max: 120 },
+      name: { type: 'string', min: 2, max: 200, optional: true }
+    });
+    const template = await resolveFrameworkTemplate(ctx, body.templateId);
+    if (!template) fail('NOT_FOUND', null, 'That framework template could not be found.');
+    const payload = template.payload || {};
+    const domains = Array.isArray(payload.domains) ? payload.domains : [];
+    if (!domains.length) fail('VALIDATION', [{ field: 'templateId', message: 'The template has no domains to create.' }]);
+    const result = await ctx.db.withTransaction(async (client) => {
+      const frameworkRow = await client.query(
+        `INSERT INTO curriculum_frameworks (organisation_id, name, version, description) VALUES ($1,$2,$3,$4) RETURNING *`,
+        [ctx.organisationId, body.name || payload.name || template.name, payload.version || '1.0', payload.description || null]
+      );
+      const framework = frameworkRow.rows[0];
+      let objectiveCount = 0;
+      for (let index = 0; index < domains.length; index += 1) {
+        const domain = domains[index] || {};
+        const domainRow = await client.query(
+          `INSERT INTO curriculum_domains (framework_id, name, description, sort_order) VALUES ($1,$2,$3,$4) RETURNING id`,
+          [framework.id, String(domain.name || ('Domain ' + (index + 1))).slice(0, 150), domain.description || null, index]
+        );
+        const domainId = domainRow.rows[0].id;
+        const objectives = Array.isArray(domain.objectives) ? domain.objectives : [];
+        for (const objective of objectives) {
+          if (!objective || !objective.description) continue;
+          objectiveCount += 1;
+          await client.query(
+            `INSERT INTO learning_objectives (domain_id, age_group, code, description, expected_observation_context)
+             VALUES ($1,$2,$3,$4,$5)`,
+            [domainId, objective.ageGroup || '0-5 years', String(objective.code || ('OBJ-' + objectiveCount)).slice(0, 40),
+              String(objective.description).slice(0, 1000),
+              objective.expected_observation_context || objective.expectedObservationContext || null]
+          );
+        }
+      }
+      return { framework, domainCount: domains.length, objectiveCount };
+    });
+    await recordAudit(ctx.db, ctx, {
+      action: 'curriculum.framework_from_template', resourceType: 'curriculum_framework', resourceId: result.framework.id,
+      metadata: { template: template.name, builtin: Boolean(template.builtin) }
+    });
+    ctx.status = 201;
+    return result;
   }, { permission: 'curriculum.create.daycare' });
 
   router.post('/curriculum/domains', async (ctx) => {
@@ -115,9 +173,10 @@ function register(router) {
       [ctx.organisationId, status, classroomId]
     );
     const rows = await ctx.db.many(
-      `SELECT lp.*, c.name AS classroom_name, u.display_name AS created_by_name
+      `SELECT lp.*, c.name AS classroom_name, u.display_name AS created_by_name, lm.title AS module_title
        FROM lesson_plans lp LEFT JOIN classrooms c ON c.id = lp.classroom_id
        LEFT JOIN users u ON u.id = lp.created_by
+       LEFT JOIN learning_modules lm ON lm.id = lp.module_id
        WHERE lp.organisation_id = $1 AND ($2::text IS NULL OR lp.status = $2)
          AND ($3::uuid IS NULL OR lp.classroom_id = $3::uuid)
        ORDER BY lp.created_at DESC LIMIT $4 OFFSET $5`,
@@ -138,20 +197,31 @@ function register(router) {
       theme: { type: 'string', max: 150, optional: true },
       objectiveIds: { type: 'array', of: 'uuid', max: 30, optional: true },
       preparationNotes: { type: 'string', max: 4000, optional: true },
-      publishNow: { type: 'boolean', optional: true }
+      publishNow: { type: 'boolean', optional: true },
+      moduleId: { type: 'string', uuid: true, optional: true }
     });
     const branch = await ctx.db.one('SELECT id FROM branches WHERE id = $1 AND organisation_id = $2',
       [body.branchId, ctx.organisationId]);
     if (!branch) throw new AppError('NOT_FOUND');
     const publishNow = body.publishNow === true;
     if (publishNow && !has(ctx, 'curriculum.publish.daycare')) throw new AppError('FORBIDDEN');
+    let module = null;
+    let modulePosition = null;
+    if (body.moduleId) {
+      module = await ctx.db.one('SELECT id FROM learning_modules WHERE id = $1 AND organisation_id = $2',
+        [body.moduleId, ctx.organisationId]);
+      if (!module) fail('NOT_FOUND', null, 'The module this plan should belong to was not found.');
+      const maxPos = await ctx.db.one('SELECT COALESCE(MAX(module_position), 0)::int AS max FROM lesson_plans WHERE module_id = $1', [module.id]);
+      modulePosition = maxPos.max + 1;
+    }
     const plan = await ctx.db.one(
       `INSERT INTO lesson_plans (organisation_id, branch_id, classroom_id, academic_period_id, title, theme,
-        objective_ids, preparation_notes, status, created_by, approved_by, published_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+        objective_ids, preparation_notes, status, created_by, approved_by, published_at, module_id, module_position)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
       [ctx.organisationId, body.branchId, body.classroomId || null, body.academicPeriodId || null,
         body.title, body.theme || null, JSON.stringify(body.objectiveIds || []), body.preparationNotes || null,
-        publishNow ? 'published' : 'draft', ctx.user.id, publishNow ? ctx.user.id : null, publishNow ? new Date().toISOString() : null]
+        publishNow ? 'published' : 'draft', ctx.user.id, publishNow ? ctx.user.id : null, publishNow ? new Date().toISOString() : null,
+        module ? module.id : null, modulePosition]
     );
     await recordAudit(ctx.db, ctx, { action: 'curriculum.lesson_plan_created', resourceType: 'lesson_plan', resourceId: plan.id, branchId: body.branchId });
     ctx.status = 201;
@@ -355,22 +425,51 @@ function register(router) {
       startsAt: { type: 'string', datetime: true },
       endsAt: { type: 'string', datetime: true, optional: true },
       assignedStaffId: { type: 'string', uuid: true, optional: true },
-      notes: { type: 'string', max: 2000, optional: true }
+      notes: { type: 'string', max: 2000, optional: true },
+      recurrence: { type: 'string', enum: ['none', 'daily', 'weekly', 'biweekly', 'monthly'], optional: true },
+      repeatUntil: { type: 'string', max: 10, optional: true }
     });
     const branch = await ctx.db.one('SELECT id FROM branches WHERE id = $1 AND organisation_id = $2',
       [body.branchId, ctx.organisationId]);
     if (!branch) throw new AppError('NOT_FOUND');
-    const event = await ctx.db.one(
-      `INSERT INTO scheduled_activities (organisation_id, branch_id, classroom_id, lesson_plan_id, activity_id, title,
-        starts_at, ends_at, assigned_staff_id, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-      [ctx.organisationId, body.branchId, body.classroomId || null, body.lessonPlanId || null,
-        body.activityId || null, body.title, body.startsAt, body.endsAt || null, body.assignedStaffId || null,
-        body.notes || null]
-    );
-    await recordAudit(ctx.db, ctx, { action: 'curriculum.activity_scheduled', resourceType: 'scheduled_activity', resourceId: event.id, branchId: body.branchId });
+    const recurrence = body.recurrence || 'none';
+    let startsAts = [new Date(body.startsAt)];
+    const duration = body.endsAt ? new Date(body.endsAt).getTime() - new Date(body.startsAt).getTime() : null;
+    if (recurrence !== 'none') {
+      const until = body.repeatUntil ? new Date(body.repeatUntil + 'T23:59:59Z') : null;
+      if (!until || Number.isNaN(until.getTime()) || until < startsAts[0]) {
+        fail('VALIDATION', [{ field: 'repeatUntil', message: 'Choose a "repeats until" date on or after the first occurrence.' }]);
+      }
+      const max = 26;
+      const next = new Date(startsAts[0]);
+      while (startsAts.length < max) {
+        if (recurrence === 'daily') next.setUTCDate(next.getUTCDate() + 1);
+        else if (recurrence === 'weekly') next.setUTCDate(next.getUTCDate() + 7);
+        else if (recurrence === 'biweekly') next.setUTCDate(next.getUTCDate() + 14);
+        else if (recurrence === 'monthly') next.setUTCMonth(next.getUTCMonth() + 1);
+        if (next > until) break;
+        startsAts.push(new Date(next));
+      }
+    }
+    const events = await ctx.db.withTransaction(async (client) => {
+      const created = [];
+      for (const start of startsAts) {
+        const end = duration === null ? null : new Date(start.getTime() + duration).toISOString();
+        const inserted = await client.query(
+          `INSERT INTO scheduled_activities (organisation_id, branch_id, classroom_id, lesson_plan_id, activity_id, title,
+            starts_at, ends_at, assigned_staff_id, notes)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+          [ctx.organisationId, body.branchId, body.classroomId || null, body.lessonPlanId || null,
+            body.activityId || null, body.title, start.toISOString(), end, body.assignedStaffId || null,
+            body.notes || null]
+        );
+        created.push(inserted.rows[0]);
+      }
+      return created;
+    });
+    await recordAudit(ctx.db, ctx, { action: 'curriculum.activity_scheduled', resourceType: 'scheduled_activity', resourceId: events[0].id, branchId: body.branchId, metadata: { recurrence, occurrences: events.length } });
     ctx.status = 201;
-    return event;
+    return Object.assign({}, events[0], { recurrenceCount: events.length, recurrence: recurrence === 'none' ? undefined : recurrence });
   }, { permission: 'curriculum.create.daycare' });
 
   router.post('/curriculum/calendar/events/:id/complete', async (ctx) => {

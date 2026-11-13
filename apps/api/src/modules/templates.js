@@ -10,13 +10,14 @@ const { validate } = require('../../../../packages/contracts/validate');
 const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { has } = require('./helpers');
 
-const KINDS = ['lesson_plan', 'activity', 'observation', 'announcement'];
+const KINDS = ['lesson_plan', 'activity', 'observation', 'announcement', 'framework'];
 
 const CREATE_PERMISSIONS = {
   lesson_plan: ['curriculum.create.daycare'],
   activity: ['curriculum.create.daycare'],
   observation: ['assessments.create.assigned', 'assessments.read.daycare'],
-  announcement: ['announcements.manage.daycare']
+  announcement: ['announcements.manage.daycare'],
+  framework: ['curriculum.create.daycare']
 };
 
 const BUILTIN_TEMPLATES = [
@@ -82,7 +83,42 @@ const BUILTIN_TEMPLATES = [
     body: 'A friendly reminder that fees are due by the end of the month. If you need to discuss a payment plan, please contact the office.' } },
   { id: 'builtin-announcement-open-day', kind: 'announcement', builtin: true, name: 'Open day invitation', description: 'Invite families to visit the centre.', payload: {
     audienceType: 'all',
-    body: 'You are warmly invited to an open morning. Come and see the classrooms, meet the educators and enjoy a cup of tea.\n\nPlease reply to let us know if you will be joining us.' } }
+    body: 'You are warmly invited to an open morning. Come and see the classrooms, meet the educators and enjoy a cup of tea.\n\nPlease reply to let us know if you will be joining us.' } },
+
+  { id: 'builtin-framework-elo', kind: 'framework', builtin: true, name: 'Early Learning Outcomes (Birth to 5)',
+    description: 'Five domains with fifteen observable objectives, Birth to 5. A ready-to-adapt starting point aligned to a play-based programme.',
+    payload: {
+      name: 'Early Learning Outcomes (Birth to 5)',
+      version: '1.0',
+      description: 'A play-based set of outcomes covering the five domains, adaptable to your centre\'s programme.',
+      domains: [
+        { name: 'Physical Development', description: 'Gross and fine motor skills, health and safety.', objectives: [
+          { code: 'ELO-PD-01', description: 'Moves with control — jumps, balances, throws and catches with growing confidence.', expected_observation_context: 'Outdoor play and movement sessions', ageGroup: '0-5 years' },
+          { code: 'ELO-PD-02', description: 'Uses hands and fingers with increasing control — holds mark-makers, cuts and manipulates small objects.', expected_observation_context: 'Drawing, cutting and tabletop activities', ageGroup: '0-5 years' },
+          { code: 'ELO-PD-03', description: 'Shows care for their body — washes hands, rests and speaks up when something hurts.', expected_observation_context: 'Mealtimes, hygiene routines and rest time', ageGroup: '0-5 years' }
+        ] },
+        { name: 'Cognitive Development', description: 'Solving problems, reasoning, early numeracy and literacy.', objectives: [
+          { code: 'ELO-CD-01', description: 'Solves problems and thinks critically — sorts, classifies and notices when something changes.', expected_observation_context: 'Structured play and exploration trays', ageGroup: '0-5 years' },
+          { code: 'ELO-CD-02', description: 'Counts, compares and uses early number concepts in play.', expected_observation_context: 'Number games and everyday counting', ageGroup: '0-5 years' },
+          { code: 'ELO-CD-03', description: 'Recalls and sequences — remembers familiar routines, stories and events.', expected_observation_context: 'Story time and daily routines', ageGroup: '0-5 years' }
+        ] },
+        { name: 'Language and Communication', description: 'Listening, speaking and the foundations of reading and writing.', objectives: [
+          { code: 'ELO-LC-01', description: 'Listens and joins in — responds to questions and contributes during conversations.', expected_observation_context: 'Circle time and group discussions', ageGroup: '0-5 years' },
+          { code: 'ELO-LC-02', description: 'Uses language with growing complexity — full sentences, descriptive words and questions.', expected_observation_context: 'Everyday conversation', ageGroup: '0-5 years' },
+          { code: 'ELO-LC-03', description: 'Enjoys books and early writing — retells stories and makes meaningful marks.', expected_observation_context: 'Reading corners and writing tables', ageGroup: '0-5 years' }
+        ] },
+        { name: 'Social and Emotional Development', description: 'Self-regulation, relationships and identity.', objectives: [
+          { code: 'ELO-SE-01', description: 'Regulates feelings with support — calms, takes turns and follows shared routines.', expected_observation_context: 'Free play and group activities', ageGroup: '0-5 years' },
+          { code: 'ELO-SE-02', description: 'Builds relationships — plays alongside and with others, shares and shows kindness.', expected_observation_context: 'Peer play', ageGroup: '0-5 years' },
+          { code: 'ELO-SE-03', description: 'Knows who they are — name, family, culture and what makes them special.', expected_observation_context: 'Identity activities and family sharing', ageGroup: '0-5 years' }
+        ] },
+        { name: 'Creative Arts', description: 'Music, movement, visual art and imaginative play.', objectives: [
+          { code: 'ELO-CA-01', description: 'Explores colour, texture and mark-making with a range of materials.', expected_observation_context: 'Painting and sensory art', ageGroup: '0-5 years' },
+          { code: 'ELO-CA-02', description: 'Responds to music and movement — sings, claps and keeps a steady beat.', expected_observation_context: 'Music ring', ageGroup: '0-5 years' },
+          { code: 'ELO-CA-03', description: 'Creates and pretends — invents stories and scenarios in imaginative play.', expected_observation_context: 'Role-play corners', ageGroup: '0-5 years' }
+        ] }
+      ]
+    } }
 ];
 
 function canCreate(ctx, kind) {
@@ -137,4 +173,4 @@ function register(router) {
   }, { permission: ['curriculum.create.daycare', 'assessments.create.assigned', 'assessments.read.daycare', 'announcements.manage.daycare'], permissionMode: 'any' });
 }
 
-module.exports = { register, KINDS };
+module.exports = { register, KINDS, BUILTIN_TEMPLATES };

@@ -633,6 +633,119 @@ function register(router) {
     ctx.status = 201;
     return rule;
   }, { permission: 'organisation.settings.manage' });
+
+  // --- Reminder sweep ------------------------------------------------------
+  // On-demand "who needs a nudge?" pass. Built-in checks: children without a
+  // recent observation, lesson plans waiting too long for review, and scheduled
+  // activities that were never completed. Every notification is in-app and is
+  // de-duplicated by only notifying when something is actually outstanding.
+
+  router.post('/automation/sweep', async (ctx) => {
+    const summary = { childrenWithoutObservations: 0, observationNotifications: 0, plansAwaitingReview: 0, planReminderNotifications: 0, overdueActivities: 0, activityReminderNotifications: 0 };
+
+    const missing = await ctx.db.many(
+      `SELECT l.id, l.first_name, l.last_name, l.classroom_id
+       FROM learners l
+       WHERE l.organisation_id = $1 AND l.status = 'enrolled'
+         AND NOT EXISTS (SELECT 1 FROM learner_observations o WHERE o.learner_id = l.id AND o.observation_date > CURRENT_DATE - 60)`,
+      [ctx.organisationId]
+    );
+    summary.childrenWithoutObservations = missing.length;
+    const byClassroom = new Map();
+    for (const child of missing) {
+      const key = child.classroom_id || 'unassigned';
+      if (!byClassroom.has(key)) byClassroom.set(key, []);
+      byClassroom.get(key).push(child);
+    }
+    for (const [classId, children] of byClassroom) {
+      let recipients = [];
+      if (classId !== 'unassigned') {
+        const staff = await ctx.db.many(
+          `SELECT DISTINCT sp.user_id FROM staff_classrooms sc
+           JOIN staff_profiles sp ON sp.id = sc.staff_id AND sp.organisation_id = $1
+           WHERE sc.classroom_id = $2`,
+          [ctx.organisationId, classId]
+        );
+        recipients = staff.map((s) => s.user_id).filter(Boolean);
+      }
+      if (!recipients.length) {
+        const leadership = await ctx.db.many(
+          `SELECT DISTINCT m.user_id FROM memberships m
+           JOIN membership_roles mr ON mr.membership_id = m.id
+           JOIN roles r ON r.id = mr.role_id
+           WHERE m.organisation_id = $1 AND m.status = 'active'
+             AND r.role_key IN ('OWNER','PRINCIPAL','ADMINISTRATOR','MANAGER','CURRICULUM_COORDINATOR')`,
+          [ctx.organisationId]
+        );
+        recipients = leadership.map((s) => s.user_id);
+      }
+      if (!recipients.length) continue;
+      const names = children.slice(0, 5).map((c) => c.first_name + ' ' + c.last_name).join(', ');
+      await createNotification(ctx.db, ctx, {
+        recipientUserIds: recipients,
+        type: 'observation_due',
+        title: 'Children need observations (' + children.length + ')',
+        body: 'No observation in 60 days for: ' + names + (children.length > 5 ? ' and ' + (children.length - 5) + ' more.' : '.'),
+        resourceType: 'classroom',
+        resourceId: classId === 'unassigned' ? null : classId
+      });
+      summary.observationNotifications += recipients.length;
+    }
+
+    const awaiting = await ctx.db.many(
+      `SELECT lp.id, lp.title, lp.status FROM lesson_plans lp
+       WHERE lp.organisation_id = $1 AND lp.status IN ('submitted','approved') AND lp.updated_at < now() - interval '7 days'`,
+      [ctx.organisationId]
+    );
+    summary.plansAwaitingReview = awaiting.length;
+    if (awaiting.length) {
+      const leadership = await ctx.db.many(
+        `SELECT DISTINCT m.user_id FROM memberships m
+         JOIN membership_roles mr ON mr.membership_id = m.id
+         JOIN roles r ON r.id = mr.role_id
+         WHERE m.organisation_id = $1 AND m.status = 'active'
+           AND r.role_key IN ('OWNER','PRINCIPAL','ADMINISTRATOR','MANAGER','CURRICULUM_COORDINATOR')`,
+        [ctx.organisationId]
+      );
+      if (leadership.length) {
+        await createNotification(ctx.db, ctx, {
+          recipientUserIds: leadership.map((s) => s.user_id),
+          type: 'plan_review_due',
+          title: 'Lesson plans waiting for review (' + awaiting.length + ')',
+          body: awaiting.slice(0, 5).map((p) => p.title).join('; ') + (awaiting.length > 5 ? '…' : ''),
+          resourceType: 'lesson_plan',
+          resourceId: null
+        });
+        summary.planReminderNotifications = leadership.length;
+      }
+    }
+
+    const overdue = await ctx.db.many(
+      `SELECT sa.id, sa.title, sa.assigned_staff_id FROM scheduled_activities sa
+       WHERE sa.organisation_id = $1 AND sa.status IN ('scheduled','in_progress') AND sa.starts_at < now() - interval '1 day'`,
+      [ctx.organisationId]
+    );
+    summary.overdueActivities = overdue.length;
+    for (const event of overdue) {
+      if (!event.assigned_staff_id) continue;
+      const staffUser = await ctx.db.one('SELECT sp.user_id FROM staff_profiles sp WHERE sp.id = $1', [event.assigned_staff_id]);
+      if (!staffUser || !staffUser.user_id) continue;
+      await createNotification(ctx.db, ctx, {
+        recipientUserIds: [staffUser.user_id],
+        type: 'activity_overdue',
+        title: 'An activity is still awaiting completion',
+        body: event.title + ' was scheduled and has not been marked complete. Please mark it complete or cancel it.',
+        resourceType: 'scheduled_activity',
+        resourceId: event.id
+      });
+      summary.activityReminderNotifications += 1;
+    }
+
+    await recordAudit(ctx.db, ctx, {
+      action: 'automation.sweep', resourceType: 'organisation', resourceId: ctx.organisationId, metadata: summary
+    });
+    return summary;
+  }, { permission: 'organisation.settings.manage' });
 }
 
 async function buildReport(ctx, key, from, to) {

@@ -804,6 +804,9 @@
       const rows = page.rows || [];
       return R.pageHead('Automation', 'Rules that quietly do the follow-up so people do not have to remember.',
         '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'rule\')">' + R.icon('zap') + ' New rule</button>') +
+        R.card('Reminder sweep', '<p class="muted small">Checks for children with no observation in 60 days, lesson plans waiting too long for review, and scheduled activities never marked complete. Sends in-app notifications to the right people.</p>' +
+          '<button type="button" class="btn btn-primary" @click="runAutomationSweep()" :disabled="automationSweepBusy"><span class="spinner" x-show="automationSweepBusy" style="width:14px;height:14px"></span><i data-lucide="zap" x-show="!automationSweepBusy"></i> Run reminder sweep</button>',
+          '<span class="badge badge-sky">Built-in</span>') +
         '<div class="grid grid-3 section">' +
         R.statCard({ label: 'Rules', value: R.number(rows.length), icon: 'zap', foot: 'Configured workflows' }) +
         R.statCard({ label: 'Active', value: R.number(rows.filter((r) => r.active).length), icon: 'play-circle', tone: 'green', foot: 'Running now' }) +

@@ -519,7 +519,7 @@ function toDocumentPdf({ title, subtitle, organisationName, intro, sections, upd
 
   const pageContents = pages.map((page) => {
     const content = [];
-    content.push(MARGIN + ' ' + (PAGE_H - MARGIN + 8) + ' ' + contentW + ' 3 re ' + GREEN + ' rg f 0 g');
+    content.push('0 ' + (PAGE_H - 26) + ' ' + PAGE_W + ' 6 re ' + GREEN + ' rg f 0 g');
     for (const item of page) {
       if (item.kind === 'gap') continue;
       if (item.kind === 'title') content.push('BT /F1 20 Tf ' + MARGIN + ' ' + item.y + ' Td 0.055 0.17 0.149 rg (' + pdfEscape(item.line) + ') Tj ET');
@@ -542,7 +542,7 @@ function toDocumentPdf({ title, subtitle, organisationName, intro, sections, upd
   objects.push({ id: fontId, body: '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>' });
   for (let i = 0; i < pages.length; i += 1) {
     const hasTitle = pages[i].some((it) => it.kind === 'title');
-    const header = hasTitle ? '' : 'BT /F2 8 Tf ' + MARGIN + ' ' + (PAGE_H - MARGIN + 8) + ' Td 0.42 0.52 0.47 rg (' + pdfEscape((organisationName || 'Re-EL ECD') + ' · ' + (title || '')) + ') Tj ET\n';
+    const header = hasTitle ? '' : 'BT /F2 8 Tf ' + MARGIN + ' ' + (PAGE_H - MARGIN + 8) + ' Td 0.42 0.52 0.47 rg (' + pdfEscape((organisationName || 'Re-EL ECD') + ' - ' + (title || '')) + ') Tj ET\n';
     const foot = 'BT /F2 7.5 Tf ' + MARGIN + ' 20 Td 0.42 0.52 0.47 rg (' + pdfEscape(footer || ('Re-EL ECD · ' + (organisationName || ''))) + ') Tj ET\n'
       + 'BT /F2 7.5 Tf ' + (PAGE_W - MARGIN - 60) + ' 20 Td 0.42 0.52 0.47 rg (' + pdfEscape('Page ' + (i + 1) + ' of ' + pages.length) + ') Tj ET';
     const full = header + (pageContents[i] || '') + '\n' + foot;

@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **352 routes** across 21 modules.
+Generated from the router: **362 routes** across 22 modules.
 
 ## Access
 
@@ -78,7 +78,7 @@ Generated from the router: **352 routes** across 21 modules.
 | GET | `/assessments/overview` | assessments.read.daycare |
 | GET | `/assessments/periods` | assessments.read.daycare |
 | POST | `/assessments/periods` | assessments.publish.daycare |
-| POST | `/assessments/reports/generate` | assessments.read.daycare |
+| POST | `/assessments/reports/generate` | assessments.read.daycare OR parent.read.own |
 
 ## Audit
 
@@ -99,6 +99,12 @@ Generated from the router: **352 routes** across 21 modules.
 | POST | `/auth/reset-password` | Public |
 | GET | `/auth/session` | Authenticated |
 | POST | `/auth/verify-email` | Authenticated |
+
+## Automation
+
+| Method | Path | Access |
+| --- | --- | --- |
+| POST | `/automation/sweep` | organisation.settings.manage |
 
 ## Automation Rules
 
@@ -174,6 +180,7 @@ Generated from the router: **352 routes** across 21 modules.
 | POST | `/curriculum/domains` | curriculum.create.daycare |
 | GET | `/curriculum/frameworks` | curriculum.read.daycare |
 | POST | `/curriculum/frameworks` | curriculum.create.daycare |
+| POST | `/curriculum/frameworks/from-template` | curriculum.create.daycare |
 | GET | `/curriculum/lesson-plans` | curriculum.read.daycare |
 | POST | `/curriculum/lesson-plans` | curriculum.create.daycare |
 | GET | `/curriculum/lesson-plans/:id` | curriculum.read.daycare |
@@ -357,6 +364,19 @@ Generated from the router: **352 routes** across 21 modules.
 | GET | `/learners/:id/progress` | assessments.read.daycare OR assessments.read.assigned OR parent.read.own |
 | GET | `/learners/:id/timeline` | learners.read.daycare OR learners.read.assigned |
 | POST | `/learners/bulk` | learners.archive.daycare OR learners.update.daycare |
+
+## Learning Modules
+
+| Method | Path | Access |
+| --- | --- | --- |
+| GET | `/learning-modules` | curriculum.read.daycare |
+| POST | `/learning-modules` | curriculum.create.daycare |
+| DELETE | `/learning-modules/:id` | curriculum.create.daycare |
+| GET | `/learning-modules/:id` | curriculum.read.daycare |
+| PATCH | `/learning-modules/:id` | curriculum.create.daycare |
+| POST | `/learning-modules/:id/plans` | curriculum.create.daycare |
+| DELETE | `/learning-modules/:id/plans/:planId` | curriculum.create.daycare |
+| POST | `/learning-modules/:id/plans/reorder` | curriculum.create.daycare |
 
 ## Leave
 
