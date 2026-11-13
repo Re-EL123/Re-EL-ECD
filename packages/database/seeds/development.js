@@ -6,6 +6,7 @@ const { PERMISSION_KEYS, PERMISSIONS } = require('../../auth/permissions');
 const { ROLE_DEFINITIONS, ROLE_PERMISSIONS, ROLES } = require('../../auth/roles');
 
 const DEMO_PASSWORD = process.env.DEMO_PASSWORD || 'Re-EL-Demo-2026!';
+const { seedOfficialNcf } = require('./official-ncf');
 
 const USERS = [
   ['platform@re-el-ecd.local', 'Naledi Mokoena', ROLES.PLATFORM_SUPER_ADMIN],
@@ -44,6 +45,12 @@ async function seedCatalog() {
        VALUES ($1,$2,$3,$4,$5) ON CONFLICT (permission_key) DO NOTHING`,
       [key, def.resource, def.action, def.scope, `${def.action} ${def.resource} (${def.scope})`]
     );
+  }
+  // The Official NCF pack. Never allowed to take the API down: log and move on.
+  try {
+    await seedOfficialNcf(pool);
+  } catch (error) {
+    console.error(JSON.stringify({ level: 'error', message: 'Official NCF seed failed', error: error.message }));
   }
   for (const [roleKey, patterns] of Object.entries(ROLE_PERMISSIONS)) {
     const role = (await pool.query('SELECT id FROM roles WHERE role_key = $1', [roleKey])).rows[0];
@@ -161,7 +168,8 @@ async function seedDevelopment({ force = false } = {}) {
     attendancePolicy: { lateAfter: '08:30', autoAbsentAfter: '10:00', allowExcusedAbsence: true },
     notificationPreferences: { emailAnnouncements: true, emailInvoices: true, smsIncidents: false },
     publicWebsite: { enabled: true, showFees: false },
-    dataRetention: { learnerRecordsYears: 7, financeYears: 7 }
+    dataRetention: { learnerRecordsYears: 7, financeYears: 7 },
+    ncf: { enabled: true }
   })]);
   await pool.query(`INSERT INTO organisation_settings (organisation_id, settings) VALUES ($1,$2)`, [org2Id, JSON.stringify({ academicYear: 2026 })]);
 

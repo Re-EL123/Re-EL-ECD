@@ -59,6 +59,26 @@ function has(ctx, key) {
   return hasPermission(ctx.access.permissions, key);
 }
 
+/**
+ * Official, platform-owned curriculum (the NCF pack) is visible to a tenant
+ * only when the centre has switched it on in Settings. When off, tenants see
+ * exactly their own content and nothing else.
+ */
+async function officialEnabled(ctx) {
+  try {
+    const row = await ctx.db.one('SELECT settings FROM organisation_settings WHERE organisation_id = $1', [ctx.organisationId]);
+    const settings = (row && row.settings) || {};
+    return Boolean(settings.ncf && settings.ncf.enabled);
+  } catch {
+    return false;
+  }
+}
+
+/** Official rows are read-only for tenants. */
+function isOfficial(row) {
+  return row && (row.organisation_id === null || row.organisation_id === undefined);
+}
+
 async function guardianForLearner(ctx, learnerId) {
   return ctx.db.one(
     `SELECT lg.*, g.first_name, g.last_name, g.email, g.phone
@@ -117,6 +137,8 @@ module.exports = {
   assertPermission,
   has,
   guardianForLearner,
+  officialEnabled,
+  isOfficial,
   nextInvoiceNumber,
   paging,
   roundMoney,

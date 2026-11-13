@@ -5,8 +5,13 @@ const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
 const { parsePagination } = require('../utils/http');
 const bulk = require('../services/bulk-service');
-const { has } = require('./helpers');
+const { has, officialEnabled, isOfficial } = require('./helpers');
 const { BUILTIN_TEMPLATES } = require('./templates');
+
+async function findOfficialPlan(ctx, id) {
+  if (!(await officialEnabled(ctx))) return null;
+  return ctx.db.one('SELECT * FROM lesson_plans WHERE id = $1 AND organisation_id IS NULL', [id]);
+}
 
 async function resolveFrameworkTemplate(ctx, templateId) {
   const builtin = BUILTIN_TEMPLATES.find((template) => template.id === templateId && template.kind === 'framework');
@@ -31,9 +36,10 @@ const PLAN_TRANSITIONS = {
 
 function register(router) {
   router.get('/curriculum/frameworks', async (ctx) => {
+    const includeOfficial = await officialEnabled(ctx);
     const frameworks = await ctx.db.many(
-      `SELECT * FROM curriculum_frameworks WHERE organisation_id = $1 OR organisation_id IS NULL ORDER BY name`,
-      [ctx.organisationId]
+      `SELECT * FROM curriculum_frameworks WHERE organisation_id = $1 OR ($2::boolean AND organisation_id IS NULL) ORDER BY name`,
+      [ctx.organisationId, includeOfficial]
     );
     for (const framework of frameworks) {
       framework.domains = await ctx.db.many(
@@ -113,10 +119,11 @@ function register(router) {
       sortOrder: { type: 'number', min: 0, optional: true }
     });
     const framework = await ctx.db.one(
-      'SELECT id FROM curriculum_frameworks WHERE id = $1 AND (organisation_id = $2 OR organisation_id IS NULL)',
+      'SELECT id, organisation_id FROM curriculum_frameworks WHERE id = $1 AND (organisation_id = $2 OR organisation_id IS NULL)',
       [body.frameworkId, ctx.organisationId]
     );
     if (!framework) throw new AppError('NOT_FOUND');
+    if (framework.organisation_id === null) fail('FORBIDDEN', null, 'Official frameworks are read-only.');
     const domain = await ctx.db.one(
       `INSERT INTO curriculum_domains (framework_id, name, description, sort_order) VALUES ($1,$2,$3,$4) RETURNING *`,
       [body.frameworkId, body.name, body.description || null, body.sortOrder || 0]
@@ -128,15 +135,16 @@ function register(router) {
   router.get('/curriculum/objectives', async (ctx) => {
     const domainId = ctx.query.domainId || null;
     const term = ctx.query.q ? `%${ctx.query.q}%` : null;
+    const includeOfficial = await officialEnabled(ctx);
     return ctx.db.many(
       `SELECT o.*, d.name AS domain_name, d.framework_id FROM learning_objectives o
        JOIN curriculum_domains d ON d.id = o.domain_id
        JOIN curriculum_frameworks f ON f.id = d.framework_id
-       WHERE (f.organisation_id = $1 OR f.organisation_id IS NULL)
+       WHERE (f.organisation_id = $1 OR ($4::boolean AND f.organisation_id IS NULL))
          AND ($2::uuid IS NULL OR o.domain_id = $2::uuid)
          AND ($3::text IS NULL OR o.code ILIKE $3 OR o.description ILIKE $3)
        ORDER BY d.sort_order, o.code`,
-      [ctx.organisationId, domainId, term]
+      [ctx.organisationId, domainId, term, includeOfficial]
     );
   }, { permission: 'curriculum.read.daycare' });
 
@@ -154,6 +162,11 @@ function register(router) {
       [body.domainId, ctx.organisationId]
     );
     if (!domain) throw new AppError('NOT_FOUND');
+    const owner = await ctx.db.one(
+      `SELECT f.organisation_id FROM curriculum_domains d JOIN curriculum_frameworks f ON f.id = d.framework_id WHERE d.id = $1`,
+      [body.domainId]
+    );
+    if (owner && owner.organisation_id === null) fail('FORBIDDEN', null, 'Official frameworks are read-only.');
     const objective = await ctx.db.one(
       `INSERT INTO learning_objectives (domain_id, age_group, code, description, expected_observation_context)
        VALUES ($1,$2,$3,$4,$5) RETURNING *`,
@@ -167,20 +180,23 @@ function register(router) {
     const { page, pageSize, offset } = parsePagination(ctx.query);
     const status = ctx.query.status || null;
     const classroomId = ctx.query.classroomId || null;
+    const includeOfficial = await officialEnabled(ctx);
     const total = await ctx.db.one(
       `SELECT COUNT(*)::int AS total FROM lesson_plans
-       WHERE organisation_id = $1 AND ($2::text IS NULL OR status = $2) AND ($3::uuid IS NULL OR classroom_id = $3::uuid)`,
-      [ctx.organisationId, status, classroomId]
+       WHERE (organisation_id = $1 OR ($4::boolean AND organisation_id IS NULL))
+         AND ($2::text IS NULL OR status = $2) AND ($3::uuid IS NULL OR classroom_id = $3::uuid)`,
+      [ctx.organisationId, status, classroomId, includeOfficial]
     );
     const rows = await ctx.db.many(
       `SELECT lp.*, c.name AS classroom_name, u.display_name AS created_by_name, lm.title AS module_title
        FROM lesson_plans lp LEFT JOIN classrooms c ON c.id = lp.classroom_id
        LEFT JOIN users u ON u.id = lp.created_by
        LEFT JOIN learning_modules lm ON lm.id = lp.module_id
-       WHERE lp.organisation_id = $1 AND ($2::text IS NULL OR lp.status = $2)
+       WHERE (lp.organisation_id = $1 OR ($6::boolean AND lp.organisation_id IS NULL))
+         AND ($2::text IS NULL OR lp.status = $2)
          AND ($3::uuid IS NULL OR lp.classroom_id = $3::uuid)
-       ORDER BY lp.created_at DESC LIMIT $4 OFFSET $5`,
-      [ctx.organisationId, status, classroomId, pageSize, offset]
+       ORDER BY (lp.organisation_id IS NULL), lp.created_at DESC LIMIT $4 OFFSET $5`,
+      [ctx.organisationId, status, classroomId, pageSize, offset, includeOfficial]
     );
     ctx.meta.page = page;
     ctx.meta.pageSize = pageSize;
@@ -208,9 +224,10 @@ function register(router) {
     let module = null;
     let modulePosition = null;
     if (body.moduleId) {
-      module = await ctx.db.one('SELECT id FROM learning_modules WHERE id = $1 AND organisation_id = $2',
+      module = await ctx.db.one('SELECT id, organisation_id FROM learning_modules WHERE id = $1 AND (organisation_id = $2 OR organisation_id IS NULL)',
         [body.moduleId, ctx.organisationId]);
       if (!module) fail('NOT_FOUND', null, 'The module this plan should belong to was not found.');
+      if (module.organisation_id === null) fail('FORBIDDEN', null, 'Official modules are read-only. Adopt the module first, then add your own plans.');
       const maxPos = await ctx.db.one('SELECT COALESCE(MAX(module_position), 0)::int AS max FROM lesson_plans WHERE module_id = $1', [module.id]);
       modulePosition = maxPos.max + 1;
     }
@@ -229,8 +246,9 @@ function register(router) {
   }, { permission: 'curriculum.create.daycare' });
 
   router.get('/curriculum/lesson-plans/:id', async (ctx) => {
-    const plan = await ctx.db.one('SELECT * FROM lesson_plans WHERE id = $1 AND organisation_id = $2',
+    let plan = await ctx.db.one('SELECT * FROM lesson_plans WHERE id = $1 AND organisation_id = $2',
       [ctx.params.id, ctx.organisationId]);
+    if (!plan) plan = await findOfficialPlan(ctx, ctx.params.id);
     if (!plan) throw new AppError('NOT_FOUND');
     plan.scheduled = await ctx.db.many(
       `SELECT sa.*, a.title AS activity_title FROM scheduled_activities sa
@@ -249,7 +267,11 @@ function register(router) {
     });
     const plan = await ctx.db.one('SELECT * FROM lesson_plans WHERE id = $1 AND organisation_id = $2',
       [ctx.params.id, ctx.organisationId]);
-    if (!plan) throw new AppError('NOT_FOUND');
+    if (!plan) {
+      if (await findOfficialPlan(ctx, ctx.params.id)) fail('FORBIDDEN', null, 'Official content is read-only. Adopt it to make it yours.');
+      throw new AppError('NOT_FOUND');
+    }
+    if (isOfficial(plan)) fail('FORBIDDEN', null, 'Official content is read-only. Adopt it to make it yours.');
     if (['published', 'completed', 'evaluated'].includes(plan.status)) {
       fail('CONFLICT', null, 'Published plans cannot be silently rewritten. Create a revision instead.');
     }
@@ -271,7 +293,11 @@ function register(router) {
     });
     const plan = await ctx.db.one('SELECT * FROM lesson_plans WHERE id = $1 AND organisation_id = $2',
       [ctx.params.id, ctx.organisationId]);
-    if (!plan) throw new AppError('NOT_FOUND');
+    if (!plan) {
+      if (await findOfficialPlan(ctx, ctx.params.id)) fail('FORBIDDEN', null, 'Official content is read-only. Adopt it to make it yours.');
+      throw new AppError('NOT_FOUND');
+    }
+    if (isOfficial(plan)) fail('FORBIDDEN', null, 'Official content is read-only. Adopt it to make it yours.');
     if (!(PLAN_TRANSITIONS[plan.status] || []).includes(body.status)) {
       fail('CONFLICT', null, `A plan cannot move from ${plan.status} to ${body.status}.`);
     }
@@ -321,12 +347,13 @@ function register(router) {
 
   router.get('/curriculum/activities', async (ctx) => {
     const term = ctx.query.q ? `%${ctx.query.q}%` : null;
+    const includeOfficial = await officialEnabled(ctx);
     return ctx.db.many(
       `SELECT a.*, u.display_name AS created_by_name FROM activities a LEFT JOIN users u ON u.id = a.created_by
-       WHERE a.organisation_id = $1 AND a.status = 'active'
+       WHERE (a.organisation_id = $1 OR ($3::boolean AND a.organisation_id IS NULL)) AND a.status = 'active'
          AND ($2::text IS NULL OR a.title ILIKE $2 OR a.description ILIKE $2)
-       ORDER BY a.title`,
-      [ctx.organisationId, term]
+       ORDER BY (a.organisation_id IS NULL), a.title`,
+      [ctx.organisationId, term, includeOfficial]
     );
   }, { permission: 'curriculum.read.daycare' });
 
@@ -369,7 +396,14 @@ function register(router) {
     });
     const activity = await ctx.db.one('SELECT * FROM activities WHERE id = $1 AND organisation_id = $2',
       [ctx.params.id, ctx.organisationId]);
-    if (!activity) throw new AppError('NOT_FOUND');
+    if (!activity) {
+      if (await officialEnabled(ctx)) {
+        const official = await ctx.db.one('SELECT id FROM activities WHERE id = $1 AND organisation_id IS NULL', [ctx.params.id]);
+        if (official) fail('FORBIDDEN', null, 'Official content is read-only. Adopt it to make it yours.');
+      }
+      throw new AppError('NOT_FOUND');
+    }
+    if (isOfficial(activity)) fail('FORBIDDEN', null, 'Official content is read-only. Adopt it to make it yours.');
     if (body.branchId) {
       const branch = await ctx.db.one('SELECT id FROM branches WHERE id = $1 AND organisation_id = $2',
         [body.branchId, ctx.organisationId]);
@@ -391,13 +425,102 @@ function register(router) {
   router.post('/curriculum/activities/:id/archive', async (ctx) => {
     const activity = await ctx.db.one('SELECT * FROM activities WHERE id = $1 AND organisation_id = $2',
       [ctx.params.id, ctx.organisationId]);
-    if (!activity) throw new AppError('NOT_FOUND');
+    if (!activity) {
+      if (await officialEnabled(ctx)) {
+        const official = await ctx.db.one('SELECT id FROM activities WHERE id = $1 AND organisation_id IS NULL', [ctx.params.id]);
+        if (official) fail('FORBIDDEN', null, 'Official content is read-only. Adopt it to make it yours.');
+      }
+      throw new AppError('NOT_FOUND');
+    }
+    if (isOfficial(activity)) fail('FORBIDDEN', null, 'Official content is read-only. Adopt it to make it yours.');
     await ctx.db.query(
       `UPDATE activities SET status = 'archived', updated_at = now() WHERE id = $1`, [activity.id]);
     await recordAudit(ctx.db, ctx, {
       action: 'curriculum.activity_archived', resourceType: 'activity', resourceId: activity.id
     });
     return ctx.db.one('SELECT * FROM activities WHERE id = $1', [activity.id]);
+  }, { permission: 'curriculum.create.daycare' });
+
+  // --- Adopt official content ---------------------------------------------------
+  // Official (NCF) content stays read-only. Adopting clones it into the tenant
+  // with source attribution (source='ncf') so centres can adapt it freely —
+  // the copy keeps the NCF badge, which is honest attribution, and becomes a
+  // normal editable record.
+
+  router.post('/curriculum/adopt', async (ctx) => {
+    const body = validate(ctx.body, {
+      kind: { type: 'string', enum: ['lesson_plan', 'activity', 'module'] },
+      id: { type: 'string', uuid: true }
+    });
+    if (!(await officialEnabled(ctx))) {
+      fail('FORBIDDEN', null, 'Switch on the Official NCF curriculum in Settings before adopting official content.');
+    }
+    const branch = await ctx.db.one('SELECT id FROM branches WHERE organisation_id = $1 ORDER BY created_at LIMIT 1', [ctx.organisationId]);
+    if (!branch) fail('NOT_FOUND', null, 'Create a branch before adopting content.');
+
+    if (body.kind === 'lesson_plan') {
+      const official = await ctx.db.one('SELECT * FROM lesson_plans WHERE id = $1 AND organisation_id IS NULL', [body.id]);
+      if (!official) throw new AppError('NOT_FOUND');
+      const plan = await ctx.db.one(
+        `INSERT INTO lesson_plans (organisation_id, branch_id, classroom_id, academic_period_id, title, theme,
+          objective_ids, preparation_notes, status, module_id, source, source_version)
+         VALUES ($1,$2,NULL,NULL,$3,$4,$5,$6,'draft',NULL,$7,$8) RETURNING *`,
+        [ctx.organisationId, branch.id, official.title, official.theme || null,
+          JSON.stringify(official.objective_ids || []), official.preparation_notes || null, official.source || 'ncf', official.source_version || '1.0']
+      );
+      await recordAudit(ctx.db, ctx, { action: 'curriculum.adopted_plan', resourceType: 'lesson_plan', resourceId: plan.id, metadata: { sourceKey: official.source_key || null } });
+      ctx.status = 201;
+      return plan;
+    }
+
+    if (body.kind === 'activity') {
+      const official = await ctx.db.one('SELECT * FROM activities WHERE id = $1 AND organisation_id IS NULL', [body.id]);
+      if (!official) throw new AppError('NOT_FOUND');
+      const activity = await ctx.db.one(
+        `INSERT INTO activities (organisation_id, branch_id, title, description, age_group, duration_minutes,
+          materials, safety_notes, activity_type, status, source, source_version)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'active',$10,$11) RETURNING *`,
+        [ctx.organisationId, branch.id, official.title, official.description || null, official.age_group || null,
+          official.duration_minutes || 30, official.materials || null, official.safety_notes || null,
+          official.activity_type || 'creative', official.source || 'ncf', official.source_version || '1.0']
+      );
+      await recordAudit(ctx.db, ctx, { action: 'curriculum.adopted_activity', resourceType: 'activity', resourceId: activity.id, metadata: { sourceKey: official.source_key || null } });
+      ctx.status = 201;
+      return activity;
+    }
+
+    // kind === 'module': clone the module and its plans, keeping the NCF badge.
+    const official = await ctx.db.one('SELECT * FROM learning_modules WHERE id = $1 AND organisation_id IS NULL', [body.id]);
+    if (!official) throw new AppError('NOT_FOUND');
+    const created = await ctx.db.withTransaction(async (client) => {
+      const moduleRow = await client.query(
+        `INSERT INTO learning_modules (organisation_id, title, description, theme, age_group, duration_weeks, status, source, source_version)
+         VALUES ($1,$2,$3,$4,$5,$6,'draft',$7,$8) RETURNING *`,
+        [ctx.organisationId, official.title, official.description || null, official.theme || null,
+          official.age_group || null, official.duration_weeks || null, official.source || 'ncf', official.source_version || '1.0']
+      );
+      const module = moduleRow.rows[0];
+      const plans = await client.query(
+        'SELECT * FROM lesson_plans WHERE module_id = $1 ORDER BY COALESCE(module_position, 9999), created_at',
+        [official.id]
+      );
+      let position = 0;
+      for (const plan of plans.rows) {
+        position += 1;
+        await client.query(
+          `INSERT INTO lesson_plans (organisation_id, branch_id, classroom_id, academic_period_id, title, theme,
+            objective_ids, preparation_notes, status, module_id, module_position, source, source_version)
+           VALUES ($1,$2,NULL,NULL,$3,$4,$5,$6,'draft',$7,$8,$9,$10)`,
+          [ctx.organisationId, branch.id, plan.title, plan.theme || null,
+            JSON.stringify(plan.objective_ids || []), plan.preparation_notes || null,
+            module.id, position, plan.source || 'ncf', plan.source_version || '1.0']
+        );
+      }
+      return { module, planCount: position };
+    });
+    await recordAudit(ctx.db, ctx, { action: 'curriculum.adopted_module', resourceType: 'learning_module', resourceId: created.module.id, metadata: { sourceKey: official.source_key || null, plans: created.planCount } });
+    ctx.status = 201;
+    return created;
   }, { permission: 'curriculum.create.daycare' });
 
   router.get('/curriculum/calendar', async (ctx) => {

@@ -7,6 +7,24 @@
 
   function yesNo(value) { return value ? '<span class="badge badge-green">Yes</span>' : '<span class="badge badge-muted">No</span>'; }
 
+  function renderNcfCard(settings, canManage) {
+    const enabled = Boolean(settings && settings.ncf && settings.ncf.enabled);
+    const statusBadge = enabled
+      ? '<span class="badge badge-green">Enabled for this centre</span>'
+      : '<span class="badge badge-muted">Hidden</span>';
+    const toggle = canManage
+      ? '<div class="btn-group">' + (enabled
+        ? '<button class="btn btn-sm btn-secondary" @click="act(\'PATCH\',\'/organisations/current/settings\',{settings:{ncf:{enabled:false}}},{successMessage:\'Official NCF curriculum hidden — your own content is unaffected\'})">Hide official pack</button>'
+        : '<button class="btn btn-sm btn-primary" @click="act(\'PATCH\',\'/organisations/current/settings\',{settings:{ncf:{enabled:true}}},{successMessage:\'Official NCF curriculum enabled for this centre\'})">' + R.icon('badge-check') + ' Enable official pack</button>') + '</div>'
+      : '';
+    return R.card('Official NCF curriculum', '<div class="detail-list">' +
+      R.detailItem('Status', statusBadge) +
+      R.detailItem('Included in your plan', '<span class="badge badge-green">Yes, at no cost</span>') +
+      '</div>' +
+      '<div class="alert alert-info" style="margin:10px 0">' + R.icon('badge-check') + '<span>An official starter curriculum aligned to the <strong>South African National Curriculum Framework (Birth to Four)</strong> — official modules, play-based lesson plans and activities across the six ELDAs and three age bands. Optional: your own frameworks remain the centre of your practice. Adapt any piece into your workspace; it keeps its NCF attribution.</span></div>' +
+      toggle);
+  }
+
   V.settings = {
     async load(ctx) {
       const settled = await Promise.allSettled([
@@ -170,6 +188,7 @@
           R.detailItem('Website enabled', yesNo((settings.publicWebsite || {}).enabled)) +
           R.detailItem('Show fees', yesNo((settings.publicWebsite || {}).showFees)) +
           '</div>') +
+        renderNcfCard(settings, canManage) +
         '</div></div>';
     },
 

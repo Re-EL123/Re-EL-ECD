@@ -5,6 +5,10 @@
   const R = window.Reel;
   const V = R.views;
 
+  const NCF = '<span class="badge badge-sky">NCF</span>';
+  const NCF_OFFICIAL = '<span class="badge badge-sky">NCF Official</span>';
+  const isOfficialRow = (row) => row && (row.organisation_id === null || row.organisation_id === undefined);
+
   const PLAN_STATUSES = ['draft', 'submitted', 'approved', 'published', 'in_progress', 'completed', 'evaluated', 'cancelled'];
   const NEXT_STATUS = {
     draft: ['submitted', 'cancelled'], submitted: ['approved', 'draft', 'cancelled'],
@@ -60,27 +64,53 @@
       if (canCreate) actions.push({ label: 'Cancel', icon: 'x', path: '/curriculum/lesson-plans/bulk', action: 'cancel', tone: 'danger' });
       return (actions.length ? R.bulkBar(actions, { hint: 'Plans that cannot make the move are skipped and reported.' }) : '') +
         R.table({ rows: page.plans || [], selectable: actions.length > 0, columns: [
-        { label: 'Plan', render: (p) => '<span class="cell-strong">' + R.esc(p.title) + '</span><span class="cell-sub">' + R.esc(p.theme || '') + '</span>' },
-        { label: 'Classroom', render: (p) => R.esc(p.classroom_name || '—') },
+        { label: 'Plan', render: (p) => '<span class="cell-strong">' + R.esc(p.title) + '</span><span class="cell-sub">' + R.esc(p.theme || '') + (p.source === 'ncf' ? ' · ' : '') + '</span>' },
+        { label: 'Classroom', render: (p) => (p.source === 'ncf' ? NCF : '') + ' ' + R.esc(p.classroom_name || (isOfficialRow(p) ? 'Official' : '—')) },
         { label: 'Module', render: (p) => p.module_id ? '<a href="#/app/modules/' + R.attr(p.module_id) + '">' + R.esc(p.module_title || 'Module') + '</a>' : '<span class="muted">—</span>' },
         { label: 'Objectives', render: (p) => '<span class="badge badge-muted">' + ((p.objective_ids || []).length) + '</span>' },
         { label: 'Status', render: (p) => R.badge(p.status) },
         { label: 'Created', render: (p) => R.date(p.created_at) },
         { label: '', align: 'right', render: (p) => '<div class="btn-group">' +
-          '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'duplicatePlan\',\'' + R.attr(p.id) + '\')">Duplicate</button>' +
-          (ctx.has('curriculum.create.daycare') ? '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'savePlanTemplate\',\'' + R.attr(p.id) + '\')">Save template</button>' : '') +
-          '<button class="btn btn-sm btn-secondary" @click="openNamedDetail(\'plan\',\'' + R.attr(p.id) + '\')">View</button>' +
-          ((NEXT_STATUS[p.status] || []).length ? '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'transition\',\'' + R.attr(p.id) + '\')">Move on</button>' : '') +
+          (isOfficialRow(p)
+            ? '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/curriculum/adopt\',{kind:\'lesson_plan\',id:\'' + R.attr(p.id) + '\'},{successMessage:\'Adopted to your workspace as a draft plan\'})">' + R.icon('copy') + ' Adapt</button>' +
+              '<button class="btn btn-sm btn-secondary" @click="openNamedDetail(\'plan\',\'' + R.attr(p.id) + '\')">View</button>'
+            : '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'duplicatePlan\',\'' + R.attr(p.id) + '\')">Duplicate</button>' +
+              (ctx.has('curriculum.create.daycare') ? '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'savePlanTemplate\',\'' + R.attr(p.id) + '\')">Save template</button>' : '') +
+              '<button class="btn btn-sm btn-secondary" @click="openNamedDetail(\'plan\',\'' + R.attr(p.id) + '\')">View</button>' +
+              ((NEXT_STATUS[p.status] || []).length ? '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'transition\',\'' + R.attr(p.id) + '\')">Move on</button>' : '')) +
           '</div>' }
       ], emptyTitle: 'No lesson plans', emptyMessage: 'Plan the week around your children\'s interests and the framework.' });
     },
 
     renderFrameworks(ctx, page) {
-      return '<div class="grid grid-2">' + (page.frameworks || []).map((f) => R.card(f.name,
+      const frameworks = page.frameworks || [];
+      if (!frameworks.length) {
+        return R.emptyState('No frameworks', 'Create a framework to organise domains and objectives.',
+          '<button class="btn btn-primary" @click="openNamedModal(\'framework\')">New framework</button>', 'book-open');
+      }
+      return '<div class="grid grid-2">' + frameworks.map((framework) => this.frameworkCard(ctx, page, framework)).join('') + '</div>';
+    },
+
+    frameworkCard(ctx, page, f) {
+      const objectives = page.objectives || [];
+      const domains = (f.domains || []).map((d) => {
+        const count = objectives.filter((o) => o.domain_id === d.id).length;
+        return '<div class="row" style="gap:10px"><span class="dot"></span><div style="flex:1">' +
+          '<div class="strong" style="font-size:0.88rem">' + R.esc(d.name) + '</div>' +
+          '<div class="muted small">' + R.esc(d.description || '') + '</div></div>' +
+          '<span class="badge badge-muted">' + R.number(count) + ' objectives</span></div>';
+      }).join('');
+      const body =
         '<div class="muted small" style="margin-bottom:10px">Version ' + R.esc(f.version) + ' · ' + R.esc(f.description || '') + '</div>' +
-        '<div class="stack">' + (f.domains || []).map((d) => '<div class="row" style="gap:10px"><span class="dot"></span><div style="flex:1"><div class="strong" style="font-size:0.88rem">' + R.esc(d.name) + '</div><div class="muted small">' + R.esc(d.description || '') + '</div></div><span class="badge badge-muted">' + R.number((page.objectives || []).filter((o) => o.domain_id === d.id).length) + ' objectives</span></div>').join('') + '</div>',
-        '<div class="btn-group">' + (ctx.has('curriculum.create.daycare') ? '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'saveFrameworkTemplate\',\'' + R.attr(f.id) + '\')">Save template</button>' : '') + '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'domain\',\'' + R.attr(f.id) + '\')">' + R.icon('plus') + ' Domain</button>' + '</div>')).join('') +
-        ((page.frameworks || []).length ? '' : R.emptyState('No frameworks', 'Create a framework to organise domains and objectives.', '<button class="btn btn-primary" @click="openNamedModal(\'framework\')">New framework</button>', 'book-open')) + '</div>';
+        (isOfficialRow(f) ? '<div class="row" style="gap:8px;margin-bottom:10px">' + NCF_OFFICIAL + '</div>' : '') +
+        '<div class="stack">' + domains + '</div>';
+      const actions = isOfficialRow(f)
+        ? '<div class="btn-group"><span class="badge badge-muted">Read-only starter pack</span></div>'
+        : '<div class="btn-group">' +
+            (ctx.has('curriculum.create.daycare') ? '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'saveFrameworkTemplate\',\'' + R.attr(f.id) + '\')">Save template</button>' : '') +
+            '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'domain\',\'' + R.attr(f.id) + '\')">' + R.icon('plus') + ' Domain</button>' +
+          '</div>';
+      return R.card(f.name, body, actions);
     },
 
     renderObjectives(page) {
@@ -321,9 +351,12 @@
           '<div class="muted small"><strong>Materials:</strong> ' + R.esc(a.materials || '—') + '</div>' +
           (a.safety_notes ? '<div class="alert alert-warn" style="margin-top:8px">' + R.icon('shield-alert') + '<span>' + R.esc(a.safety_notes) + '</span></div>' : ''),
           '<div class="btn-group">' + R.badge(a.status) +
-            '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'saveActivityTemplate\',\'' + R.attr(a.id) + '\')">Save template</button>' +
-            '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'activityEdit\',\'' + R.attr(a.id) + '\')">Edit</button>' +
-            (a.status === 'active' ? '<button class="btn btn-sm btn-ghost" @click="act(\'POST\',\'/curriculum/activities/' + R.attr(a.id) + '/archive\',{},{successMessage:\'Activity archived\'})">Archive</button>' : '') +
+            (isOfficialRow(a)
+              ? ' ' + NCF +
+                '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/curriculum/adopt\',{kind:\'activity\',id:\'' + R.attr(a.id) + '\'},{successMessage:\'Adopted to your workspace\'})">' + R.icon('copy') + ' Adapt</button>'
+              : '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'saveActivityTemplate\',\'' + R.attr(a.id) + '\')">Save template</button>' +
+                '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'activityEdit\',\'' + R.attr(a.id) + '\')">Edit</button>' +
+                (a.status === 'active' ? '<button class="btn btn-sm btn-ghost" @click="act(\'POST\',\'/curriculum/activities/' + R.attr(a.id) + '/archive\',{},{successMessage:\'Activity archived\'})">Archive</button>' : '')) +
           '</div>')).join('') + '</div>' +
         ((page.rows || []).length ? '' : R.emptyState('No activities yet', 'Build a library of activities your team can reuse.', '<button class="btn btn-primary" @click="openNamedModal(\'activity\')">New activity</button>', 'puzzle'));
     },
