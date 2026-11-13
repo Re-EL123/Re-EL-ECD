@@ -490,7 +490,7 @@ function register(router) {
 
   router.post('/curriculum/adopt', async (ctx) => {
     const body = validate(ctx.body, {
-      kind: { type: 'string', enum: ['lesson_plan', 'activity', 'module'] },
+      kind: { type: 'string', enum: ['lesson_plan', 'activity', 'module', 'framework'] },
       id: { type: 'string', uuid: true }
     });
     if (!(await officialEnabled(ctx))) {
@@ -529,6 +529,43 @@ function register(router) {
       await recordAudit(ctx.db, ctx, { action: 'curriculum.adopted_activity', resourceType: 'activity', resourceId: activity.id, metadata: { sourceKey: official.source_key || null } });
       ctx.status = 201;
       return activity;
+    }
+
+    if (body.kind === 'framework') {
+      const official = await ctx.db.one('SELECT * FROM curriculum_frameworks WHERE id = $1 AND organisation_id IS NULL', [body.id]);
+      if (!official) throw new AppError('NOT_FOUND');
+      const created = await ctx.db.withTransaction(async (client) => {
+        const fwRow = await client.query(
+          `INSERT INTO curriculum_frameworks (organisation_id, name, version, description, status, source, source_version)
+           VALUES ($1,$2,$3,$4,'active',$5,$6) RETURNING *`,
+          [ctx.organisationId, official.name, official.version || '1.0', official.description || null, official.source || 'ncf', official.source_version || '1.0']
+        );
+        const framework = fwRow.rows[0];
+        const domains = await client.query('SELECT * FROM curriculum_domains WHERE framework_id = $1 ORDER BY sort_order, name', [official.id]);
+        let objectiveCount = 0;
+        for (const domain of domains.rows) {
+          const domainRow = await client.query(
+            `INSERT INTO curriculum_domains (framework_id, name, description, sort_order) VALUES ($1,$2,$3,$4) RETURNING id`,
+            [framework.id, domain.name, domain.description || null, domain.sort_order || 0]
+          );
+          const objectives = await client.query("SELECT * FROM learning_objectives WHERE domain_id = $1 AND status = 'active'", [domain.id]);
+          for (const objective of objectives.rows) {
+            objectiveCount += 1;
+            await client.query(
+              `INSERT INTO learning_objectives (domain_id, age_group, code, description, expected_observation_context, status)
+               VALUES ($1,$2,$3,$4,$5,'active')`,
+              [domainRow.rows[0].id, objective.age_group || null, objective.code, objective.description, objective.expected_observation_context || null]
+            );
+          }
+        }
+        return { framework, domainCount: domains.rows.length, objectiveCount };
+      });
+      await recordAudit(ctx.db, ctx, {
+        action: 'curriculum.adopted_framework', resourceType: 'curriculum_framework', resourceId: created.framework.id,
+        metadata: { sourceKey: official.source_key || null, objectives: created.objectiveCount }
+      });
+      ctx.status = 201;
+      return created;
     }
 
     // kind === 'module': clone the module and its plans, keeping the NCF badge.

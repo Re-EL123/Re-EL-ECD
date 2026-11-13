@@ -2045,6 +2045,11 @@
         const endpoint = this.modal.endpoint || '';
         try {
           let body = this.modal.transform ? this.modal.transform(this.modal.data) : Object.assign({}, this.modal.data);
+          if (body && typeof body === 'object') {
+            // Modal state is a reactive proxy; its nested objects may not
+            // serialise reliably on the wire — send a plain deep copy.
+            try { body = JSON.parse(JSON.stringify(body)); } catch { /* send as-is */ }
+          }
           if (this.modal.onSuccess) body = this.modal.onSuccess(body) || body;
           if (this.modal.onSubmit) await this.modal.onSubmit(body, this.modal.data);
           else await Reel.api(this.modal.method, this.modal.endpoint, body);
@@ -2066,7 +2071,10 @@
         if (!this.modal || this.modal.saving) return;
         this.modal.saving = true;
         try {
-          await Reel.api(this.modal.method, this.modal.endpoint, this.modal.body || {});
+          // Modal state lives on a reactive proxy whose nested objects do not
+          // always serialise cleanly on the wire — send a plain deep copy.
+          const body = JSON.parse(JSON.stringify(this.modal.body || {}));
+          await Reel.api(this.modal.method, this.modal.endpoint, body);
           const message = this.modal.successMessage;
           this.modal = null;
           this.toast(message || 'Done.');

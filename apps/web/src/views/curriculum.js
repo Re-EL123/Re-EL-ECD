@@ -49,7 +49,7 @@
           { key: 'plans', label: 'Lesson plans' }, { key: 'frameworks', label: 'Frameworks' },
           { key: 'objectives', label: 'Objectives' }, { key: 'periods', label: 'Periods' }
         ], tab) +
-        (tab === 'plans' ? this.renderPlans(ctx, page) : tab === 'frameworks' ? this.renderFrameworks(ctx, page) : tab === 'objectives' ? this.renderObjectives(page) : this.renderPeriods(page));
+        (tab === 'plans' ? this.renderPlans(ctx, page) : tab === 'frameworks' ? this.renderFrameworks(ctx, page) : tab === 'objectives' ? this.renderObjectives(ctx, page) : this.renderPeriods(page));
     },
 
     renderPlans(ctx, page) {
@@ -100,12 +100,13 @@
           '<div class="muted small">' + R.esc(d.description || '') + '</div></div>' +
           '<span class="badge badge-muted">' + R.number(count) + ' objectives</span></div>';
       }).join('');
+      const attribution = f.source === 'ncf' && !isOfficialRow(f) ? '<div class="row" style="gap:8px;margin-bottom:10px">' + NCF + '</div>' : '';
       const body =
         '<div class="muted small" style="margin-bottom:10px">Version ' + R.esc(f.version) + ' · ' + R.esc(f.description || '') + '</div>' +
-        (isOfficialRow(f) ? '<div class="row" style="gap:8px;margin-bottom:10px">' + NCF_OFFICIAL + '</div>' : '') +
+        (isOfficialRow(f) ? '<div class="row" style="gap:8px;margin-bottom:10px">' + NCF_OFFICIAL + '</div>' : attribution) +
         '<div class="stack">' + domains + '</div>';
       const actions = isOfficialRow(f)
-        ? '<div class="btn-group"><span class="badge badge-muted">Read-only starter pack</span></div>'
+        ? '<div class="btn-group"><span class="badge badge-muted">Read-only starter pack</span>' + (ctx.has('curriculum.create.daycare') ? ' <button class="btn btn-sm btn-primary" @click="openNamedModal(\'adoptOfficialFramework\')">' + R.icon('copy') + ' Adapt to my centre</button>' : '') + '</div>'
         : '<div class="btn-group">' +
             (ctx.has('curriculum.create.daycare') ? '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'saveFrameworkTemplate\',\'' + R.attr(f.id) + '\')">Save template</button>' : '') +
             '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'domain\',\'' + R.attr(f.id) + '\')">' + R.icon('plus') + ' Domain</button>' +
@@ -113,15 +114,26 @@
       return R.card(f.name, body, actions);
     },
 
-    renderObjectives(page) {
-      return R.table({ rows: page.objectives || [], columns: [
+    renderObjectives(ctx, page) {
+      const frameworks = page.frameworks || [];
+      const ownFrameworks = frameworks.filter((f) => !isOfficialRow(f));
+      const hasOwn = ownFrameworks.length > 0;
+      const emptyAction = hasOwn
+        ? '<button class="btn btn-primary" @click="openNamedModal(\'objective\')">' + R.icon('plus') + ' Add your first objective</button>'
+        : '<div class="btn-group"><button class="btn btn-secondary" @click="openNamedModal(\'adoptOfficialFramework\')">' + R.icon('copy') + ' Adapt the official NCF pack</button>' +
+          '<button class="btn btn-primary" @click="openNamedModal(\'framework\')">' + R.icon('plus') + ' Create your own framework</button></div>';
+      return '<div class="filter-bar" style="justify-content:flex-end;margin-bottom:10px">' +
+        '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'objective\')">' + R.icon('plus') + ' Add objective</button></div>' +
+        R.table({ rows: page.objectives || [], columns: [
         { label: 'Code', render: (o) => '<span class="mono cell-strong">' + R.esc(o.code) + '</span>' },
         { label: 'Domain', render: (o) => R.esc(o.domain_name) },
         { label: 'Objective', render: (o) => R.esc(o.description) + '<span class="cell-sub">' + R.esc(o.expected_observation_context || '') + '</span>' },
         { label: 'Age group', render: (o) => '<span class="badge badge-muted">' + R.esc(o.age_group || 'All ages') + '</span>' },
         { label: 'Status', render: (o) => R.badge(o.status) }
-      ], emptyTitle: 'No objectives', emptyMessage: 'Objectives describe what children are learning to do.' },
-        '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'objective\')">' + R.icon('plus') + ' Add objective</button>');
+      ], emptyTitle: 'No objectives yet', emptyMessage: hasOwn
+        ? 'Objectives describe what children are learning to do. Add your first one — your framework has domains ready.'
+        : 'You do not have your own framework yet. Adapt the official NCF pack (a full framework with six domains and 72 outcomes you fully own and can edit), or create a blank one.',
+        emptyAction, emptyIcon: 'target' });
     },
 
     renderPeriods(page) {
@@ -205,14 +217,28 @@
           { name: 'description', label: 'Description', type: 'textarea', span: 2 }
         ] });
       } else if (name === 'objective') {
-        const domains = frameworks.flatMap((f) => f.domains || []);
+        const ownFrameworks = frameworks.filter((f) => !isOfficialRow(f));
+        const domains = ownFrameworks.flatMap((f) => (f.domains || []).map((d) => ({ id: d.id, name: f.name + ' · ' + d.name })));
+        if (!domains.length) {
+          ctx.toast('Create your own framework first (Frameworks tab → New framework, or Adapt the official pack) — you need at least one domain before objectives can be added to it.', 'warn');
+          ctx.setTab('frameworks');
+          return;
+        }
         ctx.openModal({ title: 'Add learning objective', endpoint: '/curriculum/objectives', submitLabel: 'Add objective', fields: [
-          { name: 'domainId', label: 'Domain', type: 'select', required: true, options: domains.map((d) => ({ value: d.id, label: d.name })) },
-          { name: 'code', label: 'Code', required: true, placeholder: 'e.g. PD-02' },
-          { name: 'ageGroup', label: 'Age group', placeholder: '4-5 years' },
+          { name: 'domainId', label: 'Domain', type: 'select', required: true, options: domains.map((d) => ({ value: d.id, label: d.name })), help: 'Only your own framework domains are shown. The official NCF pack is added via Adapt, not by editing.' },
+          { name: 'code', label: 'Code', required: true, placeholder: 'e.g. MY-01' },
+          { name: 'ageGroup', label: 'Age group', type: 'select', options: [{ value: '0-18 months', label: '0-18 months' }, { value: '18-36 months', label: '18-36 months' }, { value: '3-4 years', label: '3-4 years' }, { value: '4-5 years', label: '4-5 years' }, { value: '5-6 years', label: '5-6 years' }, { value: 'All ages', label: 'All ages' }], help: 'Match the band your outcome applies to.' },
           { name: 'description', label: 'Description', required: true, span: 2 },
-          { name: 'expectedObservationContext', label: 'Where to observe it', span: 2 }
+          { name: 'expectedObservationContext', label: 'Where to observe it', type: 'textarea', span: 2, placeholder: 'Story time, outdoor play, snack time…' }
         ] });
+      } else if (name === 'adoptOfficialFramework') {
+        const official = frameworks.find((f) => isOfficialRow(f) && f.source === 'ncf') || frameworks.find((f) => isOfficialRow(f));
+        if (!official) { ctx.toast('The official pack is not enabled for this centre. Enable it in Settings.', 'warn'); return; }
+        ctx.openConfirm(
+          'Adapt the official NCF pack',
+          'This copies the entire official starter framework — six domains and all their outcomes — into your workspace. You keep full ownership: edit, rename or archive anything, and it will never be overwritten by a future update to the official pack.',
+          { endpoint: '/curriculum/adopt', method: 'POST', body: { kind: 'framework', id: official.id }, submitLabel: 'Copy into my workspace', successMessage: 'The official framework is yours — edit it freely.' }
+        );
       } else if (name === 'plan') {
         const objectives = page.objectives || [];
         const planTemplates = page.planTemplates || [];
