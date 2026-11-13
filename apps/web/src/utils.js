@@ -1114,8 +1114,8 @@
   function learnerOptions(rows) {
     return (rows || []).filter((l) => l && l.id).map((l) => ({
       value: l.id,
-      label: [l.first_name, l.last_name].filter(Boolean).join(' ') || 'Child',
-      subtitle: l.classroom_name || l.classroomName || l.room_name || '',
+      label: [l.first_name || l.firstName, l.last_name || l.lastName].filter(Boolean).join(' ') || 'Child',
+      subtitle: l.classroom_name || l.classroomName || l.room_name || l.classroom || l.learner_reference || l.learnerReference || '',
       avatarUrl: l.photo_url || l.avatar_url || l.photoUrl || null
     }));
   }
