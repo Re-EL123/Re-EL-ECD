@@ -405,6 +405,26 @@ function register(router) {
     return ctx.db.one('SELECT * FROM scheduled_activities WHERE id = $1', [event.id]);
   }, { permission: 'curriculum.create.daycare' });
 
+  router.post('/curriculum/calendar/events/:id/start', async (ctx) => {
+    const event = await ctx.db.one('SELECT * FROM scheduled_activities WHERE id = $1 AND organisation_id = $2',
+      [ctx.params.id, ctx.organisationId]);
+    if (!event) throw new AppError('NOT_FOUND');
+    if (event.status !== 'scheduled') fail('CONFLICT', null, 'Only scheduled activities can be started.');
+    await ctx.db.query(`UPDATE scheduled_activities SET status = 'in_progress' WHERE id = $1`, [event.id]);
+    await recordAudit(ctx.db, ctx, { action: 'curriculum.activity_started', resourceType: 'scheduled_activity', resourceId: event.id });
+    return ctx.db.one('SELECT * FROM scheduled_activities WHERE id = $1', [event.id]);
+  }, { permission: 'curriculum.create.daycare' });
+
+  router.post('/curriculum/calendar/events/:id/cancel', async (ctx) => {
+    const event = await ctx.db.one('SELECT * FROM scheduled_activities WHERE id = $1 AND organisation_id = $2',
+      [ctx.params.id, ctx.organisationId]);
+    if (!event) throw new AppError('NOT_FOUND');
+    if (!['scheduled', 'in_progress'].includes(event.status)) fail('CONFLICT', null, 'Only scheduled or in-progress activities can be cancelled.');
+    await ctx.db.query(`UPDATE scheduled_activities SET status = 'cancelled' WHERE id = $1`, [event.id]);
+    await recordAudit(ctx.db, ctx, { action: 'curriculum.activity_cancelled', resourceType: 'scheduled_activity', resourceId: event.id });
+    return ctx.db.one('SELECT * FROM scheduled_activities WHERE id = $1', [event.id]);
+  }, { permission: 'curriculum.create.daycare' });
+
   router.get('/curriculum/calendar/events/:id/participation', async (ctx) => {
     const event = await ctx.db.one('SELECT id FROM scheduled_activities WHERE id = $1 AND organisation_id = $2',
       [ctx.params.id, ctx.organisationId]);

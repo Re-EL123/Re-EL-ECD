@@ -81,18 +81,22 @@
     async load(ctx, params) {
       const child = await R.api('GET', '/parent/children/' + encodeURIComponent(params.id))
         .then((p) => p.data).catch(() => null);
+      const weekFrom = new Date();
+      const weekTo = new Date(Date.now() + 6 * 86400000);
       const settled = await Promise.allSettled([
         R.api('GET', '/parent/children/' + encodeURIComponent(params.id) + '/progress').then((p) => p.data),
         R.api('GET', '/parent/children/' + encodeURIComponent(params.id) + '/portfolio').then((p) => p.data),
         R.api('GET', '/parent/children/' + encodeURIComponent(params.id) + '/assessments').then((p) => p.data),
-        R.api('GET', '/parent/children/' + encodeURIComponent(params.id) + '/daily-reports').then((p) => p.data)
+        R.api('GET', '/parent/children/' + encodeURIComponent(params.id) + '/daily-reports').then((p) => p.data),
+        R.api('GET', '/parent/children/' + encodeURIComponent(params.id) + '/calendar?from=' + weekFrom.toISOString().slice(0, 10) + '&to=' + weekTo.toISOString().slice(0, 10)).then((p) => p.data)
       ]);
       return {
         child,
         progress: settled[0].status === 'fulfilled' ? settled[0].value : null,
         portfolio: settled[1].status === 'fulfilled' ? settled[1].value : [],
         assessments: settled[2].status === 'fulfilled' ? settled[2].value : [],
-        reports: settled[3].status === 'fulfilled' ? settled[3].value : []
+        reports: settled[3].status === 'fulfilled' ? settled[3].value : [],
+        calendar: settled[4].status === 'fulfilled' ? settled[4].value : []
       };
     },
 
@@ -115,14 +119,15 @@
         R.statCard({ label: 'Balance', value: R.money(child.outstandingBalance), icon: 'wallet', tone: Number(child.outstandingBalance) ? 'clay' : 'green', foot: 'Outstanding fees' }) +
         '</div>' +
         R.tabs([{ key: 'overview', label: 'Overview' }, { key: 'progress', label: 'Development' }, { key: 'portfolio', label: 'Portfolio' }, { key: 'reports', label: 'Daily reports' }], tab) +
-        (tab === 'progress' ? this.renderProgress(page) : tab === 'portfolio' ? this.renderPortfolio(page) : tab === 'reports' ? this.renderReports(page) : this.renderOverview(child, relationship));
+        (tab === 'progress' ? this.renderProgress(page) : tab === 'portfolio' ? this.renderPortfolio(page) : tab === 'reports' ? this.renderReports(page) : this.renderOverview(child, relationship, page.calendar));
     },
 
-    renderOverview(child, relationship) {
+    renderOverview(child, relationship, calendar) {
       const learner = child.learner || {};
       const branch = child.branch || {};
       const attendance = child.attendance || [];
       const medical = child.medical || [];
+      const events = calendar || [];
       return '<div class="split"><div class="stack">' +
         R.card('Attendance record', R.table({ rows: attendance, compact: true, columns: [
           { label: 'Date', render: (a) => R.date(a.attendance_date) },
@@ -131,6 +136,13 @@
           { label: 'Out', render: (a) => a.check_out_at ? R.time(a.check_out_at) : '—' },
           { label: 'Reason', render: (a) => R.esc(a.absence_reason || '') }
         ], emptyTitle: 'No attendance yet', emptyMessage: 'Attendance appears once the centre marks the register.' })) +
+        R.card('This week at the centre', events.length ? '<div class="stack">' + events.map((event) =>
+          '<div class="row" style="gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border-subtle)">' +
+            '<div style="min-width:88px"><div class="strong">' + R.date(event.starts_at) + '</div><div class="muted small">' + R.time(event.starts_at) + '</div></div>' +
+            '<div style="flex:1;min-width:0"><div class="strong">' + R.esc(event.title) + '</div>' +
+              '<div class="muted small">' + R.esc(event.lesson_plan_title || event.activity_title || 'Classroom activity') + '</div></div>' +
+            (event.participation_status ? '<span class="badge badge-green">' + R.esc(R.titleCase(event.participation_status)) + '</span>' : '<span class="badge badge-muted">Not yet observed</span>') +
+          '</div>').join('') + '</div>' : '<p class="muted small">No activities scheduled this week yet.</p>', '') +
         R.card('Medical notes shared with you', medical.length ? '<div class="stack">' + medical.map((m) => '<div class="detail-item"><div class="d-label">' + R.esc(R.titleCase(m.record_type)) + '</div><div style="white-space:pre-wrap">' + R.esc(m.details) + '</div></div>').join('') + '</div>' : '<p class="muted small">No medical notes have been shared.</p>') +
         '</div><div class="stack">' +
         R.card('Your relationship', '<div class="detail-list">' +

@@ -1367,6 +1367,7 @@
           submitLabel: config.submitLabel || 'Save',
           successMessage: config.successMessage || 'Saved successfully.',
           size: config.size || null,
+          label: {},
           endpoint: config.endpoint,
           method: config.method || 'POST',
           transform: config.transform || null,
@@ -1386,6 +1387,25 @@
       // Both live inside the generic modal so every view gets the same picker
       // and the same row editor without duplicating markup.
       // -----------------------------------------------------------------------
+
+      searchOptions(field, query) {
+        const text = String(query || '').trim().toLowerCase();
+        const options = (field.options || []).map((option) => (option && typeof option === 'object'
+          ? option
+          : { value: option, label: String(option) }));
+        if (!text) return options.slice(0, 30);
+        return options.filter((option) =>
+          String(option.label || '').toLowerCase().includes(text) ||
+          String(option.subtitle || '').toLowerCase().includes(text) ||
+          String(option.value || '').toLowerCase().includes(text)).slice(0, 30);
+      },
+
+      selectSearchOption(field, option) {
+        if (!this.modal) return;
+        this.modal.data[field.name] = option.value;
+        this.modal.label = this.modal.label || {};
+        this.modal.label[field.name] = option.label;
+      },
 
       msOptions(field) {
         if (!this.modal) return [];

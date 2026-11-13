@@ -30,7 +30,8 @@
       const o = page.overview || {};
       return R.pageHead('Curriculum', 'Frameworks, learning objectives, lesson plans and academic periods.',
         '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'framework\')">' + R.icon('book-plus') + ' New framework</button>' +
-        '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'plan\')">' + R.icon('plus') + ' New lesson plan</button>') +
+        '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'plan\')">' + R.icon('plus') + ' New lesson plan</button>' +
+        R.exportButtons('/exports/lesson-plans')) +
         '<div class="grid grid-4 section">' +
         R.statCard({ label: 'Lesson plans', value: R.number(o.plans), icon: 'notebook-pen', foot: R.number(o.published_plans) + ' published' }) +
         R.statCard({ label: 'Activities', value: R.number(o.activities), icon: 'puzzle', tone: 'sky', foot: R.number(o.completed_activities) + ' completed' }) +
@@ -62,6 +63,7 @@
         { label: 'Status', render: (p) => R.badge(p.status) },
         { label: 'Created', render: (p) => R.date(p.created_at) },
         { label: '', align: 'right', render: (p) => '<div class="btn-group">' +
+          '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'duplicatePlan\',\'' + R.attr(p.id) + '\')">Duplicate</button>' +
           '<button class="btn btn-sm btn-secondary" @click="openNamedDetail(\'plan\',\'' + R.attr(p.id) + '\')">View</button>' +
           ((NEXT_STATUS[p.status] || []).length ? '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'transition\',\'' + R.attr(p.id) + '\')">Move on</button>' : '') +
           '</div>' }
@@ -126,24 +128,33 @@
         const objectives = page.objectives || [];
         ctx.openModal({
           title: 'New lesson plan', endpoint: '/curriculum/lesson-plans', submitLabel: 'Create plan', size: 'wide',
-          description: 'Choose objective codes from the list below. Separate multiple codes with commas.',
+          description: 'Pick the objectives this plan works towards. Search by code, domain or phrase.',
           fields: [
             { name: 'title', label: 'Title', required: true, span: 2 },
             { name: 'theme', label: 'Theme' },
             { name: 'classroomId', label: 'Classroom', type: 'select', required: true, options: R.classroomOptions(page) },
             { name: 'branchId', label: 'Branch', type: 'select', required: true, options: R.branchOptions(ctx) },
             { name: 'academicPeriodId', label: 'Academic period', type: 'select', options: (page.periods || []).map((p) => ({ value: p.id, label: p.name })) },
-            { name: 'objectiveCodes', label: 'Objective codes', placeholder: objectives.slice(0, 3).map((o) => o.code).join(', '), span: 2 },
+            { name: 'objectiveIds', label: 'Objectives', type: 'multiselect', span: 2, placeholder: 'Search by code or description…', options: objectives.map((o) => ({ value: o.id, label: o.code + ' · ' + R.truncate(o.description, 48), subtitle: o.description })) },
             { name: 'preparationNotes', label: 'Preparation notes', type: 'textarea', span: 2 },
             { name: 'publishNow', label: 'Publish immediately', type: 'checkbox', value: false, help: 'Publish the plan to teachers now' }
-          ],
-          transform: (data) => {
-            const codes = String(data.objectiveCodes || '').split(',').map((s) => s.trim().toUpperCase()).filter(Boolean);
-            const objectiveIds = objectives.filter((o) => codes.includes(String(o.code).toUpperCase())).map((o) => o.id);
-            const body = Object.assign({}, data, { objectiveIds });
-            delete body.objectiveCodes;
-            return body;
-          }
+          ]
+        });
+      } else if (name === 'duplicatePlan' && id) {
+        const plan = (page.plans || []).find((p) => p.id === id) || {};
+        const objectives = page.objectives || [];
+        ctx.openModal({
+          title: 'Duplicate lesson plan', endpoint: '/curriculum/lesson-plans', submitLabel: 'Create copy', size: 'wide',
+          description: 'Creates a copy you can adapt for another week or classroom. The copy starts as a draft.',
+          fields: [
+            { name: 'title', label: 'Title', required: true, span: 2, value: 'Copy of ' + (plan.title || '') },
+            { name: 'theme', label: 'Theme', value: plan.theme },
+            { name: 'classroomId', label: 'Classroom', type: 'select', required: true, value: plan.classroom_id, options: R.classroomOptions(page) },
+            { name: 'branchId', label: 'Branch', type: 'select', required: true, value: plan.branch_id, options: R.branchOptions(ctx) },
+            { name: 'academicPeriodId', label: 'Academic period', type: 'select', value: plan.academic_period_id, options: (page.periods || []).map((p) => ({ value: p.id, label: p.name })) },
+            { name: 'objectiveIds', label: 'Objectives', type: 'multiselect', span: 2, value: plan.objective_ids || [], options: objectives.map((o) => ({ value: o.id, label: o.code + ' · ' + R.truncate(o.description, 48), subtitle: o.description })) },
+            { name: 'preparationNotes', label: 'Preparation notes', type: 'textarea', span: 2, value: plan.preparation_notes }
+          ]
         });
       } else if (name === 'transition' && id) {
         const plan = (page.plans || []).find((p) => p.id === id) || {};
@@ -198,10 +209,28 @@
           '<p class="muted small">' + R.esc(a.description || '') + '</p>' +
           '<div class="muted small"><strong>Materials:</strong> ' + R.esc(a.materials || '—') + '</div>' +
           (a.safety_notes ? '<div class="alert alert-warn" style="margin-top:8px">' + R.icon('shield-alert') + '<span>' + R.esc(a.safety_notes) + '</span></div>' : ''),
-          R.badge(a.status))).join('') + '</div>' +
+          '<div class="btn-group">' + R.badge(a.status) +
+            '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'activityEdit\',\'' + R.attr(a.id) + '\')">Edit</button>' +
+            (a.status === 'active' ? '<button class="btn btn-sm btn-ghost" @click="act(\'POST\',\'/curriculum/activities/' + R.attr(a.id) + '/archive\',{},{successMessage:\'Activity archived\'})">Archive</button>' : '') +
+          '</div>')).join('') + '</div>' +
         ((page.rows || []).length ? '' : R.emptyState('No activities yet', 'Build a library of activities your team can reuse.', '<button class="btn btn-primary" @click="openNamedModal(\'activity\')">New activity</button>', 'puzzle'));
     },
-    openModal(ctx, name) {
+    openModal(ctx, name, id) {
+      const page = ctx.page || {};
+      if (name === 'activityEdit' && id) {
+        const a = (page.rows || []).find((x) => x.id === id) || {};
+        ctx.openModal({ title: 'Edit activity', endpoint: '/curriculum/activities/' + id, method: 'PATCH', submitLabel: 'Save activity', size: 'wide', fields: [
+          { name: 'title', label: 'Title', required: true, span: 2, value: a.title },
+          { name: 'branchId', label: 'Branch', type: 'select', options: R.branchOptions(ctx), value: a.branch_id },
+          { name: 'ageGroup', label: 'Age group', value: a.age_group, placeholder: '3-5 years' },
+          { name: 'activityType', label: 'Type', type: 'select', options: ['sensory', 'creative', 'physical', 'literacy', 'numeracy', 'music', 'outdoor', 'quiet'], value: a.activity_type },
+          { name: 'durationMinutes', label: 'Duration (minutes)', type: 'number', value: a.duration_minutes || 30 },
+          { name: 'description', label: 'Description', type: 'textarea', span: 2, value: a.description },
+          { name: 'materials', label: 'Materials', type: 'textarea', span: 2, value: a.materials },
+          { name: 'safetyNotes', label: 'Safety notes', type: 'textarea', span: 2, value: a.safety_notes }
+        ] });
+        return;
+      }
       if (name !== 'activity') return;
       ctx.openModal({ title: 'New activity', endpoint: '/curriculum/activities', submitLabel: 'Create activity', size: 'wide', fields: [
         { name: 'title', label: 'Title', required: true, span: 2 },
@@ -220,25 +249,62 @@
     async load(ctx) {
       const from = ctx.filters.from || new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
       const to = ctx.filters.to || new Date(Date.now() + 21 * 864e5).toISOString().slice(0, 10);
-      const [events, activities, plans, classrooms, staff] = await Promise.all([
+      const [events, activities, plans, classrooms, staff, learners] = await Promise.all([
         R.api('GET', '/curriculum/calendar?from=' + from + '&to=' + to),
         R.api('GET', '/curriculum/activities').catch(() => ({ data: [] })),
         R.api('GET', '/curriculum/lesson-plans').catch(() => ({ data: [] })),
         R.api('GET', '/classrooms').catch(() => ({ data: [] })),
-        ctx.has('staff.read.daycare') ? R.api('GET', '/staff').catch(() => ({ data: [] })) : Promise.resolve({ data: [] })
+        ctx.has('staff.read.daycare') ? R.api('GET', '/staff').catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
+        R.api('GET', '/learners?pageSize=100').catch(() => ({ data: [] }))
       ]);
-      return { rows: events.data, from, to, activities: activities.data || [], plans: plans.data || [], classrooms: classrooms.data || [], staff: staff.data || [] };
+      return { rows: events.data, from, to, activities: activities.data || [], plans: plans.data || [], classrooms: classrooms.data || [], staff: staff.data || [], learners: learners.data || [] };
     },
     render(ctx, params, page) {
       const events = page.rows || [];
+      const view = ctx.filters.calendarView || 'agenda';
       const byDay = {};
       events.forEach((e) => {
         const day = String(e.starts_at || '').slice(0, 10);
         (byDay[day] = byDay[day] || []).push(e);
       });
       const days = Object.keys(byDay).sort();
+      const toggle = '<div class="row" style="gap:8px;margin-bottom:12px">' +
+        ['agenda', 'grid'].map((v) => '<button class="btn btn-sm ' + (view === v ? 'btn-primary' : 'btn-secondary') + '" @click="setFilter(\'calendarView\',\'' + v + '\')">' + R.titleCase(v) + '</button>').join('') + '</div>';
+      if (view === 'grid') {
+        const start = new Date(page.from + 'T00:00:00');
+        const end = new Date(page.to + 'T00:00:00');
+        const gridDays = [];
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+          const key = d.toISOString().slice(0, 10);
+          gridDays.push({ date: new Date(d), key, events: (byDay[key] || []).slice().sort((a, b) => String(a.starts_at).localeCompare(String(b.starts_at))) });
+        }
+        const weekday = start.getDay();
+        const cells = Array.from({ length: weekday }, () => null).concat(gridDays);
+        const weeks = [];
+        for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+        const weekdayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        return R.pageHead('Learning calendar', 'What is happening in each classroom, day by day.',
+          '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'event\')">' + R.icon('calendar-plus') + ' Schedule activity</button>' +
+          R.exportButtons('/exports/activity-participation')) +
+          toggle +
+          R.filterBar(
+            '<label class="small muted">From</label><input class="input" type="date" value="' + R.attr(page.from) + '" @change="setFilter(\'from\',$event.target.value)">' +
+            '<label class="small muted">To</label><input class="input" type="date" value="' + R.attr(page.to) + '" @change="setFilter(\'to\',$event.target.value)">'
+          ) +
+          '<div class="calendar-grid">' +
+            '<div class="calendar-grid-head">' + weekdayNames.map((d) => '<div class="calendar-grid-weekday">' + d + '</div>').join('') + '</div>' +
+            weeks.map((week) => '<div class="calendar-grid-row">' + week.map((cell) => {
+              if (!cell) return '<div class="calendar-grid-cell is-empty"></div>';
+              return '<div class="calendar-grid-cell"><div class="calendar-grid-day">' + R.number(cell.date.getDate()) + '</div>' +
+                cell.events.map((e) => '<div class="calendar-grid-event"><strong>' + R.time(e.starts_at) + '</strong> ' + R.esc(e.title) + '</div>').join('') +
+                '</div>';
+            }).join('') + '</div>').join('') +
+          '</div>';
+      }
       return R.pageHead('Learning calendar', 'What is happening in each classroom, day by day.',
-        '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'event\')">' + R.icon('calendar-plus') + ' Schedule activity</button>') +
+        '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'event\')">' + R.icon('calendar-plus') + ' Schedule activity</button>' +
+          R.exportButtons('/exports/activity-participation')) +
+        toggle +
         R.filterBar(
           '<label class="small muted">From</label><input class="input" type="date" value="' + R.attr(page.from) + '" @change="setFilter(\'from\',$event.target.value)">' +
           '<label class="small muted">To</label><input class="input" type="date" value="' + R.attr(page.to) + '" @change="setFilter(\'to\',$event.target.value)">'
@@ -250,14 +316,16 @@
             '<div style="flex:1;min-width:0"><div class="strong">' + R.esc(e.title) + '</div>' +
             '<div class="muted small">' + R.esc(e.classroom_name || 'Whole centre') + (e.staff_name ? ' · ' + R.esc(e.staff_name) : '') + (e.lesson_plan_title ? ' · ' + R.esc(e.lesson_plan_title) : '') + '</div></div>' +
             R.badge(e.status) +
-            (e.status === 'scheduled' ? '<button class="btn btn-sm btn-secondary" @click="act(\'POST\',\'/curriculum/calendar/events/' + R.attr(e.id) + '/complete\',{notes:\'\'},{successMessage:\'Activity completed\'})">Complete</button>' : '') +
+            (e.status === 'scheduled' ? '<button class="btn btn-sm btn-ghost" @click="act(\'POST\',\'/curriculum/calendar/events/' + R.attr(e.id) + '/start\',{},{successMessage:\'Activity started\'})">Start</button>' : '') +
+            (e.status === 'scheduled' || e.status === 'in_progress' ? '<button class="btn btn-sm btn-ghost" @click="act(\'POST\',\'/curriculum/calendar/events/' + R.attr(e.id) + '/cancel\',{},{successMessage:\'Activity cancelled\'})">Cancel</button>' : '') +
+            (e.status === 'scheduled' || e.status === 'in_progress' ? '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'complete\',\'' + R.attr(e.id) + '\')">Complete</button>' : '') +
             '</div>').join('') + '</div>', '', { className: 'section' })).join('') :
           R.emptyState('Nothing scheduled', 'Choose a date range or schedule an activity.', '<button class="btn btn-primary" @click="openNamedModal(\'event\')">Schedule activity</button>', 'calendar-days'));
     },
-    openModal(ctx, name) {
-      if (name !== 'event') return;
-      const page = ctx.page || {};
-      ctx.openModal({ title: 'Schedule activity', endpoint: '/curriculum/calendar/events', submitLabel: 'Add to calendar', size: 'wide', fields: [
+    openModal(ctx, name, id) {
+      if (name === 'event') {
+        const page = ctx.page || {};
+        ctx.openModal({ title: 'Schedule activity', endpoint: '/curriculum/calendar/events', submitLabel: 'Add to calendar', size: 'wide', fields: [
         { name: 'title', label: 'Title', required: true, span: 2 },
         { name: 'branchId', label: 'Branch', type: 'select', required: true, options: R.branchOptions(ctx) },
         { name: 'classroomId', label: 'Classroom', type: 'select', options: R.classroomOptions(page) },
@@ -268,6 +336,29 @@
         { name: 'endsAt', label: 'Ends at', type: 'datetime-local', required: true },
         { name: 'notes', label: 'Notes', type: 'textarea', span: 2 }
       ] });
+      } else if (name === 'complete' && id) {
+        const page = ctx.page || {};
+        const event = (page.rows || []).find((e) => e.id === id) || {};
+        const learners = (page.learners || []).filter((l) => !event.classroom_id || l.classroom_id === event.classroom_id);
+        const learnerRows = learners.map((l) => ({ learnerId: l.id, status: 'participated', summary: '' }));
+        ctx.openModal({ title: 'Complete activity', endpoint: '/curriculum/calendar/events/' + id + '/complete', method: 'POST', submitLabel: 'Mark complete', size: 'wide',
+          description: 'Tick who participated. You can add a note for each child.',
+          fields: [
+            { name: 'notes', label: 'Overall notes', type: 'textarea', span: 2 },
+            { name: 'participation', label: 'Participation', type: 'repeater', itemLabel: 'Child', span: 2,
+              columns: [
+                { key: 'learnerId', label: 'Child', type: 'select', options: learners.map((l) => ({ value: l.id, label: l.first_name + ' ' + l.last_name })) },
+                { key: 'status', label: 'Status', type: 'select', options: [
+                  { value: 'participated', label: 'Participated' },
+                  { value: 'partial', label: 'Partial' },
+                  { value: 'absent', label: 'Absent' },
+                  { value: 'not_observed', label: 'Not observed' }
+                ] },
+                { key: 'summary', label: 'Notes', type: 'textarea', span: 2 }
+              ],
+              value: learnerRows }
+          ] });
+      }
     }
   };
 })();

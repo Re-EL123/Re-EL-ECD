@@ -54,6 +54,7 @@ function register(router) {
       observationDate: { type: 'string', date: true, optional: true },
       context: { type: 'string', max: 120, optional: true },
       observationText: { type: 'string', min: 10, max: 5000 },
+      photoUrls: { type: 'array', of: 'string', max: 20, optional: true },
       publishNow: { type: 'boolean', optional: true }
     });
     const learner = await getLearner(ctx, body.learnerId);
@@ -65,12 +66,13 @@ function register(router) {
     }
     const observation = await ctx.db.one(
       `INSERT INTO learner_observations (organisation_id, branch_id, learner_id, objective_id, observation_date,
-        context, observation_text, assessment_status, visibility_status, recorded_by, reviewed_by, published_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+        context, observation_text, assessment_status, visibility_status, recorded_by, reviewed_by, published_at, photo_urls)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
       [ctx.organisationId, learner.branch_id, learner.id, body.objectiveId || null,
         body.observationDate || new Date().toISOString().slice(0, 10), body.context || null, body.observationText,
         body.publishNow ? 'published' : 'draft', body.publishNow ? 'published' : 'internal',
-        ctx.user.id, body.publishNow ? ctx.user.id : null, body.publishNow ? new Date().toISOString() : null]
+        ctx.user.id, body.publishNow ? ctx.user.id : null, body.publishNow ? new Date().toISOString() : null,
+        JSON.stringify(Array.isArray(body.photoUrls) ? body.photoUrls : [])]
     );
     if (body.publishNow) await notifyGuardians(ctx, learner.id, observation);
     await recordAudit(ctx.db, ctx, {
@@ -85,7 +87,8 @@ function register(router) {
     const body = validate(ctx.body, {
       context: { type: 'string', max: 120, optional: true },
       observationText: { type: 'string', min: 10, max: 5000, optional: true },
-      objectiveId: { type: 'string', uuid: true, optional: true }
+      objectiveId: { type: 'string', uuid: true, optional: true },
+      photoUrls: { type: 'array', of: 'string', max: 20, optional: true }
     });
     const observation = await ctx.db.one('SELECT * FROM learner_observations WHERE id = $1 AND organisation_id = $2',
       [ctx.params.id, ctx.organisationId]);
@@ -96,8 +99,9 @@ function register(router) {
     if (observation.recorded_by !== ctx.user.id && !has(ctx, 'assessments.read.daycare')) throw new AppError('FORBIDDEN');
     await ctx.db.query(
       `UPDATE learner_observations SET context = COALESCE($1,context), observation_text = COALESCE($2,observation_text),
-        objective_id = COALESCE($3,objective_id), updated_at = now() WHERE id = $4`,
-      [body.context || null, body.observationText || null, body.objectiveId || null, observation.id]
+        objective_id = COALESCE($3,objective_id), photo_urls = COALESCE($4,photo_urls), updated_at = now() WHERE id = $5`,
+      [body.context || null, body.observationText || null, body.objectiveId || null,
+        body.photoUrls ? JSON.stringify(body.photoUrls) : null, observation.id]
     );
     return ctx.db.one('SELECT * FROM learner_observations WHERE id = $1', [observation.id]);
   }, { permission: ['assessments.create.assigned', 'assessments.read.daycare'], permissionMode: 'any' });
@@ -457,8 +461,12 @@ async function progressFor(ctx, learner) {
      ORDER BY d.sort_order, o.code`, [ctx.organisationId]
   );
   const observations = await ctx.db.many(
-    `SELECT o.id, o.objective_id, o.observation_date, o.context, o.observation_text, o.assessment_status
-     FROM learner_observations o WHERE o.learner_id = $1 AND o.assessment_status IN ('published','amended')
+    `SELECT o.id, o.objective_id, o.observation_date, o.context, o.observation_text, o.assessment_status, o.photo_urls,
+            ob.code AS objective_code, d.name AS domain_name
+     FROM learner_observations o
+     LEFT JOIN learning_objectives ob ON ob.id = o.objective_id
+     LEFT JOIN curriculum_domains d ON d.id = ob.domain_id
+     WHERE o.learner_id = $1 AND o.assessment_status IN ('published','amended')
      ORDER BY o.observation_date DESC`, [learner.id]
   );
   const domains = new Map();

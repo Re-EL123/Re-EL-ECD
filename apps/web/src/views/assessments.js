@@ -5,9 +5,38 @@
   const R = window.Reel;
   const V = R.views;
 
+  function downloadFile(content, filename, type) {
+    const blob = new Blob([content], { type: type + ';charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function downloadReport(body) {
+    return R.api('POST', '/assessments/reports/generate', body).then((p) => {
+      const payload = p.data || {};
+      const reports = payload.reports || (payload.report ? [payload.report] : []);
+      reports.forEach((report) => {
+        if (!report) return;
+        const safeName = (report.learner && (report.learner.firstName + '-' + report.learner.lastName) || 'progress-report')
+          .toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'progress-report';
+        const periodLabel = report.period && report.period.name ? '-' + report.period.name.toLowerCase().replace(/[^a-z0-9-]+/g, '-') : '';
+        if (report.html) downloadFile(report.html, safeName + periodLabel + '.html', 'text/html');
+        if (report.csv) downloadFile(report.csv, safeName + periodLabel + '.csv', 'text/csv');
+      });
+      return p;
+    });
+  }
+
   V.assessments = {
     async load(ctx) {
       const status = ctx.filters.status ? '?status=' + encodeURIComponent(ctx.filters.status) : '';
+      const canPublish = ctx.has('assessments.publish.daycare');
       const [overview, observations, periods, learners, frameworks, classrooms] = await Promise.all([
         ctx.has('assessments.read.daycare') ? R.api('GET', '/assessments/overview').then((p) => p.data).catch(() => ({})) : Promise.resolve({}),
         R.api('GET', '/assessments/observations' + status).then((p) => p.data).catch(() => []),
@@ -18,24 +47,39 @@
       ]);
       const objectives = frameworks.flatMap((f) => (f.domains || []).map((d) => ({ domain: d, framework: f })));
       const allObjectives = await R.api('GET', '/curriculum/objectives').then((p) => p.data).catch(() => []);
-      return { overview, observations, periods, learners, frameworks, classrooms, objectives: allObjectives };
+      const domains = (frameworks || []).flatMap((f) => (f.domains || []).map((d) => ({ id: d.id, name: d.name, framework: f.name })));
+      return { overview, observations, periods, learners, frameworks, classrooms, objectives: allObjectives, domains, canPublish };
     },
 
     render(ctx, params, page) {
       const tab = ctx.tab || 'overview';
       const o = page.overview || {};
       const observations = page.observations || [];
+      const tabs = [
+        { key: 'overview', label: 'Overview' },
+        { key: 'observations', label: 'Observations' }
+      ];
+      if (page.canPublish) tabs.push({ key: 'review', label: 'Review queue' });
+      tabs.push({ key: 'periods', label: 'Periods' });
+      tabs.push({ key: 'reports', label: 'Reports' });
+      tabs.push({ key: 'termAssessments', label: 'Term assessments' });
       return R.pageHead('Assessments', 'Observe, record and understand each child\'s development.',
         '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'period\')">' + R.icon('calendar-plus') + ' New period</button>' +
-        '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'observation\')">' + R.icon('plus') + ' Record observation</button>') +
+        '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'observation\')">' + R.icon('plus') + ' Record observation</button>' +
+        R.exportButtons('/exports/observations')) +
         '<div class="grid grid-4 section">' +
         R.statCard({ label: 'Coverage', value: R.percent(o.completionRate), icon: 'target', foot: R.number(o.learnersWithObservations) + ' of ' + R.number(o.learners) + ' children' }) +
         R.statCard({ label: 'Observations', value: R.number(observations.length), icon: 'eye', tone: 'sky', foot: R.number(o.published) + ' published' }) +
         R.statCard({ label: 'Awaiting review', value: R.number(o.pendingReview), icon: 'clipboard-list', tone: 'sun', foot: 'Draft and submitted' }) +
         R.statCard({ label: 'Assessment periods', value: R.number((page.periods || []).length), icon: 'calendar-range', tone: 'plum', foot: 'Active reporting windows' }) +
         '</div>' +
-        R.tabs([{ key: 'overview', label: 'Overview' }, { key: 'observations', label: 'Observations' }, { key: 'periods', label: 'Periods' }, { key: 'reports', label: 'Reports' }], tab) +
-        (tab === 'observations' ? this.renderObservations(ctx, page) : tab === 'periods' ? this.renderPeriods(page) : tab === 'reports' ? this.renderReports(ctx, page) : this.renderOverview(page));
+        R.tabs(tabs, tab) +
+        (tab === 'observations' ? this.renderObservations(ctx, page)
+          : tab === 'review' ? this.renderReview(ctx, page)
+          : tab === 'periods' ? this.renderPeriods(page)
+          : tab === 'reports' ? this.renderReports(ctx, page)
+          : tab === 'termAssessments' ? this.renderTermAssessments(page)
+          : this.renderOverview(page));
     },
 
     renderOverview(page) {
@@ -61,19 +105,51 @@
     },
 
     renderObservations(ctx, page) {
-      return R.filterBar(
-        R.selectFilter(ctx, 'status', [{ value: 'draft', label: 'Draft' }, { value: 'submitted', label: 'Submitted' }, { value: 'published', label: 'Published' }], 'All statuses')) +
-        R.table({ rows: page.observations || [], columns: [
+      const rows = page.observations || [];
+      const canPublish = page.canPublish;
+      const bulkActions = [{ label: 'Submit for review', icon: 'send', path: '/assessments/observations/bulk', action: 'submit' }];
+      if (canPublish) bulkActions.push({ label: 'Publish selected', icon: 'upload', path: '/assessments/observations/bulk', action: 'publish' });
+      return (bulkActions.length ? R.bulkBar(bulkActions, { hint: 'Unpublished observations are shared with families only after review.' }) : '') +
+        R.filterBar(
+          R.selectFilter(ctx, 'status', [{ value: 'draft', label: 'Draft' }, { value: 'submitted', label: 'Submitted' }, { value: 'published', label: 'Published' }, { value: 'amended', label: 'Amended' }], 'All statuses')) +
+        R.table({ rows, selectable: true, columns: [
           { label: 'Child', render: (o) => '<a class="cell-strong" href="#/app/learners/' + R.attr(o.learner_id) + '">' + R.esc(o.first_name + ' ' + o.last_name) + '</a>' },
-          { label: 'Objective', render: (o) => '<span class="mono badge badge-muted">' + R.esc(o.objective_code) + '</span><span class="cell-sub">' + R.esc(o.domain_name) + '</span>' },
+          { label: 'Objective', render: (o) => '<span class="mono badge badge-muted">' + R.esc(o.objective_code || '—') + '</span><span class="cell-sub">' + R.esc(o.domain_name || '') + '</span>' },
           { label: 'Observation', render: (o) => R.esc(R.truncate(o.observation_text, 90)) + '<span class="cell-sub">' + R.esc(o.context || '') + '</span>' },
+          { label: 'Media', render: (o) => { const media = R.mediaList(o.photo_urls); return media.length ? '<div class="row" style="gap:4px">' + media.slice(0, 3).map((url) => R.mediaThumb(url, 'Observation media')).join('') + '</div>' : '<span class="muted">—</span>'; } },
           { label: 'Date', render: (o) => R.date(o.observation_date) },
-          { label: 'Status', render: (o) => R.badge(o.assessment_status) + (o.visibility_status === 'shared' ? ' <span class="badge badge-green">Shared</span>' : '') },
+          { label: 'Status', render: (o) => R.badge(o.assessment_status) + ' ' + R.badge(o.visibility_status || 'internal') },
           { label: 'By', render: (o) => R.esc(o.recorded_by_name || '—') },
           { label: '', align: 'right', render: (o) => '<div class="btn-group">' +
-            (o.assessment_status !== 'published' ? '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/assessments/observations/' + R.attr(o.id) + '/publish\',{},{successMessage:\'Observation published\'})">Publish</button>' : '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'amend\',\'' + R.attr(o.id) + '\')">Amend</button>') +
+            (o.assessment_status === 'draft' ? '<button class="btn btn-sm btn-secondary" @click="act(\'POST\',\'/assessments/observations/' + R.attr(o.id) + '/submit\',{},{successMessage:\'Submitted for review\'})">Submit</button>' : '') +
+            (o.assessment_status !== 'published' && canPublish ? '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/assessments/observations/' + R.attr(o.id) + '/publish\',{},{successMessage:\'Observation published\'})">Publish</button>' : '') +
+            (o.assessment_status === 'published' ? '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'amend\',\'' + R.attr(o.id) + '\')">Amend</button>' : '') +
             '</div>' }
         ], emptyTitle: 'No observations', emptyMessage: 'Record what you see children doing — that is the heart of assessment.' });
+    },
+
+    renderReview(ctx, page) {
+      const rows = (page.observations || []).filter((o) => o.assessment_status === 'submitted');
+      const canPublish = page.canPublish;
+      return (canPublish ? R.bulkBar([{ label: 'Publish selected', icon: 'upload', path: '/assessments/observations/bulk', action: 'publish' }], { hint: 'Publishing shares the observation with the family.' }) : '') +
+        R.table({ rows, selectable: canPublish, columns: [
+          { label: 'Child', render: (o) => '<a class="cell-strong" href="#/app/learners/' + R.attr(o.learner_id) + '">' + R.esc(o.first_name + ' ' + o.last_name) + '</a>' },
+          { label: 'Objective', render: (o) => '<span class="mono badge badge-muted">' + R.esc(o.objective_code || '—') + '</span><span class="cell-sub">' + R.esc(o.domain_name || '') + '</span>' },
+          { label: 'Observation', render: (o) => R.esc(R.truncate(o.observation_text, 90)) + '<span class="cell-sub">' + R.esc(o.context || '') + '</span>' },
+          { label: 'Date', render: (o) => R.date(o.observation_date) },
+          { label: 'By', render: (o) => R.esc(o.recorded_by_name || '—') },
+          { label: '', align: 'right', render: (o) => (canPublish ? '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/assessments/observations/' + R.attr(o.id) + '/publish\',{},{successMessage:\'Observation published\'})">Publish</button>' : '') }
+        ], emptyTitle: 'Nothing awaiting review', emptyMessage: 'Submitted observations will appear here for publishing.' });
+    },
+
+    renderTermAssessments(page) {
+      const periods = page.periods || [];
+      const domains = page.domains || [];
+      return R.card('Term assessments', '<p class="muted small">Record a domain summary for a child and publish it to the family. Parents see these in their child\'s profile.</p>' +
+        '<div class="kpi-list"><div class="kpi-row"><span class="kpi-label">Assessment periods</span><span class="kpi-value">' + R.number(periods.length) + '</span></div>' +
+        '<div class="kpi-row"><span class="kpi-label">Domains</span><span class="kpi-value">' + R.number(domains.length) + '</span></div></div>' +
+        (periods.length ? '' : '<div class="alert alert-warn" style="margin-top:12px"><i data-lucide="alert-triangle"></i><span>Create an assessment period first.</span></div>'),
+        '<div class="btn-group">' + R.exportButtons('/exports/term-assessments') + '<button class="btn btn-primary" @click="openNamedModal(\'termAssessment\')">' + R.icon('clipboard-plus') + ' Record assessment</button></div>');
     },
 
     renderPeriods(page) {
@@ -128,13 +204,23 @@
           { name: 'endsOn', label: 'Ends on', type: 'date', required: true }
         ] });
       } else if (name === 'report') {
-        ctx.openModal({ title: 'Generate progress reports', endpoint: '/assessments/reports/generate', submitLabel: 'Generate reports', size: 'wide',
-          description: 'Choose one child or several. Reports are generated in the background and listed in the report jobs.',
+        ctx.openModal({ title: 'Generate progress reports', endpoint: '/assessments/reports/generate', method: 'POST', submitLabel: 'Generate & download', size: 'wide',
+          description: 'Choose one child or several. Each report is generated now and downloads automatically as HTML or CSV.',
+          onSubmit: downloadReport,
           fields: [
             { name: 'learnerIds', label: 'Children', type: 'multiselect', span: 2, required: true, options: R.learnerOptions(learners), placeholder: 'Search children…' },
             { name: 'assessmentPeriodId', label: 'Period', type: 'select', required: true, options: (page.periods || []).map((p) => ({ value: p.id, label: p.name })) },
             { name: 'format', label: 'Format', type: 'select', options: [{ value: 'html', label: 'HTML' }, { value: 'csv', label: 'CSV' }], value: 'html' }
           ] });
+      } else if (name === 'termAssessment') {
+        const periods = page.periods || [];
+        const domains = page.domains || [];
+        ctx.openModal({ title: 'Record term assessment', endpoint: '/assessments/learner', method: 'POST', submitLabel: 'Save assessment', size: 'wide', fields: [
+          { name: 'learnerId', label: 'Child', type: 'select', required: true, options: learners.map((l) => ({ value: l.id, label: l.first_name + ' ' + l.last_name })) },
+          { name: 'assessmentPeriodId', label: 'Period', type: 'select', required: true, options: periods.map((p) => ({ value: p.id, label: p.name })) },
+          { name: 'domainId', label: 'Domain', type: 'select', required: true, options: domains.map((d) => ({ value: d.id, label: d.name })) },
+          { name: 'summary', label: 'Summary', type: 'textarea', required: true, span: 2, placeholder: 'Describe what the child can do in this domain and what they are ready to try next.' }
+        ] });
       }
     },
 
@@ -144,10 +230,11 @@
       const objectives = page.objectives || [];
       ctx.openModal({ title: 'Record observation', endpoint: '/assessments/observations', submitLabel: 'Save observation', size: 'wide', fields: [
         { name: 'learnerId', label: 'Child', type: 'select', required: true, value: learnerId || '', options: learners.map((l) => ({ value: l.id, label: l.first_name + ' ' + l.last_name + (l.classroom_name ? ' · ' + l.classroom_name : '') })) },
-        { name: 'objectiveId', label: 'Learning objective', type: 'select', required: true, options: objectives.map((o) => ({ value: o.id, label: o.code + ' · ' + R.truncate(o.description, 60) })) },
+        { name: 'objectiveId', label: 'Learning objective', type: 'searchselect', required: true, placeholder: 'Search by code or description…', options: objectives.map((o) => ({ value: o.id, label: o.code + ' · ' + R.truncate(o.description, 46), subtitle: o.description })) },
         { name: 'observationDate', label: 'Date', type: 'date', value: R.today(), required: true },
         { name: 'context', label: 'Context', placeholder: 'Outdoor play, story time…' },
         { name: 'observationText', label: 'What did you see?', type: 'textarea', required: true, span: 2 },
+        { name: 'photoUrls', label: 'Photos & videos', type: 'media', multiple: true, scope: 'observation', accept: 'image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/webm,video/quicktime', span: 2, help: 'Work samples, paintings, or a short clip. Shared with the family when you publish.' },
         { name: 'publishNow', label: 'Publish now', type: 'checkbox', value: false, help: 'Skip the review step and share with the family' }
       ] });
     }

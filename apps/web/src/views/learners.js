@@ -116,11 +116,13 @@
       ]);
       const classrooms = ctx.has('classrooms.read.daycare')
         ? await R.api('GET', '/classrooms').catch(() => ({ data: [] })) : { data: [] };
+      const periods = await R.api('GET', '/assessments/periods').then((p) => p.data).catch(() => []);
+      const frameworks = await R.api('GET', '/curriculum/frameworks').then((p) => p.data).catch(() => []);
       return {
         learner, timeline: timeline || [], portfolio: portfolio || [], medical: medical || [],
         collections: collections || [], documents: documents || [], dailyReports: dailyReports || [],
         consents: consents || [], finance: finance || { invoices: [], balance: 0 }, progress: progress || {},
-        classrooms: classrooms.data || []
+        classrooms: classrooms.data || [], periods, frameworks
       };
     },
 
@@ -200,8 +202,18 @@
         ], emptyTitle: 'No attendance yet', emptyMessage: 'Registers recorded by the classroom will appear here.' }), '<a class="btn btn-sm btn-ghost" href="#/app/learner-attendance">Open register</a>');
       } else if (tab === 'progress') {
         const p = page.progress || {};
-        body = R.card('Developmental progress', (p.domains || []).length ? '<div class="stack">' + p.domains.map((d) =>
-          '<div class="metric-bar"><span>' + R.esc(d.name) + '</span><div class="bar"><span style="width:' + Math.max(2, Math.min(100, Number(d.percentage || 0))) + '%"></span></div><span class="val">' + R.number(d.observations) + '</span></div>').join('') + '</div>' : R.emptyState('No progress data', 'Observations and assessments will build this picture.', '<a class="btn btn-sm btn-secondary" href="#/app/assessments">Open assessments</a>', 'line-chart')) +
+        const domains = p.domains || [];
+        const totalObserved = domains.reduce((sum, d) => sum + (Number(d.observed) || 0), 0);
+        const totalObjectives = domains.reduce((sum, d) => sum + (Number(d.total) || 0), 0);
+        body = R.card('Developmental progress', domains.length ? '<div class="kpi-list"><div class="kpi-row"><span class="kpi-label">Objectives observed</span><span class="kpi-value">' + R.number(totalObserved) + ' of ' + R.number(totalObjectives) + '</span></div></div><div class="section"></div><div class="stack">' + domains.map((d) =>
+          '<div class="metric-bar"><span>' + R.esc(d.name) + '</span><div class="bar"><span style="width:' + Math.max(2, Math.min(100, Math.round(((Number(d.observed) || 0) / (Number(d.total) || 1)) * 100))) + '%"></span></div><span class="val">' + R.number(d.observed) + ' / ' + R.number(d.total) + '</span></div>').join('') + '</div>' : R.emptyState('No progress data', 'Observations and assessments will build this picture.', '<a class="btn btn-sm btn-secondary" href="#/app/assessments">Open assessments</a>', 'line-chart')) +
+          '<div class="section"></div>' +
+          R.card('Term assessments', R.table({ rows: p.assessments || [], compact: true, columns: [
+            { label: 'Period', render: (a) => R.esc(a.period_name || 'All periods') },
+            { label: 'Domain', render: (a) => R.esc(a.domain_name || 'All domains') },
+            { label: 'Status', render: (a) => R.badge(a.assessment_status) },
+            { label: 'Published', render: (a) => R.date(a.published_at) }
+          ], emptyTitle: 'No term assessments', emptyMessage: 'Record a domain assessment for a period to see it here.' }), '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'termAssessment\')">' + R.icon('clipboard-plus') + ' Record assessment</button>') +
           '<div class="section"></div>' +
           R.card('Recent observations', R.table({ rows: p.observations || [], compact: true, columns: [
             { label: 'Date', render: (o) => R.date(o.observation_date) },
@@ -216,8 +228,9 @@
           { label: 'Meals', render: (d) => R.esc(d.meals || '—') },
           { label: 'Naps', render: (d) => R.esc(d.naps || '—') },
           { label: 'Summary', render: (d) => R.esc(R.truncate(d.activities_summary || d.notes, 80)) },
-          { label: 'Photos', render: (d) => R.mediaList(d.photo_urls).length ? R.mediaThumb(R.mediaList(d.photo_urls)[0], 'Report photo') : '<span class="muted">—</span>' },
-          { label: 'Shared', render: (d) => d.shared_with_guardians ? '<span class="badge badge-green">Yes</span>' : '<span class="badge badge-muted">No</span>' }
+          { label: 'Media', render: (d) => { const media = R.mediaList(d.photo_urls); return media.length ? '<div class="row" style="gap:4px">' + media.slice(0, 3).map((url) => R.mediaThumb(url, 'Report media')).join('') + '</div>' : '<span class="muted">—</span>'; } },
+          { label: 'Shared', render: (d) => d.shared_with_guardians ? '<span class="badge badge-green">Yes</span>' : '<span class="badge badge-muted">No</span>' },
+          { label: '', align: 'right', render: (d) => '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'editDailyReport\',\'' + R.attr(d.id) + '\')">Edit</button>' }
         ], emptyTitle: 'No daily reports', emptyMessage: 'Write a report to share the child\'s day with their family.' }), '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'dailyReport\')">' + R.icon('plus') + ' New report</button>');
       } else if (tab === 'portfolio') {
         body = R.card('Portfolio', (page.portfolio || []).length ? '<div class="media-grid">' + page.portfolio.map((item) =>
@@ -318,9 +331,35 @@
           { name: 'toileting', label: 'Toileting' },
           { name: 'activitiesSummary', label: 'What we did', type: 'textarea', span: 2 },
           { name: 'notes', label: 'Notes for the family', type: 'textarea', span: 2 },
-          { name: 'photoUrl', label: 'Photo', type: 'media', scope: 'daily-report', accept: 'image/jpeg,image/png,image/webp,image/gif,image/avif', span: 2 },
+          { name: 'photoUrls', label: 'Photos & videos', type: 'media', multiple: true, scope: 'daily-report', accept: 'image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/webm,video/quicktime', span: 2 },
           { name: 'sharedWithGuardians', label: 'Share with guardians', type: 'checkbox', value: true, help: 'Publish to the family portal' }
-        ] });
+        ], transform: (data) => {
+          data.photoUrls = Array.isArray(data.photoUrls) ? data.photoUrls : (data.photoUrls ? [data.photoUrls] : []);
+          return data;
+        } });
+      } else if (name === 'editDailyReport' && id) {
+        const report = (ctx.page && ctx.page.dailyReports || []).find((r) => r.id === id) || {};
+        ctx.openModal({ title: 'Edit daily report', endpoint: '/learners/' + l.id + '/daily-reports/' + id, method: 'PATCH', submitLabel: 'Save report', size: 'wide', fields: [
+          { name: 'mood', label: 'Mood', type: 'select', options: ['happy', 'calm', 'tired', 'unsettled', 'energetic'], value: report.mood },
+          { name: 'meals', label: 'Meals', value: report.meals },
+          { name: 'naps', label: 'Naps', value: report.naps },
+          { name: 'toileting', label: 'Toileting', value: report.toileting },
+          { name: 'activitiesSummary', label: 'What we did', type: 'textarea', span: 2, value: report.activities_summary },
+          { name: 'notes', label: 'Notes for the family', type: 'textarea', span: 2, value: report.notes },
+          { name: 'photoUrls', label: 'Photos & videos', type: 'media', multiple: true, scope: 'daily-report', accept: 'image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/webm,video/quicktime', value: R.mediaList(report.photo_urls), span: 2 },
+          { name: 'sharedWithGuardians', label: 'Share with guardians', type: 'checkbox', value: Boolean(report.shared_with_guardians) }
+        ], transform: (data) => {
+          data.photoUrls = Array.isArray(data.photoUrls) ? data.photoUrls : (data.photoUrls ? [data.photoUrls] : []);
+          return data;
+        } });
+      } else if (name === 'termAssessment') {
+        const periods = (ctx.page && ctx.page.periods) || [];
+        const domains = ((ctx.page && ctx.page.frameworks) || []).flatMap((f) => (f.domains || []).map((d) => ({ value: d.id, label: d.name })));
+        ctx.openModal({ title: 'Record term assessment', endpoint: '/assessments/learner', submitLabel: 'Save assessment', size: 'wide', fields: [
+          { name: 'assessmentPeriodId', label: 'Period', type: 'select', required: true, options: periods.map((p) => ({ value: p.id, label: p.name })) },
+          { name: 'domainId', label: 'Domain', type: 'select', required: true, options: domains },
+          { name: 'summary', label: 'Summary', type: 'textarea', required: true, span: 2, placeholder: 'Describe what the child can do in this domain and what they are ready to try next.' }
+        ], transform: (data) => ({ learnerId: id, assessmentPeriodId: data.assessmentPeriodId, domainId: data.domainId, summary: data.summary }) });
       } else if (name === 'document') {
         ctx.openModal({ title: 'Add document', endpoint: '/learners/' + id + '/documents', submitLabel: 'Save document', fields: [
           { name: 'documentType', label: 'Document type', type: 'select', required: true, options: ['consent', 'medical', 'report', 'certificate', 'other'] },

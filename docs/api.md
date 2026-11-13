@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **341 routes** across 20 modules.
+Generated from the router: **349 routes** across 20 modules.
 
 ## Access
 
@@ -73,6 +73,8 @@ Generated from the router: **341 routes** across 20 modules.
 | PATCH | `/assessments/observations/:id` | assessments.create.assigned OR assessments.read.daycare |
 | POST | `/assessments/observations/:id/amend` | assessments.publish.daycare |
 | POST | `/assessments/observations/:id/publish` | assessments.publish.daycare |
+| POST | `/assessments/observations/:id/submit` | assessments.create.assigned OR assessments.read.daycare |
+| POST | `/assessments/observations/bulk` | assessments.create.assigned OR assessments.read.daycare |
 | GET | `/assessments/overview` | assessments.read.daycare |
 | GET | `/assessments/periods` | assessments.read.daycare |
 | POST | `/assessments/periods` | assessments.publish.daycare |
@@ -161,10 +163,14 @@ Generated from the router: **341 routes** across 20 modules.
 | --- | --- | --- |
 | GET | `/curriculum/activities` | curriculum.read.daycare |
 | POST | `/curriculum/activities` | curriculum.create.daycare |
+| PATCH | `/curriculum/activities/:id` | curriculum.create.daycare |
+| POST | `/curriculum/activities/:id/archive` | curriculum.create.daycare |
 | GET | `/curriculum/calendar` | curriculum.read.daycare |
 | POST | `/curriculum/calendar/events` | curriculum.create.daycare |
+| POST | `/curriculum/calendar/events/:id/cancel` | curriculum.create.daycare |
 | POST | `/curriculum/calendar/events/:id/complete` | curriculum.create.daycare |
 | GET | `/curriculum/calendar/events/:id/participation` | curriculum.read.daycare |
+| POST | `/curriculum/calendar/events/:id/start` | curriculum.create.daycare |
 | POST | `/curriculum/domains` | curriculum.create.daycare |
 | GET | `/curriculum/frameworks` | curriculum.read.daycare |
 | POST | `/curriculum/frameworks` | curriculum.create.daycare |
@@ -337,6 +343,7 @@ Generated from the router: **341 routes** across 20 modules.
 | GET | `/learners/:id/consents` | consent.read.daycare OR learners.read.daycare |
 | GET | `/learners/:id/daily-reports` | learners.read.daycare OR learners.read.assigned |
 | POST | `/learners/:id/daily-reports` | attendance.record.assigned OR learners.update.daycare |
+| PATCH | `/learners/:id/daily-reports/:reportId` | attendance.record.assigned OR learners.update.daycare |
 | GET | `/learners/:id/documents` | learners.read.daycare OR learners.read.assigned |
 | POST | `/learners/:id/documents` | learners.update.daycare |
 | GET | `/learners/:id/finance` | finance.read.daycare |
@@ -416,6 +423,7 @@ Generated from the router: **341 routes** across 20 modules.
 | POST | `/parent/children/:id/absence` | parent.absence.report.own |
 | GET | `/parent/children/:id/assessments` | parent.read.own |
 | GET | `/parent/children/:id/attendance` | parent.read.own |
+| GET | `/parent/children/:id/calendar` | parent.read.own |
 | GET | `/parent/children/:id/daily-reports` | parent.read.own |
 | GET | `/parent/children/:id/invoices` | parent.finance.read.own |
 | GET | `/parent/children/:id/portfolio` | parent.read.own |
