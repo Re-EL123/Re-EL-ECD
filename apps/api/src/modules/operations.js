@@ -1039,6 +1039,16 @@ function register(router) {
       for (const guardian of guardians) {
         const days = Math.floor((Date.now() - new Date(guardian.joined_at).getTime()) / 86400000);
         const activation = guardian.activation || {};
+        // Existing families predate the journey — stamp the markers instead
+        // of sending "your first week" two months in, then skip them for good.
+        if (days > 7 && !(activation.welcomeSentAt && activation.day3SentAt && activation.previewDigestSentAt && activation.day7SentAt)) {
+          await innerCtx.db.query(
+            `UPDATE memberships SET activation = COALESCE(activation, '{}'::jsonb) || $1::jsonb
+             WHERE user_id = $2 AND organisation_id = $3`,
+            [JSON.stringify({ welcomeSentAt: activation.welcomeSentAt || new Date().toISOString(), day3SentAt: activation.day3SentAt || new Date().toISOString(), previewDigestSentAt: activation.previewDigestSentAt || new Date().toISOString(), day7SentAt: activation.day7SentAt || new Date().toISOString() }), guardian.user_id, organisation.id]
+          );
+          continue;
+        }
         const children = await innerCtx.db.many(
           `SELECT l.id, l.first_name FROM learner_guardians lg
            JOIN guardians g ON g.id = lg.guardian_id
@@ -1138,6 +1148,8 @@ function register(router) {
     await recordAudit(innerCtx.db, innerCtx, { action: 'automation.parent_onboarding', resourceType: 'organisation', resourceId: innerCtx.organisationId, metadata: { ...summary, triggeredBy } });
     return summary;
   }
+
+  exportedOnboardingAll = onboardingAll;
 
   router.post('/automation/parent-onboarding', async (ctx) => {
     return onboardingAll(ctx, 'manual');
@@ -1324,4 +1336,11 @@ async function buildReport(ctx, key, from, to) {
   }
 }
 
+// Exported for direct verification of the cron branches. Captured when
+// register() runs, so tests can drive the real sweep without an HTTP server.
+let exportedOnboardingAll = null;
 module.exports = { register, REPORT_CATALOGUE };
+module.exports._onboardingAll = (innerCtx, triggeredBy) => {
+  if (!exportedOnboardingAll) throw new Error('register() has not run yet.');
+  return exportedOnboardingAll(innerCtx, triggeredBy);
+};
