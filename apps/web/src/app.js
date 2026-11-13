@@ -230,6 +230,8 @@
       theme: 'light',
       commandOpen: false,
       guide: null,
+      voices: [],
+      voiceUri: (function () { try { return localStorage.getItem('reel.voiceUri') || ''; } catch { return ''; } })(),
       commandQuery: '',
       commandResults: [],
       commandIndex: 0,
@@ -326,6 +328,10 @@
       },
 
       async boot() {
+        this.refreshVoices();
+        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+          window.speechSynthesis.onvoiceschanged = () => this.refreshVoices();
+        }
         try { this.theme = localStorage.getItem('reel.theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch { this.theme = 'light'; }
         try { this.sidebarCollapsed = localStorage.getItem('reel.sidebar') !== 'expanded'; } catch { this.sidebarCollapsed = true; }
         this.viewportWidth = window.innerWidth;
@@ -1652,14 +1658,78 @@
         return typeof window !== 'undefined' && 'speechSynthesis' in window;
       },
 
+      refreshVoices() {
+        if (!this.speechSupported()) { this.voices = []; return; }
+        // English voices only; device order is not meaningful, rank them ourselves.
+        this.voices = (window.speechSynthesis.getVoices() || []).filter((voice) => /^en([-_]|$)/i.test(voice.lang || ''));
+      },
+
+      englishVoices() {
+        return this.voices.slice().sort((a, b) => this.voiceRank(b) - this.voiceRank(a));
+      },
+
+      voiceRank(voice) {
+        const name = String(voice.name || '').toLowerCase();
+        const lang = String(voice.lang || '').toLowerCase();
+        let score = 0;
+        if (/en[-_]za/.test(lang)) score += 60;            // South African voices first
+        else if (/en[-_]gb|en[-_]au|en[-_]nz|en[-_]ie/.test(lang)) score += 25;
+        else if (/en[-_]/.test(lang)) score += 15;
+        if (/(natural|neural|online|wavenet|google|enhanced)/.test(name)) score += 40;
+        if (/(samantha|daniel|karen|alex|moira|fiona|victoria)/.test(name)) score += 30;
+        if (/(female|woman|zira|aria|hazel)/.test(name)) score += 12;
+        if (voice.localService) score += 5;
+        return score;
+      },
+
+      selectedVoice() {
+        const voices = this.englishVoices();
+        if (!voices.length) return null;
+        const saved = voices.find((voice) => voice.voiceURI === this.voiceUri);
+        return saved || voices[0];
+      },
+
+      selectedVoiceLabel() {
+        const voice = this.selectedVoice();
+        return voice ? voice.name : 'No voice available on this device';
+      },
+
+      selectVoice(uri) {
+        this.voiceUri = String(uri || '');
+        try { localStorage.setItem('reel.voiceUri', this.voiceUri); } catch { /* private mode */ }
+      },
+
+      speakableText(text) {
+        // Make prose sound natural when read aloud: breathe at line ends,
+        // drop decoration that is visual noise to the synthesizer.
+        return String(text || '')
+          .replace(/['’`]/g, "'")
+          .replace(/[""„]/g, '"')
+          .replace(/[•·]/g, '. ')
+          .replace(/\s*\n\s*/g, ', ')
+          .replace(/,\s*,/g, ',')
+          .replace(/\.\s*,/g, '.')
+          .replace(/,\s*\./g, '.')
+          .replace(/\.\.\./g, '...')
+          .replace(/\s+/g, ' ')
+          .replace(/\.\s*\./g, '.')
+          .trim();
+      },
+
       speakCurrentStep() {
         if (!this.guide || !this.speechSupported()) return;
         const step = this.guide.steps[this.guide.index];
         if (!step || !step.body) return;
         window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance((step.title ? step.title + '. ' : '') + step.body);
-        utterance.lang = 'en-ZA';
-        utterance.rate = 0.95;
+        const body = this.speakableText((step.title ? step.title + '. ' : '') + step.body);
+        const utterance = new SpeechSynthesisUtterance(body);
+        const voice = this.selectedVoice();
+        if (voice) utterance.voice = voice;
+        utterance.lang = (voice && voice.lang) || 'en-ZA';
+        // Songs, rhymes and stories land better slightly slower than instructions.
+        utterance.rate = /song|rhyme|story|book/.test(String(step.step_type || '')) ? 0.85 : 0.92;
+        utterance.pitch = 1;
+        utterance.volume = 1;
         window.speechSynthesis.speak(utterance);
       },
 
