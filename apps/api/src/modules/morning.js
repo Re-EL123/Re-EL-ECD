@@ -128,7 +128,7 @@ function register(router) {
         label: 'This month'
       }
     };
-  }, { permission: ['curriculum.create.daycare', 'staff_attendance.record.assigned', 'staff_attendance.record.own'], permissionMode: 'any' });
+  }, { permission: ['curriculum.create.daycare', 'assessments.create.assigned', 'attendance.record.assigned', 'attendance.record.own', 'staff_attendance.record.assigned', 'staff_attendance.record.own'], permissionMode: 'any' });
 }
 
 module.exports = { register };

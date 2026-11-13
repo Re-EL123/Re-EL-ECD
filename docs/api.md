@@ -602,7 +602,7 @@ Generated from the router: **380 routes** across 24 modules.
 | POST | `/staff/:id/training` | staff.manage.daycare |
 | GET | `/staff/activity-summary` | reports.read.daycare OR staff.read.daycare OR staff_attendance.record.own |
 | POST | `/staff/bulk` | staff.manage.daycare |
-| GET | `/staff/morning` | curriculum.create.daycare OR staff_attendance.record.assigned OR staff_attendance.record.own |
+| GET | `/staff/morning` | curriculum.create.daycare OR assessments.create.assigned OR attendance.record.assigned OR attendance.record.own OR staff_attendance.record.assigned OR staff_attendance.record.own |
 | GET | `/staff/overview` | staff.read.daycare OR tasks.read.own |
 
 ## Staff Attendance

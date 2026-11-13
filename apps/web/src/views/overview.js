@@ -16,7 +16,7 @@
         ctx.has('attendance.read.daycare') ? R.api('GET', '/learner-attendance/current-presence').catch(() => null) : Promise.resolve(null),
         ctx.has('curriculum.read.daycare')
           ? R.api('GET', '/curriculum/calendar?from=' + R.today() + '&to=' + R.today()).catch(() => null) : Promise.resolve(null),
-        ctx.has(['curriculum.create.daycare', 'staff_attendance.record.own'])
+        ctx.has(['curriculum.create.daycare', 'assessments.create.assigned', 'attendance.record.assigned', 'staff_attendance.record.own', 'attendance.record.own'])
           ? R.api('GET', '/staff/morning').catch(() => null) : Promise.resolve(null)
       ]);
       const [dashboard, tasks, notifications, myAttendance, presence, calendar, morning] = settled;
