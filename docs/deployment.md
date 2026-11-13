@@ -155,6 +155,8 @@ static output. Configure these environment variables in Vercel:
 | `R2_PUBLIC_BASE_URL` | For media | Public bucket origin, for example `https://media.re-el.co.za`. |
 | `R2_ENDPOINT` | No | Overrides the endpoint derived from `R2_ACCOUNT_ID`. |
 | `R2_REGION` | No | Defaults to `auto`, which is what R2 expects. |
+| `VAPID_PUBLIC_KEY` | For web push | Base64url uncompressed P-256 point (starts with `B`). Set with `VAPID_PRIVATE_KEY` (raw 32-byte scalar, base64url) and optionally `VAPID_SUBJECT` (a `mailto:` or `https:` URL identifying the sender, for example `mailto:hello@re-el.co.za`). Sending them explicitly is the recommended setup. |
+| `PUSH_CREDENTIALS_KEY` | For auto-generated web push keys | Long random string (32+ characters). When no `VAPID_*` keys are provided the API mints a VAPID pair once and seals the private key at rest with this value (falls back to `PAYMENT_CREDENTIALS_KEY`). Generate one with `openssl rand -base64 32`; never reuse it across environments and never change it while keys are sealed with it, or the stored private key can no longer be opened and push breaks. To rotate: delete the `push_config` row (or set `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`) and redeploy — subscribed browsers must re-subscribe. |
 
 ### Custom website domains
 

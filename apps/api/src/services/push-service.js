@@ -89,14 +89,13 @@ async function ensureKeys(db) {
   if (row) {
     return { publicKey: row.public_key, privateKey: unseal(row.private_key), subject: row.subject, ephemeral: false };
   }
-  const { publicKey, privateKey } = crypto.generateKeyPairSync('ec', {
+  // Export JWK directly — no DER step, so Node's signer can consume the keys.
+  const { publicKey: jwkPublic, privateKey: jwkPrivate } = crypto.generateKeyPairSync('ec', {
     namedCurve: 'prime256v1',
-    publicKeyEncoding: { format: 'der', type: 'spki' },
-    privateKeyEncoding: { format: 'der', type: 'pkcs8' }
+    publicKeyEncoding: { format: 'jwk' },
+    privateKeyEncoding: { format: 'jwk' }
   });
-  const jwk = crypto.createPublicKey({ key: publicKey, format: 'der', type: 'spki' }).export({ format: 'jwk' });
-  const rawPoint = Buffer.concat([Buffer.from([0x04]), Buffer.from(jwk.x, 'base64url'), Buffer.from(jwk.y, 'base64url')]);
-  const jwkPrivate = crypto.createPrivateKey({ key: privateKey, format: 'der', type: 'pkcs8' }).export({ format: 'jwk' });
+  const rawPoint = Buffer.concat([Buffer.from([0x04]), Buffer.from(jwkPublic.x, 'base64url'), Buffer.from(jwkPublic.y, 'base64url')]);
   const rawPrivate = Buffer.from(jwkPrivate.d, 'base64url');
   const subject = String(process.env.VAPID_SUBJECT || '').trim() || 'mailto:hello@re-el.co.za';
   await db.query(
@@ -118,19 +117,8 @@ function signVapid({ endpoint, publicKey, privateKey, subject }) {
   const unsigned = header + '.' + claims;
   const jwk = { kty: 'EC', crv: 'P-256', d: privateKey, x: Buffer.from(fromB64url(publicKey)).subarray(1, 33).toString('base64url'), y: Buffer.from(fromB64url(publicKey)).subarray(33).toString('base64url') };
   const privateKeyObject = crypto.createPrivateKey({ key: jwk, format: 'jwk' });
-  const der = crypto.sign('sha256', Buffer.from(unsigned, 'utf8'), privateKeyObject);
-  // DER -> raw R||S
-  let offset = 2;
-  const readInt = () => {
-    const len = der[offset + 1];
-    const value = der.subarray(offset + 2, offset + 2 + len);
-    offset += 2 + len;
-    return value;
-  };
-  const r = readInt();
-  const s = readInt();
-  const raw = Buffer.concat([r.length === 32 ? r : Buffer.concat([Buffer.alloc(32 - r.length), r]),
-    s.length === 32 ? s : Buffer.concat([Buffer.alloc(32 - s.length), s])]);
+  // ES256 wants the raw R||S (IEEE-P1363) form, not ASN.1/DER.
+  const raw = crypto.sign('sha256', Buffer.from(unsigned, 'utf8'), { key: privateKeyObject, dsaEncoding: 'ieee-p1363' });
   return { token: unsigned + '.' + b64url(raw), k: publicKey };
 }
 
@@ -143,17 +131,16 @@ function hkdfSha256(ikm, salt, info, length) {
 function encryptPayload(payloadText, p256dh, auth) {
   const receiverPublic = fromB64url(p256dh);
   const receiverAuth = fromB64url(auth);
-  const { privateKey: ephemeralPrivate, publicKey: ephemeralPublic } = crypto.generateKeyPairSync('ec', {
+  const { privateKey: jwkEphemeralPrivate, publicKey: jwkEphemeralPublic } = crypto.generateKeyPairSync('ec', {
     namedCurve: 'prime256v1',
-    publicKeyEncoding: { format: 'der', type: 'spki' },
-    privateKeyEncoding: { format: 'der', type: 'pkcs8' }
+    publicKeyEncoding: { format: 'jwk' },
+    privateKeyEncoding: { format: 'jwk' }
   });
   // Ephemeral public as raw uncompressed point.
-  const jwkPublic = crypto.createPublicKey({ key: ephemeralPublic, format: 'der', type: 'spki' }).export({ format: 'jwk' });
-  const ephemeralRaw = Buffer.concat([Buffer.from([0x04]), Buffer.from(jwkPublic.x, 'base64url'), Buffer.from(jwkPublic.y, 'base64url')]);
+  const ephemeralRaw = Buffer.concat([Buffer.from([0x04]), Buffer.from(jwkEphemeralPublic.x, 'base64url'), Buffer.from(jwkEphemeralPublic.y, 'base64url')]);
   const sharedSecret = crypto.diffieHellman({
     publicKey: crypto.createPublicKey({ key: { kty: 'EC', crv: 'P-256', x: Buffer.from(receiverPublic).subarray(1, 33).toString('base64url'), y: Buffer.from(receiverPublic).subarray(33, 65).toString('base64url') }, format: 'jwk' }),
-    privateKey: crypto.createPrivateKey({ key: ephemeralPrivate, format: 'der', type: 'pkcs8' })
+    privateKey: crypto.createPrivateKey({ key: jwkEphemeralPrivate, format: 'jwk' })
   });
   const prkKey = crypto.createHmac('sha256', receiverAuth).update(sharedSecret).digest();
   const ikm = crypto.createHmac('sha256', prkKey)
