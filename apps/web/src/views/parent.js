@@ -22,7 +22,13 @@
   V.parentOverview = {
     async load(ctx) {
       const payload = await R.api('GET', '/parent/overview').then((p) => p.data).catch(() => ({}));
-      return payload || {};
+      let pushSubscribed = false;
+      try {
+        if (window.Reel.push && window.Reel.push.isSupported()) {
+          pushSubscribed = Boolean(await window.Reel.push.currentSubscription());
+        }
+      } catch (error) { pushSubscribed = false; }
+      return Object.assign({ pushSubscribed }, payload || {});
     },
 
     render(ctx, params, page) {
@@ -30,7 +36,7 @@
       const announcements = page.announcements || [];
       const forms = page.forms || [];
       const name = (ctx.session.user.displayName || '').split(' ')[0];
-      const pushBanner = ('serviceWorker' in navigator && 'PushManager' in window && window.Reel.push && window.Reel.push.isSupported())
+      const pushBanner = (window.Reel.push && window.Reel.push.isSupported() && !page.pushSubscribed)
         ? '<div class="alert alert-info" style="margin-bottom:16px;align-items:center">' + R.icon('bell-ring') + '<div style="flex:1"><strong>Never miss a report.</strong><div class="muted small">Enable notifications on this device and we will ping you the moment a report, observation or announcement lands.</div></div>' +
           '<button class="btn btn-primary btn-sm" @click="pushToggle()">Enable</button></div>'
         : '';
