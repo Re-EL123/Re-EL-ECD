@@ -231,6 +231,7 @@
           { label: 'Summary', render: (d) => R.esc(R.truncate(d.activities_summary || d.notes, 80)) },
           { label: 'Media', render: (d) => { const media = R.mediaList(d.photo_urls); return media.length ? '<div class="row" style="gap:4px">' + media.slice(0, 3).map((url) => R.mediaThumb(url, 'Report media')).join('') + '</div>' : '<span class="muted">—</span>'; } },
           { label: 'Shared', render: (d) => d.shared_with_guardians ? '<span class="badge badge-green">Yes</span>' : '<span class="badge badge-muted">No</span>' },
+          { label: 'Seen', render: (d) => d.parent_viewed_at ? '<span class="badge badge-green" title="Seen by a parent on ' + R.attr(R.dateTime(d.parent_viewed_at)) + '">Seen</span>' : '<span class="badge badge-muted">—</span>' },
           { label: '', align: 'right', render: (d) => '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'editDailyReport\',\'' + R.attr(d.id) + '\')">Edit</button>' }
         ], emptyTitle: 'No daily reports', emptyMessage: 'Write a report to share the child\'s day with their family.' }), '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'dailyReport\')">' + R.icon('plus') + ' New report</button>');
       } else if (tab === 'portfolio') {

@@ -14,6 +14,11 @@
     return (children || []).find((c) => c.id === id) || (children || [])[0] || null;
   }
 
+  function markRead(items, path) {
+    (items || []).filter((item) => item && !item.parent_viewed_at)
+      .forEach((item) => { R.api('POST', path + '/' + item.id + '/read').catch(() => {}); });
+  }
+
   V.parentOverview = {
     async load(ctx) {
       const payload = await R.api('GET', '/parent/overview').then((p) => p.data).catch(() => ({}));
@@ -25,9 +30,14 @@
       const announcements = page.announcements || [];
       const forms = page.forms || [];
       const name = (ctx.session.user.displayName || '').split(' ')[0];
+      const pushBanner = ('serviceWorker' in navigator && 'PushManager' in window && window.Reel.push && window.Reel.push.isSupported())
+        ? '<div class="alert alert-info" style="margin-bottom:16px;align-items:center">' + R.icon('bell-ring') + '<div style="flex:1"><strong>Never miss a report.</strong><div class="muted small">Enable notifications on this device and we will ping you the moment a report, observation or announcement lands.</div></div>' +
+          '<button class="btn btn-primary btn-sm" @click="pushToggle()">Enable</button></div>'
+        : '';
       return R.pageHead('Hello, ' + name, 'Everything about your family, in one calm place.',
         '<a class="btn btn-secondary btn-sm" href="#/parent/messages">' + R.icon('message-circle') + ' Messages</a>' +
         '<a class="btn btn-primary btn-sm" href="#/parent/attendance">' + R.icon('calendar-plus') + ' Report absence</a>') +
+        pushBanner +
         '<div class="grid grid-4 section">' +
         R.statCard({ label: 'Children', value: R.number(children.length), icon: 'users', foot: 'In our care' }) +
         R.statCard({ label: 'Unread', value: R.number(page.unread), icon: 'bell', tone: Number(page.unread) ? 'sun' : 'green', foot: 'Notifications for you' }) +
@@ -90,12 +100,16 @@
         R.api('GET', '/parent/children/' + encodeURIComponent(params.id) + '/daily-reports').then((p) => p.data),
         R.api('GET', '/parent/children/' + encodeURIComponent(params.id) + '/calendar?from=' + weekFrom.toISOString().slice(0, 10) + '&to=' + weekTo.toISOString().slice(0, 10)).then((p) => p.data)
       ]);
+      const progress = settled[0].status === 'fulfilled' ? settled[0].value : null;
+      const reports = settled[3].status === 'fulfilled' ? settled[3].value : [];
+      if (progress && progress.observations) markRead(progress.observations, '/parent/observations');
+      markRead(reports, '/parent/reports');
       return {
         child,
-        progress: settled[0].status === 'fulfilled' ? settled[0].value : null,
+        progress,
         portfolio: settled[1].status === 'fulfilled' ? settled[1].value : [],
         assessments: settled[2].status === 'fulfilled' ? settled[2].value : [],
-        reports: settled[3].status === 'fulfilled' ? settled[3].value : [],
+        reports,
         calendar: settled[4].status === 'fulfilled' ? settled[4].value : []
       };
     },
@@ -270,6 +284,7 @@
       const progress = child
         ? await R.api('GET', '/parent/children/' + encodeURIComponent(child.id) + '/progress').then((p) => p.data).catch(() => null)
         : null;
+      if (progress && progress.observations) markRead(progress.observations, '/parent/observations');
       const assessments = child
         ? await R.api('GET', '/parent/children/' + encodeURIComponent(child.id) + '/assessments').then((p) => p.data).catch(() => [])
         : [];

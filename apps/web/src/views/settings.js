@@ -7,6 +7,29 @@
 
   function yesNo(value) { return value ? '<span class="badge badge-green">Yes</span>' : '<span class="badge badge-muted">No</span>'; }
 
+  function renderPushCard(myPush, canManage) {
+    const prefs = (myPush && myPush.preferences) || { enabled: true, digest: true };
+    const deviceLines = [
+      R.detailItem('Push on this device', prefs.enabled
+        ? '<span class="badge badge-green">Enabled</span>'
+        : '<span class="badge badge-muted">Not enabled</span>')
+    ];
+    if (prefs.types && Array.isArray(prefs.types) && prefs.types.length) {
+      deviceLines.push(R.detailItem('Which alerts', prefs.types.map((t) => '<span class="badge badge-muted">' + R.esc(t.replace(/_/g, ' ')) + '</span>').join(' ')));
+    }
+    return R.card('Push notifications', '<p class="muted small" style="margin-bottom:10px">Hear straight away when a report, observation or announcement is shared with you — right on this device.</p>' +
+      '<div class="detail-list">' + deviceLines.join('') + '</div>' +
+      '<div class="btn-group" style="margin-top:12px">' +
+        '<button class="btn btn-sm ' + (prefs.enabled ? 'btn-secondary' : 'btn-primary') + '" @click="pushToggle()">' + (prefs.enabled ? 'Disable on this device' : R.icon('bell') + ' Enable on this device') + '</button>' +
+      '</div>' +
+      '<div class="section"></div>' + R.detailItem('Weekly digest email (every Friday)', prefs.digest !== false
+        ? '<span class="badge badge-green">On</span>'
+        : '<span class="badge badge-muted">Off</span>') +
+      '<div class="btn-group" style="margin-top:10px">' +
+        '<button class="btn btn-sm btn-ghost" @click="digestToggle()">' + (prefs.digest !== false ? 'Turn off weekly email' : 'Turn on weekly email') + '</button>' +
+      '</div>');
+  }
+
   function renderNcfCard(settings, canManage) {
     const enabled = Boolean(settings && settings.ncf && settings.ncf.enabled);
     const statusBadge = enabled
@@ -33,16 +56,18 @@
         R.api('GET', '/onboarding/checklist'),
         R.api('GET', '/branches'),
         R.api('GET', '/organisation/themes'),
-        R.api('GET', '/billing/summary')
+        R.api('GET', '/billing/summary'),
+        R.api('GET', '/push/preferences').catch(() => null)
       ]);
-      const [organisation, settings, onboarding, branches, themes, billing] = settled;
+      const [organisation, settings, onboarding, branches, themes, billing, push] = settled;
       return {
         organisation: organisation.status === 'fulfilled' ? organisation.value.data : null,
         settings: settings.status === 'fulfilled' ? settings.value.data : {},
         onboarding: onboarding.status === 'fulfilled' ? onboarding.value.data : null,
         branches: branches.status === 'fulfilled' ? branches.value.data : [],
         themes: themes.status === 'fulfilled' ? themes.value.data : { themes: [], current: null, appliedThemeId: null },
-        billing: billing.status === 'fulfilled' ? billing.value.data : null
+        billing: billing.status === 'fulfilled' ? billing.value.data : null,
+        pushPreferences: push.status === 'fulfilled' && push.value ? (push.value.data || []) : []
       };
     },
 
@@ -52,6 +77,7 @@
       const branches = page.branches || [];
       const onboarding = page.onboarding || { items: [], completed: 0, total: 0 };
       const tab = ctx.tab || 'organisation';
+      const myPush = (page.pushPreferences || []).find((entry) => entry.organisationId === ((page.organisation || {}).id)) || { preferences: { enabled: true, digest: true } };
       const canUpdate = ctx.has('organisation.update.daycare');
       const canManageSettings = ctx.has('organisation.settings.manage');
       const canManageBranches = ctx.has('branches.manage.daycare');
@@ -63,7 +89,7 @@
         (canUpdate ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'organisation\')">' + R.icon('building-2') + ' Edit organisation</button>' : '') +
         (canManageBranches ? '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'branch\')">' + R.icon('plus') + ' Add branch</button>' : '')) +
         R.tabs([{ key: 'organisation', label: 'Organisation' }, { key: 'branding', label: 'Branding' }, { key: 'branches', label: 'Branches (' + branches.length + ')' }, { key: 'operations', label: 'Operations' }, { key: 'onboarding', label: 'Setup checklist' }, { key: 'billing', label: 'Billing & payments' }], tab) +
-        (tab === 'branches' ? this.renderBranches(ctx, page) : tab === 'branding' ? this.renderBranding(ctx, page) : tab === 'operations' ? this.renderOperations(ctx, settings, hours, attendance, notifications, retention, canManageSettings) : tab === 'onboarding' ? this.renderOnboarding(onboarding) : tab === 'billing' ? this.renderBilling(ctx, page, canManageSettings) : this.renderOrganisation(org, branches, settings));
+        (tab === 'branches' ? this.renderBranches(ctx, page) : tab === 'branding' ? this.renderBranding(ctx, page) : tab === 'operations' ? this.renderOperations(ctx, settings, hours, attendance, notifications, retention, canManageSettings, page, myPush) : tab === 'onboarding' ? this.renderOnboarding(onboarding) : tab === 'billing' ? this.renderBilling(ctx, page, canManageSettings) : this.renderOrganisation(org, branches, settings));
     },
 
     renderOrganisation(org, branches, settings) {
@@ -164,7 +190,7 @@
         (branches.length ? '' : R.emptyState('No branches', 'Every learner, classroom and invoice belongs to a branch.', canManage ? '<button class="btn btn-primary" @click="openNamedModal(\'branch\')">Add branch</button>' : '', 'building-2'));
     },
 
-    renderOperations(ctx, settings, hours, attendance, notifications, retention, canManage) {
+    renderOperations(ctx, settings, hours, attendance, notifications, retention, canManage, page, myPush) {
       return '<div class="split"><div class="stack">' +
         R.card('Operating hours', '<div class="detail-list">' +
           R.detailItem('Opens', R.esc(hours.open || 'Not set')) +
@@ -179,6 +205,7 @@
           R.detailItem('Email invoices', yesNo(notifications.emailInvoices)) +
           R.detailItem('SMS incidents', yesNo(notifications.smsIncidents)) +
           '</div>') +
+        renderPushCard(myPush, canManage) +
         '</div><div class="stack">' +
         R.card('Retention', '<div class="detail-list">' +
           R.detailItem('Learner records', R.number(retention.learnerRecordsYears) + ' years') +

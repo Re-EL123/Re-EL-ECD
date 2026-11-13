@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **365 routes** across 22 modules.
+Generated from the router: **380 routes** across 24 modules.
 
 ## Access
 
@@ -72,6 +72,8 @@ Generated from the router: **365 routes** across 22 modules.
 | POST | `/assessments/observations` | assessments.create.assigned OR assessments.read.daycare |
 | PATCH | `/assessments/observations/:id` | assessments.create.assigned OR assessments.read.daycare |
 | POST | `/assessments/observations/:id/amend` | assessments.publish.daycare |
+| GET | `/assessments/observations/:id/comments` | assessments.read.daycare OR assessments.create.assigned OR assessments.read.assigned |
+| POST | `/assessments/observations/:id/comments` | assessments.publish.daycare OR assessments.create.assigned OR assessments.read.daycare |
 | POST | `/assessments/observations/:id/publish` | assessments.publish.daycare |
 | POST | `/assessments/observations/:id/submit` | assessments.create.assigned OR assessments.read.daycare |
 | POST | `/assessments/observations/bulk` | assessments.create.assigned OR assessments.read.daycare |
@@ -104,7 +106,9 @@ Generated from the router: **365 routes** across 22 modules.
 
 | Method | Path | Access |
 | --- | --- | --- |
+| POST | `/automation/portfolio-digest` | organisation.settings.manage |
 | POST | `/automation/sweep` | organisation.settings.manage |
+| POST | `/automation/weekly-digest` | organisation.settings.manage |
 
 ## Automation Rules
 
@@ -162,6 +166,13 @@ Generated from the router: **365 routes** across 22 modules.
 | POST | `/conversations/:id/close` | messages.send.own |
 | POST | `/conversations/:id/messages` | messages.send.own |
 | POST | `/conversations/:id/read` | messages.read.own |
+
+## Cron
+
+| Method | Path | Access |
+| --- | --- | --- |
+| POST | `/cron/portfolio-digest` | Public |
+| POST | `/cron/weekly-digest` | Public |
 
 ## Curriculum
 
@@ -457,7 +468,9 @@ Generated from the router: **365 routes** across 22 modules.
 | GET | `/parent/forms` | parent.forms.submit.own |
 | GET | `/parent/invoices/:id` | parent.finance.read.own |
 | POST | `/parent/invoices/:id/pay` | parent.finance.read.own |
+| POST | `/parent/observations/:id/read` | parent.read.own |
 | GET | `/parent/overview` | parent.read.own |
+| POST | `/parent/reports/:id/read` | parent.read.own |
 
 ## Payments
 
@@ -532,6 +545,16 @@ Generated from the router: **365 routes** across 22 modules.
 | GET | `/public/platform` | Public |
 | POST | `/public/signup` | Public |
 
+## Push
+
+| Method | Path | Access |
+| --- | --- | --- |
+| GET | `/push/preferences` | Authenticated |
+| PATCH | `/push/preferences` | Authenticated |
+| GET | `/push/public-key` | Authenticated |
+| POST | `/push/subscribe` | Authenticated |
+| POST | `/push/unsubscribe` | Authenticated |
+
 ## Reports
 
 | Method | Path | Access |
@@ -577,7 +600,9 @@ Generated from the router: **365 routes** across 22 modules.
 | POST | `/staff/:id/documents` | staff.manage.daycare |
 | POST | `/staff/:id/documents/:documentId/verify` | staff.manage.daycare |
 | POST | `/staff/:id/training` | staff.manage.daycare |
+| GET | `/staff/activity-summary` | reports.read.daycare OR staff.read.daycare OR staff_attendance.record.own |
 | POST | `/staff/bulk` | staff.manage.daycare |
+| GET | `/staff/morning` | curriculum.create.daycare OR staff_attendance.record.assigned OR staff_attendance.record.own |
 | GET | `/staff/overview` | staff.read.daycare OR tasks.read.own |
 
 ## Staff Attendance

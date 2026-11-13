@@ -746,6 +746,67 @@ function register(router) {
     });
     return summary;
   }, { permission: 'organisation.settings.manage' });
+
+  // --- Weekly family digest -------------------------------------------------
+  // Sends Friday's “week at the centre” email to every parent who opted in.
+  // Called by Vercel Cron (Authorization: Bearer CRON_SECRET) or manually.
+
+  async function digestAll(innerCtx, triggeredBy) {
+    const { sendWeeklyDigest } = require('../services/digest-service');
+    const organisations = await innerCtx.db.many("SELECT * FROM organisations WHERE status = 'active' ORDER BY created_at");
+    let sent = 0;
+    const detail = [];
+    for (const organisation of organisations) {
+      const result = await sendWeeklyDigest(innerCtx.db, { organisation, triggeredBy });
+      sent += result.sent;
+      detail.push({ organisation: organisation.name, recipients: result.recipients, sent: result.sent });
+    }
+    await recordAudit(innerCtx.db, innerCtx, { action: 'automation.weekly_digest', resourceType: 'organisation', resourceId: innerCtx.organisationId, metadata: { sent, organisations: detail.length, triggeredBy } });
+    return { sent, organisations: detail };
+  }
+
+  router.post('/automation/weekly-digest', async (ctx) => {
+    return digestAll(ctx, 'manual');
+  }, { permission: 'organisation.settings.manage' });
+
+  router.post('/cron/weekly-digest', async (ctx) => {
+    const secret = String(process.env.CRON_SECRET || '').trim();
+    const header = String((ctx.req.headers['authorization'] || ctx.req.headers['x-cron-secret'] || '')).trim();
+    const presented = header.replace(/^Bearer\s+/i, '');
+    if (!secret || presented !== secret) throw new AppError('FORBIDDEN');
+    return digestAll(ctx, 'cron');
+  }, { public: true });
+
+  // --- Monthly portfolio digest ------------------------------------------------
+  // Branded per-child PDF of the month's observations, emailed to every
+  // guardian opted in to communication. Vercel Cron on the 15th of the month;
+  // manual trigger for the platform team.
+
+  async function portfolioAll(innerCtx, triggeredBy) {
+    const { sendPortfolioDigest } = require('../services/digest-service');
+    const organisations = await innerCtx.db.many("SELECT * FROM organisations WHERE status = 'active' ORDER BY created_at");
+    let sent = 0;
+    const detail = [];
+    for (const organisation of organisations) {
+      const result = await sendPortfolioDigest(innerCtx.db, { organisation, triggeredBy });
+      sent += result.sent;
+      detail.push({ organisation: organisation.name, recipients: result.recipients, sent: result.sent });
+    }
+    await recordAudit(innerCtx.db, innerCtx, { action: 'automation.portfolio_digest', resourceType: 'organisation', resourceId: innerCtx.organisationId, metadata: { sent, organisations: detail.length, triggeredBy } });
+    return { sent, organisations: detail };
+  }
+
+  router.post('/automation/portfolio-digest', async (ctx) => {
+    return portfolioAll(ctx, 'manual');
+  }, { permission: 'organisation.settings.manage' });
+
+  router.post('/cron/portfolio-digest', async (ctx) => {
+    const secret = String(process.env.CRON_SECRET || '').trim();
+    const header = String((ctx.req.headers['authorization'] || ctx.req.headers['x-cron-secret'] || '')).trim();
+    const presented = header.replace(/^Bearer\s+/i, '');
+    if (!secret || presented !== secret) throw new AppError('FORBIDDEN');
+    return portfolioAll(ctx, 'cron');
+  }, { public: true });
 }
 
 async function buildReport(ctx, key, from, to) {

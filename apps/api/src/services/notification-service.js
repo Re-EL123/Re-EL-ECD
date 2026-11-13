@@ -1,6 +1,20 @@
 'use strict';
 
 const { isConfigured } = require('./email-service');
+const push = require('./push-service');
+
+const PUSH_URLS = {
+  observation_published: '/parent/progress',
+  daily_report_shared: '/parent/activities',
+  announcement: '/app/communications',
+  task_assigned: '/app/tasks',
+  plan_review_due: '/app/curriculum',
+  observation_due: '/app/assessments',
+  observation_comment: '/app/assessments',
+  absence_reported: '/app/learner-attendance',
+  consent_needed: '/parent/forms',
+  general: '/app/communications'
+};
 
 async function createNotification(db, ctx, { recipientUserIds, type = 'general', title, body = '', resourceType = null, resourceId = null, organisationId = null }) {
   const created = [];
@@ -25,6 +39,19 @@ async function createNotification(db, ctx, { recipientUserIds, type = 'general',
        VALUES ($1,'email',$2,0)`,
       [row.id, isConfigured() ? 'queued' : 'skipped']
     );
+  }
+  if (created.length) {
+    const notificationIds = {};
+    for (const row of created) notificationIds[row.recipient_user_id] = row.id;
+    push.notifyUsers(db, ctx, created.map((row) => row.recipient_user_id), {
+      type,
+      title,
+      body,
+      url: PUSH_URLS[type] || PUSH_URLS.general,
+      notificationIds
+    }).catch((error) => {
+      if (process.env.NODE_ENV !== 'test') console.warn(JSON.stringify({ level: 'warn', message: 'push fan-out failed', error: error.message }));
+    });
   }
   return created;
 }

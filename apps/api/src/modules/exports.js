@@ -74,6 +74,48 @@ const tenantResources = {
     }
   },
 
+  staff_impact: {
+    permission: 'reports.read.daycare',
+    title: 'Staff impact',
+    filename: 'staff-impact',
+    sheet: 'Staff impact',
+    subtitle: 'Who is observing, reporting and filing this month',
+    columns: [
+      { key: 'name', label: 'Staff member', width: 24 },
+      { key: 'job_title', label: 'Role', width: 22 },
+      { key: 'classrooms', label: 'Classrooms', width: 12 },
+      { key: 'observations', label: 'Observations', width: 14 },
+      { key: 'observations_published', label: 'Published', width: 14 },
+      { key: 'daily_reports', label: 'Daily reports', width: 14 },
+      { key: 'attendance_rows', label: 'Attendance rows', width: 15 }
+    ],
+    query(ctx) {
+      const from = String(ctx.query.from || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10));
+      const to = String(ctx.query.to || new Date().toISOString().slice(0, 10));
+      return ctx.db.many(
+        `SELECT u.display_name AS name, s.job_title,
+                (SELECT COUNT(DISTINCT sc.classroom_id)::int FROM staff_classrooms sc WHERE sc.staff_id = s.id) AS classrooms,
+                (SELECT COUNT(*)::int FROM learner_observations o
+                  WHERE o.organisation_id = $1 AND o.recorded_by = s.user_id
+                    AND o.observation_date >= $2::date AND o.observation_date <= $3::date) AS observations,
+                (SELECT COUNT(*)::int FROM learner_observations o
+                  WHERE o.organisation_id = $1 AND o.recorded_by = s.user_id
+                    AND o.observation_date >= $2::date AND o.observation_date <= $3::date
+                    AND o.assessment_status IN ('published','amended')) AS observations_published,
+                (SELECT COUNT(*)::int FROM daily_reports d
+                  WHERE d.organisation_id = $1 AND d.recorded_by = s.user_id
+                    AND d.report_date >= $2::date AND d.report_date <= $3::date) AS daily_reports,
+                (SELECT COUNT(*)::int FROM learner_attendance a
+                  WHERE a.organisation_id = $1 AND a.recorded_by = s.user_id
+                    AND a.attendance_date >= $2::date AND a.attendance_date <= $3::date) AS attendance_rows
+         FROM staff_profiles s JOIN users u ON u.id = s.user_id
+         WHERE s.organisation_id = $1 AND s.employment_status = 'active'
+         ORDER BY u.display_name NULLS LAST LIMIT $4`,
+        [ctx.organisationId, from, to, MAX_ROWS]
+      );
+    }
+  },
+
   attendance: {
     permission: 'attendance.read.daycare',
     title: 'Attendance register',

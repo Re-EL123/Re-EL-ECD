@@ -59,6 +59,7 @@
     route('/app/staff', 'app', 'staff', 'staff.read.daycare', 'Staff'),
     route('/app/staff/:id', 'app', 'staffDetail', 'staff.read.daycare', 'Staff profile'),
     route('/app/staff-shifts', 'app', 'shifts', ['shifts.read.daycare', 'shifts.read.assigned'], 'Shift calendar'),
+    route('/app/staff-activity', 'app', 'staffActivity', ['reports.read.daycare', 'staff.read.daycare'], 'Staff impact'),
     route('/app/staff-attendance', 'app', 'staffAttendance', ['staff_attendance.read.daycare', 'staff_attendance.read.assigned', 'staff_attendance.record.own'], 'Staff attendance'),
     route('/app/leave', 'app', 'leave', ['leave.read.daycare', 'leave.request.own'], 'Leave'),
     route('/app/forms', 'app', 'forms', ['forms.read.daycare', 'forms.submissions.review.daycare'], 'Forms'),
@@ -151,6 +152,7 @@
       { label: 'People', items: [
         { path: '/app/staff', label: 'Staff', icon: 'id-card', permission: 'staff.read.daycare' },
         { path: '/app/staff-shifts', label: 'Shifts', icon: 'calendar-clock', permission: ['shifts.read.daycare', 'shifts.read.assigned'] },
+        { path: '/app/staff-activity', label: 'Staff impact', icon: 'activity', permission: ['reports.read.daycare', 'staff.read.daycare'] },
         { path: '/app/staff-attendance', label: 'Staff attendance', icon: 'fingerprint', permission: ['staff_attendance.read.daycare', 'staff_attendance.read.assigned', 'staff_attendance.record.own'] },
         { path: '/app/leave', label: 'Leave', icon: 'plane', permission: ['leave.read.daycare', 'leave.request.own'] }
       ] },
@@ -237,6 +239,7 @@
       commandIndex: 0,
       quickOpen: false,
       automationSweepBusy: false,
+      automationDigestBusy: false,
       modal: null,
       toasts: [],
       unread: 0,
@@ -1135,6 +1138,22 @@
           this.toast(error.message || 'The report could not be generated.', 'error');
         }
       },
+
+      async runDigest(endpoint) {
+        this.automationDigestBusy = true;
+        try {
+          const result = await Reel.api('POST', endpoint, {});
+          const data = result.data || {};
+          this.toast('Digest sent to ' + R.number(data.sent || 0) + ' guardians.');
+        } catch (error) {
+          this.toast(error.message || 'The digest could not be sent.', 'error');
+        } finally {
+          this.automationDigestBusy = false;
+        }
+      },
+
+      runWeeklyDigest() { return this.runDigest('/automation/weekly-digest'); },
+      runPortfolioDigest() { return this.runDigest('/automation/portfolio-digest'); },
 
       async runAutomationSweep() {
         this.automationSweepBusy = true;
@@ -2244,6 +2263,50 @@
           this.toast(error.message || 'The action failed.', 'error');
           return null;
         }
+      },
+
+      async pushToggle() {
+        try {
+          if (!(window.Reel && window.Reel.push && window.Reel.push.isSupported())) {
+            this.toast('This browser cannot receive push notifications.', 'warn');
+            return;
+          }
+          const current = await window.Reel.push.currentSubscription();
+          if (current) {
+            await window.Reel.push.unsubscribe();
+            await Reel.api('PATCH', '/push/preferences', { preferences: { enabled: false } });
+            this.toast('Push disabled on this device.');
+          } else {
+            await window.Reel.push.subscribe();
+            await Reel.api('PATCH', '/push/preferences', { preferences: { enabled: true } });
+            this.toast('Push enabled. You will hear when a report or announcement is shared.');
+          }
+          await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'Could not change push settings.', 'error');
+        }
+      },
+
+      async digestToggle() {
+        try {
+          const current = await Reel.api('GET', '/push/preferences');
+          const mine = (current.data || []).find((entry) => entry.organisationId);
+          const digest = mine ? mine.preferences.digest !== false : true;
+          await Reel.api('PATCH', '/push/preferences', { emailDigest: !digest });
+          this.toast(digest ? 'Weekly digest turned off.' : 'Weekly digest turned on. See you on Friday.');
+          await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'Could not change the digest.', 'error');
+        }
+      },
+
+      async markMorningAllPresent() {
+        const morning = (this.page && this.page.morning) || {};
+        const ids = morning.unmarkedIds || [];
+        if (!ids.length) { this.toast('Everyone is already marked.', 'warn'); return; }
+        await this.postJson('/learner-attendance/register', {
+          records: ids.map((learnerId) => ({ learnerId, status: 'present' }))
+        }, ids.length + ' children marked present.');
       },
 
       async markAllPresent() {

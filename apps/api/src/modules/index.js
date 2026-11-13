@@ -22,7 +22,9 @@ const modules = [
   require('./billing'),
   require('./exports'),
   require('./templates'),
-  require('./documents')
+  require('./documents'),
+  require('./push'),
+  require('./morning')
 ];
 
 function register(router) {

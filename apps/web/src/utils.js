@@ -1162,3 +1162,87 @@
   Reel.trend = trend;
   Reel.views = Reel.views || {};
 })();
+
+/* ─────────────────────────────  Web Push  ───────────────────────────── */
+/* Same-origin helper: subscribe this device, unsubscribe, and tell the UI
+   whether we can deliver push at all. All calls fail soft — a centre must
+   never lose features because a browser has no push support. */
+(function () {
+  const Reel = window.Reel;
+
+  function isSupported() {
+    return Boolean('serviceWorker' in navigator) && Boolean('PushManager' in window) && Boolean(window.Notification);
+  }
+
+  function base64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const raw = window.atob(base64);
+    const output = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i += 1) output[i] = raw.charCodeAt(i);
+    return output;
+  }
+
+  async function publicKey() {
+    try {
+      const res = await fetch('/api/v1/push/public-key', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      if (!res.ok) return null;
+      const payload = await res.json();
+      return payload && payload.data ? payload.data.key : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  async function currentSubscription() {
+    if (!isSupported()) return null;
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      return await registration.pushManager.getSubscription();
+    } catch (error) {
+      return null;
+    }
+  }
+
+  async function subscribe() {
+    if (!isSupported()) throw new Error('This browser cannot receive push notifications.');
+    const permission = await window.Notification.requestPermission();
+    if (permission !== 'granted') throw new Error('Notifications were not allowed. Allow them in your browser settings to get updates on this device.');
+    const key = await publicKey();
+    if (!key) throw new Error('Push is not available on this server right now.');
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64ToUint8Array(key) });
+    const json = subscription.toJSON();
+    const res = await fetch('/api/v1/push/subscribe', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-Token': (readCookie('reel_csrf') || '') },
+      body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys, userAgent: navigator.userAgent })
+    });
+    if (!res.ok) {
+      // Roll the subscription back so the two ends never disagree.
+      try { await subscription.unsubscribe(); } catch (error) { /* ignore */ }
+      const payload = await res.json().catch(() => null);
+      throw new Error((payload && payload.error && payload.error.message) || 'Could not save this device.');
+    }
+    return subscription;
+  }
+
+  async function unsubscribe() {
+    const subscription = await currentSubscription();
+    if (subscription) {
+      try {
+        await fetch('/api/v1/push/unsubscribe', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-Token': (readCookie('reel_csrf') || '') },
+          body: JSON.stringify({ endpoint: subscription.endpoint })
+        });
+      } catch (error) { /* server cleanup is best-effort */ }
+      await subscription.unsubscribe();
+    }
+    return true;
+  }
+
+  Reel.push = { isSupported, publicKey, subscribe, unsubscribe, currentSubscription };
+})();

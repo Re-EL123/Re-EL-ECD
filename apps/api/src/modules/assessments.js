@@ -51,9 +51,9 @@ function register(router) {
   router.post('/assessments/observations', async (ctx) => {
     const body = validate(ctx.body, {
       learnerId: { type: 'string', uuid: true },
-      objectiveId: { type: 'string', uuid: true, optional: true },
+      objectiveId: { type: 'string', uuid: true },
       observationDate: { type: 'string', date: true, optional: true },
-      context: { type: 'string', max: 120, optional: true },
+      context: { type: 'string', min: 2, max: 120 },
       observationText: { type: 'string', min: 10, max: 5000 },
       photoUrls: { type: 'array', of: 'string', max: 20, optional: true },
       publishNow: { type: 'boolean', optional: true }
@@ -107,10 +107,53 @@ function register(router) {
     return ctx.db.one('SELECT * FROM learner_observations WHERE id = $1', [observation.id]);
   }, { permission: ['assessments.create.assigned', 'assessments.read.daycare'], permissionMode: 'any' });
 
+  router.get('/assessments/observations/:id/comments', async (ctx) => {
+    const observation = await ctx.db.one('SELECT recorded_by FROM learner_observations WHERE id = $1 AND organisation_id = $2',
+      [ctx.params.id, ctx.organisationId]);
+    if (!observation) throw new AppError('NOT_FOUND');
+    if (!has(ctx, 'assessments.read.daycare') && observation.recorded_by !== ctx.user.id) throw new AppError('FORBIDDEN');
+    return ctx.db.many(
+      `SELECT c.*, u.display_name AS author_name
+       FROM observation_review_comments c JOIN users u ON u.id = c.author_user_id
+       WHERE c.observation_id = $1 ORDER BY c.created_at`,
+      [ctx.params.id]
+    );
+  }, { permission: ['assessments.read.daycare', 'assessments.create.assigned', 'assessments.read.assigned'], permissionMode: 'any' });
+
+  router.post('/assessments/observations/:id/comments', async (ctx) => {
+    const body = validate(ctx.body, { body: { type: 'string', min: 2, max: 2000 } });
+    const observation = await ctx.db.one('SELECT * FROM learner_observations WHERE id = $1 AND organisation_id = $2',
+      [ctx.params.id, ctx.organisationId]);
+    if (!observation) throw new AppError('NOT_FOUND');
+    if (!has(ctx, 'assessments.publish.daycare') && observation.recorded_by !== ctx.user.id) throw new AppError('FORBIDDEN');
+    const comment = await ctx.db.one(
+      `INSERT INTO observation_review_comments (organisation_id, observation_id, author_user_id, body)
+       VALUES ($1,$2,$3,$4) RETURNING *`,
+      [ctx.organisationId, observation.id, ctx.user.id, body.body]
+    );
+    if (observation.recorded_by && observation.recorded_by !== ctx.user.id) {
+      await createNotification(ctx.db, ctx, {
+        recipientUserIds: [observation.recorded_by], type: 'observation_comment',
+        title: 'Feedback on your observation',
+        body: body.body.slice(0, 140),
+        resourceType: 'learner_observation', resourceId: observation.id
+      });
+    }
+    await recordAudit(ctx.db, ctx, {
+      action: 'assessment.observation_commented', resourceType: 'learner_observation', resourceId: observation.id
+    });
+    ctx.status = 201;
+    return comment;
+  }, { permission: ['assessments.publish.daycare', 'assessments.create.assigned', 'assessments.read.daycare'], permissionMode: 'any' });
+
   router.post('/assessments/observations/:id/submit', async (ctx) => {
     const observation = await ctx.db.one('SELECT * FROM learner_observations WHERE id = $1 AND organisation_id = $2',
       [ctx.params.id, ctx.organisationId]);
     if (!observation) throw new AppError('NOT_FOUND');
+    if (!observation.objective_id) fail('VALIDATION', [{ field: 'objectiveId', message: 'Pick the learning objective this observation shows.' }]);
+    if (!observation.context || observation.context.trim().length < 2) {
+      fail('VALIDATION', [{ field: 'context', message: 'Add the context (indoor play, story time, snack…) — proof of learning beats tick boxes.' }]);
+    }
     if (!['draft', 'submitted'].includes(observation.assessment_status)) {
       fail('CONFLICT', null, 'Only draft or submitted observations can be submitted for review.');
     }

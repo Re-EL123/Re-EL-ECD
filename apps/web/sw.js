@@ -53,3 +53,37 @@ self.addEventListener('fetch', (event) => {
   // Static shell: cache first, fill in the background.
   event.respondWith(cacheFirst(request));
 });
+
+// Push notifications: show the centre's message, open the right screen on tap.
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (error) {
+    data = { title: 'Re-EL ECD', body: event.data ? event.data.text() : 'You have a new update.' };
+  }
+  const title = data.title || 'Re-EL ECD';
+  const options = {
+    body: data.body || '',
+    icon: '/assets/branding/favicon-64.png',
+    badge: '/assets/branding/favicon-64.png',
+    tag: data.tag || data.type || 'reel',
+    data: { url: data.url || '/#/app/overview' },
+    renotify: true
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || '/#/app/overview';
+  event.waitUntil((async () => {
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of clients) {
+      if (client.url.includes(self.location.origin)) {
+        await client.focus();
+        if ('navigate' in client) await client.navigate(url);
+        return;
+      }
+    }
+    await self.clients.openWindow(url);
+  })());
+});

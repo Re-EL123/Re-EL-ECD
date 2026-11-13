@@ -807,6 +807,10 @@
         R.card('Reminder sweep', '<p class="muted small">Checks for children with no observation in 60 days, lesson plans waiting too long for review, and scheduled activities never marked complete. Sends in-app notifications to the right people.</p>' +
           '<button type="button" class="btn btn-primary" @click="runAutomationSweep()" :disabled="automationSweepBusy"><span class="spinner" x-show="automationSweepBusy" style="width:14px;height:14px"></span><i data-lucide="zap" x-show="!automationSweepBusy"></i> Run reminder sweep</button>',
           '<span class="badge badge-sky">Built-in</span>') +
+        '<div class="grid grid-2 section">' +
+          R.card('Weekly digest', '<p class="muted small">Friday “week at the centre” email to every parent who opted in — attendance, activities, observations, outstanding fees.</p><button type="button" class="btn btn-primary" @click="runWeeklyDigest()" :disabled="automationDigestBusy"><span class="spinner" x-show="automationDigestBusy" style="width:14px;height:14px"></span><i data-lucide="mail" x-show="!automationDigestBusy"></i> Send weekly digest now</button>', '<span class="badge badge-sky">Email</span>') +
+          R.card('Monthly portfolio digest', '<p class="muted small">A branded PDF per child summarising what they did and learned this month. Emailed with the report attached to every opted-in guardian.</p><button type="button" class="btn btn-primary" @click="runPortfolioDigest()" :disabled="automationDigestBusy"><span class="spinner" x-show="automationDigestBusy" style="width:14px;height:14px"></span><i data-lucide="file-text" x-show="!automationDigestBusy"></i> Send portfolio digest now</button>', '<span class="badge badge-sky">PDF · Email</span>') +
+        '</div>' +
         '<div class="grid grid-3 section">' +
         R.statCard({ label: 'Rules', value: R.number(rows.length), icon: 'zap', foot: 'Configured workflows' }) +
         R.statCard({ label: 'Active', value: R.number(rows.filter((r) => r.active).length), icon: 'play-circle', tone: 'green', foot: 'Running now' }) +

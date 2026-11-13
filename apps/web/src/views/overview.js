@@ -15,15 +15,18 @@
           ? R.api('GET', '/staff-attendance/me').catch(() => null) : Promise.resolve(null),
         ctx.has('attendance.read.daycare') ? R.api('GET', '/learner-attendance/current-presence').catch(() => null) : Promise.resolve(null),
         ctx.has('curriculum.read.daycare')
-          ? R.api('GET', '/curriculum/calendar?from=' + R.today() + '&to=' + R.today()).catch(() => null) : Promise.resolve(null)
+          ? R.api('GET', '/curriculum/calendar?from=' + R.today() + '&to=' + R.today()).catch(() => null) : Promise.resolve(null),
+        ctx.has(['curriculum.create.daycare', 'staff_attendance.record.own'])
+          ? R.api('GET', '/staff/morning').catch(() => null) : Promise.resolve(null)
       ]);
-      const [dashboard, tasks, notifications, myAttendance, presence, calendar] = settled;
+      const [dashboard, tasks, notifications, myAttendance, presence, calendar, morning] = settled;
       data.dashboard = dashboard.status === 'fulfilled' && dashboard.value ? dashboard.value.data : null;
       data.tasks = tasks.status === 'fulfilled' ? tasks.value.data : [];
       data.notifications = notifications.status === 'fulfilled' && notifications.value ? notifications.value.data : [];
       data.myAttendance = myAttendance.status === 'fulfilled' && myAttendance.value ? myAttendance.value.data : null;
       data.presence = presence.status === 'fulfilled' && presence.value ? presence.value.data : [];
       data.calendar = calendar.status === 'fulfilled' && calendar.value ? calendar.value.data : [];
+      data.morning = morning.status === 'fulfilled' && morning.value ? morning.value.data : null;
       data.canDashboard = ctx.has('reports.read.daycare');
       return data;
     },
@@ -47,7 +50,52 @@
           labels: ['Present', 'Not yet arrived'],
           datasets: [{ data: [presenceRows.filter((p) => p.attendance_status === 'present' || p.check_in_at).length, Math.max(0, presenceRows.length - presenceRows.filter((p) => p.attendance_status === 'present' || p.check_in_at).length)], backgroundColor: ['#3A7D44', '#E8E3D8'], borderWidth: 0 }]
         }, { cutout: '68%' });
+        const morning = page.morning || {};
+        const rings = morning.rings || {};
+        const focusChildren = morning.focusChildren || [];
+        const absentees = morning.absentees || [];
+        const unfinished = morning.unfinished || {};
+        const ringRow = (label, pct) => {
+          const value = Math.max(0, Math.min(100, Number(pct) || 0));
+          return '<div class="metric-bar"><span>' + R.esc(label) + '</span><div class="bar"><span style="width:' + Math.max(2, value) + '%"></span></div><span class="val">' + R.number(value) + '%</span></div>';
+        };
         return R.pageHead('Good day, ' + ctx.session.user.displayName.split(' ')[0], 'Your classroom, your shift and what needs attention today.') +
+          R.card('Start your day',
+            '<div class="row" style="gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between">' +
+              '<div class="row" style="gap:8px;flex-wrap:wrap">' +
+                '<span class="badge ' + ((morning.expected || 0) === (morning.present || 0) && (morning.expected || 0) > 0 ? 'badge-green' : 'badge-sun') + '">' + R.number(morning.present || 0) + ' of ' + R.number(morning.expected || 0) + ' in today</span>' +
+                ((morning.absentees || []).length ? '<span class="badge badge-danger">' + (morning.absentees.length) + ' away</span>' : '') +
+                (unfinished.draftObservations ? '<span class="badge badge-sun">' + unfinished.draftObservations + ' drafts</span>' : '') +
+                (unfinished.reportsPendingSignoff ? '<span class="badge badge-sky">' + unfinished.reportsPendingSignoff + ' reports to share</span>' : '') +
+                (unfinished.tasksDueToday ? '<span class="badge badge-plum">' + unfinished.tasksDueToday + ' tasks today</span>' : '') +
+              '</div>' +
+              ((morning.unmarkedIds || []).length
+                ? '<button class="btn btn-primary btn-sm" @click="markMorningAllPresent()">' + R.icon('check-check') + ' Mark all present (' + morning.unmarkedIds.length + ')</button>'
+                : '<span class="badge badge-green">Register done</span>') +
+            '</div>' +
+            (focusChildren.length
+              ? '<div class="section"></div><div class="muted small" style="margin-bottom:6px">Children who could use an observation today:</div><div class="stack">' +
+                  focusChildren.map((child) => '<div class="row" style="gap:10px;justify-content:space-between;padding:8px 10px;background:var(--surface-2);border-radius:12px">' +
+                    '<div class="row" style="gap:10px;min-width:0"><span class="avatar avatar-xs">' + R.esc((String(child.name || '?')[0] || '?').toUpperCase()) + '</span><div style="min-width:0"><div class="strong" style="font-size:0.88rem">' + R.esc(child.name) + '</div><div class="muted small">' + R.esc(child.classroom || 'Not in a classroom yet') + ' · no observation in 30 days</div></div></div>' +
+                    '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'observationFor\',\'' + R.attr(child.id) + '\')">' + R.icon('plus') + ' Observe</button></div>').join('') +
+                '</div>'
+              : '') +
+            (absentees.length
+              ? '<div class="section"></div><div class="muted small" style="margin-bottom:6px">Away today:</div><div class="row" style="gap:8px;flex-wrap:wrap">' + absentees.map((a) => '<span class="badge badge-danger">' + R.esc(a.name) + (a.reason ? ' · ' + R.esc(R.truncate(a.reason, 40)) : '') + '</span>').join('') + '</div>'
+              : '') +
+            '<div class="section"></div><div class="grid grid-2">' +
+              '<div class="card" style="margin:0"><h4 style="margin-top:0;margin-bottom:8px">Your rhythm this month</h4>' +
+                ringRow('Register filed today', rings.registerPct) +
+                ringRow('Observations published', rings.observationsPublishedPct) +
+                ringRow('Daily reports this week', rings.dailyReportsPct) +
+              '</div>' +
+              '<div class="card" style="margin:0"><h4 style="margin-top:0;margin-bottom:8px">Jump straight to</h4><div class="stack">' +
+                '<a class="btn btn-secondary btn-sm" href="#/app/learner-attendance">' + R.icon('calendar-check') + ' Take today’s register</a>' +
+                '<a class="btn btn-secondary btn-sm" href="#/app/assessments">' + R.icon('clipboard-list') + ' Record an observation</a>' +
+                '<a class="btn btn-secondary btn-sm" href="#/app/learners">' + R.icon('users') + ' Daily reports</a>' +
+                '<a class="btn btn-secondary btn-sm" href="#/app/calendar">' + R.icon('calendar-days') + ' Today’s activities</a>' +
+              '</div></div>' +
+            '</div>') +
           '<div class="grid grid-4 section">' +
           R.statCard({ label: 'My shift', value: shift ? R.time(shift.starts_at) + ' – ' + R.time(shift.ends_at) : 'No shift', icon: 'calendar-clock', tone: 'sky', foot: shift ? R.esc(R.titleCase(shift.status)) + ' · ' + R.esc(shift.branch_name || '') : 'Speak to your manager' }) +
           R.statCard({ label: 'Clock status', value: R.titleCase(status), icon: 'fingerprint', tone: status === 'on_site' ? 'green' : 'sun', foot: '<span class="dot ' + (status === 'on_site' ? '' : 'warn') + '"></span> ' + (me.today ? me.today.length + ' events today' : 'No events yet') }) +
@@ -115,7 +163,17 @@
         '</div></div>';
     },
 
-    openModal(ctx, name) {
+    openModal(ctx, name, id) {
+      if (name === 'observationFor' && id) {
+        Promise.all([
+          R.api('GET', '/curriculum/objectives').then((p) => p.data).catch(() => []),
+          R.api('GET', '/learners?pageSize=200').then((p) => p.data).catch(() => []),
+          R.api('GET', '/templates?kind=observation').then((p) => (p.data && p.data.data) || []).catch(() => [])
+        ]).then(([objectives, learners, observationTemplates]) => {
+          V.assessments.observationModal({ ...ctx, page: Object.assign({}, ctx.page || {}, { objectives, learners, observationTemplates }) }, id);
+        });
+        return;
+      }
       if (name === 'learner') {
         ctx.openModal({
           title: 'Add a learner',

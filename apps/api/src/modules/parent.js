@@ -20,6 +20,37 @@ async function childOrFail(ctx, learnerId) {
 }
 
 function register(router) {
+  // --- Read receipts ---------------------------------------------------------
+  // Parents opening a report or observation stamps it read; teachers see the
+  // engagement on their side. The stamp fires once per record, best-effort.
+
+  router.post('/parent/reports/:id/read', async (ctx) => {
+    const report = await ctx.db.one('SELECT * FROM daily_reports WHERE id = $1 AND organisation_id = $2 AND shared_with_guardians = true',
+      [ctx.params.id, ctx.organisationId]);
+    if (!report) throw new AppError('NOT_FOUND');
+    await childOrFail(ctx, report.learner_id);
+    const updated = await ctx.db.one(
+      `UPDATE daily_reports SET parent_viewed_at = COALESCE(parent_viewed_at, now()) WHERE id = $1 RETURNING parent_viewed_at`,
+      [report.id]
+    );
+    return { parentViewedAt: updated.parent_viewed_at };
+  }, { permission: 'parent.read.own' });
+
+  router.post('/parent/observations/:id/read', async (ctx) => {
+    const observation = await ctx.db.one(
+      `SELECT * FROM learner_observations WHERE id = $1 AND organisation_id = $2
+       AND assessment_status IN ('published','amended')`,
+      [ctx.params.id, ctx.organisationId]
+    );
+    if (!observation) throw new AppError('NOT_FOUND');
+    await childOrFail(ctx, observation.learner_id);
+    const updated = await ctx.db.one(
+      `UPDATE learner_observations SET parent_viewed_at = COALESCE(parent_viewed_at, now()) WHERE id = $1 RETURNING parent_viewed_at`,
+      [observation.id]
+    );
+    return { parentViewedAt: updated.parent_viewed_at };
+  }, { permission: 'parent.read.own' });
+
   router.get('/parent/overview', async (ctx) => {
     const ids = await guardianLearnerIds(ctx);
     const children = [];

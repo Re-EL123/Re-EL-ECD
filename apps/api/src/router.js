@@ -33,17 +33,23 @@ class Router {
 
   match(method, path) {
     let pathMatched = false;
+    let best = null;
     for (const route of this.routes) {
       const match = route.regex.exec(path);
       if (!match) continue;
       pathMatched = true;
       if (route.method !== method) continue;
-      const params = {};
-      route.keys.forEach((key, index) => {
-        params[key] = decodeURIComponent(match[index + 1]);
-      });
-      return { route, params };
+      // Static segments beat named parameters wherever both match.
+      const score = route.pattern.split('/').filter((segment) => segment && !segment.startsWith(':')).length;
+      if (!best || score > best.score) {
+        const params = {};
+        route.keys.forEach((key, index) => {
+          params[key] = decodeURIComponent(match[index + 1]);
+        });
+        best = { route, params, score };
+      }
     }
+    if (best) return { route: best.route, params: best.params };
     if (pathMatched) return { methodNotAllowed: true };
     return null;
   }

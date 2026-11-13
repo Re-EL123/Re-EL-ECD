@@ -1052,6 +1052,76 @@ function register(router) {
     });
     return ctx.db.one('SELECT * FROM leave_requests WHERE id = $1', [leave.id]);
   }, { permission: 'leave.manage.daycare' });
+
+  // --- Staff impact ----------------------------------------------------------
+  // Per month and per classroom: who is observing, reporting and filing, and
+  // which classrooms need a nudge. Leadership sees the whole picture; a
+  // teacher with no reports permission still sees their own stats.
+
+  router.get('/staff/activity-summary', async (ctx) => {
+    const scopeAll = has(ctx, 'reports.read.daycare') || has(ctx, 'staff.read.daycare');
+    const from = String(ctx.query.from || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10));
+    const to = String(ctx.query.to || today());
+    const ownStaff = scopeAll ? null : await ctx.db.one('SELECT id FROM staff_profiles WHERE user_id = $1 AND organisation_id = $2', [ctx.user.id, ctx.organisationId]);
+    if (!scopeAll && !ownStaff) return { from, to, own: true, staff: [], classrooms: [], totals: { observations: 0, reports: 0 } };
+
+    const staff = await ctx.db.many(
+      `SELECT sp.id, u.display_name AS name, sp.employee_reference, sp.job_title,
+              (SELECT COUNT(*)::int FROM learner_observations o
+                WHERE o.organisation_id = $1 AND o.recorded_by = sp.user_id
+                  AND o.observation_date >= $2::date AND o.observation_date <= $3::date) AS observations,
+              (SELECT COUNT(*)::int FROM learner_observations o
+                WHERE o.organisation_id = $1 AND o.recorded_by = sp.user_id
+                  AND o.observation_date >= $2::date AND o.observation_date <= $3::date
+                  AND o.assessment_status IN ('published','amended')) AS observations_published,
+              (SELECT COUNT(*)::int FROM daily_reports d
+                WHERE d.organisation_id = $1 AND d.recorded_by = sp.user_id
+                  AND d.report_date >= $2::date AND d.report_date <= $3::date) AS daily_reports,
+              (SELECT COUNT(*)::int FROM learner_attendance a
+                WHERE a.organisation_id = $1 AND a.recorded_by = sp.user_id
+                  AND a.attendance_date >= $2::date AND a.attendance_date <= $3::date) AS attendance_rows,
+              (SELECT COUNT(DISTINCT sc.classroom_id)::int FROM staff_classrooms sc WHERE sc.staff_id = sp.id) AS classrooms,
+              (SELECT COUNT(*)::int FROM staff_classrooms sc WHERE sc.staff_id = sp.id) AS classroom_links
+       FROM staff_profiles sp JOIN users u ON u.id = sp.user_id
+       WHERE sp.organisation_id = $1 AND sp.employment_status = 'active'
+         ${ownStaff ? ' AND sp.id = $4' : ''}
+       ORDER BY u.display_name`,
+      ownStaff ? [ctx.organisationId, from, to, ownStaff.id] : [ctx.organisationId, from, to]
+    );
+
+    const classrooms = await ctx.db.many(
+      `SELECT c.id, c.name,
+              (SELECT COUNT(*)::int FROM learners l WHERE l.classroom_id = c.id AND l.status = 'enrolled') AS enrolled,
+              (SELECT COUNT(DISTINCT l.id)::int FROM learners l
+                JOIN learner_observations o ON o.learner_id = l.id AND o.assessment_status IN ('published','amended')
+                WHERE l.classroom_id = c.id AND o.observation_date >= $2::date AND o.observation_date <= $3::date) AS observed,
+              (SELECT COUNT(DISTINCT l.id)::int FROM learners l
+                JOIN daily_reports d ON d.learner_id = l.id
+                WHERE l.classroom_id = c.id AND d.report_date >= $2::date AND d.report_date <= $3::date) AS reported,
+              (SELECT COUNT(DISTINCT a.attendance_date)::int FROM learner_attendance a
+                JOIN learners l ON l.id = a.learner_id
+                WHERE l.classroom_id = c.id AND a.attendance_date >= $2::date AND a.attendance_date <= $3::date) AS register_days,
+              (SELECT COUNT(DISTINCT l.id)::int FROM learners l
+                WHERE l.classroom_id = c.id AND l.status = 'enrolled'
+                  AND NOT EXISTS (SELECT 1 FROM learner_observations o
+                    WHERE o.learner_id = l.id AND o.assessment_status IN ('published','amended')
+                      AND o.observation_date > CURRENT_DATE - interval '30 days')) AS at_risk
+       FROM classrooms c
+       WHERE c.organisation_id = $1 AND c.status = 'active'
+       ORDER BY c.name`,
+      [ctx.organisationId, from, to]
+    );
+
+    const totals = staff.reduce((acc, row) => {
+      acc.observations += row.observations;
+      acc.observationsPublished += row.observations_published;
+      acc.dailyReports += row.daily_reports;
+      acc.attendanceRows += row.attendance_rows;
+      return acc;
+    }, { observations: 0, observationsPublished: 0, dailyReports: 0, attendanceRows: 0 });
+
+    return { from, to, own: Boolean(ownStaff), staff, classrooms, totals };
+  }, { permission: ['reports.read.daycare', 'staff.read.daycare', 'staff_attendance.record.own'], permissionMode: 'any' });
 }
 
 module.exports = { register };

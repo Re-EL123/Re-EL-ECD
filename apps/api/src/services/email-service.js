@@ -109,7 +109,7 @@ async function recordDelivery(db, entry) {
  * Send one message. Returns a delivery record summary and never throws.
  */
 async function sendEmail(db, options) {
-  const { to, subject, html, text, template, organisationId, metadata, replyTo } = options;
+  const { to, subject, html, text, template, organisationId, metadata, replyTo, attachments } = options;
   if (!to || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(to))) {
     return { status: 'skipped', reason: 'invalid recipient' };
   }
@@ -130,7 +130,13 @@ async function sendEmail(db, options) {
         subject,
         html,
         text: text || undefined,
-        reply_to: replyTo || process.env.EMAIL_REPLY_TO || undefined
+        reply_to: replyTo || process.env.EMAIL_REPLY_TO || undefined,
+        attachments: Array.isArray(attachments) && attachments.length
+          ? attachments.map((attachment) => ({
+            filename: attachment.filename,
+            content: Buffer.isBuffer(attachment.content) ? attachment.content.toString('base64') : String(attachment.content || '')
+          }))
+          : undefined
       }),
       signal: AbortSignal.timeout(Number(process.env.EMAIL_TIMEOUT_MS || 10000))
     });
@@ -268,6 +274,49 @@ const templates = {
         ctaUrl: appLink('/#/app/forms')
       }),
       text: plain(['Form submitted: ' + data.formName, 'By: ' + data.submittedBy])
+    };
+  },
+
+  weeklyDigest(data) {
+    const weekLabel = data.weekLabel || 'This week at ' + (data.organisationName || 'the centre');
+    const rows = (data.children || []).map((child) => ({
+      label: child.name,
+      value: child.line || 'A lovely week of play and learning.'
+    }));
+    return {
+      subject: weekLabel + ' — ' + data.organisationName,
+      html: layout({
+        brand: data.brand,
+        heading: weekLabel,
+        intro: 'Here is a short note about how your children spent their week at ' + data.organisationName + ' — activities, achievements and anything you should know.',
+        rows: rows.length ? rows : [{ label: 'The week in brief', value: 'Children explored, played and showed off wonderful curiosity - more on your parent portal.' }],
+        body: (data.highlight ? '<p style="white-space:pre-wrap">' + esc(data.highlight) + '</p>' : '') +
+          (data.feesUrl ? '<p style="margin-top:10px">Outstanding balance? <a href="' + esc(data.feesUrl) + '">Pay online in under a minute</a>.</p>' : ''),
+        ctaLabel: 'Open the parent portal',
+        ctaUrl: appLink(data.ctaUrl || '/#/parent/overview'),
+        footer: 'You are receiving this because you have a child registered at ' + data.organisationName + '. Reply to this email any time - we read everything.'
+      }),
+      text: plain([weekLabel, data.organisationName, ...rows.map((r) => r.label + ': ' + r.value), data.feesUrl ? 'Pay online: ' + data.feesUrl : ''])
+    };
+  },
+
+  portfolioDigest(data) {
+    return {
+      subject: 'Your child\'s month at ' + data.organisationName + ' — ' + (data.childName || 'progress digest'),
+      html: layout({
+        brand: data.brand,
+        heading: data.childName || 'Progress digest',
+        intro: 'A gentle snapshot of what your child did, learned and loved this month. The attached report is yours to keep — talk to us any time.',
+        rows: [
+          { label: 'Child', value: data.childName },
+          { label: 'Period', value: data.periodLabel || 'This month' },
+          { label: 'Observations shared', value: String(data.observationCount || 0) }
+        ],
+        ctaLabel: 'Open the parent portal',
+        ctaUrl: appLink('/#/parent/overview'),
+        footer: 'You receive this because you are linked as a guardian and opted in to communication from ' + data.organisationName + '.'
+      }),
+      text: plain([data.childName || 'Progress digest', 'Child: ' + data.childName, 'Period: ' + (data.periodLabel || 'This month')])
     };
   },
 
@@ -721,7 +770,7 @@ function build(template, data) {
   return factory(data);
 }
 
-async function sendTemplate(db, template, { to, organisationId, data, replyTo, metadata }) {
+async function sendTemplate(db, template, { to, organisationId, data, replyTo, metadata, attachments }) {
   const payload = Object.assign({}, data);
   if (organisationId && !payload.brand) {
     try {
@@ -747,7 +796,8 @@ async function sendTemplate(db, template, { to, organisationId, data, replyTo, m
   const message = build(template, payload);
   return sendEmail(db, {
     to, subject: message.subject, html: message.html, text: message.text,
-    template, organisationId, replyTo, metadata
+    template, organisationId, replyTo, metadata,
+    attachments: Array.isArray(attachments) ? attachments : undefined
   });
 }
 

@@ -120,9 +120,11 @@
           { label: 'Observation', render: (o) => R.esc(R.truncate(o.observation_text, 90)) + '<span class="cell-sub">' + R.esc(o.context || '') + '</span>' },
           { label: 'Media', render: (o) => { const media = R.mediaList(o.photo_urls); return media.length ? '<div class="row" style="gap:4px">' + media.slice(0, 3).map((url) => R.mediaThumb(url, 'Observation media')).join('') + '</div>' : '<span class="muted">—</span>'; } },
           { label: 'Date', render: (o) => R.date(o.observation_date) },
+          { label: 'Seen', render: (o) => o.parent_viewed_at ? '<span class="badge badge-green" title="' + R.attr('Seen by a parent on ' + R.dateTime(o.parent_viewed_at)) + '">Seen</span>' : '<span class="badge badge-muted">—</span>' },
           { label: 'Status', render: (o) => R.badge(o.assessment_status) + ' ' + R.badge(o.visibility_status || 'internal') },
           { label: 'By', render: (o) => R.esc(o.recorded_by_name || '—') },
           { label: '', align: 'right', render: (o) => '<div class="btn-group">' +
+            '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'feedbackThread\',\'' + R.attr(o.id) + '\')">Feedback</button>' +
             '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'saveObservationTemplate\',\'' + R.attr(o.id) + '\')">Save as template</button>' +
             (o.assessment_status === 'draft' ? '<button class="btn btn-sm btn-secondary" @click="act(\'POST\',\'/assessments/observations/' + R.attr(o.id) + '/submit\',{},{successMessage:\'Submitted for review\'})">Submit</button>' : '') +
             (o.assessment_status !== 'published' && canPublish ? '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/assessments/observations/' + R.attr(o.id) + '/publish\',{},{successMessage:\'Observation published\'})">Publish</button>' : '') +
@@ -140,6 +142,7 @@
           { label: 'Objective', render: (o) => '<span class="mono badge badge-muted">' + R.esc(o.objective_code || '—') + '</span><span class="cell-sub">' + R.esc(o.domain_name || '') + '</span>' },
           { label: 'Observation', render: (o) => R.esc(R.truncate(o.observation_text, 90)) + '<span class="cell-sub">' + R.esc(o.context || '') + '</span>' },
           { label: 'Date', render: (o) => R.date(o.observation_date) },
+          { label: 'Seen', render: (o) => o.parent_viewed_at ? '<span class="badge badge-green">Seen</span>' : '<span class="badge badge-muted">—</span>' },
           { label: 'By', render: (o) => R.esc(o.recorded_by_name || '—') },
           { label: '', align: 'right', render: (o) => (canPublish ? '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/assessments/observations/' + R.attr(o.id) + '/publish\',{},{successMessage:\'Observation published\'})">Publish</button>' : '') }
         ], emptyTitle: 'Nothing awaiting review', emptyMessage: 'Submitted observations will appear here for publishing.' });
@@ -194,6 +197,27 @@
         this.observationModal(ctx, null);
       } else if (name === 'observationFor') {
         this.observationModal(ctx, id);
+      } else if (name === 'feedbackThread' && id) {
+        const observation = (page.observations || []).find((o) => o.id === id) || {};
+        Promise.all([
+          R.api('GET', '/assessments/observations/' + id + '/comments').then((p) => p.data).catch(() => [])
+        ]).then(([comments]) => {
+          const thread = (comments || []).map((c) =>
+            '<div class="card" style="margin:0;padding:10px 12px"><div class="row" style="justify-content:space-between;gap:10px"><strong style="font-size:0.88rem">' + R.esc(c.author_name) + '</strong><span class="muted small">' + R.relative(c.created_at) + '</span></div><p style="margin:6px 0 0;white-space:pre-wrap;font-size:0.9rem">' + R.esc(c.body) + '</p></div>'
+          ).join('');
+          ctx.openDetail('Feedback thread',
+            '<p class="muted small">Coaching notes on this observation. Leadership and the teacher on duty both see these.</p>' +
+            (observation.observation_text ? '<div class="alert alert-info"><i data-lucide="quote"></i><span>' + R.esc(observation.observation_text) + '</span></div>' : '') +
+            (thread ? '<div class="stack section">' + thread + '</div>' : '<p class="muted">No feedback yet. Be the first.</p>') +
+            '<div class="section"></div>' +
+            '<button class="btn btn-primary" @click="openNamedModal(\'feedback\',\'' + R.attr(id) + '\')">Add feedback</button>');
+        });
+      } else if (name === 'feedback' && id) {
+        ctx.openModal({
+          title: 'Add feedback', endpoint: '/assessments/observations/' + id + '/comments', submitLabel: 'Send feedback',
+          description: 'Be specific — one observation, one next step. The teacher sees this on the observation.',
+          fields: [{ name: 'body', label: 'Feedback', type: 'textarea', required: true, span: 2, placeholder: 'Beautiful work — next time try …' }]
+        });
       } else if (name === 'saveObservationTemplate' && id) {
         const observation = (page.observations || []).find((o) => o.id === id) || {};
         const defaultName = (String(observation.observation_text || '').split(/\s+/).slice(0, 6).join(' ') || 'Observation template').replace(/[^a-zA-Z0-9 ]/g, '').trim() || 'Observation template';
@@ -259,7 +283,7 @@
             if (tpl && tpl.payload && tpl.payload.text) data.observationText = tpl.payload.text;
           } },
         { name: 'observationDate', label: 'Date', type: 'date', value: R.today(), required: true },
-        { name: 'context', label: 'Context', placeholder: 'Outdoor play, story time…' },
+        { name: 'context', label: 'Context', placeholder: 'Outdoor play, story time…', required: true, help: 'Where and during what did you see it? The family will read this.' },
         { name: 'observationText', label: 'What did you see?', type: 'textarea', required: true, span: 2 },
         { name: 'photoUrls', label: 'Photos & videos', type: 'media', multiple: true, scope: 'observation', accept: 'image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/webm,video/quicktime', span: 2, help: 'Work samples, paintings, or a short clip. Shared with the family when you publish.' },
         { name: 'publishNow', label: 'Publish now', type: 'checkbox', value: false, help: 'Skip the review step and share with the family' }

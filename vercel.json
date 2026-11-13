@@ -2,23 +2,60 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
   "builds": [
-    { "src": "api/[...path].js", "use": "@vercel/node" },
-    { "src": "apps/web/**", "use": "@vercel/static" }
+    {
+      "src": "api/[...path].js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "apps/web/**",
+      "use": "@vercel/static"
+    }
   ],
   "routes": [
-    { "src": "/api/(.*)", "dest": "/api/[...path].js" },
-    { "src": "/healthz", "dest": "/api/[...path].js" },
-    { "src": "/(.*\\.[a-zA-Z0-9]+)", "dest": "/apps/web/$1" },
-    { "src": "/(.*)", "dest": "/apps/web/index.html" }
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/[...path].js"
+    },
+    {
+      "src": "/healthz",
+      "dest": "/api/[...path].js"
+    },
+    {
+      "src": "/(.*\\.[a-zA-Z0-9]+)",
+      "dest": "/apps/web/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/apps/web/index.html"
+    }
   ],
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-        { "key": "X-Frame-Options", "value": "SAMEORIGIN" }
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "SAMEORIGIN"
+        }
       ]
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/v1/cron/weekly-digest",
+      "schedule": "0 15 * * 5"
+    },
+    {
+      "path": "/api/v1/cron/portfolio-digest",
+      "schedule": "0 16 15 * *"
     }
   ]
 }
