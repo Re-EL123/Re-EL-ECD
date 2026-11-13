@@ -28,6 +28,7 @@
         const periodLabel = report.period && report.period.name ? '-' + report.period.name.toLowerCase().replace(/[^a-z0-9-]+/g, '-') : '';
         if (report.html) downloadFile(report.html, safeName + periodLabel + '.html', 'text/html');
         if (report.csv) downloadFile(report.csv, safeName + periodLabel + '.csv', 'text/csv');
+        if (report.pdf) downloadFile(Uint8Array.from(atob(report.pdf), (c) => c.charCodeAt(0)), safeName + periodLabel + '.pdf', 'application/pdf');
       });
       return p;
     });
@@ -37,18 +38,19 @@
     async load(ctx) {
       const status = ctx.filters.status ? '?status=' + encodeURIComponent(ctx.filters.status) : '';
       const canPublish = ctx.has('assessments.publish.daycare');
-      const [overview, observations, periods, learners, frameworks, classrooms] = await Promise.all([
+      const [overview, observations, periods, learners, frameworks, classrooms, observationTemplates] = await Promise.all([
         ctx.has('assessments.read.daycare') ? R.api('GET', '/assessments/overview').then((p) => p.data).catch(() => ({})) : Promise.resolve({}),
         R.api('GET', '/assessments/observations' + status).then((p) => p.data).catch(() => []),
         ctx.has('assessments.read.daycare') ? R.api('GET', '/assessments/periods').then((p) => p.data).catch(() => []) : Promise.resolve([]),
         R.api('GET', '/learners?pageSize=200').then((p) => p.data).catch(() => []),
         R.api('GET', '/curriculum/frameworks').then((p) => p.data).catch(() => []),
-        R.api('GET', '/classrooms').then((p) => p.data).catch(() => [])
+        R.api('GET', '/classrooms').then((p) => p.data).catch(() => []),
+        R.api('GET', '/templates?kind=observation').then((p) => (p.data && p.data.data) || []).catch(() => [])
       ]);
       const objectives = frameworks.flatMap((f) => (f.domains || []).map((d) => ({ domain: d, framework: f })));
       const allObjectives = await R.api('GET', '/curriculum/objectives').then((p) => p.data).catch(() => []);
       const domains = (frameworks || []).flatMap((f) => (f.domains || []).map((d) => ({ id: d.id, name: d.name, framework: f.name })));
-      return { overview, observations, periods, learners, frameworks, classrooms, objectives: allObjectives, domains, canPublish };
+      return { overview, observations, periods, learners, frameworks, classrooms, objectives: allObjectives, domains, canPublish, observationTemplates };
     },
 
     render(ctx, params, page) {
@@ -121,6 +123,7 @@
           { label: 'Status', render: (o) => R.badge(o.assessment_status) + ' ' + R.badge(o.visibility_status || 'internal') },
           { label: 'By', render: (o) => R.esc(o.recorded_by_name || '—') },
           { label: '', align: 'right', render: (o) => '<div class="btn-group">' +
+            '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'saveObservationTemplate\',\'' + R.attr(o.id) + '\')">Save as template</button>' +
             (o.assessment_status === 'draft' ? '<button class="btn btn-sm btn-secondary" @click="act(\'POST\',\'/assessments/observations/' + R.attr(o.id) + '/submit\',{},{successMessage:\'Submitted for review\'})">Submit</button>' : '') +
             (o.assessment_status !== 'published' && canPublish ? '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/assessments/observations/' + R.attr(o.id) + '/publish\',{},{successMessage:\'Observation published\'})">Publish</button>' : '') +
             (o.assessment_status === 'published' ? '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'amend\',\'' + R.attr(o.id) + '\')">Amend</button>' : '') +
@@ -191,6 +194,23 @@
         this.observationModal(ctx, null);
       } else if (name === 'observationFor') {
         this.observationModal(ctx, id);
+      } else if (name === 'saveObservationTemplate' && id) {
+        const observation = (page.observations || []).find((o) => o.id === id) || {};
+        const defaultName = (String(observation.observation_text || '').split(/\s+/).slice(0, 6).join(' ') || 'Observation template').replace(/[^a-zA-Z0-9 ]/g, '').trim() || 'Observation template';
+        ctx.openModal({
+          title: 'Save as observation template', endpoint: '/templates', submitLabel: 'Save template',
+          description: 'Saves the text of this observation as a reusable snippet for future observations.',
+          fields: [
+            { name: 'templateName', label: 'Template name', required: true, span: 2, value: defaultName },
+            { name: 'description', label: 'Description', type: 'textarea', span: 2, placeholder: 'When to use this template…' }
+          ],
+          transform: (data) => ({
+            kind: 'observation',
+            name: data.templateName,
+            description: data.description || null,
+            payload: { text: observation.observation_text || '' }
+          })
+        });
       } else if (name === 'amend' && id) {
         const o = (page.observations || []).find((x) => x.id === id) || {};
         ctx.openModal({ title: 'Amend observation', endpoint: '/assessments/observations/' + id + '/amend', submitLabel: 'Save amendment', fields: [
@@ -210,7 +230,7 @@
           fields: [
             { name: 'learnerIds', label: 'Children', type: 'multiselect', span: 2, required: true, options: R.learnerOptions(learners), placeholder: 'Search children…' },
             { name: 'assessmentPeriodId', label: 'Period', type: 'select', required: true, options: (page.periods || []).map((p) => ({ value: p.id, label: p.name })) },
-            { name: 'format', label: 'Format', type: 'select', options: [{ value: 'html', label: 'HTML' }, { value: 'csv', label: 'CSV' }], value: 'html' }
+            { name: 'format', label: 'Format', type: 'select', options: [{ value: 'html', label: 'HTML' }, { value: 'csv', label: 'CSV' }, { value: 'pdf', label: 'PDF' }], value: 'html' }
           ] });
       } else if (name === 'termAssessment') {
         const periods = page.periods || [];
@@ -228,15 +248,27 @@
       const page = ctx.page || {};
       const learners = page.learners || [];
       const objectives = page.objectives || [];
-      ctx.openModal({ title: 'Record observation', endpoint: '/assessments/observations', submitLabel: 'Save observation', size: 'wide', fields: [
+      const observationTemplates = page.observationTemplates || [];
+      ctx.openModal({ title: 'Record observation', endpoint: '/assessments/observations', submitLabel: 'Save observation', size: 'wide',
+        fields: [
         { name: 'learnerId', label: 'Child', type: 'select', required: true, value: learnerId || '', options: learners.map((l) => ({ value: l.id, label: l.first_name + ' ' + l.last_name + (l.classroom_name ? ' · ' + l.classroom_name : '') })) },
         { name: 'objectiveId', label: 'Learning objective', type: 'searchselect', required: true, placeholder: 'Search by code or description…', options: objectives.map((o) => ({ value: o.id, label: o.code + ' · ' + R.truncate(o.description, 46), subtitle: o.description })) },
+        { name: 'template', label: 'Use a template', type: 'select', options: observationTemplates.map((t) => ({ value: t.id, label: t.name })), span: 2, help: 'Applying a template fills the observation text — you can still edit it.',
+          onChange: (event, data) => {
+            const tpl = observationTemplates.find((t) => t.id === event.target.value);
+            if (tpl && tpl.payload && tpl.payload.text) data.observationText = tpl.payload.text;
+          } },
         { name: 'observationDate', label: 'Date', type: 'date', value: R.today(), required: true },
         { name: 'context', label: 'Context', placeholder: 'Outdoor play, story time…' },
         { name: 'observationText', label: 'What did you see?', type: 'textarea', required: true, span: 2 },
         { name: 'photoUrls', label: 'Photos & videos', type: 'media', multiple: true, scope: 'observation', accept: 'image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/webm,video/quicktime', span: 2, help: 'Work samples, paintings, or a short clip. Shared with the family when you publish.' },
         { name: 'publishNow', label: 'Publish now', type: 'checkbox', value: false, help: 'Skip the review step and share with the family' }
-      ] });
+      ],
+      transform: (data) => {
+        const out = Object.assign({}, data);
+        delete out.template;
+        return out;
+      } });
     }
   };
 

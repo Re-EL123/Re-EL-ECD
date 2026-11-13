@@ -34,6 +34,7 @@
           .then((p) => p.data).catch(() => null);
       }
       const branches = await R.api('GET', '/branches').then((p) => p.data).catch(() => []);
+      const announcementTemplates = await R.api('GET', '/templates?kind=announcement').then((p) => (p.data && p.data.data) || []).catch(() => []);
 
       let members = [];
       if (ctx.has('access.read.daycare')) {
@@ -47,7 +48,7 @@
 
       return {
         overview: overview || {}, announcements: announcements || [], conversations: conversations || [],
-        branches, thread, selectedId, members: members.filter((m) => m.user_id), canManage
+        branches, thread, selectedId, members: members.filter((m) => m.user_id), canManage, announcementTemplates
       };
     },
 
@@ -97,6 +98,7 @@
           canManage ? '<div class="btn-group">' +
             (a.status === 'draft' ? '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/announcements/' + R.attr(a.id) + '/publish\',{},{successMessage:\'Announcement published\'})">Publish</button>' +
               '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'editAnnouncement\',\'' + R.attr(a.id) + '\')">Edit</button>' : '') +
+            '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'saveAnnouncementTemplate\',\'' + R.attr(a.id) + '\')">Save template</button>' +
             (a.status !== 'archived' ? '<button class="btn btn-sm btn-secondary" @click="confirmAction(\'Archive announcement\',\'It will no longer appear to its audience, but the record stays intact.\',\'/announcements/' + R.attr(a.id) + '/archive\',{submitLabel:\'Archive\',successMessage:\'Announcement archived\'})">Archive</button>' : '') +
             '</div>' : '')).join('') + '</div>' +
         (rows.length ? '' : R.emptyState('No announcements', 'Share news, reminders and celebrations with staff or families.',
@@ -151,16 +153,46 @@
       const page = ctx.page || {};
       const members = page.members || [];
       if (name === 'announcement') {
+        const announcementTemplates = page.announcementTemplates || [];
         ctx.openModal({
           title: 'New announcement', endpoint: '/announcements', submitLabel: 'Create announcement', size: 'wide',
           fields: [
+            { name: 'template', label: 'Start from template', type: 'select', options: announcementTemplates.map((t) => ({ value: t.id, label: t.name })), span: 2, help: 'Applying a template fills the fields below — you can still edit them.',
+              onChange: (event, data) => {
+                const tpl = announcementTemplates.find((t) => t.id === event.target.value);
+                if (!tpl || !tpl.payload) return;
+                if (tpl.payload.title) data.title = tpl.payload.title;
+                if (tpl.payload.body) data.body = tpl.payload.body;
+                if (tpl.payload.audienceType) data.audienceType = tpl.payload.audienceType;
+              } },
             { name: 'title', label: 'Title', required: true, span: 2 },
             { name: 'audienceType', label: 'Audience', type: 'select', options: AUDIENCES.map((a) => ({ value: a, label: R.titleCase(a) })), value: 'all' },
             { name: 'branchIds', label: 'Branches', type: 'multiselect', span: 2, options: (ctx.branches || []).map((b) => ({ value: b.id, label: b.name })), placeholder: 'All branches' },
             { name: 'body', label: 'Message', type: 'textarea', required: true, span: 2 },
             { name: 'attachmentUrls', label: 'Attachments', type: 'media', multiple: true, scope: 'announcement', accept: 'image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/webm,video/quicktime,audio/mpeg,application/pdf,text/plain,text/csv', span: 2, help: 'Photos, video, audio or documents to include with this announcement.' },
             { name: 'publish', label: 'Publish immediately', type: 'checkbox', value: true, help: 'Notify the audience now' }
-          ]
+          ],
+          transform: (data) => {
+            const out = Object.assign({}, data);
+            delete out.template;
+            return out;
+          }
+        });
+      } else if (name === 'saveAnnouncementTemplate' && id) {
+        const a = (page.announcements || []).find((x) => x.id === id) || {};
+        ctx.openModal({
+          title: 'Save as announcement template', endpoint: '/templates', submitLabel: 'Save template', size: 'wide',
+          description: 'Saves the wording of this announcement as a reusable starting point.',
+          fields: [
+            { name: 'templateName', label: 'Template name', required: true, span: 2, value: a.title },
+            { name: 'description', label: 'Description', type: 'textarea', span: 2, placeholder: 'When to use this template…' }
+          ],
+          transform: (data) => ({
+            kind: 'announcement',
+            name: data.templateName,
+            description: data.description || null,
+            payload: { title: a.title, body: a.body, audienceType: a.audience_type }
+          })
         });
       } else if (name === 'editAnnouncement' && id) {
         const a = (page.announcements || []).find((x) => x.id === id) || {};

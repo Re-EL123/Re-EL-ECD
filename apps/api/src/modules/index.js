@@ -20,6 +20,7 @@ const modules = [
   require('./parent'),
   require('./billing'),
   require('./exports'),
+  require('./templates'),
   require('./documents')
 ];
 

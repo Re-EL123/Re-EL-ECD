@@ -14,15 +14,17 @@
 
   V.curriculum = {
     async load(ctx) {
-      const [overview, frameworks, plans, objectives, periods, classrooms] = await Promise.all([
+      const [overview, frameworks, plans, objectives, periods, classrooms, planTemplates, activityTemplates] = await Promise.all([
         R.api('GET', '/curriculum/overview').then((p) => p.data).catch(() => ({})),
         R.api('GET', '/curriculum/frameworks').then((p) => p.data).catch(() => []),
         R.api('GET', '/curriculum/lesson-plans').then((p) => p.data).catch(() => []),
         R.api('GET', '/curriculum/objectives').then((p) => p.data).catch(() => []),
         R.api('GET', '/curriculum/periods').then((p) => p.data).catch(() => []),
-        R.api('GET', '/classrooms').then((p) => p.data).catch(() => [])
+        R.api('GET', '/classrooms').then((p) => p.data).catch(() => []),
+        R.api('GET', '/templates?kind=lesson_plan').then((p) => (p.data && p.data.data) || []).catch(() => []),
+        R.api('GET', '/templates?kind=activity').then((p) => (p.data && p.data.data) || []).catch(() => [])
       ]);
-      return { overview, frameworks, plans, objectives, periods, classrooms };
+      return { overview, frameworks, plans, objectives, periods, classrooms, planTemplates, activityTemplates };
     },
 
     render(ctx, params, page) {
@@ -64,6 +66,7 @@
         { label: 'Created', render: (p) => R.date(p.created_at) },
         { label: '', align: 'right', render: (p) => '<div class="btn-group">' +
           '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'duplicatePlan\',\'' + R.attr(p.id) + '\')">Duplicate</button>' +
+          (ctx.has('curriculum.create.daycare') ? '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'savePlanTemplate\',\'' + R.attr(p.id) + '\')">Save template</button>' : '') +
           '<button class="btn btn-sm btn-secondary" @click="openNamedDetail(\'plan\',\'' + R.attr(p.id) + '\')">View</button>' +
           ((NEXT_STATUS[p.status] || []).length ? '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'transition\',\'' + R.attr(p.id) + '\')">Move on</button>' : '') +
           '</div>' }
@@ -126,10 +129,26 @@
         ] });
       } else if (name === 'plan') {
         const objectives = page.objectives || [];
+        const planTemplates = page.planTemplates || [];
         ctx.openModal({
           title: 'New lesson plan', endpoint: '/curriculum/lesson-plans', submitLabel: 'Create plan', size: 'wide',
           description: 'Pick the objectives this plan works towards. Search by code, domain or phrase.',
           fields: [
+            { name: 'template', label: 'Start from template', type: 'select', options: planTemplates.map((t) => ({ value: t.id, label: t.name })), span: 2, help: 'Applying a template fills the fields below — you can still edit them.',
+              onChange: (event, data) => {
+                const tpl = planTemplates.find((t) => t.id === event.target.value);
+                if (!tpl) return;
+                const payload = tpl.payload || {};
+                if (payload.title) data.title = payload.title;
+                if (payload.theme !== undefined) data.theme = payload.theme;
+                if (payload.preparationNotes) data.preparationNotes = payload.preparationNotes;
+                if (Array.isArray(payload.objectiveIds)) {
+                  data.objectiveIds = payload.objectiveIds.slice();
+                } else if (Array.isArray(payload.objectiveCodes)) {
+                  const codes = payload.objectiveCodes.map((c) => String(c).toUpperCase());
+                  data.objectiveIds = objectives.filter((o) => codes.includes(String(o.code).toUpperCase())).map((o) => o.id);
+                }
+              } },
             { name: 'title', label: 'Title', required: true, span: 2 },
             { name: 'theme', label: 'Theme' },
             { name: 'classroomId', label: 'Classroom', type: 'select', required: true, options: R.classroomOptions(page) },
@@ -138,7 +157,38 @@
             { name: 'objectiveIds', label: 'Objectives', type: 'multiselect', span: 2, placeholder: 'Search by code or description…', options: objectives.map((o) => ({ value: o.id, label: o.code + ' · ' + R.truncate(o.description, 48), subtitle: o.description })) },
             { name: 'preparationNotes', label: 'Preparation notes', type: 'textarea', span: 2 },
             { name: 'publishNow', label: 'Publish immediately', type: 'checkbox', value: false, help: 'Publish the plan to teachers now' }
-          ]
+          ],
+          transform: (data) => {
+            const out = Object.assign({}, data);
+            delete out.template;
+            return out;
+          }
+        });
+      } else if (name === 'savePlanTemplate' && id) {
+        const plan = (page.plans || []).find((p) => p.id === id) || {};
+        const objectives = page.objectives || [];
+        const objectiveCodes = (plan.objective_ids || []).map((objectiveId) => {
+          const objective = objectives.find((o) => o.id === objectiveId);
+          return objective ? objective.code : null;
+        }).filter(Boolean);
+        ctx.openModal({
+          title: 'Save as template', endpoint: '/templates', submitLabel: 'Save template', size: 'wide',
+          description: 'Save this lesson plan as a reusable starting point. The objectives are stored as codes, so they work in any centre setup.',
+          fields: [
+            { name: 'templateName', label: 'Template name', required: true, span: 2, value: 'Copy of ' + (plan.title || '') },
+            { name: 'description', label: 'Description', type: 'textarea', span: 2, placeholder: 'When to use this template…' }
+          ],
+          transform: (data) => ({
+            kind: 'lesson_plan',
+            name: data.templateName,
+            description: data.description || null,
+            payload: {
+              title: plan.title,
+              theme: plan.theme,
+              preparationNotes: plan.preparation_notes,
+              objectiveCodes
+            }
+          })
         });
       } else if (name === 'duplicatePlan' && id) {
         const plan = (page.plans || []).find((p) => p.id === id) || {};
@@ -194,12 +244,13 @@
 
   V.activities = {
     async load(ctx) {
-      const [activities, plans, classrooms] = await Promise.all([
+      const [activities, plans, classrooms, activityTemplates] = await Promise.all([
         R.api('GET', '/curriculum/activities'),
         R.api('GET', '/curriculum/lesson-plans').catch(() => ({ data: [] })),
-        R.api('GET', '/classrooms').catch(() => ({ data: [] }))
+        R.api('GET', '/classrooms').catch(() => ({ data: [] })),
+        R.api('GET', '/templates?kind=activity').then((p) => (p.data && p.data.data) || []).catch(() => [])
       ]);
-      return { rows: activities.data, plans: plans.data || [], classrooms: classrooms.data || [] };
+      return { rows: activities.data, plans: plans.data || [], classrooms: classrooms.data || [], activityTemplates };
     },
     render(ctx, params, page) {
       return R.pageHead('Activities', 'The experiences that fill the day — from sensory play to early literacy.',
@@ -210,6 +261,7 @@
           '<div class="muted small"><strong>Materials:</strong> ' + R.esc(a.materials || '—') + '</div>' +
           (a.safety_notes ? '<div class="alert alert-warn" style="margin-top:8px">' + R.icon('shield-alert') + '<span>' + R.esc(a.safety_notes) + '</span></div>' : ''),
           '<div class="btn-group">' + R.badge(a.status) +
+            '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'saveActivityTemplate\',\'' + R.attr(a.id) + '\')">Save template</button>' +
             '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'activityEdit\',\'' + R.attr(a.id) + '\')">Edit</button>' +
             (a.status === 'active' ? '<button class="btn btn-sm btn-ghost" @click="act(\'POST\',\'/curriculum/activities/' + R.attr(a.id) + '/archive\',{},{successMessage:\'Activity archived\'})">Archive</button>' : '') +
           '</div>')).join('') + '</div>' +
@@ -231,17 +283,56 @@
         ] });
         return;
       }
+      if (name === 'saveActivityTemplate' && id) {
+        const a = (page.rows || []).find((x) => x.id === id) || {};
+        ctx.openModal({
+          title: 'Save as template', endpoint: '/templates', submitLabel: 'Save template', size: 'wide',
+          description: 'Save this activity as a reusable starting point for future sessions and lesson plans.',
+          fields: [
+            { name: 'templateName', label: 'Template name', required: true, span: 2, value: a.title },
+            { name: 'description', label: 'Description', type: 'textarea', span: 2, placeholder: 'When to use this template…' }
+          ],
+          transform: (data) => ({
+            kind: 'activity',
+            name: data.templateName,
+            description: data.description || null,
+            payload: {
+              title: a.title,
+              activityType: a.activity_type,
+              durationMinutes: a.duration_minutes,
+              description: a.description,
+              materials: a.materials,
+              safetyNotes: a.safety_notes,
+              ageGroup: a.age_group
+            }
+          })
+        });
+        return;
+      }
       if (name !== 'activity') return;
-      ctx.openModal({ title: 'New activity', endpoint: '/curriculum/activities', submitLabel: 'Create activity', size: 'wide', fields: [
-        { name: 'title', label: 'Title', required: true, span: 2 },
-        { name: 'branchId', label: 'Branch', type: 'select', options: R.branchOptions(ctx) },
-        { name: 'ageGroup', label: 'Age group', placeholder: '3-5 years' },
-        { name: 'activityType', label: 'Type', type: 'select', options: ['sensory', 'creative', 'physical', 'literacy', 'numeracy', 'music', 'outdoor', 'quiet'] },
-        { name: 'durationMinutes', label: 'Duration (minutes)', type: 'number', value: 30 },
-        { name: 'description', label: 'Description', type: 'textarea', span: 2 },
-        { name: 'materials', label: 'Materials', type: 'textarea', span: 2 },
-        { name: 'safetyNotes', label: 'Safety notes', type: 'textarea', span: 2 }
-      ] });
+      const activityTemplates = page.activityTemplates || [];
+      ctx.openModal({ title: 'New activity', endpoint: '/curriculum/activities', submitLabel: 'Create activity', size: 'wide',
+        fields: [
+          { name: 'template', label: 'Start from template', type: 'select', options: activityTemplates.map((t) => ({ value: t.id, label: t.name })), span: 2, help: 'Applying a template fills the fields below — you can still edit them.',
+            onChange: (event, data) => {
+              const tpl = activityTemplates.find((t) => t.id === event.target.value);
+              if (tpl && tpl.payload) Object.assign(data, tpl.payload);
+            } },
+          { name: 'title', label: 'Title', required: true, span: 2 },
+          { name: 'branchId', label: 'Branch', type: 'select', options: R.branchOptions(ctx) },
+          { name: 'ageGroup', label: 'Age group', placeholder: '3-5 years' },
+          { name: 'activityType', label: 'Type', type: 'select', options: ['sensory', 'creative', 'physical', 'literacy', 'numeracy', 'music', 'outdoor', 'quiet'] },
+          { name: 'durationMinutes', label: 'Duration (minutes)', type: 'number', value: 30 },
+          { name: 'description', label: 'Description', type: 'textarea', span: 2 },
+          { name: 'materials', label: 'Materials', type: 'textarea', span: 2 },
+          { name: 'safetyNotes', label: 'Safety notes', type: 'textarea', span: 2 }
+        ],
+        transform: (data) => {
+          const out = Object.assign({}, data);
+          delete out.template;
+          return out;
+        }
+      });
     }
   };
 

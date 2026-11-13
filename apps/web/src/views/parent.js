@@ -179,6 +179,14 @@
             '<span style="font-size:0.84rem">' + R.esc(o.description) + '</span>' +
             (o.observed ? '<span class="badge badge-green">Seen</span>' : '<span class="badge badge-muted">Not yet</span>') + '</div>').join('') + '</div>');
       }).join('') + '</div>' +
+        '<div class="section"></div>' + R.card('Recent observations', (progress.observations || []).length ? '<div class="stack">' + (progress.observations || []).slice(0, 10).map((o) =>
+          '<div class="row" style="gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border-subtle)">' +
+            '<div style="min-width:92px"><div class="strong">' + R.date(o.observation_date) + '</div><div class="muted small">' + R.esc(o.domain_name || 'Observation') + '</div></div>' +
+            '<div style="flex:1;min-width:0">' +
+              '<p style="white-space:pre-wrap;margin:0 0 8px">' + R.esc(o.observation_text) + '</p>' +
+              (R.mediaList(o.photo_urls).length ? '<div class="media-grid">' + R.mediaList(o.photo_urls).map((url) => '<div class="media-card">' + R.mediaHtml(url, R.kindForUrl(url), { alt: 'Observation photo' }) + '</div>').join('') + '</div>' : '') +
+            '</div>' +
+          '</div>').join('') + '</div>' : '<p class="muted small">No observations published yet.</p>') +
         '<div class="section"></div>' + R.card('Published assessments', R.table({ rows: assessments, columns: [
           { label: 'Period', render: (a) => R.esc(a.period_name || '—') },
           { label: 'Domain', render: (a) => R.esc(a.domain_name || 'All domains') },

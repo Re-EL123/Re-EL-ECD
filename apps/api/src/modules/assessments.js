@@ -7,6 +7,7 @@ const { createNotification } = require('../services/notification-service');
 const { sendTemplate } = require('../services/email-service');
 const { parsePagination } = require('../utils/http');
 const { getLearner, has, assignedClassroomIds } = require('./helpers');
+const exportService = require('../services/export-service');
 
 function register(router) {
   router.get('/assessments/observations', async (ctx) => {
@@ -291,7 +292,7 @@ function register(router) {
       learnerId: { type: 'string', uuid: true, optional: true },
       learnerIds: { type: 'array', of: 'uuid', max: 100, optional: true },
       assessmentPeriodId: { type: 'string', uuid: true, optional: true },
-      format: { type: 'string', enum: ['json', 'html', 'csv'], optional: true }
+      format: { type: 'string', enum: ['json', 'html', 'csv', 'pdf'], optional: true }
     });
     const learnerIds = body.learnerIds && body.learnerIds.length
       ? Array.from(new Set(body.learnerIds))
@@ -344,7 +345,20 @@ function register(router) {
         note: progress.note
       };
       report.html = renderProgressReport(ctx, report);
-      if (body.format === 'csv') report.csv = progressCsv(report);
+      const table = progressTable(report);
+      if (body.format === 'csv') report.csv = exportService.toCsv(table.columns, table.rows).toString('utf8');
+      if (body.format === 'pdf') {
+        const learnerName = report.learner.firstName + ' ' + report.learner.lastName;
+        const periodLabel = report.period ? report.period.name : 'All recorded observations';
+        report.pdf = exportService.toPdf({
+          title: 'Developmental progress report',
+          subtitle: learnerName + ' — ' + periodLabel,
+          columns: table.columns,
+          rows: table.rows,
+          footer: 'Re-EL ECD — ' + (ctx.organisation && ctx.organisation.name ? ctx.organisation.name : ''),
+          generatedAt: report.generatedAt
+        }).toString('base64');
+      }
       const job = await ctx.db.one(
         `INSERT INTO report_jobs (organisation_id, report_key, parameters, status, requested_by, completed_at, row_count)
          VALUES ($1,'learner_progress',$2,'completed',$3,now(),$4) RETURNING *`,
@@ -566,23 +580,27 @@ function renderProgressReport(ctx, report) {
     '<footer><p class="muted">' + escapeHtml(report.note) + '</p></footer></article>';
 }
 
-function progressCsv(report) {
-  const lines = [['Domain', 'Code', 'Objective', 'Observed', 'Last observation'].join(',')];
+function progressTable(report) {
+  const columns = [
+    { key: 'domain', label: 'Domain', width: 18 },
+    { key: 'code', label: 'Code', width: 10 },
+    { key: 'objective', label: 'Learning objective', width: 46 },
+    { key: 'observed', label: 'Observed', width: 10 },
+    { key: 'date', label: 'Last observation', width: 14 }
+  ];
+  const rows = [];
   for (const domain of report.domains) {
     for (const objective of domain.objectives) {
-      lines.push([
-        csvCell(domain.name), csvCell(objective.code), csvCell(objective.description),
-        objective.lastObservation ? 'yes' : 'no',
-        objective.lastObservation ? dayOf(objective.lastObservation.observation_date) : ''
-      ].join(','));
+      rows.push({
+        domain: domain.name,
+        code: objective.code,
+        objective: objective.description,
+        observed: objective.lastObservation ? 'Yes' : 'Not yet',
+        date: objective.lastObservation ? dayOf(objective.lastObservation.observation_date) : '—'
+      });
     }
   }
-  return lines.join('\n');
-}
-
-function csvCell(value) {
-  const text = String(value === undefined || value === null ? '' : value);
-  return /[",\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+  return { columns, rows };
 }
 
 module.exports = { register, progressFor };
