@@ -344,8 +344,10 @@ async function seedDevelopment({ force = false } = {}) {
     [orgId, learners.Noah, userIds['principal@littlesprouts.local']]
   );
   const collector = (await pool.query(
-    `INSERT INTO authorised_collectors (organisation_id, learner_id, name, relationship, contact_phone, created_by)
-     VALUES ($1,$2,'Gogo Miriam Johnson','Grandmother','+27 83 555 0144',$3) RETURNING id`,
+    `INSERT INTO authorised_collectors (organisation_id, learner_id, name, relationship, contact_phone, created_by,
+      status, approval_status, approved_by, approved_at, is_trusted, identity_verification_policy, photo_url)
+     VALUES ($1,$2,'Gogo Miriam Johnson','Grandmother','+27 83 555 0144',$3,
+      'active','approved',$3,now(),TRUE,'photo_id',NULL) RETURNING id`,
     [orgId, learners.Amelia, userIds['principal@littlesprouts.local']]
   )).rows[0].id;
   await pool.query(
@@ -504,13 +506,15 @@ async function seedDevelopment({ force = false } = {}) {
     for (const learner of learnerRows.rows) {
       const roll = (learner.first_name.charCodeAt(0) + date.charCodeAt(9)) % 10;
       const status = roll === 0 ? 'absent' : roll === 1 ? 'late' : 'present';
+      // Two children stay at the centre today so the gate demo has content.
+      const staysIn = date === dates[0] && (learner.first_name === 'Amelia' || learner.first_name === 'Liam');
       await pool.query(
         `INSERT INTO learner_attendance (organisation_id, branch_id, learner_id, attendance_date, check_in_at, check_out_at,
           attendance_status, absence_reason, recorded_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
         [orgId, learner.branch_id, learner.id, date,
           status === 'absent' ? null : `${date}T06:45:00Z`,
-          status === 'absent' ? null : `${date}T16:00:00Z`,
+          status === 'absent' || staysIn ? null : `${date}T16:00:00Z`,
           status, status === 'absent' ? 'Family commitment' : null, userIds['teacher@littlesprouts.local']]
       );
     }

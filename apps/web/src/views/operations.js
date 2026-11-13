@@ -182,13 +182,16 @@
           .then((p) => p.data).catch(() => null);
       }
       const isOwner = ctx.has('organisation.settings.manage');
-      const [quiet, onboarding] = isOwner
-        ? await Promise.all([
-            R.api('GET', '/reports/engagement/quiet?days=7').then((p) => p.data).catch(() => ({ families: [], count: 0 })),
-            R.api('GET', '/reports/family-onboarding').then((p) => p.data).catch(() => ({ total: 0, families: [] }))
-          ])
-        : [{ families: [], count: 0 }, { total: 0, families: [] }];
-      return { catalogue: list, jobs: catalogue.jobs || [], selected, report, from, to, quiet, onboarding };
+      const [quiet, onboarding, patterns] = await Promise.all([
+        isOwner
+          ? R.api('GET', '/reports/engagement/quiet?days=7').then((p) => p.data).catch(() => ({ families: [], count: 0 }))
+          : Promise.resolve({ families: [], count: 0 }),
+        isOwner
+          ? R.api('GET', '/reports/family-onboarding').then((p) => p.data).catch(() => ({ total: 0, families: [] }))
+          : Promise.resolve({ total: 0, families: [] }),
+        R.api('GET', '/reports/collection-patterns?days=7').then((p) => p.data).catch(() => ({ days: 7, heavy: [], lateCount: 0, denied: [], holds: [] }))
+      ]);
+      return { catalogue: list, jobs: catalogue.jobs || [], selected, report, from, to, quiet, onboarding, patterns };
     },
 
     render(ctx, params, page) {
@@ -214,6 +217,26 @@
         return '<div class="metric-bar"><span>' + R.esc(label) + '</span><div class="bar"><span style="width:' + Math.max(2, v) + '%"></span></div><span class="val">' + v + '%</span></div>';
       };
       const cohortChip = (ok, label) => '<span class="badge ' + (ok ? 'badge-green' : 'badge-muted') + '">' + (ok ? '✓' : '○') + ' ' + R.esc(label) + '</span>';
+      const patterns = page.patterns || { heavy: [], lateCount: 0, denied: [], holds: [] };
+      const patternCard = (ctx.has('collections.read.daycare') || isOwner)
+        ? '<div class="section"></div>' + R.card('The gate, last seven days',
+            '<div class="stack">' +
+              ((patterns.heavy || []).length
+                ? '<div class="muted small" style="margin-bottom:4px">Children collected by 3+ different adults — check-in with these families:</div>' +
+                  (patterns.heavy || []).map((h) => '<div class="row" style="justify-content:space-between;gap:10px;padding:7px 10px;background:var(--surface-2);border-radius:12px">' +
+                    '<div style="min-width:0"><div class="strong" style="font-size:0.86rem">' + R.esc(h.child) + '</div><div class="muted small">' + R.esc(h.classroom || '') + ' · ' + R.number(h.collectors) + ' collectors</div></div>' +
+                    '<span class="badge badge-sun">' + R.esc((h.collector_names || []).slice(0, 2).join(', ')) + '</span></div>').join('')
+                : '<p class="muted small" style="margin:0 0 4px">No child was collected by more than two different adults this week.</p>') +
+              '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px">' +
+                '<span class="badge ' + ((patterns.lateCount || 0) > 0 ? 'badge-sun' : 'badge-muted') + '">' + R.number(patterns.lateCount || 0) + ' late pickups</span>' +
+                '<span class="badge ' + ((patterns.holds || []).length ? 'badge-danger' : 'badge-muted') + '">' + R.number((patterns.holds || []).length) + ' on hold</span>' +
+                '<span class="badge ' + ((patterns.denied || []).length ? 'badge-danger' : 'badge-muted') + '">' + R.number((patterns.denied || []).length) + ' denied attempts</span>' +
+              '</div>' +
+              ((patterns.holds || []).length
+                ? '<div class="alert alert-danger" style="margin-top:10px;align-items:center">' + R.icon('shield-alert') + '<div style="flex:1"><strong>Holds in place</strong><div class="muted small">' + patterns.holds.map((h) => R.esc(h.child) + ' — ' + R.esc(h.collection_hold_reason)).join(' · ') + '</div></div></div>'
+                : '') +
+            '</div>', '<span class="badge badge-sky">Gate</span>')
+        : '';
       const ownerCards = isOwner
         ? '<div class="grid grid-2 section">' +
             R.card('Every family, from day one',
@@ -253,6 +276,7 @@
       return R.pageHead('Reports', 'The numbers behind the decisions — exported, dated and auditable.',
         R.exportButtons('/reports/' + (selected || 'enrolment_summary'), 'from=' + encodeURIComponent(page.from) + '&to=' + encodeURIComponent(page.to))) +
         digestSection +
+        patternCard +
         ownerCards +
         '<div class="grid grid-3 section">' + catalogue.map((c) => R.card(c.name,
           '<p class="muted small" style="margin:0 0 10px">' + R.esc(c.description) + '</p>' +

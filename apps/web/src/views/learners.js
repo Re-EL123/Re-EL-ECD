@@ -374,7 +374,7 @@
       } else if (name === 'collection') {
         ctx.openModal({ title: 'Record collection', endpoint: '/learners/' + id + '/collections', submitLabel: 'Record', fields: [
           { name: 'collectorName', label: 'Collector name', required: true, span: 2 },
-          { name: 'verificationMethod', label: 'Verification', type: 'select', options: ['id_document', 'password', 'photo', 'known_to_staff'], value: 'id_document' },
+          { name: 'verificationMethod', label: 'Verification', type: 'select', options: ['photo_id', 'qr_code', 'pin', 'code_word', 'guardian_present', 'known_to_staff', 'guardian_approval', 'override'], value: 'photo_id' },
           { name: 'notes', label: 'Notes', type: 'textarea', span: 2 }
         ] });
       }

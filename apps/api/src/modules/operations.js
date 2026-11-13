@@ -20,7 +20,8 @@ const REPORT_CATALOGUE = [
   { key: 'staff_register', name: 'Staff register', description: 'Staff, roles, classrooms and compliance documents.', permission: 'staff.read.daycare' },
   { key: 'safety_register', name: 'Safety register', description: 'Incidents, severity and corrective actions.', permission: 'safety.read.daycare' },
   { key: 'occupancy', name: 'Occupancy and capacity', description: 'Configured capacity against enrolled learners.', permission: 'reports.read.daycare' },
-  { key: 'admissions_funnel', name: 'Admissions funnel', description: 'Enquiries and applications by stage.', permission: 'admissions.read.daycare' }
+  { key: 'admissions_funnel', name: 'Admissions funnel', description: 'Enquiries and applications by stage.', permission: 'admissions.read.daycare' },
+  { key: 'collection_register', name: 'Collection register', description: 'Every collection and denied attempt — who, when, by what authority.', permission: 'collections.read.daycare' }
 ];
 
 function inferExportFormat(key) {
@@ -925,6 +926,46 @@ function register(router) {
     };
   }, { permission: 'reports.read.daycare' });
 
+  // --- Collection patterns: the weekly early-warning scan ---------------------
+  router.get('/reports/collection-patterns', async (ctx) => {
+    const days = Math.max(1, Math.min(60, Number(ctx.query.days || 7)));
+    const heavy = await ctx.db.many(
+      `SELECT l.first_name || ' ' || l.last_name AS child, c.name AS classroom,
+              COUNT(DISTINCT COALESCE(ce.collector_id::text, ce.collector_name))::int AS collectors,
+              array_agg(DISTINCT COALESCE(ce.collector_name, 'Unknown')) AS collector_names
+       FROM learner_collection_events ce
+       JOIN learners l ON l.id = ce.learner_id
+       LEFT JOIN classrooms c ON c.id = l.classroom_id
+       WHERE ce.organisation_id = $1 AND ce.event_type = 'collection'
+         AND ce.recorded_at >= now() - ($2 || ' days')::interval
+       GROUP BY l.id, l.first_name, l.last_name, c.name
+       HAVING COUNT(DISTINCT COALESCE(ce.collector_id::text, ce.collector_name)) >= 3
+       ORDER BY collectors DESC, child`,
+      [ctx.organisationId, String(days)]
+    );
+    const late = await ctx.db.one(
+      `SELECT COUNT(*)::int AS count FROM learner_collection_events
+       WHERE organisation_id = $1 AND event_type = 'collection' AND late = true
+         AND recorded_at >= now() - ($2 || ' days')::interval`,
+      [ctx.organisationId, String(days)]
+    );
+    const denied = await ctx.db.many(
+      `SELECT ce.recorded_at, l.first_name || ' ' || l.last_name AS child, ce.collector_name, ce.denial_reason
+       FROM learner_collection_events ce
+       JOIN learners l ON l.id = ce.learner_id
+       WHERE ce.organisation_id = $1 AND ce.event_type = 'denied'
+         AND ce.recorded_at >= now() - ($2 || ' days')::interval
+       ORDER BY ce.recorded_at DESC LIMIT 5`,
+      [ctx.organisationId, String(days)]
+    );
+    const holds = await ctx.db.many(
+      `SELECT first_name || ' ' || last_name AS child, collection_hold_reason
+       FROM learners WHERE organisation_id = $1 AND collection_hold_reason IS NOT NULL AND status = 'enrolled'`,
+      [ctx.organisationId]
+    );
+    return { days, heavy, lateCount: late.count, denied, holds };
+  }, { permission: 'collections.read.daycare' });
+
   // --- Pickup brief (15:00 on weekdays) --------------------------------------
   // Three lines a parent can read while unbuckling the child seat: mood,
   // meals, and one question about the week's most recent moment.
@@ -1271,6 +1312,32 @@ async function buildReport(ctx, key, from, to) {
         outstanding: roundMoney(Number(i.total_amount) - Number(i.amount_paid))
       }));
     }
+    case 'collection_register': {
+      return ctx.db.many(
+        `SELECT ce.recorded_at,
+                l.first_name || ' ' || l.last_name AS learner,
+                COALESCE(c.name, 'Unassigned') AS classroom,
+                ce.event_type,
+                ce.collector_name,
+                COALESCE(ac.relationship, '—') AS relationship,
+                ce.verification_method,
+                u.display_name AS verified_by,
+                CASE WHEN ce.late THEN 'Yes' ELSE 'No' END AS late,
+                CASE WHEN ce.override_by IS NOT NULL THEN 'Yes — ' || left(ce.override_reason, 80) ELSE 'No' END AS overridden,
+                ce.denial_reason,
+                CASE WHEN ce.parent_notified_at IS NOT NULL THEN 'Yes' ELSE 'No' END AS parent_notified,
+                CASE WHEN ce.signature_captured THEN 'Yes' ELSE 'No' END AS signature
+         FROM learner_collection_events ce
+         JOIN learners l ON l.id = ce.learner_id
+         LEFT JOIN classrooms c ON c.id = l.classroom_id
+         LEFT JOIN authorised_collectors ac ON ac.id = ce.collector_id
+         LEFT JOIN users u ON u.id = ce.verified_by
+         WHERE ce.organisation_id = $1 AND ce.recorded_at::date BETWEEN $2::date AND $3::date
+         ORDER BY ce.recorded_at DESC`,
+        [ctx.organisationId, from, to]
+      );
+    }
+
     case 'learner_progress': {
       return ctx.db.many(
         `SELECT l.learner_reference, l.first_name, l.last_name, c.name AS classroom,

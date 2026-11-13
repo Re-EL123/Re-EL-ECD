@@ -65,7 +65,8 @@
           pushSubscribed = Boolean(await window.Reel.push.currentSubscription());
         }
       } catch (error) { pushSubscribed = false; }
-      return Object.assign({ pushSubscribed }, payload || {});
+      const approvals = await R.api('GET', '/parent/collection-approvals').then((p) => p.data).catch(() => ({ approvals: [] }));
+      return Object.assign({ pushSubscribed, approvals: approvals.approvals || [] }, payload || {});
     },
 
     render(ctx, params, page) {
@@ -73,6 +74,10 @@
       const announcements = page.announcements || [];
       const forms = page.forms || [];
       const name = (ctx.session.user.displayName || '').split(' ')[0];
+      const approvalsBanner = (page.approvals || []).length
+        ? '<div class="alert alert-sun" style="margin-bottom:16px;align-items:center">' + R.icon('smartphone') + '<div style="flex:1"><strong>A collector is waiting at the gate</strong><div class="muted small">' + (page.approvals || []).map((a) => R.esc(a.collector_name) + ' is collecting ' + R.esc(a.child_first_name)).join(' · ') + '</div></div>' +
+          '<a class="btn btn-primary btn-sm" href="#/parent/attendance">' + R.icon('shield-check') + ' Answer now</a></div>'
+        : '';
       const pushBanner = (window.Reel.push && window.Reel.push.isSupported() && !page.pushSubscribed)
         ? '<div class="alert alert-info" style="margin-bottom:16px;align-items:center">' + R.icon('bell-ring') + '<div style="flex:1"><strong>Never miss a report.</strong><div class="muted small">Enable notifications on this device and we will ping you the moment a report, observation or announcement lands.</div></div>' +
           '<button class="btn btn-primary btn-sm" @click="pushToggle()">Enable</button></div>'
@@ -81,6 +86,7 @@
         '<a class="btn btn-secondary btn-sm" href="#/parent/messages">' + R.icon('message-circle') + ' Messages</a>' +
         '<a class="btn btn-primary btn-sm" href="#/parent/attendance">' + R.icon('calendar-plus') + ' Report absence</a>') +
         pushBanner +
+        approvalsBanner +
         '<div class="grid grid-4 section">' +
         R.statCard({ label: 'Children', value: R.number(children.length), icon: 'users', foot: 'In our care' }) +
         R.statCard({ label: 'Unread', value: R.number(page.unread), icon: 'bell', tone: Number(page.unread) ? 'sun' : 'green', foot: 'Notifications for you' }) +
@@ -389,11 +395,19 @@
       const query = new URLSearchParams();
       if (ctx.filters.from) query.set('from', ctx.filters.from);
       if (ctx.filters.to) query.set('to', ctx.filters.to);
-      const attendance = child
-        ? await R.api('GET', '/parent/children/' + encodeURIComponent(child.id) + '/attendance' + (query.toString() ? '?' + query : ''))
+      const childId = child ? child.id : null;
+      const attendance = childId
+        ? await R.api('GET', '/parent/children/' + encodeURIComponent(childId) + '/attendance' + (query.toString() ? '?' + query : ''))
           .then((p) => p.data).catch(() => null)
         : null;
-      return { children: children || [], child, attendance };
+      const [approvals, collectors, collections] = childId
+        ? await Promise.all([
+            R.api('GET', '/parent/collection-approvals').then((p) => p.data).catch(() => ({ approvals: [] })),
+            R.api('GET', '/parent/children/' + encodeURIComponent(childId) + '/collectors').then((p) => p.data).catch(() => []),
+            R.api('GET', '/parent/children/' + encodeURIComponent(childId) + '/collections').then((p) => p.data).catch(() => [])
+          ])
+        : [{ approvals: [] }, [], []];
+      return { children: children || [], child, attendance, approvals, collectors, collections };
     },
 
     render(ctx, params, page) {
@@ -408,6 +422,15 @@
           R.selectFilter(ctx, 'childId', children.map((c) => ({ value: c.id, label: childLabel(c) })), 'Choose a child') +
           '<label class="small muted">From</label><input class="input" type="date" value="' + R.attr(ctx.filters.from || '') + '" @change="setFilter(\'from\',$event.target.value)">' +
           '<label class="small muted">To</label><input class="input" type="date" value="' + R.attr(ctx.filters.to || '') + '" @change="setFilter(\'to\',$event.target.value)">') +
+        (page.approvals && (page.approvals.approvals || []).length
+          ? '<div class="alert alert-sun" style="margin:16px 0;align-items:center">' + R.icon('smartphone') + '<div style="flex:1"><strong>Someone is waiting for your approval at the gate</strong><div class="muted small">' +
+              (page.approvals.approvals || []).map((a) => R.esc(a.collector_name) + ' is collecting ' + R.esc(a.child_first_name)).join(' · ') + '</div></div>' +
+              (page.approvals.approvals || []).map((a) =>
+                '<div class="btn-group" style="flex-shrink:0">' +
+                  '<button class="btn btn-sm btn-secondary" @click="respondCollectionApproval(\'' + R.attr(a.id) + '\',\'declined\')">Decline</button>' +
+                  '<button class="btn btn-sm btn-primary" @click="respondCollectionApproval(\'' + R.attr(a.id) + '\',\'approved\')">Approve</button>' +
+                '</div>').join('') + '</div>'
+          : '') +
         '<div class="grid grid-4 section">' +
         R.statCard({ label: 'Days marked', value: R.number(summary.marked), icon: 'calendar-check', foot: 'In this range' }) +
         R.statCard({ label: 'Present', value: R.number(summary.present), icon: 'user-check', tone: 'green', foot: 'Including late arrivals' }) +
@@ -420,10 +443,55 @@
           { label: 'Checked in', render: (a) => a.check_in_at ? R.time(a.check_in_at) : '—' },
           { label: 'Checked out', render: (a) => a.check_out_at ? R.time(a.check_out_at) : '—' },
           { label: 'Reason', render: (a) => R.esc(a.absence_reason || '—') }
-        ], emptyTitle: 'No attendance in this range', emptyMessage: 'Try a wider date range.' });
+        ], emptyTitle: 'No attendance in this range', emptyMessage: 'Try a wider date range.' }) +
+        R.card('Who may collect ' + R.esc((page.child && page.child.firstName) || 'your child'),
+          '<div class="stack">' +
+            (page.collectors || []).map((c) =>
+              '<div class="row" style="gap:12px;align-items:center;padding:10px;border:1px solid var(--border-subtle);border-radius:14px">' +
+                (c.photo_url
+                  ? '<img src="' + R.attr(c.photo_url) + '" alt="' + R.attr(c.name) + '" style="width:52px;height:52px;border-radius:12px;object-fit:cover">'
+                  : '<div class="avatar" style="width:52px;height:52px;border-radius:12px;font-size:1.2rem;background:var(--forest-100);color:var(--forest-700)">' + R.esc((c.name[0] || '?').toUpperCase()) + '</div>') +
+                '<div style="min-width:0;flex:1"><div class="strong">' + R.esc(c.name) + '</div><div class="muted small">' + R.esc(c.relationship) + ' · ' + R.esc((c.policy || 'photo_id').replace(/_/g, ' ')) + '</div></div>' +
+                '<div class="stack" style="gap:4px;align-items:flex-end">' +
+                  '<span class="badge ' + (c.approval_status === 'approved' ? (c.is_trusted ? 'badge-green' : 'badge-sky') : 'badge-sun') + '">' +
+                    (c.approval_status === 'approved' ? (c.is_trusted ? 'Trusted' : 'Approved') : 'Waiting for the centre') + '</span>' +
+                  '<div class="btn-group">' +
+                    '<button class="btn btn-sm btn-ghost" @click="regenerateCollectorPin(\'' + R.attr(c.id) + '\',\'' + R.attr(c.name) + '\')">' + R.icon('key-round') + ' New code</button>' +
+                    '<button class="btn btn-sm btn-ghost" style="color:var(--danger)" @click="revokeCollector(\'' + R.attr(c.id) + '\',\'' + R.attr(c.name) + '\')">' + R.icon('user-x') + ' Remove</button>' +
+                  '</div>' +
+                '</div>' +
+              '</div>').join('') +
+            (!(page.collectors || []).length ? '<div class="muted small" style="padding:4px 0">Nobody else is on the list yet. Family and friends you trust can be added below.</div>' : '') +
+          '</div>',
+          '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'collectorAdd\',\'' + R.attr((page.child && page.child.id) || '') + '\')">' + R.icon('user-plus') + ' Add collector</button>') +
+        R.card('Collection history', R.table({ rows: page.collections || [], compact: true, columns: [
+          { label: 'When', render: (r) => '<span class="cell-strong">' + R.dateTime(r.recorded_at) + '</span>' + (r.late ? '<span class="cell-sub" style="color:var(--danger)">Late</span>' : '') },
+          { label: 'Who collected', render: (r) => '<span class="strong">' + R.esc(r.collector_name || '—') + '</span>' + (r.collector_relationship ? '<span class="cell-sub">' + R.esc(r.collector_relationship) + '</span>' : '') },
+          { label: 'Method', render: (r) => R.esc((r.verification_method || '—').replace(/_/g, ' ')) },
+          { label: 'Verified by', render: (r) => R.esc(r.verified_by_name || 'staff') },
+          { label: '', render: (r) => r.overridden ? '<span class="badge badge-danger">Override</span>' : '' }
+        ], emptyTitle: 'Nothing recorded yet', emptyMessage: 'Collection records appear here the moment the gate registers them.' }));
     },
 
-    openModal(ctx) {
+    openModal(ctx, name, id) {
+      if (name === 'collectorAdd' && id) {
+        ctx.openModal({
+          title: 'Add someone who may collect',
+          description: 'Add a photo and they are trusted to collect immediately. Without a photo, the centre verifies them before their first pickup.',
+          endpoint: '/parent/children/' + id + '/collectors',
+          submitLabel: 'Add collector',
+          successMessage: 'Collector added — the centre has the record.',
+          fields: [
+            { name: 'name', label: 'Full name', required: true, span: 2, placeholder: 'e.g. Gogo Miriam Johnson' },
+            { name: 'relationship', label: 'Relationship', required: true, placeholder: 'Grandmother, uncle, driver…' },
+            { name: 'contactPhone', label: 'Contact phone', placeholder: '+27 83 …' },
+            { name: 'policy', label: 'Verification', type: 'select', options: ['photo_id', 'qr_code', 'pin', 'code_word'], value: 'photo_id' },
+            { name: 'photoUrl', label: 'Photo (recommended)', type: 'media', accept: 'image/*', scope: 'collector', ownerType: 'learner', ownerId: id },
+            { name: 'notes', label: 'Notes for the gate', type: 'textarea', span: 2, placeholder: 'Only on Fridays…' }
+          ]
+        });
+        return;
+      }
       const children = (ctx.page || {}).children || [];
       ctx.openModal({
         title: 'Report an absence', endpoint: '/parent/absence', submitLabel: 'Report absence',

@@ -56,6 +56,7 @@
     route('/app/modules/:id', 'app', 'moduleDetail', 'curriculum.read.daycare', 'Learning module'),
     route('/app/assessments', 'app', 'assessments', ['assessments.read.daycare', 'assessments.read.assigned'], 'Assessments'),
     route('/app/learner-attendance', 'app', 'attendance', ['attendance.read.daycare', 'attendance.read.assigned'], 'Learner attendance'),
+    route('/app/collection-gate', 'app', 'collectionGate', 'collections.record.daycare', 'Collection gate'),
     route('/app/staff', 'app', 'staff', 'staff.read.daycare', 'Staff'),
     route('/app/staff/:id', 'app', 'staffDetail', 'staff.read.daycare', 'Staff profile'),
     route('/app/staff-shifts', 'app', 'shifts', ['shifts.read.daycare', 'shifts.read.assigned'], 'Shift calendar'),
@@ -140,7 +141,8 @@
         { path: '/app/learners', label: 'Learners', icon: 'users', permission: ['learners.read.daycare', 'learners.read.assigned'] },
         { path: '/app/admissions', label: 'Admissions', icon: 'user-plus', permission: 'admissions.read.daycare' },
         { path: '/app/classrooms', label: 'Classrooms', icon: 'door-open', permission: 'classrooms.read.daycare' },
-        { path: '/app/learner-attendance', label: 'Attendance', icon: 'calendar-check', permission: ['attendance.read.daycare', 'attendance.read.assigned'] }
+        { path: '/app/learner-attendance', label: 'Attendance', icon: 'calendar-check', permission: ['attendance.read.daycare', 'attendance.read.assigned'] },
+        { path: '/app/collection-gate', label: 'Collection gate', icon: 'shield-check', permission: 'collections.record.daycare' }
       ] },
       { label: 'Learning', items: [
         { path: '/app/curriculum', label: 'Curriculum', icon: 'book-open', permission: 'curriculum.read.daycare' },
@@ -198,6 +200,7 @@
 
   const QUICK_ACTIONS = [
     { label: 'New learner', icon: 'user-plus', permission: 'learners.create.daycare', route: '/app/learners', modal: 'learner' },
+    { label: 'Release a child', icon: 'shield-check', permission: 'collections.record.daycare', route: '/app/collection-gate' },
     { label: 'Record payment', icon: 'banknote', permission: 'finance.payment.record.daycare', route: '/app/finance', modal: 'payment' },
     { label: 'Log an incident', icon: 'shield-alert', permission: ['safety.report.daycare', 'safety.manage.daycare'], route: '/app/safety', modal: 'incident' },
     { label: 'New task', icon: 'list-plus', permission: ['tasks.read.own', 'tasks.manage.daycare'], route: '/app/tasks', modal: 'task' },
@@ -2162,10 +2165,11 @@
         this.modal.error = null;
         const endpoint = this.modal.endpoint || '';
         try {
-          let body = this.modal.transform ? this.modal.transform(this.modal.data) : Object.assign({}, this.modal.data);
+          const declared = (this.modal.fields || []).map((f) => f.name);
+          const plain = {};
+          for (const key of declared) plain[key] = this.modal.data[key];
+          let body = this.modal.transform ? this.modal.transform(plain) : plain;
           if (body && typeof body === 'object') {
-            // Modal state is a reactive proxy; its nested objects may not
-            // serialise reliably on the wire — send a plain deep copy.
             try { body = JSON.parse(JSON.stringify(body)); } catch { /* send as-is */ }
           }
           if (this.modal.onSuccess) body = this.modal.onSuccess(body) || body;
@@ -2340,6 +2344,54 @@
         } catch (error) {
           this.toast(error.message || 'Could not save the paragraph.', 'error');
         }
+      },
+
+      async approveCollector(collectorId, name, decision) {
+        try {
+          await Reel.api('PATCH', '/authorised-collectors/' + encodeURIComponent(collectorId) + '/approval', { decision });
+          this.toast((name || 'Collector') + (decision === 'approved' ? ' is approved — the gate will let them through.' : ' has been rejected — the gate will refuse them.'));
+          await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'Could not update the collector.', 'error');
+        }
+      },
+
+      async respondCollectionApproval(requestId, decision) {
+        try {
+          await Reel.api('POST', '/parent/collection-approvals/' + encodeURIComponent(requestId) + '/respond', { decision });
+          this.toast(decision === 'approved' ? 'Approved — the gate can release now.' : 'Declined — the child stays with us.', decision === 'approved' ? undefined : 'warn');
+          await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'Could not answer the gate.', 'error');
+        }
+      },
+
+      async regenerateCollectorPin(collectorId, name) {
+        try {
+          const result = await Reel.api('POST', '/parent/children/' + encodeURIComponent(this.collectionChildId()) + '/collectors/' + encodeURIComponent(collectorId) + '/pin', {});
+          const pin = result && result.data && result.data.pin;
+          window.alert((name || 'Collector') + '\n\nNew code (shown once):\n\n' + (pin || '').split('').join(' ') + '\n\nTell them only this code.');
+          await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'Could not generate a new code.', 'error');
+        }
+      },
+
+      async revokeCollector(collectorId, name) {
+        if (!window.confirm('Remove ' + (name || 'this person') + ' from the list? They will no longer be able to collect this child.')) return;
+        try {
+          await Reel.api('DELETE', '/parent/children/' + encodeURIComponent(this.collectionChildId()) + '/collectors/' + encodeURIComponent(collectorId));
+          this.toast((name || 'Collector') + ' removed from the list.');
+          await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'Could not remove the collector.', 'error');
+        }
+      },
+
+      collectionChildId() {
+        const page = this.page || {};
+        const child = page.child || {};
+        return child.id || (this.query && this.query.childId) || '';
       },
 
       async react(resourceType, resourceId, reaction) {

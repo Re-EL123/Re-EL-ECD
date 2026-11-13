@@ -7,6 +7,7 @@ const { parsePagination } = require('../utils/http');
 const bulk = require('../services/bulk-service');
 const { getLearner, assertLearnerWrite, assertPermission, has, assignedClassroomIds } = require('./helpers');
 const { createNotification } = require('../services/notification-service');
+const { sendTemplate } = require('../services/email-service');
 
 function register(router) {
   router.get('/learners', async (ctx) => {
@@ -493,45 +494,281 @@ function register(router) {
     return record;
   }, { permission: 'medical.manage.daycare' });
 
+  // --- The Collection Gate -------------------------------------------------
+  // Match a child to an authorised collector, capture the proof, and tell the
+  // parents the moment the handover happens — never by morning after.
+
+  const VERIFICATION_LABELS = {
+    guardian_present: 'a guardian',
+    photo_id: 'photo ID',
+    qr_code: 'QR code',
+    pin: 'PIN',
+    code_word: 'code word',
+    known_to_staff: 'known to staff',
+    guardian_approval: 'a parent’s approval',
+    override: 'a supervisor override'
+  };
+
+  async function collectionLateCutoff(db, organisationId) {
+    const row = await db.one('SELECT settings FROM organisation_settings WHERE organisation_id = $1', [organisationId]).catch(() => null);
+    const fallback = '17:30';
+    const cutoff = (row && row.settings && row.settings['collection.lateCutoff']) || fallback;
+    return /^[0-2]?[0-9]:[0-5][0-9]$/.test(String(cutoff)) ? String(cutoff) : fallback;
+  }
+
+  function minutesInOrg(tz) {
+    try {
+      const parts = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz || 'Africa/Johannesburg' }).formatToParts(new Date());
+      const hh = Number((parts.find((p) => p.type === 'hour') || {}).value);
+      const mm = Number((parts.find((p) => p.type === 'minute') || {}).value);
+      return hh * 60 + mm;
+    } catch {
+      const d = new Date();
+      return d.getHours() * 60 + d.getMinutes();
+    }
+  }
+
+  async function isLateNow(db, organisationId, timezone) {
+    const [h, m] = (await collectionLateCutoff(db, organisationId)).split(':').map(Number);
+    return minutesInOrg(timezone || 'Africa/Johannesburg') >= h * 60 + m;
+  }
+
+  async function collectionGuardians(db, organisationId, learnerId) {
+    return db.many(
+      `SELECT DISTINCT g.user_id, g.email, g.first_name
+       FROM learner_guardians lg JOIN guardians g ON g.id = lg.guardian_id AND lg.organisation_id = $1
+       WHERE lg.learner_id = $2 AND lg.portal_access_status = 'active' AND g.user_id IS NOT NULL`,
+      [organisationId, learnerId]
+    );
+  }
+
+  async function notifyCollection(db, ctx, learner, { eventType, collectorName, relationship, method }) {
+    const guardians = await collectionGuardians(db, ctx.organisationId, learner.id);
+    if (!guardians.length) return false;
+    const time = new Date().toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
+    const childName = learner.first_name + ' ' + (learner.last_name || '').trim();
+    const friendly = {
+      collection: collectorName + ' collected ' + learner.first_name,
+      denied: 'Someone could not collect ' + learner.first_name,
+      collection_override: 'An override happened at the gate for ' + learner.first_name
+    }[eventType] || 'Collection update for ' + learner.first_name;
+    const dateLine = eventType === 'collection'
+      ? (time + ' · verified with ' + (VERIFICATION_LABELS[method] || method))
+      : '';
+    await createNotification(db, ctx, {
+      recipientUserIds: guardians.map((g) => g.user_id),
+      type: eventType,
+      title: friendly,
+      body: dateLine,
+      url: '/parent/attendance',
+      organisationId: ctx.organisationId
+    });
+    for (const guardian of guardians) {
+      if (!guardian.email) continue;
+      try {
+        const display = await db.one('SELECT display_name FROM users WHERE id = $1', [guardian.user_id]).catch(() => null);
+        if (eventType === 'collection_override') {
+          await sendTemplate(db, 'collectionOverride', {
+            to: guardian.email,
+            organisationId: ctx.organisationId,
+            data: {
+              guardianName: (display && display.display_name) || guardian.first_name || 'there',
+              childName,
+              collectorName,
+              relationship,
+              verificationLabel: VERIFICATION_LABELS[method] || method,
+              time,
+              organisationName: ctx.organisation.name,
+              overriderName: ctx.user.displayName || 'A member of the team',
+              overrideReason: ctx.body && ctx.body.overrideReason
+            },
+            metadata: { kind: 'collection_override' }
+          });
+        } else {
+          await sendTemplate(db, 'collectionRecorded', {
+            to: guardian.email,
+            organisationId: ctx.organisationId,
+            data: {
+              guardianName: (display && display.display_name) || guardian.first_name || 'there',
+              childName,
+              collectorName,
+              relationship,
+              verificationLabel: VERIFICATION_LABELS[method] || method,
+              time,
+              organisationName: ctx.organisation.name
+            },
+            metadata: { kind: 'collection_recorded' }
+          });
+        }
+      } catch (error) {
+        console.warn(JSON.stringify({ level: 'warn', message: 'collection email failed', error: error.message }));
+      }
+    }
+    return true;
+  }
+
+  async function pendingApprovalFor(db, organisationId, learnerId, collectorId) {
+    const row = await db.one(
+      `SELECT id FROM learner_collection_requests
+       WHERE organisation_id = $1 AND learner_id = $2 AND status = 'approved'
+         AND collector_id = $3 AND resolved_at > now() - interval '60 minutes'
+       ORDER BY resolved_at DESC LIMIT 1`,
+      [organisationId, learnerId, collectorId]
+    );
+    return row;
+  }
+
   router.get('/learners/:id/collections', async (ctx) => {
     const learner = await getLearner(ctx, ctx.params.id);
     return ctx.db.many(
-      `SELECT ce.*, u.display_name AS verified_by_name FROM learner_collection_events ce
-       LEFT JOIN users u ON u.id = ce.verified_by WHERE ce.learner_id = $1 ORDER BY ce.recorded_at DESC`,
+      `SELECT ce.*, u.display_name AS verified_by_name,
+              ac.photo_url AS collector_photo_url,
+              ac.relationship AS collector_relationship,
+              ac.is_trusted AS collector_is_trusted
+       FROM learner_collection_events ce
+       LEFT JOIN users u ON u.id = ce.verified_by
+       LEFT JOIN authorised_collectors ac ON ac.id = ce.collector_id
+       WHERE ce.learner_id = $1 ORDER BY ce.recorded_at DESC`,
       [learner.id]
     );
   }, { permission: 'collections.read.daycare' });
 
   router.post('/learners/:id/collections', async (ctx) => {
     const body = validate(ctx.body, {
+      collectorType: { type: 'string', enum: ['guardian', 'authorised_collector'], optional: true },
       collectorId: { type: 'string', uuid: true, optional: true },
-      collectorName: { type: 'string', min: 2, max: 200, optional: true },
       verificationMethod: { type: 'string', min: 2, max: 60 },
+      pin: { type: 'string', min: 3, max: 24, optional: true },
+      signatureData: { type: 'string', max: 200000, optional: true },
+      overrideReason: { type: 'string', min: 10, max: 500, optional: true },
       notes: { type: 'string', max: 1000, optional: true }
     });
     const learner = await getLearner(ctx, ctx.params.id);
+    if (learner.collection_hold_reason) {
+      const isManager = has(ctx, 'collections.manage.daycare') || has(ctx, 'organisation.settings.manage');
+      if (!(isManager && body.verificationMethod === 'override')) {
+        throw new AppError('CONFLICT', null, 'This child is on a collection hold: ' + learner.collection_hold_reason + '. Only a manager may release, and only with an override reason.');
+      }
+    }
     const attendance = await ctx.db.one(
       'SELECT * FROM learner_attendance WHERE learner_id = $1 AND attendance_date = CURRENT_DATE', [learner.id]
     );
     if (!attendance || !attendance.check_in_at || attendance.check_out_at) {
-      fail('CONFLICT', null, 'The learner is not currently checked in.');
+      fail('CONFLICT', null, 'The child is not currently checked in.');
     }
-    let collectorName = body.collectorName;
-    if (body.collectorId) {
-      const collector = await ctx.db.one(
-        `SELECT * FROM authorised_collectors WHERE id = $1 AND learner_id = $2 AND organisation_id = $3 AND status = 'active'`,
+    const org = await ctx.db.one('SELECT timezone FROM organisations WHERE id = $1', [ctx.organisationId]);
+    const allowed = ['guardian_present', 'photo_id', 'qr_code', 'pin', 'code_word', 'known_to_staff', 'guardian_approval', 'override'];
+    if (!allowed.includes(body.verificationMethod)) {
+      fail('VALIDATION', [{ field: 'verificationMethod', message: 'Pick a supported verification method.' }]);
+    }
+    if (body.verificationMethod === 'override' && !has(ctx, 'collections.manage.daycare') && !has(ctx, 'organisation.settings.manage')) {
+      throw new AppError('FORBIDDEN', null, 'A supervisor override requires management permission.');
+    }
+    if (body.verificationMethod === 'override' && (!body.overrideReason || body.overrideReason.trim().length < 10)) {
+      fail('VALIDATION', [{ field: 'overrideReason', message: 'Write the override reason — at least ten characters.' }]);
+    }
+    const codeMethods = ['pin', 'qr_code', 'code_word'];
+    if (codeMethods.includes(body.verificationMethod) && body.collectorId) {
+      if (!body.pin || !/^[0-9A-Za-z-]{3,24}$/.test(String(body.pin))) {
+        fail('VALIDATION', [{ field: 'pin', message: 'Enter the code the collector was given.' }]);
+      }
+      const collectorRow = await ctx.db.one('SELECT pin_hash FROM authorised_collectors WHERE id = $1', [body.collectorId]);
+      const hashed = collectorRow && collectorRow.pin_hash;
+      const candidate = require('crypto').createHash('sha256').update(ctx.organisationId + '::collection-pin::' + String(body.pin).trim().toLowerCase()).digest('hex');
+      if (!hashed || hashed !== candidate) {
+        throw new AppError('VALIDATION', [{ field: 'pin', message: 'That code does not match this collector. Ask the guardian to try again or approve on their phone.' }]);
+      }
+    }
+
+    let collectorName, relationship = null, collector = null, guardianCollect = false;
+    if (body.collectorType === 'guardian') {
+      const guardian = await ctx.db.one(
+        `SELECT g.first_name || ' ' || g.last_name AS name, g.relationship_type AS relationship
+         FROM learner_guardians lg JOIN guardians g ON g.id = lg.guardian_id
+         JOIN users u ON u.id = g.user_id
+         WHERE lg.learner_id = $1 AND lg.organisation_id = $2 AND g.user_id = $3
+           AND lg.portal_access_status = 'active'`,
+        [learner.id, ctx.organisationId, ctx.user.id]
+      );
+      if (!guardian) fail('CONFLICT', null, 'You are not a guardian of this learner.');
+      guardianCollect = true;
+      collectorName = guardian.name;
+      relationship = guardian.relationship || 'Guardian';
+      if (body.verificationMethod !== 'guardian_present' && body.verificationMethod !== 'override') {
+        body.verificationMethod = 'guardian_present';
+      }
+    } else {
+      if (!body.collectorId) fail('VALIDATION', [{ field: 'collectorId', message: 'Pick who is collecting from the authorised list.' }]);
+      collector = await ctx.db.one(
+        `SELECT * FROM authorised_collectors
+         WHERE id = $1 AND learner_id = $2 AND organisation_id = $3 AND status = 'active'
+           AND approval_status = 'approved'`,
         [body.collectorId, learner.id, ctx.organisationId]
       );
-      if (!collector) fail('CONFLICT', null, 'This person is not an authorised collector for the learner.');
+      if (!collector) fail('CONFLICT', null, 'This person is not an approved collector for this child.');
       collectorName = collector.name;
+      relationship = collector.relationship;
+      if (body.verificationMethod === 'known_to_staff' && !collector.is_trusted) {
+        fail('VALIDATION', [{ field: 'verificationMethod', message: '“Known to staff” is not enough for this collector — ask the guardian to approve or verify with an ID, QR code or PIN.' }]);
+      }
     }
+
+    const prior = collector
+      ? await ctx.db.one(
+        `SELECT MAX(recorded_at) AS latest FROM learner_collection_events
+         WHERE learner_id = $1 AND collector_id = $2 AND event_type = 'collection'`,
+        [learner.id, collector.id]
+      )
+      : { latest: null };
+    const stale = !prior || !prior.latest || (Date.now() - new Date(prior.latest).getTime()) > 60 * 86400000;
+    const needsApproval = !guardianCollect && stale && body.verificationMethod !== 'override';
+    if (needsApproval && body.verificationMethod !== 'guardian_approval') {
+      const approved = await pendingApprovalFor(ctx.db, ctx.organisationId, learner.id, collector ? collector.id : null);
+      if (approved) {
+        body.verificationMethod = 'guardian_approval';
+        body.requestId = approved.id;
+      } else {
+        const row = await ctx.db.one(
+          `SELECT id FROM learner_collection_requests
+           WHERE organisation_id = $1 AND learner_id = $2 AND status = 'pending'
+             AND collector_id = $3 ORDER BY created_at DESC LIMIT 1`,
+          [ctx.organisationId, learner.id, collector ? collector.id : null]
+        );
+        const request = row && row.id ? row : await ctx.db.one(
+          `INSERT INTO learner_collection_requests (organisation_id, branch_id, learner_id, collector_id, collector_name, status, reason, requested_by)
+           VALUES ($1,$2,$3,$4,$5,'pending','new_collector',$6) RETURNING id`,
+          [ctx.organisationId, learner.branch_id, learner.id, collector ? collector.id : null, collectorName, ctx.user.id]
+        );
+        const guardians = await collectionGuardians(ctx.db, ctx.organisationId, learner.id);
+        if (guardians.length) {
+          await createNotification(ctx.db, ctx, {
+            recipientUserIds: guardians.map((g) => g.user_id),
+            type: 'collection',
+            title: collectorName + ' is collecting ' + learner.first_name,
+            body: 'Tap to approve or decline — the gate is waiting.',
+            url: '/parent/attendance?approval=' + request.id,
+            organisationId: ctx.organisationId
+          });
+        }
+        await recordAudit(ctx.db, ctx, { action: 'learner.collection_request_created', resourceType: 'learner', resourceId: learner.id, branchId: learner.branch_id, metadata: { collector: collectorName } });
+        ctx.status = 202;
+        return { requiresApproval: true, requestId: request.id, message: 'Waiting for a guardian to approve on their phone.' };
+      }
+    }
+
+    const isOverride = body.verificationMethod === 'override';
+    const late = await isLateNow(ctx.db, ctx.organisationId, org && org.timezone);
+    const signature = body.signatureData && String(body.signatureData).startsWith('data:image/png') ? body.signatureData : null;
     const event = await ctx.db.withTransaction(async (client) => {
       const row = (await client.query(
         `INSERT INTO learner_collection_events (organisation_id, branch_id, learner_id, collector_id, collector_name,
-          event_type, verified_by, verification_method, notes)
-         VALUES ($1,$2,$3,$4,$5,'collection',$6,$7,$8) RETURNING *`,
-        [ctx.organisationId, learner.branch_id, learner.id, body.collectorId || null, collectorName || 'Unknown',
-          ctx.user.id, body.verificationMethod, body.notes || null]
+          event_type, verified_by, verification_method, notes, signature_data, signature_captured,
+          collector_photo_url, late, override_by, override_reason, request_id)
+         VALUES ($1,$2,$3,$4,$5,'collection',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+        [ctx.organisationId, learner.branch_id, learner.id, collector ? collector.id : null, collectorName,
+          ctx.user.id, body.verificationMethod, body.notes || null, signature, Boolean(signature),
+          collector ? collector.photo_url : null, late,
+          isOverride ? ctx.user.id : null, isOverride ? body.overrideReason.trim() : null, body.requestId || null]
       )).rows[0];
       await client.query(
         `UPDATE learner_attendance SET attendance_status = 'collected', check_out_at = now(), updated_at = now()
@@ -539,13 +776,213 @@ function register(router) {
       );
       return row;
     });
+    const notified = await notifyCollection(ctx.db, ctx, learner, {
+      eventType: isOverride ? 'collection_override' : 'collection',
+      collectorName,
+      relationship,
+      method: body.verificationMethod
+    });
+    if (notified) {
+      await ctx.db.query('UPDATE learner_collection_events SET parent_notified_at = now() WHERE id = $1', [event.id]);
+    }
     await recordAudit(ctx.db, ctx, {
-      action: 'learner.collection_recorded', resourceType: 'learner', resourceId: learner.id,
-      branchId: learner.branch_id, metadata: { collector: collectorName }
+      action: isOverride ? 'learner.collection_override' : 'learner.collection_recorded',
+      resourceType: 'learner', resourceId: learner.id,
+      branchId: learner.branch_id,
+      metadata: { collector: collectorName, method: body.verificationMethod, late, signatureCaptured: Boolean(signature), notified }
     });
     ctx.status = 201;
-    return event;
+    return { ...event, parentNotified: notified };
   }, { permission: 'collections.record.daycare' });
+
+  router.post('/learners/:id/collections/deny', async (ctx) => {
+    const body = validate(ctx.body, {
+      collectorId: { type: 'string', uuid: true, optional: true },
+      collectorName: { type: 'string', min: 2, max: 200, optional: true },
+      reason: { type: 'string', min: 3, max: 500 }
+    });
+    const learner = await getLearner(ctx, ctx.params.id);
+    let collectorName = body.collectorName || null;
+    let relationship = null;
+    if (body.collectorId) {
+      const collector = await ctx.db.one(
+        `SELECT name, relationship FROM authorised_collectors
+         WHERE id = $1 AND learner_id = $2 AND organisation_id = $3 AND status = 'active'`,
+        [body.collectorId, learner.id, ctx.organisationId]
+      );
+      if (!collector) fail('NOT_FOUND', null, 'That collector is not on this child’s list.');
+      collectorName = collector.name;
+      relationship = collector.relationship;
+    }
+    if (!collectorName) fail('VALIDATION', [{ field: 'collectorName', message: 'Say who was turned away.' }]);
+    const row = await ctx.db.one(
+      `INSERT INTO learner_collection_events (organisation_id, branch_id, learner_id, collector_id, collector_name,
+        event_type, verified_by, verification_method, denial_reason, notes)
+       VALUES ($1,$2,$3,$4,$5,'denied',$6,'denied',$7,$8) RETURNING *`,
+      [ctx.organisationId, learner.branch_id, learner.id, body.collectorId || null, collectorName, ctx.user.id, body.reason, null]
+    );
+    await notifyCollection(ctx.db, ctx, learner, { eventType: 'denied', collectorName, relationship, method: 'denied' });
+    await recordAudit(ctx.db, ctx, {
+      action: 'learner.collection_denied', resourceType: 'learner', resourceId: learner.id,
+      branchId: learner.branch_id, metadata: { collector: collectorName, reason: body.reason }
+    });
+    ctx.status = 201;
+    return row;
+  }, { permission: 'collections.record.daycare' });
+
+  // --- The gate, seen all at once: which children are waiting, who may ----
+  // collect them, who is trusted, and who needs a guardian’s approval first.
+
+  router.get('/collections/gate', async (ctx) => {
+    await ctx.db.query(
+      `UPDATE learner_collection_requests SET status = 'expired', updated_at = now(), resolved_at = now()
+       WHERE organisation_id = $1 AND status = 'pending' AND created_at < now() - interval '10 minutes'`,
+      [ctx.organisationId]
+    );
+    const assigned = await assignedClassroomIds(ctx);
+    const orgWide = has(ctx, 'organisation.settings.manage') || assigned.length === 0;
+    const children = await ctx.db.many(
+      orgWide
+        ? `SELECT l.id, l.first_name, l.last_name, l.collection_hold_reason, c.name AS classroom_name
+           FROM learners l LEFT JOIN classrooms c ON c.id = l.classroom_id
+           JOIN learner_attendance a ON a.learner_id = l.id AND a.organisation_id = $1 AND a.attendance_date = CURRENT_DATE
+           WHERE l.organisation_id = $1 AND l.status = 'enrolled'
+             AND a.check_in_at IS NOT NULL AND a.check_out_at IS NULL
+           ORDER BY c.name NULLS LAST, l.first_name`
+        : `SELECT l.id, l.first_name, l.last_name, l.collection_hold_reason, c.name AS classroom_name
+           FROM learners l LEFT JOIN classrooms c ON c.id = l.classroom_id
+           JOIN learner_attendance a ON a.learner_id = l.id AND a.organisation_id = $1 AND a.attendance_date = CURRENT_DATE
+           WHERE l.organisation_id = $1 AND l.status = 'enrolled'
+             AND a.check_in_at IS NOT NULL AND a.check_out_at IS NULL
+             AND l.classroom_id = ANY($2::uuid[])
+           ORDER BY c.name NULLS LAST, l.first_name`,
+      orgWide ? [ctx.organisationId] : [ctx.organisationId, assigned]
+    );
+    const out = [];
+    for (const child of children) {
+      const collectors = await ctx.db.many(
+        `SELECT ac.*, (SELECT MAX(ce.recorded_at) FROM learner_collection_events ce
+                       WHERE ce.learner_id = ac.learner_id AND ce.collector_id = ac.id AND ce.event_type = 'collection') AS last_collected_at
+         FROM authorised_collectors ac
+         WHERE ac.learner_id = $1 AND ac.organisation_id = $2 AND ac.status = 'active'
+         ORDER BY ac.is_trusted DESC, ac.name`,
+        [child.id, ctx.organisationId]
+      );
+      const pending = await ctx.db.one(
+        `SELECT id, collector_name, status, reason, created_at
+         FROM learner_collection_requests
+         WHERE organisation_id = $1 AND learner_id = $2 AND status = 'pending'
+         ORDER BY created_at DESC LIMIT 1`,
+        [ctx.organisationId, child.id]
+      ).catch(() => null);
+      const guardians = await collectionGuardians(ctx.db, ctx.organisationId, child.id);
+      const org = await ctx.db.one('SELECT timezone FROM organisations WHERE id = $1', [ctx.organisationId]);
+      const tz = org && org.timezone;
+      out.push({
+        ...child,
+        guardianCount: guardians.length,
+        collectors: collectors.map((c) => {
+          const stale = !c.last_collected_at || (Date.now() - new Date(c.last_collected_at).getTime()) > 60 * 86400000;
+          const notApproved = c.approval_status !== 'approved';
+          return {
+            id: c.id,
+            name: c.name,
+            relationship: c.relationship,
+            contactPhone: c.contact_phone,
+            photoUrl: c.photo_url || null,
+            isTrusted: Boolean(c.is_trusted),
+            policy: c.identity_verification_policy,
+            approvalStatus: c.approval_status,
+            approvalNote: notApproved ? 'The centre has not approved this collector yet.' : null,
+            needsApproval: !notApproved && stale,
+            lastCollectedAt: c.last_collected_at || null
+          };
+        }),
+        pendingRequest: pending ? { id: pending.id, collectorName: pending.collector_name, status: pending.status, reason: pending.reason, createdAt: pending.created_at } : null
+      });
+    }
+    const org = await ctx.db.one('SELECT timezone FROM organisations WHERE id = $1', [ctx.organisationId]);
+    const tz = org && org.timezone;
+    return {
+      children: out,
+      lateMode: await isLateNow(ctx.db, ctx.organisationId, tz),
+      cutoff: await collectionLateCutoff(ctx.db, ctx.organisationId),
+      timezone: tz || 'Africa/Johannesburg',
+      now: new Date().toISOString()
+    };
+  }, { permission: 'collections.record.daycare' });
+
+  router.get('/collections/requests/:id', async (ctx) => {
+    // Gate screen polls this while waiting for the guardian’s answer.
+    const row = await ctx.db.one(
+      `SELECT id, learner_id, collector_name, status, reason, resolved_at, resolved_by, created_at
+       FROM learner_collection_requests WHERE id = $1 AND organisation_id = $2`,
+      [ctx.params.id, ctx.organisationId]
+    );
+    if (!row) throw new AppError('NOT_FOUND');
+    return row;
+  }, { permission: 'collections.record.daycare' });
+
+  router.patch('/authorised-collectors/:id/trust', async (ctx) => {
+    const body = validate(ctx.body, { trusted: { type: 'boolean' } });
+    const collector = await ctx.db.one(
+      `SELECT * FROM authorised_collectors WHERE id = $1 AND organisation_id = $2`,
+      [ctx.params.id, ctx.organisationId]
+    );
+    if (!collector) throw new AppError('NOT_FOUND');
+    await ctx.db.query('UPDATE authorised_collectors SET is_trusted = $1 WHERE id = $2', [body.trusted, collector.id]);
+    await recordAudit(ctx.db, ctx, {
+      action: 'learner.collector_trust_changed', resourceType: 'authorised_collector', resourceId: collector.id,
+      metadata: { trusted: body.trusted, collector: collector.name }
+    });
+    return { id: collector.id, isTrusted: body.trusted };
+  }, { permission: 'collections.manage.daycare' });
+
+  router.patch('/authorised-collectors/:id/approval', async (ctx) => {
+    const body = validate(ctx.body, { decision: { type: 'string', enum: ['approved', 'rejected'] } });
+    const collector = await ctx.db.one(
+      `SELECT * FROM authorised_collectors WHERE id = $1 AND organisation_id = $2`,
+      [ctx.params.id, ctx.organisationId]
+    );
+    if (!collector) throw new AppError('NOT_FOUND');
+    await ctx.db.query(
+      `UPDATE authorised_collectors SET approval_status = $1, approved_by = $2, approved_at = now() WHERE id = $3`,
+      [body.decision, ctx.user.id, collector.id]
+    );
+    await recordAudit(ctx.db, ctx, {
+      action: 'learner.collector_approval', resourceType: 'authorised_collector', resourceId: collector.id,
+      metadata: { decision: body.decision, collector: collector.name }
+    });
+    return { id: collector.id, approvalStatus: body.decision };
+  }, { permission: 'collections.manage.daycare' });
+
+  router.delete('/authorised-collectors/:id', async (ctx) => {
+    const collector = await ctx.db.one(
+      `SELECT * FROM authorised_collectors WHERE id = $1 AND organisation_id = $2`,
+      [ctx.params.id, ctx.organisationId]
+    );
+    if (!collector) throw new AppError('NOT_FOUND');
+    await ctx.db.query(`UPDATE authorised_collectors SET status = 'revoked' WHERE id = $1`, [collector.id]);
+    await recordAudit(ctx.db, ctx, {
+      action: 'learner.collector_revoked', resourceType: 'authorised_collector', resourceId: collector.id,
+      metadata: { collector: collector.name }
+    });
+    return { id: collector.id, status: 'revoked' };
+  }, { permission: 'collections.manage.daycare' });
+
+  // Collection hold: a custody or safety stop. Only managers may impose or clear it.
+  router.post('/learners/:id/collection-hold', async (ctx) => {
+    const body = validate(ctx.body, { reason: { type: 'string', max: 500, optional: true }, clear: { type: 'boolean', optional: true } });
+    const learner = await getLearner(ctx, ctx.params.id);
+    const reason = body.clear ? null : (body.reason && body.reason.trim().length >= 3 ? body.reason.trim() : null);
+    if (!body.clear && !reason) fail('VALIDATION', [{ field: 'reason', message: 'Give the reason for the hold (it goes to the parents).' }]);
+    await ctx.db.query('UPDATE learners SET collection_hold_reason = $1, updated_at = now() WHERE id = $2', [reason, learner.id]);
+    await recordAudit(ctx.db, ctx, {
+      action: body.clear ? 'learner.collection_hold_cleared' : 'learner.collection_hold_placed',
+      resourceType: 'learner', resourceId: learner.id, branchId: learner.branch_id, metadata: { reason }
+    });
+    return { learnerId: learner.id, hold: reason };
+  }, { permission: 'collections.manage.daycare' });
 
   router.get('/learners/:id/documents', async (ctx) => {
     const learner = await getLearner(ctx, ctx.params.id);

@@ -177,6 +177,18 @@ function register(router) {
       }))
     ].slice(0, 5);
 
+    const deniedToday = ids.length
+      ? await ctx.db.many(
+          `SELECT l.first_name AS child_first, ce.collector_name, ce.denial_reason, ce.recorded_at
+           FROM learner_collection_events ce
+           JOIN learners l ON l.id = ce.learner_id
+           WHERE ce.organisation_id = $1 AND ce.learner_id = ANY($2::uuid[])
+             AND ce.event_type = 'denied' AND ce.recorded_at::date = CURRENT_DATE
+           ORDER BY ce.recorded_at DESC`,
+          [ctx.organisationId, ids]
+        )
+      : [];
+
     const reactions = ids.length
       ? await ctx.db.many(
           `SELECT r.reaction, r.created_at, r.resource_type,
@@ -238,6 +250,12 @@ function register(router) {
         streak
       },
       unopened,
+      deniedToday: deniedToday.map((row) => ({
+        childFirst: row.child_first,
+        collectorName: row.collector_name,
+        reason: row.denial_reason || 'No reason recorded',
+        at: row.recorded_at
+      })),
       reactions: reactions.map((row) => ({
         reaction: row.reaction,
         guardianName: row.guardian_name,

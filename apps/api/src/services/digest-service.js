@@ -129,6 +129,15 @@ async function sendWeeklyDigest(db, { organisation, triggeredBy, onlyUserId = nu
       const stats = await weekStats(db, organisation.id, child.id);
       const moment = await latestMoment(db, organisation.id, child.id);
       const firstName = child.first_name;
+      const collected = await db.many(
+        `SELECT DISTINCT COALESCE(ce.collector_name, 'the centre') AS name
+         FROM learner_collection_events ce
+         WHERE ce.organisation_id = $1 AND ce.learner_id = $2
+           AND ce.event_type = 'collection' AND ce.recorded_at >= now() - interval '7 days'`,
+        [organisation.id, child.id]
+      );
+      const collectedCount = collected && collected.length ? collected.length : 0;
+      const collectedNames = collected ? [...new Set(collected.map((c) => c.name))].filter(Boolean) : [];
       childRows.push({
         id: child.id,
         firstName,
@@ -149,6 +158,9 @@ async function sendWeeklyDigest(db, { organisation, triggeredBy, onlyUserId = nu
             date: moment.observation_date,
             domain: moment.domain_name || null
           }
+          : null,
+        collectLine: collectedCount
+          ? 'Collected safely ' + collectedCount + (collectedNames.length ? ' — usually by ' + collectedNames.join(' & ') : '')
           : null,
         link: '/#/parent/children/' + child.id + '?src=weekly-digest'
       });

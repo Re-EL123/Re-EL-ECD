@@ -302,6 +302,7 @@ const templates = {
         '<div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8a968c;margin-bottom:8px">' + escRaw(child.name) + '</div>' +
         inner +
         '<div style="font-size:12px;color:#5d6b5f">' + escRaw(counts.join(' · ') || 'A lovely week') + '</div>' +
+        (child.collectLine ? '<div style="font-size:12px;color:#5d6b5f;margin-top:2px">' + escRaw(child.collectLine) + '</div>' : '') +
         '<div style="margin-top:10px"><a href="' + escRaw(appLink(child.link || '/#/parent/overview?src=weekly-digest')) + '" style="display:inline-block;padding:9px 14px;border-radius:10px;background:' + accent + ';color:#ffffff;text-decoration:none;font-size:13px;font-weight:600">See ' + escRaw(child.firstName || 'your child') + '&rsquo;s week &rarr;</a></div>' +
       '</div>';
     };
@@ -417,6 +418,49 @@ const templates = {
         footer: 'You are receiving this because you were linked as a guardian at ' + data.organisationName + '.'
       }),
       text: plain(['Your first week at ' + data.organisationName, ...(data.stats || []).map((s) => s.label + ': ' + s.value)])
+    };
+  },
+
+  collectionRecorded(data) {
+    return {
+      subject: (data.childName || 'Your child') + ' was collected safely by ' + (data.collectorName || 'a collector'),
+      html: layout({
+        brand: data.brand,
+        heading: (data.childName || 'Your child') + ' is safely collected',
+        intro: 'Hello ' + (data.guardianName || 'there') + ' — ' + (data.childName || 'your child') + ' left the centre at ' + (data.time || 'today') + ' in the company of ' + (data.collectorName || 'an authorised collector') + '.',
+        rows: [
+          { label: 'Collected by', value: data.collectorName || '—' },
+          { label: 'Relationship', value: data.relationship || '—' },
+          { label: 'Verified by', value: data.verificationLabel || '—' },
+          { label: 'Time', value: data.time || '—' }
+        ],
+        ctaLabel: 'See the full record',
+        ctaUrl: appLink('/#/parent/attendance?src=collection'),
+        footer: 'You are receiving this because you are linked as a guardian at ' + data.organisationName + '. If something about this does not feel right, reply now — we would rather know.'
+      }),
+      text: plain([data.childName + ' was collected by ' + data.collectorName, 'Relationship: ' + (data.relationship || '—'), 'Verified by: ' + (data.verificationLabel || '—'), 'Time: ' + (data.time || '—')])
+    };
+  },
+
+  collectionOverride(data) {
+    return {
+      subject: 'Override at the gate: ' + (data.childName || 'your child') + ' was collected at ' + (data.time || 'today'),
+      html: layout({
+        brand: data.brand,
+        heading: 'An override was recorded at the gate',
+        intro: 'Hello ' + (data.guardianName || 'there') + ' — ' + (data.overriderName || 'a member of the team') + ' released ' + (data.childName || 'your child') + ' to ' + (data.collectorName || 'a collector') + ' outside the standard checks.',
+        rows: [
+          { label: 'Released to', value: data.collectorName || '—' },
+          { label: 'Override reason', value: data.overrideReason || '—' },
+          { label: 'Override by', value: data.overriderName || '—' },
+          { label: 'Time', value: data.time || '—' }
+        ],
+        body: '<p>We are telling you in plain language because we never hide a lapse from the person who most deserves to know. If this was not expected, reply to this email or call the centre now.</p>',
+        ctaLabel: 'See the full record',
+        ctaUrl: appLink('/#/parent/attendance?src=collection'),
+        footer: 'You are receiving this because you are linked as a guardian at ' + data.organisationName + '.'
+      }),
+      text: plain(['Override at the gate', data.childName + ' was collected by ' + data.collectorName, 'Reason: ' + (data.overrideReason || '—'), 'By: ' + (data.overriderName || '—')])
     };
   },
 

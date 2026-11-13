@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **395 routes** across 24 modules.
+Generated from the router: **410 routes** across 24 modules.
 
 ## Access
 
@@ -105,6 +105,14 @@ Generated from the router: **395 routes** across 24 modules.
 | GET | `/auth/session` | Authenticated |
 | POST | `/auth/verify-email` | Authenticated |
 
+## Authorised Collectors
+
+| Method | Path | Access |
+| --- | --- | --- |
+| DELETE | `/authorised-collectors/:id` | collections.manage.daycare |
+| PATCH | `/authorised-collectors/:id/approval` | collections.manage.daycare |
+| PATCH | `/authorised-collectors/:id/trust` | collections.manage.daycare |
+
 ## Automation
 
 | Method | Path | Access |
@@ -146,6 +154,13 @@ Generated from the router: **395 routes** across 24 modules.
 | GET | `/classrooms` | classrooms.read.daycare |
 | POST | `/classrooms` | classrooms.manage.daycare |
 | PATCH | `/classrooms/:id` | classrooms.manage.daycare |
+
+## Collections
+
+| Method | Path | Access |
+| --- | --- | --- |
+| GET | `/collections/gate` | collections.record.daycare |
+| GET | `/collections/requests/:id` | collections.record.daycare |
 
 ## Communications
 
@@ -366,8 +381,10 @@ Generated from the router: **395 routes** across 24 modules.
 | GET | `/learners/:id` | learners.read.daycare OR learners.read.assigned |
 | PATCH | `/learners/:id` | learners.update.daycare OR learners.update.assigned |
 | POST | `/learners/:id/archive` | learners.archive.daycare |
+| POST | `/learners/:id/collection-hold` | collections.manage.daycare |
 | GET | `/learners/:id/collections` | collections.read.daycare |
 | POST | `/learners/:id/collections` | collections.record.daycare |
+| POST | `/learners/:id/collections/deny` | collections.record.daycare |
 | GET | `/learners/:id/consents` | consent.read.daycare OR learners.read.daycare |
 | GET | `/learners/:id/daily-reports` | learners.read.daycare OR learners.read.assigned |
 | POST | `/learners/:id/daily-reports` | attendance.record.assigned OR learners.update.daycare |
@@ -466,10 +483,17 @@ Generated from the router: **395 routes** across 24 modules.
 | GET | `/parent/children/:id/assessments` | parent.read.own |
 | GET | `/parent/children/:id/attendance` | parent.read.own |
 | GET | `/parent/children/:id/calendar` | parent.read.own |
+| GET | `/parent/children/:id/collections` | parent.read.own |
+| GET | `/parent/children/:id/collectors` | parent.read.own |
+| POST | `/parent/children/:id/collectors` | parent.read.own |
+| DELETE | `/parent/children/:id/collectors/:collectorId` | parent.read.own |
+| POST | `/parent/children/:id/collectors/:collectorId/pin` | parent.read.own |
 | GET | `/parent/children/:id/daily-reports` | parent.read.own |
 | GET | `/parent/children/:id/invoices` | parent.finance.read.own |
 | GET | `/parent/children/:id/portfolio` | parent.read.own |
 | GET | `/parent/children/:id/progress` | parent.read.own |
+| GET | `/parent/collection-approvals` | parent.read.own |
+| POST | `/parent/collection-approvals/:id/respond` | parent.read.own |
 | GET | `/parent/consents` | parent.read.own |
 | POST | `/parent/finance/statement/pay` | parent.finance.read.own |
 | GET | `/parent/finance/summary` | parent.finance.read.own |
@@ -572,6 +596,7 @@ Generated from the router: **395 routes** across 24 modules.
 | --- | --- | --- |
 | GET | `/reports` | reports.read.daycare OR reports.read.assigned |
 | GET | `/reports/:key` | reports.read.daycare OR reports.read.assigned |
+| GET | `/reports/collection-patterns` | collections.read.daycare |
 | POST | `/reports/engagement/nudge` | organisation.settings.manage |
 | POST | `/reports/engagement/nudge-all` | organisation.settings.manage |
 | GET | `/reports/engagement/quiet` | reports.read.daycare |

@@ -120,6 +120,9 @@
           '<div class="kpi-row"><span class="kpi-label">Show fees publicly</span><span class="kpi-value">' + yesNo((settings.publicWebsite || {}).showFees) + '</span></div>' +
           '</div>') +
         R.card('Data and safety', '<p class="muted small">Learner records are retained for ' + R.number((settings.dataRetention || {}).learnerRecordsYears || 0) + ' years and financial records for ' + R.number((settings.dataRetention || {}).financeYears || 0) + ' years. Changes to these settings are audited.</p>') +
+        R.card('Collection gate', '<p class="muted small" style="margin:0 0 10px">Collections after this time are tagged as late automatically, and a parent is told at the gate if anyone unapproved tries to collect.</p>' +
+          '<div class="row" style="gap:10px;align-items:center"><input class="input" type="time" id="collection-cutoff" value="' + R.attr((settings['collection.lateCutoff'] || settings.collectionLateCutoff || '17:30')) + '" style="max-width:140px">' +
+          '<button class="btn btn-secondary btn-sm" @click="act(\'PATCH\',\'/organisations/current/settings\',{settings:{\'collection.lateCutoff\': document.getElementById(\'collection-cutoff\').value}},{successMessage:\'Collection cutoff saved.\'})">' + R.icon('save') + ' Save cutoff</button></div>') +
         '</div></div>';
     },
 

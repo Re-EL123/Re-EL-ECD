@@ -6,8 +6,17 @@ const { recordAudit } = require('../services/audit-service');
 const { createNotification } = require('../services/notification-service');
 const payfast = require('../services/payfast-service');
 const { createInvoiceIntent, createStatementIntent, outstandingFor, isPayable, guardianForInvoice } = require('../services/payment-intent-service');
+const crypto = require('crypto');
 const { has, guardianLearnerIds, guardianForLearner, today, dateOnly, roundMoney } = require('./helpers');
 const { progressFor } = require('./assessments');
+
+function generatePin() {
+  return String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+}
+
+function hashPin(organisationId, pin) {
+  return crypto.createHash('sha256').update(organisationId + '::collection-pin::' + pin).digest('hex');
+}
 
 async function childOrFail(ctx, learnerId) {
   const ids = await guardianLearnerIds(ctx, learnerId);
@@ -49,6 +58,160 @@ function register(router) {
       [observation.id]
     );
     return { parentViewedAt: updated.parent_viewed_at };
+  }, { permission: 'parent.read.own' });
+
+  // --- Who may collect this child -------------------------------------------
+  // Guardians add, review, revoke and re-PIN their child’s collectors.
+  // A collector with a photo is approved automatically; without one, the
+  // centre verifies first. Nothing is added without a guardian asking.
+
+  router.get('/parent/children/:id/collectors', async (ctx) => {
+    const { learner } = await childOrFail(ctx, ctx.params.id);
+    return ctx.db.many(
+      `SELECT id, name, relationship, contact_phone, photo_url, identity_verification_policy AS policy,
+              is_trusted, status, approval_status, approved_by, approved_at,
+              pin_created_at, created_at
+       FROM authorised_collectors
+       WHERE learner_id = $1 AND organisation_id = $2 AND status <> 'revoked'
+       ORDER BY approval_status DESC, is_trusted DESC, name`,
+      [learner.id, ctx.organisationId]
+    );
+  }, { permission: 'parent.read.own' });
+
+  router.post('/parent/children/:id/collectors', async (ctx) => {
+    const { learner, link } = await childOrFail(ctx, ctx.params.id);
+    if (!link || link.can_collect === false) throw new AppError('FORBIDDEN', null, 'You are not allowed to add collectors for this child.');
+    const body = validate(ctx.body, {
+      name: { type: 'string', min: 2, max: 200 },
+      relationship: { type: 'string', min: 2, max: 80 },
+      contactPhone: { type: 'string', max: 50, optional: true },
+      policy: { type: 'string', enum: ['photo_id', 'qr_code', 'pin', 'code_word'] },
+      photoUrl: { type: 'string', regex: /^https?:\/\//i, max: 1000, optional: true },
+      notes: { type: 'string', max: 500, optional: true }
+    });
+    // The house policy, held firmly: a photo means the centre trusts you
+    // automatically; no photo means the centre checks first.
+    const autoApprove = Boolean(body.photoUrl);
+    const row = await ctx.db.one(
+      `INSERT INTO authorised_collectors (organisation_id, learner_id, name, relationship, contact_phone,
+        identity_verification_policy, photo_url, status, approval_status, approved_by, approved_at, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NULL,$10,$11) RETURNING *`,
+      [ctx.organisationId, learner.id, body.name.trim(), body.relationship.trim(), body.contactPhone || null,
+        body.policy, body.photoUrl || null, 'active', autoApprove ? 'approved' : 'pending',
+        autoApprove ? new Date() : null, ctx.user.id]
+    );
+    await recordAudit(ctx.db, ctx, {
+      action: 'parent.collector_added', resourceType: 'authorised_collector', resourceId: row.id,
+      metadata: { child: learner.first_name, autoApproved: autoApprove }
+    });
+    ctx.status = 201;
+    return row;
+  }, { permission: 'parent.read.own' });
+
+  router.delete('/parent/children/:id/collectors/:collectorId', async (ctx) => {
+    const { learner } = await childOrFail(ctx, ctx.params.id);
+    const collector = await ctx.db.one(
+      `SELECT * FROM authorised_collectors WHERE id = $1 AND learner_id = $2 AND organisation_id = $3 AND status <> 'revoked'`,
+      [ctx.params.collectorId, learner.id, ctx.organisationId]
+    );
+    if (!collector) throw new AppError('NOT_FOUND');
+    await ctx.db.query(
+      `UPDATE authorised_collectors SET status = 'revoked' WHERE id = $1`, [collector.id]
+    );
+    await recordAudit(ctx.db, ctx, {
+      action: 'parent.collector_revoked', resourceType: 'authorised_collector', resourceId: collector.id,
+      metadata: { collector: collector.name, child: learner.first_name }
+    });
+    return { revoked: true };
+  }, { permission: 'parent.read.own' });
+
+  router.post('/parent/children/:id/collectors/:collectorId/pin', async (ctx) => {
+    const { learner } = await childOrFail(ctx, ctx.params.id);
+    const collector = await ctx.db.one(
+      `SELECT * FROM authorised_collectors WHERE id = $1 AND learner_id = $2 AND organisation_id = $3 AND status = 'active'`,
+      [ctx.params.collectorId, learner.id, ctx.organisationId]
+    );
+    if (!collector) throw new AppError('NOT_FOUND');
+    const pin = generatePin();
+    await ctx.db.query(
+      `UPDATE authorised_collectors SET pin_hash = $1, pin_created_at = now() WHERE id = $2`,
+      [hashPin(ctx.organisationId, pin), collector.id]
+    );
+    await recordAudit(ctx.db, ctx, {
+      action: 'parent.collector_pin_regenerated', resourceType: 'authorised_collector', resourceId: collector.id,
+      metadata: { collector: collector.name, child: learner.first_name }
+    });
+    // Shown once, never stored in the clear. Share it the way you share the house key.
+    return { pin, note: 'This code works once per collection, until you generate a new one. Tell only your collectors.' };
+  }, { permission: 'parent.read.own' });
+
+  // --- Approvals at the gate --------------------------------------------------
+  router.get('/parent/collection-approvals', async (ctx) => {
+    const ids = await guardianLearnerIds(ctx);
+    if (!ids.length) return { approvals: [] };
+    const rows = await ctx.db.many(
+      `SELECT r.id, r.learner_id, r.collector_name, r.status, r.reason, r.created_at,
+              l.first_name AS child_first_name, ac.photo_url AS collector_photo_url, ac.name AS collector_full_name,
+              ac.relationship AS collector_relationship
+       FROM learner_collection_requests r
+       JOIN learners l ON l.id = r.learner_id
+       LEFT JOIN authorised_collectors ac ON ac.id = r.collector_id
+       WHERE r.organisation_id = $1 AND r.learner_id = ANY($2::uuid[]) AND r.status = 'pending'
+       ORDER BY r.created_at DESC`,
+      [ctx.organisationId, ids]
+    );
+    return { approvals: rows };
+  }, { permission: 'parent.read.own' });
+
+  router.post('/parent/collection-approvals/:id/respond', async (ctx) => {
+    const body = validate(ctx.body, { decision: { type: 'string', enum: ['approved', 'declined'] } });
+    const row = await ctx.db.one(
+      `SELECT r.*, l.first_name AS child_first_name
+       FROM learner_collection_requests r
+       JOIN learners l ON l.id = r.learner_id
+       WHERE r.id = $1 AND r.organisation_id = $2 AND r.status = 'pending'`,
+      [ctx.params.id, ctx.organisationId]
+    );
+    if (!row) throw new AppError('NOT_FOUND');
+    await childOrFail(ctx, row.learner_id);
+    const updated = await ctx.db.one(
+      `UPDATE learner_collection_requests
+       SET status = $1, resolved_by = $2, resolved_at = now(), resolution_note = NULL, updated_at = now()
+       WHERE id = $3 RETURNING *`,
+      [body.decision, ctx.user.id, row.id]
+    );
+    if (row.requested_by) {
+      await createNotification(ctx.db, ctx, {
+        recipientUserIds: [row.requested_by], type: 'collection_response',
+        title: 'Gate answer: ' + (body.decision === 'approved' ? 'approved' : 'declined'),
+        body: row.child_first_name + ' can ' + (body.decision === 'approved' ? 'go with' : 'NOT go with') + ' ' + row.collector_name + '.' + (body.decision === 'approved' ? ' Record the release now.' : ' The child stays.'),
+        resourceType: 'learner_collection_request', resourceId: row.id, url: '/app/collection-gate',
+        organisationId: ctx.organisationId
+      });
+    }
+    await recordAudit(ctx.db, ctx, {
+      action: 'parent.collection_' + body.decision, resourceType: 'learner_collection_request', resourceId: row.id,
+      metadata: { collector: row.collector_name, child: row.child_first_name }
+    });
+    return { id: updated.id, status: updated.status };
+  }, { permission: 'parent.read.own' });
+
+  // --- Collection history, where it belongs: with the daily record ----------
+  router.get('/parent/children/:id/collections', async (ctx) => {
+    const { learner } = await childOrFail(ctx, ctx.params.id);
+    return ctx.db.many(
+      `SELECT ce.id, ce.event_type, ce.recorded_at, ce.collector_name, ce.verification_method,
+              ce.late, ce.override_by IS NOT NULL AS overridden, ce.override_reason,
+              ce.collector_photo_url, ce.signature_captured, ce.denial_reason,
+              ac.relationship AS collector_relationship, ac.photo_url AS collector_profile_photo,
+              u.display_name AS verified_by_name
+       FROM learner_collection_events ce
+       LEFT JOIN authorised_collectors ac ON ac.id = ce.collector_id
+       LEFT JOIN users u ON u.id = ce.verified_by
+       WHERE ce.learner_id = $1
+       ORDER BY ce.recorded_at DESC LIMIT 60`,
+      [learner.id]
+    );
   }, { permission: 'parent.read.own' });
 
   router.post('/parent/visit', async (ctx) => {

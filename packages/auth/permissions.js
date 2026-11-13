@@ -23,7 +23,7 @@ const PERMISSION_KEYS = [
   'learners.update.assigned', 'learners.update.daycare', 'learners.archive.daycare',
   'guardians.read.assigned', 'guardians.read.daycare', 'guardians.manage.daycare',
   'medical.read.daycare', 'medical.manage.daycare',
-  'collections.read.daycare', 'collections.record.daycare',
+  'collections.read.daycare', 'collections.record.daycare', 'collections.manage.daycare',
   // Admissions
   'admissions.read.daycare', 'admissions.manage.daycare', 'admissions.enrol.daycare',
   // Classrooms

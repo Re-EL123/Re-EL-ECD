@@ -81,7 +81,11 @@
                     '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'observationFor\',\'' + R.attr(child.id) + '\')">' + R.icon('plus') + ' Observe</button></div>').join('') +
                 '</div>'
               : '') +
-            (absentees.length
+            ((morning.deniedToday || []).length
+              ? '<div class="alert alert-danger" style="margin:14px 0;align-items:center">' + R.icon('alert-triangle') + '<div style="flex:1"><strong>Pickup blocked today</strong><div class="muted small">' +
+                  morning.deniedToday.map((d) => R.esc(d.collectorName) + ' was turned away for ' + R.esc(d.childFirst) + (d.reason ? ' — ' + R.esc(d.reason) : '')).join(' · ') + '</div></div></div>'
+              : '') +
+        (absentees.length
               ? '<div class="section"></div><div class="muted small" style="margin-bottom:6px">Away today:</div><div class="row" style="gap:8px;flex-wrap:wrap">' + absentees.map((a) => '<span class="badge badge-danger">' + R.esc(a.name) + (a.reason ? ' · ' + R.esc(R.truncate(a.reason, 40)) : '') + '</span>').join('') + '</div>'
               : '') +
             '<div class="section"></div><div class="muted small" style="margin-bottom:6px">Moments this week — one per child keeps families close:</div>' +
@@ -118,6 +122,7 @@
               '<div class="card" style="margin:0"><h4 style="margin-top:0;margin-bottom:8px">Jump straight to</h4><div class="stack">' +
                 '<a class="btn btn-secondary btn-sm" href="#/app/learner-attendance">' + R.icon('calendar-check') + ' Take today’s register</a>' +
                 '<a class="btn btn-secondary btn-sm" href="#/app/assessments">' + R.icon('clipboard-list') + ' Record an observation</a>' +
+                '<a class="btn btn-secondary btn-sm" href="#/app/collection-gate">' + R.icon('shield-check') + ' The collection gate</a>' +
                 '<a class="btn btn-secondary btn-sm" href="#/app/learners">' + R.icon('users') + ' Daily reports</a>' +
                 '<a class="btn btn-secondary btn-sm" href="#/app/calendar">' + R.icon('calendar-days') + ' Today’s activities</a>' +
               '</div></div>' +
