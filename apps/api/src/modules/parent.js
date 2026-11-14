@@ -208,19 +208,51 @@ function register(router) {
   // --- Collection history, where it belongs: with the daily record ----------
   router.get('/parent/children/:id/collections', async (ctx) => {
     const { learner } = await childOrFail(ctx, ctx.params.id);
-    return ctx.db.many(
-      `SELECT ce.id, ce.event_type, ce.recorded_at, ce.collector_name, ce.verification_method,
-              ce.late, ce.override_by IS NOT NULL AS overridden, ce.override_reason,
-              ce.collector_photo_url, ce.signature_captured, ce.denial_reason,
-              ac.relationship AS collector_relationship, ac.photo_url AS collector_profile_photo,
-              u.display_name AS verified_by_name
-       FROM learner_collection_events ce
-       LEFT JOIN authorised_collectors ac ON ac.id = ce.collector_id
-       LEFT JOIN users u ON u.id = ce.verified_by
-       WHERE ce.learner_id = $1
-       ORDER BY ce.recorded_at DESC LIMIT 60`,
+    // The QR gate writes gate_scans; the pre-QR flow wrote
+    // learner_collection_events. Both are custody records — show both.
+    const rows = await ctx.db.many(
+      `SELECT * FROM (
+        SELECT g.id, 'collection'::text AS event_type, g.released_at AS recorded_at,
+               g.collector_name, 'gate_qr'::text AS verification_method,
+               FALSE AS late, FALSE AS overridden, NULL::text AS override_reason,
+               NULL::text AS collector_photo_url, FALSE AS signature_captured, NULL::text AS denial_reason,
+               ac.relationship AS collector_relationship, ac.photo_url AS collector_profile_photo,
+               u.display_name AS verified_by_name
+        FROM gate_scans g
+        LEFT JOIN authorised_collectors ac ON ac.id = g.collector_id
+        LEFT JOIN users u ON u.id = g.released_by
+        WHERE g.learner_id = $1 AND g.released_at IS NOT NULL
+        UNION ALL
+        SELECT ce.id, ce.event_type, ce.recorded_at, ce.collector_name, ce.verification_method,
+               ce.late, ce.override_by IS NOT NULL AS overridden, ce.override_reason,
+               ce.collector_photo_url, ce.signature_captured, ce.denial_reason,
+               ac.relationship AS collector_relationship, ac.photo_url AS collector_profile_photo,
+               u.display_name AS verified_by_name
+        FROM learner_collection_events ce
+        LEFT JOIN authorised_collectors ac ON ac.id = ce.collector_id
+        LEFT JOIN users u ON u.id = ce.verified_by
+        WHERE ce.learner_id = $1
+      ) t
+      ORDER BY t.recorded_at DESC NULLS LAST LIMIT 60`,
       [learner.id]
     );
+    // Flag gate releases after the centre's late-pickup cutoff.
+    const settingsRow = await ctx.db.one('SELECT settings FROM organisation_settings WHERE organisation_id = $1', [ctx.organisationId]).catch(() => null);
+    const cutoff = String((settingsRow && settingsRow.settings && settingsRow.settings['collection.lateCutoff']) || '17:30');
+    const match = /^([0-9]+):([0-9]{2})$/.exec(cutoff);
+    if (match) {
+      const cutoffMin = Number(match[1]) * 60 + Number(match[2]);
+      for (const row of rows) {
+        if (row.verification_method !== 'gate_qr' || !row.recorded_at) continue;
+        try {
+          const parts = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Africa/Johannesburg' }).formatToParts(new Date(row.recorded_at));
+          const hh = Number((parts.find((p) => p.type === 'hour') || {}).value);
+          const mm = Number((parts.find((p) => p.type === 'minute') || {}).value);
+          if (hh * 60 + mm >= cutoffMin) row.late = true;
+        } catch { /* leave as false */ }
+      }
+    }
+    return rows;
   }, { permission: 'parent.read.own' });
 
   router.post('/parent/visit', async (ctx) => {

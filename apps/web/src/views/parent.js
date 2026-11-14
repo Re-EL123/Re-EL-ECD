@@ -468,7 +468,7 @@
         R.card('Collection history', R.table({ rows: page.collections || [], compact: true, columns: [
           { label: 'When', render: (r) => '<span class="cell-strong">' + R.dateTime(r.recorded_at) + '</span>' + (r.late ? '<span class="cell-sub" style="color:var(--danger)">Late</span>' : '') },
           { label: 'Who collected', render: (r) => '<span class="strong">' + R.esc(r.collector_name || '—') + '</span>' + (r.collector_relationship ? '<span class="cell-sub">' + R.esc(r.collector_relationship) + '</span>' : '') },
-          { label: 'Method', render: (r) => R.esc((r.verification_method || '—').replace(/_/g, ' ')) },
+          { label: 'Method', render: (r) => R.esc(r.verification_method === 'gate_qr' ? 'Centre QR' : (r.verification_method || '—').replace(/_/g, ' ')) },
           { label: 'Verified by', render: (r) => R.esc(r.verified_by_name || 'staff') },
           { label: '', render: (r) => r.overridden ? '<span class="badge badge-danger">Override</span>' : '' }
         ], emptyTitle: 'Nothing recorded yet', emptyMessage: 'Collection records appear here the moment the gate registers them.' }));

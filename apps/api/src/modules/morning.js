@@ -189,6 +189,22 @@ function register(router) {
         )
       : [];
 
+    // Verified arrivals at the gate still waiting for a staff release — the
+    // teacher's cockpit counts and lists them so a waiting parent is seen.
+    const gateScans = ids.length
+      ? await ctx.db.many(
+          `SELECT gs.id, gs.collector_name, gs.collector_type, gs.confirmed_at,
+                  l.first_name, l.last_name, c.name AS classroom_name,
+                  (l.collection_hold_reason IS NOT NULL) AS on_hold
+           FROM gate_scans gs JOIN learners l ON l.id = gs.learner_id
+           LEFT JOIN classrooms c ON c.id = l.classroom_id
+           WHERE gs.organisation_id = $1 AND gs.learner_id = ANY($2::uuid[])
+             AND gs.released_at IS NULL AND gs.confirmed_at::date = CURRENT_DATE
+           ORDER BY gs.confirmed_at ASC`,
+          [ctx.organisationId, ids]
+        )
+      : [];
+
     const deniedToday = ids.length
       ? await ctx.db.many(
           `SELECT l.first_name AS child_first, ce.collector_name, ce.denial_reason, ce.recorded_at
@@ -266,6 +282,16 @@ function register(router) {
         childFirst: row.first_name,
         childName: row.first_name + ' ' + row.last_name,
         broughtByName: row.brought_by_name || 'Unknown adult'
+      })),
+      gateScans: gateScans.map((row) => ({
+        id: row.id,
+        childFirst: row.first_name,
+        childName: row.first_name + ' ' + row.last_name,
+        classroom: row.classroom_name || null,
+        collectorName: row.collector_name,
+        collectorType: row.collector_type || 'family',
+        confirmedAt: row.confirmed_at,
+        onHold: row.on_hold
       })),
       deniedToday: deniedToday.map((row) => ({
         childFirst: row.child_first,

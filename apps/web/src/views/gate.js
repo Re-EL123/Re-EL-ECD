@@ -29,10 +29,11 @@
           '<h1 style="font-family:var(--heading-font,Georgia,serif);font-size:1.4rem;margin:0 0 8px;color:var(--text)">' + R.esc(orgName) + '</h1>' +
         '</div>' +
         '<div class="card" style="padding:28px;margin:0;text-align:left" x-data="{' +
-          'name: \'\', pin: \'\', step: \'signin\', children: [], collectorName: \'\', busy: false, error: null, note: \'\',' +
-          'state(child) { if (child.check_out_at || child.attendance_status === \'collected\') return \'gone\'; if (child.check_in_at) return \'in\'; return \'not-in\'; },' +
-          'signin() { const self = this; self.busy = true; self.error = null; fetch(\'/api/v1/gate/' + slug + '/signin\', { method: \'POST\', headers: { \'Content-Type\': \'application/json\' }, body: JSON.stringify({ name: self.name, pin: self.pin }) }).then(r => r.json()).then(p => { if (p.error) { self.error = p.error.message || \'That name or PIN is not on the list.\'; self.busy = false; return; } self.children = p.data.children || []; self.collectorName = (p.data.collector || {}).name || \'\'; self.step = self.children.length ? \'pickup\' : \'signin\'; if (!self.children.length) self.error = \'No children are linked to you yet — ask at reception to be added.\'; self.busy = false; }); },' +
-          'act(childId, action) { const self = this; self.busy = true; self.error = null; self.note = \'\'; const path = action === \'arrive\' ? \'arrive\' : \'collect\'; fetch(\'/api/v1/gate/' + slug + '/\' + path, { method: \'POST\', headers: { \'Content-Type\': \'application/json\' }, body: JSON.stringify({ name: self.name, pin: self.pin, learnerId: childId }) }).then(r => r.json()).then(p => { if (p.error) { self.error = p.error.message; self.busy = false; return; } const child = self.children.find((c) => c.id === childId); if (action === \'arrive\') { child.check_in_at = new Date().toISOString(); child.attendance_status = \'present\'; child.check_out_at = null; self.note = child.first_name + (p.wasAlreadyIn ? \' is already signed in — bringer updated.\' : \' — arriving recorded. Have a good day!\'); } else { self.note = child.first_name + \' — reception has been told you are here. They will bring \' + child.first_name + \' out shortly.\'; } self.busy = false; }); },' +
+          'name: \'\', pin: \'\', step: \'signin\', children: [], collectorName: \'\', busy: false, error: null, note: \'\', waiting: [],' +
+          'state(child) { if (this.waiting.includes(child.id)) return \'waiting\'; if (child.check_out_at || child.attendance_status === \'collected\') return \'gone\'; if (child.check_in_at) return \'in\'; return \'not-in\'; },' +
+          'signin() { const self = this; self.busy = true; self.error = null; fetch(\'/api/v1/gate/' + slug + '/signin\', { method: \'POST\', headers: { \'Content-Type\': \'application/json\' }, body: JSON.stringify({ name: self.name, pin: self.pin }) }).then(r => r.json()).then(p => { if (p.error) { self.error = p.error.message || \'That name or PIN is not on the list.\'; self.busy = false; return; } self.children = p.data.children || []; self.collectorName = (p.data.collector || {}).name || \'\'; self.waiting = []; self.step = self.children.length ? \'pickup\' : \'signin\'; if (!self.children.length) self.error = \'No children are linked to you yet — ask at reception to be added.\'; self.busy = false; }); },' +
+          'act(childId, action) { const self = this; self.busy = true; self.error = null; self.note = \'\'; const path = action === \'arrive\' ? \'arrive\' : \'collect\'; fetch(\'/api/v1/gate/' + slug + '/\' + path, { method: \'POST\', headers: { \'Content-Type\': \'application/json\' }, body: JSON.stringify({ name: self.name, pin: self.pin, learnerId: childId }) }).then(r => r.json()).then(p => { if (p.error) { self.error = p.error.message; self.busy = false; return; } const child = self.children.find((c) => c.id === childId); if (action === \'arrive\') { child.check_in_at = new Date().toISOString(); child.attendance_status = \'present\'; child.check_out_at = null; self.note = child.first_name + (p.wasAlreadyIn ? \' is already signed in — bringer updated.\' : \' — arriving recorded. Have a good day!\'); } else { if (!self.waiting.includes(childId)) self.waiting.push(childId); self.note = child.first_name + \' — reception has been told you are here. They will bring \' + child.first_name + \' out shortly.\'; } self.busy = false; }); },' +
+          'switchUser() { this.step = \'signin\'; this.note = \'\'; this.error = null; this.pin = \'\'; this.children = []; this.waiting = []; },' +
         '}">' +
           '<form x-show="step === \'signin\'" @submit.prevent="$data.signin()">' +
             '<div class="stack" style="gap:12px">' +
@@ -58,22 +59,22 @@
                       '<div class="strong" x-text="child.first_name + \' \' + child.last_name"></div>' +
                       '<div class="muted small" x-text="(child.classroom_name || \'\') + (child.on_hold ? \' · collection hold at reception\' : \'\')"></div>' +
                     '</div>' +
-                    '<span class="badge" :class="state(child) === \'in\' ? \'badge-green\' : (state(child) === \'gone\' ? \'badge-muted\' : \'badge-sun\')"' +
-                      ' x-text="state(child) === \'in\' ? \'In now\' : (state(child) === \'gone\' ? \'Gone home\' : \'Not in yet\')"></span>' +
+                    '<span class="badge" :class="state(child) === \'in\' ? \'badge-green\' : (state(child) === \'gone\' ? \'badge-muted\' : (state(child) === \'waiting\' ? \'badge-sky\' : \'badge-sun\'))"' +
+                      ' x-text="state(child) === \'in\' ? \'In now\' : (state(child) === \'gone\' ? \'Gone home\' : (state(child) === \'waiting\' ? \'Waiting for reception\' : \'Not in yet\'))"></span>' +
                   '</div>' +
                   '<div class="btn-group" style="flex-wrap:nowrap">' +
                     '<button class="btn btn-primary btn-sm" style="padding:10px 12px" @click="$data.act(child.id, \'arrive\')"' +
                       ' :disabled="busy || state(child) !== \'not-in\'"' +
                       ' x-text="state(child) === \'not-in\' ? \'Arriving\' : \'Signed in\'"></button>' +
                     '<button class="btn btn-secondary btn-sm" style="padding:10px 12px" @click="$data.act(child.id, \'collect\')"' +
-                      ' :disabled="busy || state(child) === \'not-in\' || state(child) === \'gone\' || child.on_hold"' +
-                      ' x-text="state(child) === \'gone\' ? \'Collected\' : \'Collecting\'"></button>' +
+                      ' :disabled="busy || state(child) === \'not-in\' || state(child) === \'gone\' || state(child) === \'waiting\' || child.on_hold"' +
+                      ' x-text="state(child) === \'waiting\' ? \'Reception notified\' : (state(child) === \'gone\' ? \'Collected\' : \'Collecting\')"></button>' +
                   '</div>' +
                 '</div>' +
               '</template>' +
             '</div>' +
             '<div class="alert alert-success" x-show="note" style="margin-top:12px"><span x-text="note"></span></div>' +
-            '<button class="btn btn-ghost btn-sm" style="margin-top:10px" @click="step = \'signin\'; note = \'\'">Sign in as someone else</button>' +
+            '<button class="btn btn-ghost btn-sm" style="margin-top:10px" @click="$data.switchUser()">Sign in as someone else</button>' +
           '</div>' +
           '<div class="alert alert-danger" x-show="error" style="margin-top:12px"><i data-lucide="alert-triangle"></i><span x-text="error"></span></div>' +
         '</div>' +

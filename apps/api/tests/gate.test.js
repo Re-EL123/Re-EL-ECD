@@ -129,6 +129,49 @@ test('staff release: flips the register to collected exactly once', async () => 
   assert.equal(again.status, 409);
 });
 
+test('parent collection history: a released QR gate scan appears immediately', async () => {
+  const res = await parent.get(`/parent/children/${amelia}/collections`);
+  assert.equal(res.status, 200);
+  const row = res.data.find((r) => r.verification_method === 'gate_qr');
+  assert.ok(row, 'the QR release is a custody record parents can see');
+  assert.match(row.collector_name, /Gogo/);
+  assert.ok(row.recorded_at);
+  assert.equal(row.event_type, 'collection');
+});
+
+test('morning cockpit: pending gate releases arrive in /staff/morning', async () => {
+  // Make a fresh verified arrival for a child still on site, then read the cockpit.
+  const free = await db.one(
+    `SELECT l.id FROM learners l
+     JOIN classrooms c ON c.id = l.classroom_id
+     LEFT JOIN learner_attendance a ON a.learner_id = l.id AND a.attendance_date = CURRENT_DATE
+     WHERE l.organisation_id = $1 AND l.status = 'enrolled' AND l.id <> $2
+       AND c.name IN ('Butterflies','Sunflowers') AND a.id IS NULL LIMIT 1`, [orgId, amelia]
+  );
+  assert.ok(free, 'seed leaves a learner unmarked for today');
+  await principal.post('/learner-attendance/register', { records: [{ learnerId: free.id, status: 'present' }] });
+  // Link a collector directly in the DB so the gate scan can be created.
+  const collector = (await db.query(
+    `INSERT INTO authorised_collectors (organisation_id, learner_id, name, relationship, status, approval_status, approved_at, pin_hash)
+     VALUES ($1,$2,'Cockpit Test Uncle','Uncle','active','approved',now(),$3) RETURNING id`,
+    [orgId, free.id, pinHash('778899')]
+  )).rows[0].id;
+  try {
+    const scan = await createClient().post(`/gate/${ORG}/collect`, { name: 'Cockpit', pin: '778899', learnerId: free.id });
+    assert.equal(scan.status, 200);
+    const morning = await principal.get('/staff/morning');
+    assert.equal(morning.status, 200);
+    const pending = morning.data.gateScans.find((s) => s.id === scan.data.scanId);
+    assert.ok(pending, 'cockpit lists the waiting release');
+    assert.equal(pending.collectorName, 'Cockpit Test Uncle');
+    // Clean up: release it so later tests see a quiet gate.
+    const release = await principal.post(`/gate/scans/${scan.data.scanId}/release`, {});
+    assert.equal(release.status, 200);
+  } finally {
+    await db.query("UPDATE authorised_collectors SET status = 'revoked' WHERE id = $1", [collector]);
+  }
+});
+
 test('gate collect: refused once the child has already gone home', async () => {
   const res = await createClient().post(`/gate/${ORG}/collect`, { ...GOGO, learnerId: amelia });
   assert.equal(res.status, 409);

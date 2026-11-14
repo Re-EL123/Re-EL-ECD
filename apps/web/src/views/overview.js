@@ -72,6 +72,13 @@ const focusChildren = morning.focusChildren || [];
                   '<div class="row" style="gap:10px;min-width:0"><span class="avatar avatar-xs">' + R.esc((String(child.name || '?')[0] || '?').toUpperCase()) + '</span><div style="min-width:0"><div class="strong" style="font-size:0.88rem">' + R.esc(child.name) + '</div><div class="muted small">' + R.esc(child.classroom || 'Not in a classroom yet') + ' · no observation in 30 days</div></div></div>' +
                   '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'observationFor\',\'' + R.attr(child.id) + '\')">' + R.icon('plus') + ' Observe</button></div>').join('') + '</div><div class="section"></div>'
               : '') +
+            ((morning.gateScans || []).length
+              ? '<div class="muted small" style="margin-bottom:6px">Waiting at the gate — verified, needing your release:</div><div class="stack">' +
+                  (morning.gateScans || []).map((s) => '<div class="row" style="gap:10px;justify-content:space-between;padding:8px 10px;background:var(--surface-2);border-radius:12px">' +
+                    '<div style="min-width:0"><span class="strong" style="font-size:0.86rem">' + R.esc(s.collectorName) + '</span><div class="muted small">' + R.esc(s.childFirst) + (s.classroom ? ' · ' + R.esc(s.classroom) : '') + ' · signed in ' + R.time(s.confirmedAt) + (s.onHold ? ' · hold at reception' : '') + '</div></div>' +
+                    '<span class="badge ' + (s.onHold ? 'badge-danger' : 'badge-sun') + '">' + (s.onHold ? 'Hold' : 'Release needed') + '</span></div>').join('') +
+                  '<a class="btn btn-sm btn-secondary" href="#/app/learner-attendance" style="align-self:flex-start">' + R.icon('arrow-right') + ' Release on the register</a></div><div class="section"></div>'
+              : '') +
             ((morning.unverifiedDropoffs || []).length
               ? '<div class="alert alert-sun" style="margin:0 0 14px;align-items:center">' + R.icon('user-plus') + '<div style="flex:1"><strong>Who brought these?</strong><div class="muted small">' +
                   (morning.unverifiedDropoffs || []).map((d) => '<strong>' + R.esc(d.childFirst) + '</strong> — ' + R.esc(d.broughtByName)).join(' · ') + '</div></div><a class="btn btn-sm btn-secondary" href="#/app/learner-attendance">Fix on register</a></div>'
@@ -86,8 +93,8 @@ const focusChildren = morning.focusChildren || [];
                     '<span class="badge ' + (u.kind === 'digest' ? 'badge-sky' : 'badge-sun') + '">' + (u.kind === 'digest' ? 'Digest' : 'New') + '</span></div>').join('') +
                   '</div>'
               : '') +
-            (morning.tasksDueToday
-              ? '<div class="section"></div><div class="muted small" style="margin-bottom:6px">Tasks due today (' + morning.tasksDueToday + '):</div>' +
+            (unfinished.tasksDueToday
+              ? '<div class="section"></div><div class="muted small" style="margin-bottom:6px">Tasks due today (' + unfinished.tasksDueToday + '):</div>' +
                 R.table({ compact: true, rows: (tasks || []).filter((t) => t.due_at === R.today()).slice(0, 5), columns: [
                   { label: 'Task', render: (t) => '<span class="cell-strong">' + R.esc(t.title) + '</span>' },
                   { label: '', align: 'right', render: (t) => '<button class="btn btn-sm btn-secondary" @click="act(\'PATCH\',\'/tasks/' + R.attr(t.id) + '\',{status:\'done\'},{successMessage:\'Done\'})">Done</button>' }

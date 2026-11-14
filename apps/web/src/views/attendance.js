@@ -18,7 +18,7 @@
         ctx.has('attendance.read.daycare') ? R.api('GET', '/learner-attendance/current-presence').catch(() => ({ data: { present: 0, expected: 0, learners: [] } })) : Promise.resolve({ data: { present: 0, expected: 0, learners: [] } }),
         R.api('GET', '/classrooms').catch(() => ({ data: [] })),
         ctx.has('attendance.correct.daycare') ? R.api('GET', '/learner-attendance/adjustments').catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
-        R.api('GET', '/gate/scans').then((p) => p.data).catch(() => ({ pending: [] }))
+        ctx.has('collections.record.daycare') ? R.api('GET', '/gate/scans').then((p) => p.data).catch(() => ({ pending: [] })) : Promise.resolve({ data: { pending: [] } })
       ]);
       let reports = null;
       const from = ctx.filters.from || new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
@@ -34,6 +34,8 @@
       const reg = page.register || { rows: [], summary: {} };
       const summary = reg.summary || {};
       const canRecord = ctx.has('attendance.record.daycare') || ctx.has('attendance.record.assigned');
+      const canRelease = ctx.has('collections.record.daycare');
+      const isToday = page.date === R.today();
       const range = page.reportRange || { from: new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10), to: R.today() };
       return R.pageHead('Learner attendance', 'The daily register, live presence and attendance patterns.',
         '<a class="btn btn-secondary btn-sm" href="#/app/learners">' + R.icon('users') + ' Learners</a>' + R.exportButtons('/exports/attendance', 'from=' + encodeURIComponent(range.from) + '&to=' + encodeURIComponent(range.to)) +
@@ -41,16 +43,17 @@
           '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'markAllPresent\')">' + R.icon('check-check') + ' Mark all expected present</button>' : '')) +
         '<div class="grid grid-4 section">' +
         R.statCard({ label: 'Expected', value: R.number((reg.rows || []).length), icon: 'users', foot: R.date(page.date) }) +
-        R.statCard({ label: 'Present', value: R.number(summary.present), icon: 'check-circle', foot: R.percent(summary.rate) + ' attendance' }) +
+        R.statCard({ label: 'Present', value: R.number(summary.present), icon: 'check-circle', foot: (() => { const marked = Number(summary.marked) || 0; return (marked ? R.percent(Math.round(((Number(summary.present) || 0) / marked) * 100)) + ' attendance' : 'Nothing marked yet'); })() }) +
         R.statCard({ label: 'Absent', value: R.number(summary.absent), icon: 'user-x', tone: 'danger', foot: 'Including excused' }) +
         R.statCard({ label: 'Unmarked', value: R.number(summary.unmarked), icon: 'clipboard-list', tone: 'sun', foot: 'Still to record' }) +
         '</div>' +
-        this.renderGatePanel(ctx, page) +
+        this.renderGatePanel(ctx, page, canRelease) +
         R.tabs([{ key: 'register', label: 'Register' }, { key: 'presence', label: 'Live presence' }, { key: 'reports', label: 'Reports' }, { key: 'adjustments', label: 'Corrections' }], tab) +
-        (tab === 'presence' ? this.renderPresence(page) : tab === 'reports' ? this.renderReports(page) : tab === 'adjustments' ? this.renderAdjustments(page) : this.renderRegister(ctx, page, canRecord));
+        (tab === 'presence' ? this.renderPresence(page) : tab === 'reports' ? this.renderReports(page) : tab === 'adjustments' ? this.renderAdjustments(page) : this.renderRegister(ctx, page, canRecord, canRelease, isToday));
     },
 
-    renderGatePanel(ctx, page) {
+    renderGatePanel(ctx, page, canRelease) {
+      if (!canRelease) return '';
       const scans = (page.scans || []).slice(0, 8);
       const refresh = '<button class="btn btn-ghost btn-sm" @click="navigate(true)">' + R.icon('refresh-cw') + ' Refresh</button>';
       if (!scans.length) {
@@ -69,7 +72,7 @@
       '</div>', refresh);
     },
 
-    renderRegister(ctx, page, canRecord) {
+    renderRegister(ctx, page, canRecord, canRelease, isToday) {
       const reg = page.register || { rows: [] };
       return R.filterBar(
         '<label class="small muted">Date</label><input class="input" type="date" value="' + R.attr(page.date) + '" @change="setFilter(\'date\',$event.target.value)">' +
@@ -158,11 +161,14 @@
             }
             if (r.check_in_at && !r.check_out_at) {
               // Release only where a verified gate scan is waiting — the
-              // register has no silent check-out path.
+              // register has no silent check-out path. Past dates have no
+              // live gate state; they are history, not a queue.
+              if (!isToday) return '<span class="muted small">Not collected</span>';
               const pendingScan = (page.scans || []).find((s) => s.learner_id === r.learner_id);
-              if (pendingScan) {
+              if (pendingScan && canRelease) {
                 return '<button class="btn btn-sm btn-primary" @click="releaseScan(\'' + R.attr(pendingScan.id) + '\')" ' + (pendingScan.on_hold ? 'disabled' : '') + '>' + R.icon('shield-check') + ' Release</button>';
               }
+              if (pendingScan) return '<span class="badge badge-sun" style="white-space:nowrap">At the gate</span>';
               return '<span class="muted small">Waiting on the gate QR</span>';
             }
             return '<span class="muted small">' + (r.check_out_at ? 'Collected' : 'Recorded') + '</span>';
@@ -186,7 +192,7 @@
           '<div class="kpi-row"><span class="kpi-label">Expected</span><span class="kpi-value">' + R.number(p.expected) + '</span></div>' +
           '<div class="kpi-row"><span class="kpi-label">Not yet arrived</span><span class="kpi-value">' + Math.max(0, Number(p.expected || 0) - Number(p.present || 0)) + '</span></div>' +
           '</div>') +
-        R.card('Collection', '<p class="muted small">Children leave through the collection gate — whoever releases them there has been verified. Parents are told instantly.</p>' +
+        R.card('Collection', '<p class="muted small">Children leave through the centre QR: the collector signs in on their phone with their name and PIN, then you tap Release on the register. Whoever releases them has been verified. Parents are told instantly.</p>' +
           '<a class="btn btn-primary btn-sm" href="#/app/learner-attendance">Go to the register</a>') +
         '</div></div>';
     },
