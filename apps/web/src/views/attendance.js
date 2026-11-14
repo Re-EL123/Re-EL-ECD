@@ -13,11 +13,12 @@
       const query = new URLSearchParams({ date });
       if (ctx.filters.classroomId) query.set('classroomId', ctx.filters.classroomId);
       if (ctx.filters.branchId) query.set('branchId', ctx.filters.branchId);
-      const [register, presence, classrooms, adjustments] = await Promise.all([
+      const [register, presence, classrooms, adjustments, gateScans] = await Promise.all([
         R.api('GET', '/learner-attendance?' + query),
         ctx.has('attendance.read.daycare') ? R.api('GET', '/learner-attendance/current-presence').catch(() => ({ data: { present: 0, expected: 0, learners: [] } })) : Promise.resolve({ data: { present: 0, expected: 0, learners: [] } }),
         R.api('GET', '/classrooms').catch(() => ({ data: [] })),
-        ctx.has('attendance.correct.daycare') ? R.api('GET', '/learner-attendance/adjustments').catch(() => ({ data: [] })) : Promise.resolve({ data: [] })
+        ctx.has('attendance.correct.daycare') ? R.api('GET', '/learner-attendance/adjustments').catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
+        R.api('GET', '/gate/scans').then((p) => p.data).catch(() => ({ pending: [] }))
       ]);
       let reports = null;
       const from = ctx.filters.from || new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
@@ -25,7 +26,7 @@
       if (ctx.tab === 'reports') {
         reports = await R.api('GET', '/learner-attendance/reports?from=' + from + '&to=' + to).then((p) => p.data).catch(() => null);
       }
-      return { date, register: register.data, presence: presence.data, classrooms: classrooms.data || [], adjustments: adjustments.data || [], reports, reportRange: { from, to } };
+      return { date, register: register.data, presence: presence.data, classrooms: classrooms.data || [], adjustments: adjustments.data || [], scans: gateScans.pending || [], reports, reportRange: { from, to } };
     },
 
     render(ctx, params, page) {
@@ -44,8 +45,26 @@
         R.statCard({ label: 'Absent', value: R.number(summary.absent), icon: 'user-x', tone: 'danger', foot: 'Including excused' }) +
         R.statCard({ label: 'Unmarked', value: R.number(summary.unmarked), icon: 'clipboard-list', tone: 'sun', foot: 'Still to record' }) +
         '</div>' +
+        this.renderGatePanel(ctx, page) +
         R.tabs([{ key: 'register', label: 'Register' }, { key: 'presence', label: 'Live presence' }, { key: 'reports', label: 'Reports' }, { key: 'adjustments', label: 'Corrections' }], tab) +
         (tab === 'presence' ? this.renderPresence(page) : tab === 'reports' ? this.renderReports(page) : tab === 'adjustments' ? this.renderAdjustments(page) : this.renderRegister(ctx, page, canRecord));
+    },
+
+    renderGatePanel(ctx, page) {
+      const scans = page.scans || [];
+      if (!scans.length) {
+        return '<div class="section"></div>' + R.card('Today at the gate', '<p class="muted small" style="margin:0 0 8px">No-one has tapped their way through the entrance yet. Parents and approved transport drivers sign in with the centre QR; the system shows their name here as soon as they arrive.</p>', '');
+      }
+      return '<div class="section"></div>' + R.card('Today at the gate', '<div class="stack" style="gap:8px">' +
+        scans.slice(0, 8).map((scan) =>
+          '<div class="row" style="gap:12px;align-items:center;padding:8px 10px;border:1px solid var(--border-subtle);border-radius:14px;background:var(--surface-2)">' +
+            '<div class="avatar" style="width:48px;height:48px;font-size:1.1rem;background:var(--forest-100);color:var(--forest-700)">' + R.esc((scan.first_name || '?')[0].toUpperCase()) + '</div>' +
+            '<div style="flex:1;min-width:0"><div class="strong" style="font-size:0.9rem">' + R.esc(scan.collector_name) + '</div>' +
+            '<div class="muted small">' + R.esc(scan.first_name + ' ' + (scan.last_name || '')) + (scan.collector_type === 'driver' ? ' · driver' : ' · family') + ' · ' + R.time(scan.confirmed_at) + '</div></div>' +
+            '<button class="btn btn-primary btn-sm" @click="releaseScan(\'' + R.attr(scan.id) + '\')">Release</button>' +
+          '</div>').join('') +
+        (scans.length > 8 ? '<div class="muted small" style="margin-top:4px">' + (scans.length - 8) + ' more…</div>' : '') +
+      '</div>', '');
     },
 
     renderRegister(ctx, page, canRecord) {

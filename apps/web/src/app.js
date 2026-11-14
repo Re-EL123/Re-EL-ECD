@@ -57,7 +57,6 @@
     route('/app/modules/:id', 'app', 'moduleDetail', 'curriculum.read.daycare', 'Learning module'),
     route('/app/assessments', 'app', 'assessments', ['assessments.read.daycare', 'assessments.read.assigned'], 'Assessments'),
     route('/app/learner-attendance', 'app', 'attendance', ['attendance.read.daycare', 'attendance.read.assigned'], 'Learner attendance'),
-    route('/app/collection-gate', 'app', 'collectionGate', 'collections.record.daycare', 'Collection gate'),
     route('/app/staff', 'app', 'staff', 'staff.read.daycare', 'Staff'),
     route('/app/staff/:id', 'app', 'staffDetail', 'staff.read.daycare', 'Staff profile'),
     route('/app/staff-shifts', 'app', 'shifts', ['shifts.read.daycare', 'shifts.read.assigned'], 'Shift calendar'),
@@ -144,7 +143,6 @@
         { path: '/app/admissions', label: 'Admissions', icon: 'user-plus', permission: 'admissions.read.daycare' },
         { path: '/app/classrooms', label: 'Classrooms', icon: 'door-open', permission: 'classrooms.read.daycare' },
         { path: '/app/learner-attendance', label: 'Attendance', icon: 'calendar-check', permission: ['attendance.read.daycare', 'attendance.read.assigned'] },
-        { path: '/app/collection-gate', label: 'Collection gate', icon: 'shield-check', permission: 'collections.record.daycare' }
       ] },
       { label: 'Learning', items: [
         { path: '/app/curriculum', label: 'Curriculum', icon: 'book-open', permission: 'curriculum.read.daycare' },

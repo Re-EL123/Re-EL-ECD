@@ -154,6 +154,60 @@ function register(router) {
     return { released: true, childName: learner.first_name, collectorName: match.name, time: new Date().toISOString() };
   }, { public: true });
 
+  // Drop-off at the gate: auto-register attendance present + mark bringer.
+  router.post('/gate/:slug/arrive', async (ctx) => {
+    const org = await ctx.db.one("SELECT id, name FROM organisations WHERE slug = $1 AND status = 'active'", [ctx.params.slug]);
+    if (!org) throw new AppError('NOT_FOUND', null, 'This gate QR belongs to a centre that is not active.');
+    const body = validate(ctx.body, {
+      name: { type: 'string', min: 2, max: 200 },
+      pin: { type: 'string', min: 4, max: 12 },
+      learnerId: { type: 'string', uuid: true }
+    });
+    const collectors = await ctx.db.many(
+      `SELECT id, name, collector_type, pin_hash
+       FROM authorised_collectors
+       WHERE organisation_id = $1 AND status = 'active' AND approval_status = 'approved'
+         AND (lower(name) = lower($2) OR lower(split_part(name, ' ', 1)) = lower($2))`,
+      [org.id, body.name.trim()]
+    );
+    const match = collectors.find((c) => verifyPin(org.id, body.pin, c.pin_hash));
+    if (!match) throw new AppError('UNAUTHENTICATED', null, 'That name or PIN is not on the cleared list for this centre.');
+    const learner = await ctx.db.one(
+      'SELECT id, first_name, branch_id, status FROM learners WHERE id = $1 AND organisation_id = $2',
+      [body.learnerId, org.id]
+    );
+    if (!learner) throw new AppError('NOT_FOUND');
+    if (learner.status !== 'enrolled') throw new AppError('CONFLICT', null, 'This child is not enrolled.');
+    const existing = await ctx.db.one(
+      'SELECT * FROM learner_attendance WHERE learner_id = $1 AND attendance_date = CURRENT_DATE', [learner.id]
+    );
+    if (existing && existing.check_in_at) {
+      // Already signed in today — idempotent: just update the bringer record.
+      await ctx.db.query(
+        `UPDATE learner_attendance SET brought_by_collector_id = $1, brought_by_name = $2,
+          brought_by_unverified = false, updated_at = now() WHERE id = $3`,
+        [match.id, match.name, existing.id]
+      );
+      return { checkedIn: true, childName: learner.first_name, wasAlreadyIn: true };
+    }
+    await ctx.db.withTransaction(async (client) => {
+      await client.query(
+        `INSERT INTO learner_attendance (organisation_id, branch_id, learner_id, attendance_date, check_in_at,
+          attendance_status, recorded_by, brought_by_collector_id, brought_by_name, brought_by_unverified)
+         VALUES ($1,$2,$3,CURRENT_DATE,now(),'present',$4,$5,$6,FALSE) RETURNING *`,
+        [org.id, learner.branch_id, learner.id, match.created_by, match.id, match.name]
+      );
+      await client.query(
+        `UPDATE learners SET status = 'enrolled' WHERE id = $1 AND organisation_id = $2`, [learner.id, org.id]
+      );
+    });
+    await recordAudit(ctx.db, ctx, {
+      action: 'gate.drop_off', resourceType: 'learner', resourceId: learner.id,
+      metadata: { bringer: match.name }
+    });
+    return { checkedIn: true, childName: learner.first_name, wasAlreadyIn: false };
+  }, { public: true });
+
   // ---------- Private (staff authenticated) ----------
 
   // Live view of the gate: who scanned, who hasn't left yet.
