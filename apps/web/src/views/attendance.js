@@ -5,7 +5,7 @@
   const R = window.Reel;
   const V = R.views;
 
-  const STATUSES = ['present', 'absent', 'late', 'excused', 'expected', 'collected'];
+  const STATUSES = ['present', 'absent', 'late', 'excused', 'expected'];
 
   V.attendance = {
     async load(ctx) {

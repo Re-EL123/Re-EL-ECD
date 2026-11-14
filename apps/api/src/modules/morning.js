@@ -177,6 +177,18 @@ function register(router) {
       }))
     ].slice(0, 5);
 
+    const unverifiedDropoffs = ids.length
+      ? await ctx.db.many(
+          `SELECT l.first_name, l.last_name, a.brought_by_name, a.check_in_at
+           FROM learner_attendance a JOIN learners l ON l.id = a.learner_id
+           WHERE a.organisation_id = $1 AND a.learner_id = ANY($2::uuid[])
+             AND a.attendance_date = CURRENT_DATE
+             AND a.brought_by_unverified = TRUE AND a.check_out_at IS NULL
+           ORDER BY a.check_in_at`,
+          [ctx.organisationId, ids]
+        )
+      : [];
+
     const deniedToday = ids.length
       ? await ctx.db.many(
           `SELECT l.first_name AS child_first, ce.collector_name, ce.denial_reason, ce.recorded_at
@@ -250,6 +262,11 @@ function register(router) {
         streak
       },
       unopened,
+      unverifiedDropoffs: unverifiedDropoffs.map((row) => ({
+        childFirst: row.first_name,
+        childName: row.first_name + ' ' + row.last_name,
+        broughtByName: row.brought_by_name || 'Unknown adult'
+      })),
       deniedToday: deniedToday.map((row) => ({
         childFirst: row.child_first,
         collectorName: row.collector_name,

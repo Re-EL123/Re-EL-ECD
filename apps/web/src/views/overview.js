@@ -81,6 +81,9 @@
                     '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'observationFor\',\'' + R.attr(child.id) + '\')">' + R.icon('plus') + ' Observe</button></div>').join('') +
                 '</div>'
               : '') +
+            ((morning.unverifiedDropoffs || []).length
+              ? '<div class="alert alert-sun" style="margin:14px 0;align-items:center">' + R.icon('user-plus') + '<div style="flex:1"><strong>Who brought these children?</strong><div class="muted small">' + (morning.unverifiedDropoffs || []).map((d) => '<strong>' + R.esc(d.childFirst) + '</strong> — ' + R.esc(d.broughtByName)).join(' · ') + '</div></div><a class="btn btn-sm btn-secondary" href="#/app/learner-attendance">Confirm on the register</a></div>'
+              : '') +
             ((morning.deniedToday || []).length
               ? '<div class="alert alert-danger" style="margin:14px 0;align-items:center">' + R.icon('alert-triangle') + '<div style="flex:1"><strong>Pickup blocked today</strong><div class="muted small">' +
                   morning.deniedToday.map((d) => R.esc(d.collectorName) + ' was turned away for ' + R.esc(d.childFirst) + (d.reason ? ' — ' + R.esc(d.reason) : '')).join(' · ') + '</div></div></div>'

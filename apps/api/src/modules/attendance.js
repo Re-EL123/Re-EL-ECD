@@ -132,10 +132,9 @@ function register(router) {
     for (const raw of body.records) {
       const record = validate(raw, {
         learnerId: { type: 'string', uuid: true },
-        status: { type: 'string', enum: ['present', 'absent', 'late', 'excused', 'expected', 'collected'] },
+        status: { type: 'string', enum: ['present', 'absent', 'late', 'excused', 'expected'] },
         absenceReason: { type: 'string', max: 1000, optional: true },
-        checkInAt: { type: 'string', datetime: true, optional: true },
-        checkOutAt: { type: 'string', datetime: true, optional: true }
+        checkInAt: { type: 'string', datetime: true, optional: true }
       });
       const learner = await getLearner(ctx, record.learnerId);
       if (allowedClassrooms && !allowedClassrooms.includes(learner.classroom_id)) throw new AppError('FORBIDDEN');
@@ -217,14 +216,10 @@ function register(router) {
     );
     if (!existing || !existing.check_in_at) fail('CONFLICT', null, 'This learner is not checked in.');
     if (existing.check_out_at) fail('CONFLICT', null, 'This learner has already been checked out.');
-    await ctx.db.query(
-      `UPDATE learner_attendance SET check_out_at = now(), attendance_status = 'collected', updated_at = now()
-       WHERE id = $1`, [existing.id]
-    );
-    await recordAudit(ctx.db, ctx, {
-      action: 'attendance.learner_checked_out', resourceType: 'learner_attendance', resourceId: existing.id
-    });
-    return ctx.db.one('SELECT * FROM learner_attendance WHERE id = $1', [existing.id]);
+    // The register no longer checks children out for staff — that power belongs
+    // to the collection gate, where the collector is proven. Use it.
+    throw new AppError('CONFLICT', null, 'Use the Collection Gate to release ' + learner.first_name + ' — it verifies who is collecting before the child leaves.');
+
   }, { permission: ['attendance.record.assigned', 'attendance.record.daycare'], permissionMode: 'any' });
 
   router.post('/learner-attendance/absence', async (ctx) => {
