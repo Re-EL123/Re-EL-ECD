@@ -16,7 +16,7 @@
       const [register, presence, classrooms, adjustments, gateScans] = await Promise.all([
         R.api('GET', '/learner-attendance?' + query),
         ctx.has('attendance.read.daycare') ? R.api('GET', '/learner-attendance/current-presence').catch(() => ({ data: { present: 0, expected: 0, learners: [] } })) : Promise.resolve({ data: { present: 0, expected: 0, learners: [] } }),
-        R.api('GET', '/classrooms').catch(() => ({ data: [] })),
+        R.api('GET', '/classrooms' + (ctx.filters.branchId ? '?branchId=' + encodeURIComponent(ctx.filters.branchId) : '')).catch(() => ({ data: [] })),
         ctx.has('attendance.correct.daycare') ? R.api('GET', '/learner-attendance/adjustments').catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
         ctx.has('collections.record.daycare') ? R.api('GET', '/gate/scans').then((p) => p.data).catch(() => ({ pending: [] })) : Promise.resolve({ data: { pending: [] } })
       ]);
@@ -35,21 +35,34 @@
       const summary = reg.summary || {};
       const canRecord = ctx.has('attendance.record.daycare') || ctx.has('attendance.record.assigned');
       const canRelease = ctx.has('collections.record.daycare');
+      const canManageRelease = ctx.has('collections.manage.daycare');
       const isToday = page.date === R.today();
       const range = page.reportRange || { from: new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10), to: R.today() };
+      const rows = reg.rows || [];
+      const unverified = rows.filter((r) => r.brought_by_unverified).length;
+      const tabs = [{ key: 'register', label: 'Register' }];
+      if (ctx.has('attendance.read.daycare')) tabs.push({ key: 'presence', label: 'Live presence' });
+      if (ctx.has('attendance.reports.daycare')) tabs.push({ key: 'reports', label: 'Reports' });
+      if (ctx.has('attendance.correct.daycare')) tabs.push({ key: 'adjustments', label: 'Corrections' });
+      const activeTab = tabs.some((t) => t.key === tab) ? tab : 'register';
       return R.pageHead('Learner attendance', 'The daily register, live presence and attendance patterns.',
         '<a class="btn btn-secondary btn-sm" href="#/app/learners">' + R.icon('users') + ' Learners</a>' + R.exportButtons('/exports/attendance', 'from=' + encodeURIComponent(range.from) + '&to=' + encodeURIComponent(range.to)) +
         (canRecord ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'register\')">' + R.icon('clipboard-list') + ' Record register</button>' +
-          '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'markAllPresent\')">' + R.icon('check-check') + ' Mark all expected present</button>' : '')) +
+          (Number(summary.unmarked) > 0 ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'markAllPresent\')">' + R.icon('check-check') + ' Mark all expected present</button>' : '') : '')) +
         '<div class="grid grid-4 section">' +
-        R.statCard({ label: 'Expected', value: R.number((reg.rows || []).length), icon: 'users', foot: R.date(page.date) }) +
+        R.statCard({ label: 'Expected', value: R.number(rows.length), icon: 'users', foot: R.date(page.date) }) +
         R.statCard({ label: 'Present', value: R.number(summary.present), icon: 'check-circle', foot: (() => { const marked = Number(summary.marked) || 0; return (marked ? R.percent(Math.round(((Number(summary.present) || 0) / marked) * 100)) + ' attendance' : 'Nothing marked yet'); })() }) +
         R.statCard({ label: 'Absent', value: R.number(summary.absent), icon: 'user-x', tone: 'danger', foot: 'Including excused' }) +
         R.statCard({ label: 'Unmarked', value: R.number(summary.unmarked), icon: 'clipboard-list', tone: 'sun', foot: 'Still to record' }) +
         '</div>' +
+        (unverified > 0 && isToday ? '<div class="section"></div><div class="card" style="border:1px solid var(--sun-300);background:var(--sun-50)">' +
+          '<div class="row" style="gap:10px;align-items:center">' +
+          '<span class="badge badge-sun" style="white-space:nowrap">' + R.number(unverified) + ' unverified drop-off' + (unverified === 1 ? '' : 's') + '</span>' +
+          '<span class="muted small" style="flex:1">These children were walked in by an adult nobody could name. Fix the bringer on each row — the gate checks collectors against this list.</span>' +
+          '</div></div>' : '') +
         this.renderGatePanel(ctx, page, canRelease) +
-        R.tabs([{ key: 'register', label: 'Register' }, { key: 'presence', label: 'Live presence' }, { key: 'reports', label: 'Reports' }, { key: 'adjustments', label: 'Corrections' }], tab) +
-        (tab === 'presence' ? this.renderPresence(page) : tab === 'reports' ? this.renderReports(page) : tab === 'adjustments' ? this.renderAdjustments(page) : this.renderRegister(ctx, page, canRecord, canRelease, isToday));
+        R.tabs(tabs, activeTab) +
+        (activeTab === 'presence' ? this.renderPresence(page) : activeTab === 'reports' ? this.renderReports(page) : activeTab === 'adjustments' ? this.renderAdjustments(page) : this.renderRegister(ctx, page, canRecord, canRelease, canManageRelease, isToday));
     },
 
     renderGatePanel(ctx, page, canRelease) {
@@ -66,13 +79,15 @@
             '<div style="flex:1;min-width:0"><div class="strong" style="font-size:0.9rem">' + R.esc(scan.collector_name) + '</div>' +
             '<div class="muted small">' + R.esc(scan.first_name + ' ' + (scan.last_name || '')) + (scan.classroom_name ? ' · ' + R.esc(scan.classroom_name) : '') + (scan.collector_type === 'driver' || scan.collector_type === 'taxi' ? ' · driver' : '') + ' · signed in ' + R.time(scan.confirmed_at) + '</div></div>' +
             (scan.on_hold ? '<span class="badge badge-danger">Hold — blocked</span>' : '') +
-            '<button class="btn btn-primary btn-sm" @click="releaseScan(\'' + R.attr(scan.id) + '\')" ' + (scan.on_hold || scan.check_out_at ? 'disabled' : '') + '>Release</button>' +
+            (scan.check_out_at
+              ? '<span class="badge badge-green" style="white-space:nowrap">' + R.icon('check') + ' Already collected</span>'
+              : '<button class="btn btn-primary btn-sm" @click="releaseScan(\'' + R.attr(scan.id) + '\')" ' + (scan.on_hold ? 'disabled' : '') + '>Release</button>') +
           '</div>').join('') +
         (scans.length > 8 ? '<div class="muted small" style="margin-top:4px">' + (scans.length - 8) + ' more…</div>' : '') +
       '</div>', refresh);
     },
 
-    renderRegister(ctx, page, canRecord, canRelease, isToday) {
+    renderRegister(ctx, page, canRecord, canRelease, canManageRelease, isToday) {
       const reg = page.register || { rows: [] };
       return R.filterBar(
         '<label class="small muted">Date</label><input class="input" type="date" value="' + R.attr(page.date) + '" @change="setFilter(\'date\',$event.target.value)">' +
@@ -82,6 +97,7 @@
           { label: 'Child', render: (r) => '<a class="cell-strong" href="#/app/learners/' + R.attr(r.learner_id) + '">' + R.esc(r.first_name + ' ' + r.last_name) + '</a><span class="cell-sub mono">' + R.esc(r.learner_reference) + '</span>' },
           { label: 'Classroom', render: (r) => R.esc(r.classroom_name || '—') },
           { label: 'In by', render: (r) => {
+              if (!r.attendance_id) return '<span class="muted small">Not checked in</span>';
               const needsFix = r.brought_by_unverified || !r.brought_by_name;
               const id = r.attendance_id;
               const childId = r.learner_id;
@@ -126,6 +142,14 @@
           { label: '', align: 'right', render: (r) => {
             if (!canRecord) return '';
             if (!r.attendance_id) {
+              // Past dates have no live gate — mark presence historically
+              // instead of running the today-only check-in + bringer flow.
+              if (!isToday) {
+                return '<div class="btn-group">' +
+                  '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/learner-attendance/register\',{date:\'' + R.attr(page.date) + '\',records:[{learnerId:\'' + R.attr(r.learner_id) + '\',status:\'present\'}]},{successMessage:\'' + R.attr(r.first_name) + ' marked present\'})">Mark present</button>' +
+                  '<button class="btn btn-sm btn-secondary" @click="openViewModal(\'absence\',\'' + R.attr(r.learner_id) + '\')">Absent</button>' +
+                  '</div>';
+              }
               return '<div class="stack" style="gap:6px;max-width:340px" x-data="{ open: false, loading: false, options: null, sel: \'\', name: \'\', busy: false }">' +
                 '<div class="btn-group">' +
                   '<button class="btn btn-sm btn-primary" @click="open = true; if (!options) { loading = true; window.Reel.api(\'GET\',\'/learner-attendance/bring-options/' + R.attr(r.learner_id) + '\').then(p => { options = p.data; loading = false; }); }">In</button>' +
@@ -169,9 +193,16 @@
                 return '<button class="btn btn-sm btn-primary" @click="releaseScan(\'' + R.attr(pendingScan.id) + '\')" ' + (pendingScan.on_hold ? 'disabled' : '') + '>' + R.icon('shield-check') + ' Release</button>';
               }
               if (pendingScan) return '<span class="badge badge-sun" style="white-space:nowrap">At the gate</span>';
+              // Escape hatch for the deadlock when no collector can scan
+              // (phone dead, PIN forgotten): a named, reasoned, audited
+              // release — never a silent check-out.
+              if (canManageRelease) {
+                return '<button class="btn btn-ghost btn-sm" style="white-space:nowrap" @click="openViewModal(\'manualRelease\',\'' + R.attr(r.attendance_id) + '\')">' + R.icon('key') + ' Release without QR</button>';
+              }
               return '<span class="muted small">Waiting on the gate QR</span>';
             }
-            return '<span class="muted small">' + (r.check_out_at ? 'Collected' : 'Recorded') + '</span>';
+            // The Status column already says collected/recorded — no echo.
+            return '';
           } }
         ], emptyTitle: 'No children to show', emptyMessage: 'Adjust the date or filters, or enrol a learner first.' });
     },
@@ -268,21 +299,37 @@
         const rows = ((ctx.page.register || {}).rows || []).map((r) => ({
           id: r.learner_id, first_name: r.first_name, last_name: r.last_name, classroom_name: r.classroom_name
         }));
+        // Preselect the children still unmarked — re-submitting children who
+        // are already checked in would ask the server to skip them.
+        const preselect = ((ctx.page.register || {}).rows || []).filter((r) => !r.attendance_id).map((r) => r.learner_id);
         ctx.openModal({
           title: 'Record register',
           endpoint: '/learner-attendance/register',
           submitLabel: 'Save register',
           size: 'wide',
-          description: 'Choose the children and one status for the whole group. Children already marked are updated.',
+          description: 'Choose the children and one status for the whole group. Children already checked in are skipped — use Corrections to change them.',
           fields: [
             { name: 'date', label: 'Date', type: 'date', required: true, value: (ctx.page || {}).date || R.today() },
             { name: 'status', label: 'Status', type: 'select', required: true, value: 'present', options: STATUSES.map((s) => ({ value: s, label: R.titleCase(s) })) },
-            { name: 'learnerIds', label: 'Children', type: 'multiselect', span: 2, required: true, options: R.learnerOptions(rows), placeholder: 'Search children…', help: 'Select one, several or every child in the register.' }
+            { name: 'learnerIds', label: 'Children', type: 'multiselect', span: 2, required: true, value: preselect, options: R.learnerOptions(rows), placeholder: 'Search children…', help: 'The children still to record are selected already.' }
           ],
           transform: (data) => ({
             date: data.date,
             records: (data.learnerIds || []).map((learnerId) => ({ learnerId, status: data.status }))
           })
+        });
+      } else if (name === 'manualRelease' && id) {
+        const row = ((ctx.page.register || {}).rows || []).find((r) => r.attendance_id === id) || {};
+        ctx.openModal({
+          title: 'Release ' + (row.first_name || 'this child') + ' without the QR',
+          description: 'Use this only when no collector can scan — a dead phone or a forgotten PIN. The release is recorded under your name with the reason you give, and the parent is notified.',
+          endpoint: '/learner-attendance/record/' + id + '/manual-release',
+          method: 'POST',
+          submitLabel: 'Release child',
+          successMessage: 'Released — the parent has been notified and the audit trail records this.',
+          fields: [
+            { name: 'reason', label: 'Why the QR was not used', type: 'textarea', required: true, span: 2, placeholder: 'Parent arrived without their phone; identity verified at reception…', help: 'At least 10 characters — this is written to the audit log.' }
+          ]
         });
       } else if (name === 'absence' && id) {
         const learner = ((ctx.page.register || {}).rows || []).find((r) => r.learner_id === id) || {};

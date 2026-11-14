@@ -1,7 +1,7 @@
 /* Re-EL ECD service worker: offline shell + guide reading.
    Strategy: same-origin static assets and API GETs are cache-backed so a
    downloaded centre pack stays usable with no network at all. */
-const CACHE = 'reel-shell-v14';
+const CACHE = 'reel-shell-v15';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(self.skipWaiting());

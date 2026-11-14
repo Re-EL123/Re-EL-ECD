@@ -129,6 +129,7 @@ function register(router) {
     const date = body.date || today();
     const allowedClassrooms = has(ctx, 'attendance.record.daycare') ? null : await assignedClassroomIds(ctx);
     const results = [];
+    const skipped = [];
     for (const raw of body.records) {
       const record = validate(raw, {
         learnerId: { type: 'string', uuid: true },
@@ -138,23 +139,69 @@ function register(router) {
       });
       const learner = await getLearner(ctx, record.learnerId);
       if (allowedClassrooms && !allowedClassrooms.includes(learner.classroom_id)) throw new AppError('FORBIDDEN');
+      // A child already checked in has a verified bringer and a check-in time.
+      // Silently overwriting them from a bulk form erases custody evidence —
+      // those rows are corrected through the adjustments flow, not here.
+      const existing = await ctx.db.one(
+        'SELECT * FROM learner_attendance WHERE learner_id = $1 AND attendance_date = $2',
+        [learner.id, date]
+      );
+      if (existing && existing.check_in_at) {
+        skipped.push({ id: learner.id, name: learner.first_name + ' ' + learner.last_name, reason: 'Already checked in today — use Corrections to change them' });
+        continue;
+      }
       if (record.checkInAt && record.checkOutAt && new Date(record.checkOutAt) < new Date(record.checkInAt)) {
         fail('VALIDATION', [{ field: 'checkOutAt', message: 'Check-out cannot precede check-in.' }]);
       }
+      // A live check-in only happens for today. Marking a past register is a
+      // historical record — it must not fabricate a check-in at "now".
+      const autoCheckIn = date === today() && (record.status === 'present' || record.status === 'late');
       const saved = await ctx.db.withTransaction((client) => upsertAttendance(client, ctx, learner, {
         date, status: record.status, absenceReason: record.absenceReason,
-        checkInAt: record.checkInAt || (record.status === 'present' || record.status === 'late' ? new Date().toISOString() : null),
+        checkInAt: record.checkInAt || (autoCheckIn ? new Date().toISOString() : null),
         checkOutAt: record.checkOutAt || null,
-        broughtByUnverified: true
+        broughtByUnverified: autoCheckIn
       }));
       results.push(saved);
     }
     await recordAudit(ctx.db, ctx, {
       action: 'attendance.register_submitted', resourceType: 'learner_attendance', resourceId: null,
-      metadata: { date, count: results.length }
+      metadata: { date, count: results.length, skipped: skipped.length }
     });
-    return { date, records: results };
+    return { date, records: results, skipped };
   }, { permission: ['attendance.record.assigned', 'attendance.record.daycare'], permissionMode: 'any' });
+
+  // Manager release without a gate scan: the parent's phone died, the QR
+  // cannot be used, and the child still has to go home. Deliberate, named
+  // and audited — the register never releases silently.
+  router.post('/learner-attendance/record/:id/manual-release', async (ctx) => {
+    const body = validate(ctx.body, { reason: { type: 'string', min: 10, max: 500 } });
+    const existing = await ctx.db.one(
+      'SELECT * FROM learner_attendance WHERE id = $1 AND organisation_id = $2',
+      [ctx.params.id, ctx.organisationId]
+    );
+    if (!existing) throw new AppError('NOT_FOUND');
+    if (!existing.check_in_at) fail('CONFLICT', null, 'This child is not checked in.');
+    if (existing.check_out_at) fail('CONFLICT', null, 'This child has already been collected.');
+    const learner = await getLearner(ctx, existing.learner_id);
+    if (learner.collection_hold_reason) {
+      fail('CONFLICT', null, 'A custody hold is on this child — collection is blocked until management clears it.');
+    }
+    const updated = await ctx.db.withTransaction(async (client) => {
+      const row = await client.query(
+        `UPDATE learner_attendance SET attendance_status = 'collected', check_out_at = now(),
+           verified_by = $1, updated_at = now() WHERE id = $2 RETURNING *`,
+        [ctx.user.id, existing.id]
+      );
+      return row.rows[0];
+    });
+    await recordAudit(ctx.db, ctx, {
+      action: 'attendance.manual_release', resourceType: 'learner_attendance', resourceId: existing.id,
+      branchId: learner.branch_id,
+      metadata: { child: learner.first_name + ' ' + learner.last_name, reason: body.reason, releasedBy: ctx.user.id }
+    });
+    return updated;
+  }, { permission: 'collections.manage.daycare' });
 
   // Who may bring this child in the morning: linked guardians + approved collectors.
   router.get('/learner-attendance/bring-options/:learnerId', async (ctx) => {

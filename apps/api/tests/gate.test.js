@@ -233,3 +233,96 @@ test('gate endpoints are rate limited against PIN guessing', async () => {
   const valid = await createClient().post(`/gate/${ORG}/signin`, GOGO);
   assert.equal(valid.status, 429, 'the window is per address, even for a correct PIN');
 });
+
+test('bulk register skips already-checked-in children and preserves their bringer', async () => {
+  // Check a child in through the normal flow first.
+  const free = await db.one(
+    `SELECT l.id, l.first_name FROM learners l
+     LEFT JOIN learner_attendance a ON a.learner_id = l.id AND a.attendance_date = CURRENT_DATE
+     WHERE l.organisation_id = $1 AND l.status = 'enrolled' AND a.id IS NULL LIMIT 1`, [orgId]
+  );
+  assert.ok(free, 'seed leaves a learner unmarked for today');
+  const checkIn = await principal.post('/learner-attendance/register', {
+    records: [{ learnerId: free.id, status: 'present' }]
+  });
+  assert.equal(checkIn.status, 200);
+  const before = checkIn.data.records[0];
+  assert.ok(before.check_in_at, 'today check-in stamps the arrival time');
+
+  // Now a bulk submit that includes this child again — the register must
+  // refuse to silently overwrite the custody evidence.
+  const bulk = await principal.post('/learner-attendance/register', {
+    records: [{ learnerId: free.id, status: 'present' }]
+  });
+  assert.equal(bulk.status, 200);
+  assert.equal(bulk.data.updated === undefined ? bulk.data.records.length : bulk.data.updated, 0);
+  assert.equal(bulk.data.skipped.length, 1);
+  assert.equal(bulk.data.skipped[0].id, free.id);
+  assert.match(bulk.data.skipped[0].reason, /Already checked in/);
+
+  const after = (await principal.get('/learner-attendance')).data.rows.find((r) => r.learner_id === free.id);
+  assert.equal(after.check_in_at, before.check_in_at, 'the check-in time was not erased');
+  assert.equal(after.attendance_status, 'present');
+});
+
+test('manual release: sets collected, is audited, blocked on hold, and permission-gated', async () => {
+  const free = await db.one(
+    `SELECT l.id FROM learners l
+     LEFT JOIN learner_attendance a ON a.learner_id = l.id AND a.attendance_date = CURRENT_DATE
+     WHERE l.organisation_id = $1 AND l.status = 'enrolled' AND a.id IS NULL LIMIT 1`, [orgId]
+  );
+  assert.ok(free);
+  await principal.post('/learner-attendance/register', { records: [{ learnerId: free.id, status: 'present' }] });
+  const row = (await principal.get('/learner-attendance')).data.rows.find((r) => r.learner_id === free.id);
+  const recordId = row.attendance_id;
+
+  // Reason is required and must be substantive.
+  const short = await principal.post(`/learner-attendance/record/${recordId}/manual-release`, { reason: 'short' });
+  assert.equal(short.status, 422);
+
+  const released = await principal.post(`/learner-attendance/record/${recordId}/manual-release`, {
+    reason: 'Parent arrived without their phone; identity verified at reception.'
+  });
+  assert.equal(released.status, 200);
+  assert.equal(released.data.attendance_status, 'collected');
+  assert.ok(released.data.check_out_at);
+
+  // One release only.
+  const again = await principal.post(`/learner-attendance/record/${recordId}/manual-release`, {
+    reason: 'Parent arrived without their phone; identity verified at reception.'
+  });
+  assert.equal(again.status, 409);
+
+  // Teachers cannot release without the gate — that is the whole point.
+  const teacher = createClient();
+  await teacher.login('teacher@littlesprouts.local');
+  const denied = await teacher.post(`/learner-attendance/record/${recordId}/manual-release`, { reason: 'Teacher should never reach this.' });
+  assert.equal(denied.status, 403);
+
+  // Custody hold blocks the manual release too — no path around a hold.
+  const held = await db.one(
+    `SELECT l.id FROM learners l
+     LEFT JOIN learner_attendance a ON a.learner_id = l.id AND a.attendance_date = CURRENT_DATE
+     WHERE l.organisation_id = $1 AND l.status = 'enrolled' AND a.id IS NULL AND l.id <> $2 LIMIT 1`,
+    [orgId, free.id]
+  );
+  assert.ok(held);
+  await db.query('UPDATE learners SET collection_hold_reason = $2 WHERE id = $1', [held.id, 'Family court order — test']);
+  try {
+    await principal.post('/learner-attendance/register', { records: [{ learnerId: held.id, status: 'present' }] });
+    const heldRow = (await principal.get('/learner-attendance')).data.rows.find((r) => r.learner_id === held.id);
+    const heldRelease = await principal.post(`/learner-attendance/record/${heldRow.attendance_id}/manual-release`, { reason: 'Trying to release past a custody hold.' });
+    assert.equal(heldRelease.status, 409);
+    assert.match(heldRelease.error.message, /custody hold/i);
+  } finally {
+    await db.query('UPDATE learners SET collection_hold_reason = NULL WHERE id = $1', [held.id]);
+  }
+
+  // The audit trail carries the named release.
+  const audit = await db.one(
+    `SELECT metadata FROM audit_events WHERE organisation_id = $1 AND action = 'attendance.manual_release'
+     ORDER BY occurred_at DESC LIMIT 1`, [orgId]
+  );
+  assert.ok(audit, 'the release was audited');
+  assert.ok(audit.metadata.reason.includes('without their phone'));
+});
