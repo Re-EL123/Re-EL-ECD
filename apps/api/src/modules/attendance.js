@@ -329,6 +329,33 @@ function register(router) {
     return adjustment;
   }, { permission: ['attendance.record.assigned', 'attendance.record.daycare'], permissionMode: 'any' });
 
+  // --- Fix who brought the child (only for records already saved) -----------
+  router.patch('/learner-attendance/record/:id/bringer', async (ctx) => {
+    const body = validate(ctx.body, {
+      broughtByCollectorId: { type: 'string', uuid: true, optional: true },
+      broughtByGuardianId: { type: 'string', uuid: true, optional: true },
+      broughtByName: { type: 'string', min: 2, max: 200, optional: true }
+    });
+    const existing = await ctx.db.one(
+      'SELECT * FROM learner_attendance WHERE id = $1 AND organisation_id = $2',
+      [ctx.params.id, ctx.organisationId]
+    );
+    if (!existing) throw new AppError('NOT_FOUND');
+    const learner = await getLearner(ctx, existing.learner_id);
+    const bringer = await resolveBringer(ctx, learner, body);
+    await ctx.db.query(
+      `UPDATE learner_attendance SET brought_by_collector_id = $1, brought_by_guardian_id = $2,
+        brought_by_name = $3, brought_by_unverified = $4, updated_at = now() WHERE id = $5`,
+      [bringer.broughtByCollectorId || null, bringer.broughtByGuardianId || null,
+        bringer.broughtByName || null, bringer.broughtByUnverified, existing.id]
+    );
+    await recordAudit(ctx.db, ctx, {
+      action: 'attendance.bringer_set', resourceType: 'learner_attendance', resourceId: ctx.params.id,
+      metadata: { broughtByName: bringer.broughtByName, unverified: bringer.broughtByUnverified }
+    });
+    return ctx.db.one('SELECT * FROM learner_attendance WHERE id = $1', [existing.id]);
+  }, { permission: ['attendance.record.assigned', 'attendance.record.daycare'], permissionMode: 'any' });
+
   router.post('/learner-attendance/adjustments/:id/approve', async (ctx) => {
     const body = validate(ctx.body, {
       decision: { type: 'string', enum: ['approved', 'rejected'], optional: true }

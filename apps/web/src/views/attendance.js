@@ -37,7 +37,7 @@
       return R.pageHead('Learner attendance', 'The daily register, live presence and attendance patterns.',
         '<a class="btn btn-secondary btn-sm" href="#/app/learners">' + R.icon('users') + ' Learners</a>' + R.exportButtons('/exports/attendance', 'from=' + encodeURIComponent(range.from) + '&to=' + encodeURIComponent(range.to)) +
         (canRecord ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'register\')">' + R.icon('clipboard-list') + ' Record register</button>' +
-          '<button class="btn btn-primary btn-sm" @click="markAllPresent()">' + R.icon('check-check') + ' Mark all present</button>' : '')) +
+          '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'markAllPresent\')">' + R.icon('check-check') + ' Mark all expected present</button>' : '')) +
         '<div class="grid grid-4 section">' +
         R.statCard({ label: 'Expected', value: R.number((reg.rows || []).length), icon: 'users', foot: R.date(page.date) }) +
         R.statCard({ label: 'Present', value: R.number(summary.present), icon: 'check-circle', foot: R.percent(summary.rate) + ' attendance' }) +
@@ -57,9 +57,45 @@
         R.table({ rows: reg.rows || [], columns: [
           { label: 'Child', render: (r) => '<a class="cell-strong" href="#/app/learners/' + R.attr(r.learner_id) + '">' + R.esc(r.first_name + ' ' + r.last_name) + '</a><span class="cell-sub mono">' + R.esc(r.learner_reference) + '</span>' },
           { label: 'Classroom', render: (r) => R.esc(r.classroom_name || '—') },
-          { label: 'In by', render: (r) => r.brought_by_name
-              ? '<span>' + R.esc(r.brought_by_name) + '</span>' + (r.brought_by_unverified ? '<span class="cell-sub" style="color:var(--danger)">Unverified</span>' : '')
-              : '<span class="muted small">—</span>' },
+          { label: 'In by', render: (r) => {
+              const needsFix = r.brought_by_unverified || !r.brought_by_name;
+              const id = r.attendance_id;
+              const childId = r.learner_id;
+              const firstName = r.first_name;
+              if (!needsFix) return '<span class="cell-strong">' + R.esc(r.brought_by_name) + '</span>';
+              return '<div class="stack" style="gap:4px" x-data="{ open: false, loading: false, options: null, sel: \'\', busy: false, name: \'\' }">' +
+                '<button type="button" class="btn btn-sm" style="justify-content:flex-start" @click="open = true; if (!options) { loading = true; window.Reel.api(\'GET\',\'/learner-attendance/bring-options/' + R.attr(childId) + '\').then(p => { options = p.data; loading = false; }); }">' +
+                  R.icon('user-plus') + ' Who brought them?' +
+                '</button>' +
+                '<button type="button" class="btn btn-sm btn-ghost" style="color:var(--danger);justify-content:flex-start" @click="open = true; if (!options) { loading = true; window.Reel.api(\'GET\',\'/learner-attendance/bring-options/' + R.attr(childId) + '\').then(p => { options = p.data; loading = false; }); }">Unverified — fix</button>' +
+                '<div x-cloak x-show="open" style="border:1px solid var(--border-subtle);border-radius:14px;padding:10px;margin-top:4px">' +
+                  '<div class="muted small" style="margin-bottom:6px">Who brought ' + R.esc(firstName) + '?</div>' +
+                  '<div x-show="loading"><span class="spinner" style="width:14px;height:14px"></span></div>' +
+                  '<template x-if="options"><div class="stack" style="gap:6px;max-height:240px;overflow:auto">' +
+                    '<template x-for="g in options.guardians" :key="g.id">' +
+                      '<label class="collector-pick" style="display:flex;gap:10px;align-items:center;padding:6px 8px;border:1px solid var(--border-subtle);border-radius:10px;cursor:pointer">' +
+                        '<input type="radio" :value="\'g:\' + g.id" x-model="sel">' +
+                        '<span class="strong" style="min-width:0;font-size:0.86rem" x-text="g.name"></span>' +
+                        '<span class="badge badge-green" style="margin-left:auto">Guardian</span>' +
+                      '</label>' +
+                    '</template>' +
+                    '<template x-for="c in options.collectors" :key="c.id">' +
+                      '<label class="collector-pick" style="display:flex;gap:10px;align-items:center;padding:6px 8px;border:1px solid var(--border-subtle);border-radius:10px;cursor:pointer">' +
+                        '<input type="radio" :value="\'c:\' + c.id" x-model="sel">' +
+                        '<span class="strong" style="min-width:0;font-size:0.86rem" x-text="c.name"></span>' +
+                        '<span class="badge badge-sky" style="margin-left:auto">List</span>' +
+                      '</label>' +
+                    '</template>' +
+                    '<div class="divider" style="margin:6px 0"></div>' +
+                    '<input class="input" type="text" placeholder="Someone else (name)" x-model="name">' +
+                    '<div class="row" style="gap:6px;justify-content:flex-end">' +
+                      '<button class="btn btn-ghost btn-sm" @click="open = false">Cancel</button>' +
+                      '<button class="btn btn-primary btn-sm" :disabled="busy || (!sel && !name.trim())" @click="busy = true; const p = {}; if (sel && sel.startsWith(\'g:\')) p.broughtByGuardianId = sel.slice(2); else if (sel && sel.startsWith(\'c:\')) p.broughtByCollectorId = sel.slice(2); else p.broughtByName = name.trim(); window.Reel.api(\'PATCH\',\'/learner-attendance/record/' + R.attr(id) + '/bringer\', p).then(() => { toast(\'Bringer recorded.\'); navigate(true); }).catch((e) => { busy = false; toast(e.message || \'Could not save the bringer.\', \'error\'); })">Save</button>' +
+                    '</div>' +
+                  '</div></template>' +
+                '</div>' +
+              '</div>';
+            } },
           { label: 'Status', render: (r) => r.attendance_status ? R.badge(r.attendance_status) : '<span class="badge badge-muted">Unmarked</span>' },
           { label: 'In', render: (r) => R.time(r.check_in_at) },
           { label: 'Out', render: (r) => R.time(r.check_out_at) },
@@ -174,6 +210,28 @@
     },
 
     openModal(ctx, name, id) {
+      if (name === 'markAllPresent') {
+        ctx.openModal({
+          title: 'Mark all expected present — unverified',
+          description: 'Every child on the register today will be marked present without a recorded adult walking them in. Use this only if the queue was too long to field everyone — then open each row and set the actual bringer on the register afterwards.',
+          endpoint: '/learner-attendance/register',
+          method: 'POST',
+          submitLabel: 'Mark all unverified',
+          successMessage: 'Marked — update bringers on the register before the gate.',
+          fields: [
+            { name: 'date', label: 'Date', type: 'date', required: true, value: (ctx.page || {}).date || R.today() },
+            { name: 'status', label: 'Status', type: 'select', span: 2, value: 'present', options: ['present'] }
+          ],
+          transform: (data) => {
+            const rows = ((ctx.page && ctx.page.register && ctx.page.register.rows) || []).filter((r) => !r.attendance_id);
+            return {
+              date: data.date,
+              records: rows.map((r) => ({ learnerId: r.learner_id, status: 'present' }))
+            };
+          }
+        });
+        return;
+      }
       if (name === 'register') {
         const rows = ((ctx.page.register || {}).rows || []).map((r) => ({
           id: r.learner_id, first_name: r.first_name, last_name: r.last_name, classroom_name: r.classroom_name

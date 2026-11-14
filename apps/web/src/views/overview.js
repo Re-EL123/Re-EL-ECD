@@ -70,7 +70,7 @@
                 (unfinished.tasksDueToday ? '<span class="badge badge-plum">' + unfinished.tasksDueToday + ' tasks today</span>' : '') +
               '</div>' +
               ((morning.unmarkedIds || []).length
-                ? '<button class="btn btn-primary btn-sm" @click="markMorningAllPresent()">' + R.icon('check-check') + ' Mark all present (' + morning.unmarkedIds.length + ')</button>'
+                ? '<button class="btn btn-secondary btn-sm" @click="markMorningAllPresent()">' + R.icon('check-check') + ' Mark all expected present (' + morning.unmarkedIds.length + ')</button>'
                 : '<span class="badge badge-green">Register done</span>') +
               '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'quickMoment\')">' + R.icon('camera') + ' Moment</button>' +
             '</div>' +

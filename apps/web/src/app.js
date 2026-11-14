@@ -2407,9 +2407,13 @@
         const morning = (this.page && this.page.morning) || {};
         const ids = morning.unmarkedIds || [];
         if (!ids.length) { this.toast('Everyone is already marked.', 'warn'); return; }
-        await this.postJson('/learner-attendance/register', {
-          records: ids.map((learnerId) => ({ learnerId, status: 'present' }))
-        }, ids.length + ' children marked present.');
+        this.confirmAction('Mark all expected present — unverified',
+          'Every child on the register today will be marked present without a recorded adult walking them in. Update bringers on the register before pickup.',
+          '/learner-attendance/register',
+          { body: { records: ids.map((learnerId) => ({ learnerId, status: 'present' })) },
+            submitLabel: 'Mark all unverified',
+            successMessage: ids.length + ' children marked unverified — fix bringers on the register.' }
+        );
       },
 
       async markAllPresent() {
