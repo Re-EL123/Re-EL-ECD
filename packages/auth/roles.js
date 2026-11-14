@@ -15,7 +15,8 @@ const ROLES = {
   FINANCE_OFFICER: 'finance_officer',
   ADMISSIONS_OFFICER: 'admissions_officer',
   PARENT_GUARDIAN: 'parent_guardian',
-  SUBSTITUTE_STAFF: 'substitute_staff'
+  SUBSTITUTE_STAFF: 'substitute_staff',
+  TRUSTED_COLLECTOR: 'trusted_collector'
 };
 
 const ROLE_DEFINITIONS = [
@@ -33,7 +34,8 @@ const ROLE_DEFINITIONS = [
   { key: ROLES.FINANCE_OFFICER, name: 'Finance Officer', scope: 'daycare', description: 'Billing, payments, expenses and reports.' },
   { key: ROLES.ADMISSIONS_OFFICER, name: 'Admissions Officer', scope: 'daycare', description: 'Enquiries, applications and admissions.' },
   { key: ROLES.PARENT_GUARDIAN, name: 'Parent / Guardian', scope: 'own', description: 'Authorised child records and parent functions.' },
-  { key: ROLES.SUBSTITUTE_STAFF, name: 'Substitute Staff', scope: 'assigned', description: 'Temporary shift and classroom access.' }
+  { key: ROLES.SUBSTITUTE_STAFF, name: 'Substitute Staff', scope: 'assigned', description: 'Temporary shift and classroom access.' },
+  { key: ROLES.TRUSTED_COLLECTOR, name: 'Trusted Collector', scope: 'own', description: 'Parent-approved pickup: transport driver, grandparent or carer. Gate-only access.' }
 ];
 
 const ROLE_PERMISSIONS = {
@@ -132,13 +134,15 @@ const ROLE_PERMISSIONS = {
     'parent.absence.report.own', 'messages.read.own', 'messages.send.own', 'notifications.read.own'],
   [ROLES.SUBSTITUTE_STAFF]: ['learners.read.assigned', 'attendance.read.assigned', 'attendance.record.assigned',
     'shifts.read.assigned', 'staff_attendance.record.own', 'tasks.read.own', 'notifications.read.own',
-    'safety.report.daycare']
+    'safety.report.daycare'],
+  [ROLES.TRUSTED_COLLECTOR]: ['notifications.read.own', 'collections.gate.signin', 'learners.gate.view']
 };
 
 const ROLE_HIERARCHY = Object.fromEntries(
   [ROLES.PLATFORM_SUPER_ADMIN, ROLES.ORGANISATION_OWNER, ROLES.PRINCIPAL, ROLES.DAYCARE_ADMINISTRATOR,
     ROLES.DAYCARE_MANAGER, ROLES.FINANCE_OFFICER, ROLES.CURRICULUM_COORDINATOR, ROLES.ADMISSIONS_OFFICER,
-    ROLES.TEACHER, ROLES.ASSISTANT_TEACHER, ROLES.SUBSTITUTE_STAFF, ROLES.SUPPORT_STAFF, ROLES.PARENT_GUARDIAN]
+    ROLES.TEACHER, ROLES.ASSISTANT_TEACHER, ROLES.SUBSTITUTE_STAFF, ROLES.SUPPORT_STAFF,
+    ROLES.PARENT_GUARDIAN, ROLES.TRUSTED_COLLECTOR]
     .map((role, index, all) => [role, (all.length - index) * 10])
 );
 

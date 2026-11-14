@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 'use strict';
 
 const { getPool, query } = require('../index');
@@ -345,11 +346,18 @@ async function seedDevelopment({ force = false } = {}) {
   );
   const collector = (await pool.query(
     `INSERT INTO authorised_collectors (organisation_id, learner_id, name, relationship, contact_phone, created_by,
-      status, approval_status, approved_by, approved_at, is_trusted, identity_verification_policy, photo_url)
+      status, approval_status, approved_by, approved_at, is_trusted, identity_verification_policy, photo_url, collector_type, pin_hash, vehicle_description, licence_plate)
      VALUES ($1,$2,'Gogo Miriam Johnson','Grandmother','+27 83 555 0144',$3,
-      'active','approved',$3,now(),TRUE,'photo_id',NULL) RETURNING id`,
-    [orgId, learners.Amelia, userIds['principal@littlesprouts.local']]
+      'active','approved',$3,now(),TRUE,'qr_code',NULL,'family',$4,NULL,NULL) RETURNING id`,
+    [orgId, learners.Amelia, userIds['principal@littlesprouts.local'], crypto.createHash('sha256').update(orgId + '::gate-pin::123456').digest('hex')]
   )).rows[0].id;
+  await pool.query(
+    `INSERT INTO authorised_collectors (organisation_id, learner_id, name, relationship, contact_phone, created_by,
+      status, approval_status, approved_by, approved_at, collector_type, vehicle_description, licence_plate, pin_hash)
+     VALUES ($1,$2,'Sipho Driver','Pickup cab driver','+27 81 000 0000',$3,
+      'active','approved',$3,now(),'driver','Quantum transport · white · NPR-001','CA-123-EZ',$4)`,
+    [orgId, learners.Amelia, userIds['principal@littlesprouts.local'], crypto.createHash('sha256').update(orgId + '::gate-pin::789012').digest('hex')]
+  );
   await pool.query(
     `INSERT INTO learner_collection_events (organisation_id, branch_id, learner_id, collector_id, collector_name,
       event_type, verified_by, verification_method, notes)

@@ -24,6 +24,7 @@ const PERMISSION_KEYS = [
   'guardians.read.assigned', 'guardians.read.daycare', 'guardians.manage.daycare',
   'medical.read.daycare', 'medical.manage.daycare',
   'collections.read.daycare', 'collections.record.daycare', 'collections.manage.daycare',
+  'collections.gate.signin', 'learners.gate.view',
   // Admissions
   'admissions.read.daycare', 'admissions.manage.daycare', 'admissions.enrol.daycare',
   // Classrooms

@@ -28,6 +28,7 @@
     route('/legal/cookies', 'public', 'legalCookies', null, 'Cookie Policy'),
     route('/legal/acceptable-use', 'public', 'legalAcceptableUse', null, 'Acceptable Use Policy'),
     route('/legal/safeguarding', 'public', 'legalSafeguarding', null, 'Safeguarding Policy'),
+    route('/gate/:slug', 'public', 'gate', null, 'Gate'),
     route('/terms', 'public', 'legalTerms', null, 'Terms of Service'),
     route('/privacy', 'public', 'legalPrivacy', null, 'Privacy Policy'),
     route('/cookies', 'public', 'legalCookies', null, 'Cookie Policy'),
@@ -91,6 +92,7 @@
     route('/parent/finance', 'parent', 'parentFinance', 'parent.finance.read.own', 'Fees'),
     route('/parent/settings', 'parent', 'parentSettings', 'parent.read.own', 'Profile and consent'),
     route('/parent/manuals', 'parent', 'manuals', 'parent.read.own', 'Manuals'),
+    route('/parent/pkid-drivers', 'parent', 'pkidDrivers', 'parent.read.own', 'Pickup drivers'),
     route('/parent/manuals/:slug', 'parent', 'manualDetail', 'parent.read.own', 'Manual')
   ];
 
@@ -193,6 +195,7 @@
         { path: '/parent/messages', label: 'Messages', icon: 'messages-square', permission: 'messages.read.own' },
         { path: '/parent/finance', label: 'Fees', icon: 'wallet', permission: 'parent.finance.read.own' },
         { path: '/parent/manuals', label: 'Manuals', icon: 'book-open', permission: 'parent.read.own' },
+        { path: '/parent/pkid-drivers', label: 'Pickup drivers', icon: 'car', permission: 'parent.read.own' },
         { path: '/parent/settings', label: 'Profile and consent', icon: 'settings', permission: 'parent.read.own' }
       ] }
     ]
@@ -2400,6 +2403,16 @@
           await this.navigate(true);
         } catch (error) {
           this.toast(error.message || 'Could not send your reaction.', 'error');
+        }
+      },
+
+      async releaseScan(scanId) {
+        try {
+          await Reel.api('POST', '/gate/scans/' + encodeURIComponent(scanId) + '/release', {});
+          this.toast('Child released.');
+          await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'Release failed.', 'error');
         }
       },
 

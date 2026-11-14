@@ -722,6 +722,16 @@ function register(router) {
       : { latest: null };
     const stale = !prior || !prior.latest || (Date.now() - new Date(prior.latest).getTime()) > 60 * 86400000;
     const needsApproval = !guardianCollect && stale && body.verificationMethod !== 'override';
+    if (body.verificationMethod === 'guardian_approval') {
+      // "Guardian approval" is not a bypass — it's only valid when there really
+      // is an approved request. Anyone can tap this option from the menu; the
+      // server still insists on the matching approval before releasing.
+      const approved = collector ? await pendingApprovalFor(ctx.db, ctx.organisationId, learner.id, collector.id) : null;
+      if (!approved && !needsApproval) fail('VALIDATION', [{ field: 'verificationMethod', message: 'This collector has collected this child before and does not need a new approval — pick a normal method (ID, code or trusted knowledge).' }]);
+      if (!approved) fail('VALIDATION', [{ field: 'verificationMethod', message: 'Auntie Nomsa has not been approved by the guardian yet — the parent gets the approval on their phone. Try again after they confirm.' }]);
+      body.verificationMethod = 'guardian_approval';
+      body.requestId = approved.id;
+    }
     if (needsApproval && body.verificationMethod !== 'guardian_approval') {
       const approved = await pendingApprovalFor(ctx.db, ctx.organisationId, learner.id, collector ? collector.id : null);
       if (approved) {

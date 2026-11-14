@@ -24,7 +24,8 @@ const modules = [
   require('./templates'),
   require('./documents'),
   require('./push'),
-  require('./morning')
+  require('./morning'),
+  require('./gate')
 ];
 
 function register(router) {
