@@ -52,106 +52,50 @@
         }, { cutout: '68%' });
         const morning = page.morning || {};
         const rings = morning.rings || {};
-        const focusChildren = morning.focusChildren || [];
-        const absentees = morning.absentees || [];
-        const unfinished = morning.unfinished || {};
-        const ringRow = (label, pct) => {
-          const value = Math.max(0, Math.min(100, Number(pct) || 0));
-          return '<div class="metric-bar"><span>' + R.esc(label) + '</span><div class="bar"><span style="width:' + Math.max(2, value) + '%"></span></div><span class="val">' + R.number(value) + '%</span></div>';
-        };
-        return R.pageHead('Good day, ' + ctx.session.user.displayName.split(' ')[0], 'Your classroom, your shift and what needs attention today.') +
-          R.card('Start your day',
-            '<div class="row" style="gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between">' +
-              '<div class="row" style="gap:8px;flex-wrap:wrap">' +
-                '<span class="badge ' + ((morning.expected || 0) === (morning.present || 0) && (morning.expected || 0) > 0 ? 'badge-green' : 'badge-sun') + '">' + R.number(morning.present || 0) + ' of ' + R.number(morning.expected || 0) + ' in today</span>' +
-                ((morning.absentees || []).length ? '<span class="badge badge-danger">' + (morning.absentees.length) + ' away</span>' : '') +
-                (unfinished.draftObservations ? '<span class="badge badge-sun">' + unfinished.draftObservations + ' drafts</span>' : '') +
-                (unfinished.reportsPendingSignoff ? '<span class="badge badge-sky">' + unfinished.reportsPendingSignoff + ' reports to share</span>' : '') +
-                (unfinished.tasksDueToday ? '<span class="badge badge-plum">' + unfinished.tasksDueToday + ' tasks today</span>' : '') +
-              '</div>' +
-              ((morning.unmarkedIds || []).length
-                ? '<button class="btn btn-secondary btn-sm" @click="markMorningAllPresent()">' + R.icon('check-check') + ' Mark all expected present (' + morning.unmarkedIds.length + ')</button>'
-                : '<span class="badge badge-green">Register done</span>') +
-              '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'quickMoment\')">' + R.icon('camera') + ' Moment</button>' +
+const focusChildren = morning.focusChildren || [];
+      const absentees = morning.absentees || [];
+      const unfinished = morning.unfinished || {};
+      const pendingReleases = (morning.gateScans || []).length || 0;
+      const urgent = (unfinished.tasksDueToday || 0) + (unfinished.draftObservations || 0) + (unfinished.reportsPendingSignoff || 0) + pendingReleases + focusChildren.length + (morning.unverifiedDropoffs || []).length + ((morning.unopened || []).length);
+      return R.pageHead('Good day, ' + ctx.session.user.displayName.split(' ')[0], urgent ? 'Here is what actually needs you today.' : 'Nothing needs you right now — go teach.') +
+          (urgent ?
+            '<div class="grid grid-4 section">' +
+              (focusChildren.length ? R.statCard({ label: 'Watch', value: R.number(focusChildren.length), icon: 'eye', tone: 'sun', foot: 'children flagged by you' }) : '') +
+              (pendingReleases ? R.statCard({ label: 'Release', value: R.number(pendingReleases), icon: 'door-open', tone: 'sun', foot: 'waiting at the gate' }) : '') +
+              (unfinished.draftObservations ? R.statCard({ label: 'Drafts', value: R.number(unfinished.draftObservations), icon: 'pen-tool', tone: 'sun', foot: 'unfinished observations' }) : '') +
+              (unfinished.reportsPendingSignoff ? R.statCard({ label: 'Sign off', value: R.number(unfinished.reportsPendingSignoff), icon: 'check-check', tone: 'sky', foot: 'reports awaiting share' }) : '') +
             '</div>' +
-            (focusChildren.length
-              ? '<div class="section"></div><div class="muted small" style="margin-bottom:6px">Children who could use an observation today:</div><div class="stack">' +
-                  focusChildren.map((child) => '<div class="row" style="gap:10px;justify-content:space-between;padding:8px 10px;background:var(--surface-2);border-radius:12px">' +
-                    '<div class="row" style="gap:10px;min-width:0"><span class="avatar avatar-xs">' + R.esc((String(child.name || '?')[0] || '?').toUpperCase()) + '</span><div style="min-width:0"><div class="strong" style="font-size:0.88rem">' + R.esc(child.name) + '</div><div class="muted small">' + R.esc(child.classroom || 'Not in a classroom yet') + ' · no observation in 30 days</div></div></div>' +
-                    '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'observationFor\',\'' + R.attr(child.id) + '\')">' + R.icon('plus') + ' Observe</button></div>').join('') +
-                '</div>'
+            '<div class="section"></div>' +
+            ((focusChildren.length) ?
+              '<div class="muted small" style="margin-bottom:6px">Children who could use an observation today:</div><div class="stack">' +
+                focusChildren.map((child) => '<div class="row" style="gap:10px;justify-content:space-between;padding:8px 10px;background:var(--surface-2);border-radius:12px">' +
+                  '<div class="row" style="gap:10px;min-width:0"><span class="avatar avatar-xs">' + R.esc((String(child.name || '?')[0] || '?').toUpperCase()) + '</span><div style="min-width:0"><div class="strong" style="font-size:0.88rem">' + R.esc(child.name) + '</div><div class="muted small">' + R.esc(child.classroom || 'Not in a classroom yet') + ' · no observation in 30 days</div></div></div>' +
+                  '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'observationFor\',\'' + R.attr(child.id) + '\')">' + R.icon('plus') + ' Observe</button></div>').join('') + '</div><div class="section"></div>'
               : '') +
             ((morning.unverifiedDropoffs || []).length
-              ? '<div class="alert alert-sun" style="margin:14px 0;align-items:center">' + R.icon('user-plus') + '<div style="flex:1"><strong>Who brought these children?</strong><div class="muted small">' + (morning.unverifiedDropoffs || []).map((d) => '<strong>' + R.esc(d.childFirst) + '</strong> — ' + R.esc(d.broughtByName)).join(' · ') + '</div></div><a class="btn btn-sm btn-secondary" href="#/app/learner-attendance">Confirm on the register</a></div>'
+              ? '<div class="alert alert-sun" style="margin:0 0 14px;align-items:center">' + R.icon('user-plus') + '<div style="flex:1"><strong>Who brought these?</strong><div class="muted small">' +
+                  (morning.unverifiedDropoffs || []).map((d) => '<strong>' + R.esc(d.childFirst) + '</strong> — ' + R.esc(d.broughtByName)).join(' · ') + '</div></div><a class="btn btn-sm btn-secondary" href="#/app/learner-attendance">Fix on register</a></div>'
               : '') +
-            ((morning.deniedToday || []).length
-              ? '<div class="alert alert-danger" style="margin:14px 0;align-items:center">' + R.icon('alert-triangle') + '<div style="flex:1"><strong>Pickup blocked today</strong><div class="muted small">' +
-                  morning.deniedToday.map((d) => R.esc(d.collectorName) + ' was turned away for ' + R.esc(d.childFirst) + (d.reason ? ' — ' + R.esc(d.reason) : '')).join(' · ') + '</div></div></div>'
+            ((absentees.length)
+              ? '<div class="muted small" style="margin-bottom:6px">Away today:</div><div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:14px">' + absentees.map((a) => '<span class="badge badge-danger">' + R.esc(a.name) + (a.reason ? ' · ' + R.esc(R.truncate(a.reason, 40)) : '') + '</span>').join('') + '</div>'
               : '') +
-        (absentees.length
-              ? '<div class="section"></div><div class="muted small" style="margin-bottom:6px">Away today:</div><div class="row" style="gap:8px;flex-wrap:wrap">' + absentees.map((a) => '<span class="badge badge-danger">' + R.esc(a.name) + (a.reason ? ' · ' + R.esc(R.truncate(a.reason, 40)) : '') + '</span>').join('') + '</div>'
-              : '') +
-            '<div class="section"></div><div class="muted small" style="margin-bottom:6px">Moments this week — one per child keeps families close:</div>' +
-            '<div class="row" style="gap:8px;flex-wrap:wrap;align-items:center">' +
-              ((morning.moments && morning.moments.children) || []).map((child) =>
-                '<span class="badge ' + (child.done ? 'badge-green' : 'badge-muted') + '" style="gap:6px">' + (child.done ? '✓ ' : '○ ') + R.esc(child.firstName || child.name) + '</span>').join('') +
-              (morning.moments && morning.moments.streak ? '<span class="badge badge-sun">🔥 ' + R.number(morning.moments.streak) + ' week streak</span>' : '') +
-              (morning.moments && morning.moments.allDone ? '<span class="badge badge-sky">Every child seen this week</span>' : '') +
-            '</div>' +
             ((morning.unopened || []).length
-              ? '<div class="section"></div><div class="muted small" style="margin-bottom:6px">Waiting to be seen — mention these at pickup:</div><div class="stack">' +
+              ? '<div class="muted small" style="margin-bottom:6px">Families who opened nothing yet:</div><div class="stack">' +
                   (morning.unopened || []).map((u) => '<div class="row" style="gap:10px;justify-content:space-between;padding:8px 10px;background:var(--surface-2);border-radius:12px">' +
-                    '<div style="min-width:0"><span class="strong" style="font-size:0.86rem">' + R.esc(u.guardianFirst) + (u.childName ? ' · ' + R.esc(u.childName) : '') + '</span><div class="muted small">' + R.esc(R.truncate(u.detail || '', 90)) + '</div></div>' +
+                    '<div style="min-width:0"><span class="strong" style="font-size:0.86rem">' + R.esc(u.guardianFirst) + '</span><div class="muted small">' + R.esc(R.truncate(u.detail || '', 80)) + '</div></div>' +
                     '<span class="badge ' + (u.kind === 'digest' ? 'badge-sky' : 'badge-sun') + '">' + (u.kind === 'digest' ? 'Digest' : 'New') + '</span></div>').join('') +
                   '</div>'
               : '') +
-            ((morning.reactions || []).length
-              ? '<div class="section"></div><div class="muted small" style="margin-bottom:6px">Loved by families this week:</div><div class="stack">' +
-                  (morning.reactions || []).map((r) => {
-                    const emoji = r.reaction === 'heart' ? '❤️' : r.reaction === 'thumb' ? '👍' : '💬';
-                    const verb = r.reaction === 'more' ? 'wants to know more about' : r.reaction === 'heart' ? 'loved' : 'gave a thumbs-up to';
-                    return '<div class="row" style="gap:10px;padding:8px 10px;background:var(--surface-2);border-radius:12px">' +
-                      '<span style="font-size:1.1rem">' + emoji + '</span>' +
-                      '<div style="min-width:0"><div class="strong" style="font-size:0.86rem">' + R.esc(r.guardianFirst || r.guardianName) + ' ' + verb + ' ' + R.esc(r.childFirst) + '’s moment</div>' +
-                      (r.detail ? '<div class="muted small">' + R.esc(R.truncate(r.detail, 80)) + '</div>' : '') + '</div></div>';
-                  }).join('') + '</div>'
+            (morning.tasksDueToday
+              ? '<div class="section"></div><div class="muted small" style="margin-bottom:6px">Tasks due today (' + morning.tasksDueToday + '):</div>' +
+                R.table({ compact: true, rows: (tasks || []).filter((t) => t.due_at === R.today()).slice(0, 5), columns: [
+                  { label: 'Task', render: (t) => '<span class="cell-strong">' + R.esc(t.title) + '</span>' },
+                  { label: '', align: 'right', render: (t) => '<button class="btn btn-sm btn-secondary" @click="act(\'PATCH\',\'/tasks/' + R.attr(t.id) + '\',{status:\'done\'},{successMessage:\'Done\'})">Done</button>' }
+                ] }) +
+                '<div class="section"></div>'
               : '') +
-            '<div class="section"></div><div class="grid grid-2">' +
-              '<div class="card" style="margin:0"><h4 style="margin-top:0;margin-bottom:8px">Your rhythm this month</h4>' +
-                ringRow('Register filed today', rings.registerPct) +
-                ringRow('Observations published', rings.observationsPublishedPct) +
-                ringRow('Daily reports this week', rings.dailyReportsPct) +
-              '</div>' +
-              '<div class="card" style="margin:0"><h4 style="margin-top:0;margin-bottom:8px">Jump straight to</h4><div class="stack">' +
-                '<a class="btn btn-secondary btn-sm" href="#/app/learner-attendance">' + R.icon('calendar-check') + ' Take today’s register</a>' +
-                '<a class="btn btn-secondary btn-sm" href="#/app/assessments">' + R.icon('clipboard-list') + ' Record an observation</a>' +
-                '<a class="btn btn-secondary btn-sm" href="#/app/collection-gate">' + R.icon('shield-check') + ' The collection gate</a>' +
-                '<a class="btn btn-secondary btn-sm" href="#/app/learners">' + R.icon('users') + ' Daily reports</a>' +
-                '<a class="btn btn-secondary btn-sm" href="#/app/calendar">' + R.icon('calendar-days') + ' Today’s activities</a>' +
-              '</div></div>' +
-            '</div>') +
-          '<div class="grid grid-4 section">' +
-          R.statCard({ label: 'My shift', value: shift ? R.time(shift.starts_at) + ' – ' + R.time(shift.ends_at) : 'No shift', icon: 'calendar-clock', tone: 'sky', foot: shift ? R.esc(R.titleCase(shift.status)) + ' · ' + R.esc(shift.branch_name || '') : 'Speak to your manager' }) +
-          R.statCard({ label: 'Clock status', value: R.titleCase(status), icon: 'fingerprint', tone: status === 'on_site' ? 'green' : 'sun', foot: '<span class="dot ' + (status === 'on_site' ? '' : 'warn') + '"></span> ' + (me.today ? me.today.length + ' events today' : 'No events yet') }) +
-          R.statCard({ label: 'Children present', value: String(presenceRows.filter((p) => p.check_in_at).length), icon: 'users', tone: 'clay', foot: presenceRows.length + ' expected today' }) +
-          R.statCard({ label: 'Open tasks', value: String(tasks.length), icon: 'list-checks', tone: 'plum', foot: tasks.filter((t) => t.priority === 'high' || t.priority === 'urgent').length + ' high priority' }) +
-          '</div>' +
-          '<div class="split section"><div class="stack">' +
-          R.card('Today\'s schedule', upcoming.length ? '<div class="timeline">' + upcoming.map((event) => '<div class="timeline-item"><div class="t-time">' + R.time(event.starts_at || event.start_time) + ' · ' + R.esc(event.classroom_name || '') + '</div><div class="t-title">' + R.esc(event.title) + '</div><div class="t-body">' + R.esc(R.titleCase(event.status || 'scheduled')) + '</div></div>').join('') + '</div>' : R.emptyState('A clear day', 'No activities are scheduled for today.', '<a class="btn btn-secondary" href="#/app/calendar">Open calendar</a>', 'calendar-days'), '<a class="btn btn-sm btn-ghost" href="#/app/calendar">Calendar ' + R.icon('arrow-right') + '</a>') +
-          R.card('My tasks', R.table({ compact: true, rows: tasks.slice(0, 6), columns: [
-            { label: 'Task', render: (t) => '<span class="cell-strong">' + R.esc(t.title) + '</span><span class="cell-sub">' + R.esc(R.titleCase(t.status)) + '</span>' },
-            { label: 'Priority', render: (t) => '<span class="badge ' + R.priorityTone(t.priority) + '">' + R.esc(t.priority) + '</span>' },
-            { label: 'Due', render: (t) => R.date(t.due_at) },
-            { label: '', align: 'right', render: (t) => '<button class="btn btn-sm btn-secondary" @click="act(\'PATCH\',\'/tasks/' + R.attr(t.id) + '\',{status:\'done\'},{successMessage:\'Task completed\'})">Done</button>' }
-          ] })) +
-          '</div><div class="stack">' +
-          R.card('Classroom presence', '<div style="position:relative;height:190px"><canvas id="teacher-attendance"></canvas></div><div class="kpi-list" style="margin-top:10px"><div class="kpi-row"><span class="kpi-label">Expected</span><span class="kpi-value">' + presenceRows.length + '</span></div><div class="kpi-row"><span class="kpi-label">Checked in</span><span class="kpi-value">' + presenceRows.filter((p) => p.check_in_at).length + '</span></div></div>') +
-          R.card('Clock in and out', '<div class="stack"><div class="muted small">Record your attendance against today\'s shift.</div><div class="btn-group">' +
-            '<button class="btn btn-primary btn-sm" @click="act(\'POST\',\'/staff-attendance/clock-in\',{},{successMessage:\'Clocked in\'})">Clock in</button>' +
-            '<button class="btn btn-secondary btn-sm" @click="act(\'POST\',\'/staff-attendance/break-start\',{},{successMessage:\'Break started\'})">Break</button>' +
-            '<button class="btn btn-secondary btn-sm" @click="act(\'POST\',\'/staff-attendance/break-end\',{},{successMessage:\'Break ended\'})">End break</button>' +
-            '<button class="btn btn-secondary btn-sm" @click="act(\'POST\',\'/staff-attendance/clock-out\',{},{successMessage:\'Clocked out\'})">Clock out</button></div></div>') +
-          '</div></div>';
+            (absentees.length || (morning.unopened || []).length || focusChildren.length || (morning.unverifiedDropoffs || []).length ? ' ' : '')
+          : '<div class="alert alert-success" style="align-items:center;margin-top:8px">' + R.icon('sparkles') + '<div style="flex:1"><strong>Nothing is waiting for you.</strong> Enjoy the classroom.</div></div>');
       }
 
       const trend = d.attendanceTrend || [];

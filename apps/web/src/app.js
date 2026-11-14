@@ -201,7 +201,6 @@
 
   const QUICK_ACTIONS = [
     { label: 'New learner', icon: 'user-plus', permission: 'learners.create.daycare', route: '/app/learners', modal: 'learner' },
-    { label: 'Release a child', icon: 'shield-check', permission: 'collections.record.daycare', route: '/app/collection-gate' },
     { label: 'Record payment', icon: 'banknote', permission: 'finance.payment.record.daycare', route: '/app/finance', modal: 'payment' },
     { label: 'Log an incident', icon: 'shield-alert', permission: ['safety.report.daycare', 'safety.manage.daycare'], route: '/app/safety', modal: 'incident' },
     { label: 'New task', icon: 'list-plus', permission: ['tasks.read.own', 'tasks.manage.daycare'], route: '/app/tasks', modal: 'task' },

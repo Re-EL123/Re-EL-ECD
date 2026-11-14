@@ -84,9 +84,8 @@
               if (!needsFix) return '<span class="cell-strong">' + R.esc(r.brought_by_name) + '</span>';
               return '<div class="stack" style="gap:4px" x-data="{ open: false, loading: false, options: null, sel: \'\', busy: false, name: \'\' }">' +
                 '<button type="button" class="btn btn-sm" style="justify-content:flex-start" @click="open = true; if (!options) { loading = true; window.Reel.api(\'GET\',\'/learner-attendance/bring-options/' + R.attr(childId) + '\').then(p => { options = p.data; loading = false; }); }">' +
-                  R.icon('user-plus') + ' Who brought them?' +
+                  R.icon('user-plus') + ' Who brought ' + R.esc(firstName) + '?' +
                 '</button>' +
-                '<button type="button" class="btn btn-sm btn-ghost" style="color:var(--danger);justify-content:flex-start" @click="open = true; if (!options) { loading = true; window.Reel.api(\'GET\',\'/learner-attendance/bring-options/' + R.attr(childId) + '\').then(p => { options = p.data; loading = false; }); }">Unverified — fix</button>' +
                 '<div x-cloak x-show="open" style="border:1px solid var(--border-subtle);border-radius:14px;padding:10px;margin-top:4px">' +
                   '<div class="muted small" style="margin-bottom:6px">Who brought ' + R.esc(firstName) + '?</div>' +
                   '<div x-show="loading"><span class="spinner" style="width:14px;height:14px"></span></div>' +
@@ -156,7 +155,7 @@
               '</div>';
             }
             if (r.check_in_at && !r.check_out_at) {
-              return '<a class="btn btn-sm btn-primary" href="#/app/collection-gate">' + R.icon('shield-check') + ' Release</a>';
+              return '<button class="btn btn-sm btn-primary" @click="openViewModal(\'releaseGate\')">' + R.icon('shield-check') + ' Release</button>';
             }
             return '<span class="muted small">' + (r.check_out_at ? 'Collected' : 'Recorded') + '</span>';
           } }
@@ -180,7 +179,7 @@
           '<div class="kpi-row"><span class="kpi-label">Not yet arrived</span><span class="kpi-value">' + Math.max(0, Number(p.expected || 0) - Number(p.present || 0)) + '</span></div>' +
           '</div>') +
         R.card('Collection', '<p class="muted small">Children leave through the collection gate — whoever releases them there has been verified. Parents are told instantly.</p>' +
-          '<a class="btn btn-primary btn-sm" href="#/app/collection-gate">Open the collection gate</a>') +
+          '<a class="btn btn-primary btn-sm" href="#/app/learner-attendance">Go to the register</a>') +
         '</div></div>';
     },
 
