@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **416 routes** across 25 modules.
+Generated from the router: **417 routes** across 25 modules.
 
 ## Access
 
@@ -305,6 +305,7 @@ Generated from the router: **416 routes** across 25 modules.
 
 | Method | Path | Access |
 | --- | --- | --- |
+| GET | `/gate/:slug/brand` | Public |
 | POST | `/gate/:slug/collect` | Public |
 | POST | `/gate/:slug/signin` | Public |
 | GET | `/gate/scans` | collections.record.daycare |
