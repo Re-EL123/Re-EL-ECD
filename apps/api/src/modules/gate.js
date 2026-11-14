@@ -20,7 +20,7 @@ const { recordAudit } = require('../services/audit-service');
 const { createNotification } = require('../services/notification-service');
 
 function hashPin(orgId, pin) {
-  return crypto.createHash('sha256').update(orgId + '::gate-pin::' + String(pin).trim()).digest('hex');
+  return crypto.createHash('sha256').update(orgId + '::collection-pin::' + String(pin).trim().toLowerCase()).digest('hex');
 }
 function verifyPin(orgId, pin, hash) {
   if (!hash) return false;
