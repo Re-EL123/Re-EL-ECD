@@ -440,6 +440,7 @@
         R.table({ rows: attendance.rows || [], columns: [
           { label: 'Date', render: (a) => '<span class="cell-strong">' + R.date(a.attendance_date) + '</span>' },
           { label: 'Status', render: (a) => R.badge(a.attendance_status) },
+          { label: 'In by', render: (a) => a.check_in_at ? (a.brought_by_name ? R.esc(a.brought_by_name) + (a.brought_by_unverified ? ' <span class="badge badge-sun" style="white-space:nowrap">unverified</span>' : '') : '<span class="muted small">—</span>') : '—' },
           { label: 'Checked in', render: (a) => a.check_in_at ? R.time(a.check_in_at) : '—' },
           { label: 'Checked out', render: (a) => a.check_out_at ? R.time(a.check_out_at) : '—' },
           { label: 'Reason', render: (a) => R.esc(a.absence_reason || '—') }

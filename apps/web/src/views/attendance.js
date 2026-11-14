@@ -57,6 +57,9 @@
         R.table({ rows: reg.rows || [], columns: [
           { label: 'Child', render: (r) => '<a class="cell-strong" href="#/app/learners/' + R.attr(r.learner_id) + '">' + R.esc(r.first_name + ' ' + r.last_name) + '</a><span class="cell-sub mono">' + R.esc(r.learner_reference) + '</span>' },
           { label: 'Classroom', render: (r) => R.esc(r.classroom_name || '—') },
+          { label: 'In by', render: (r) => r.brought_by_name
+              ? '<span>' + R.esc(r.brought_by_name) + '</span>' + (r.brought_by_unverified ? '<span class="cell-sub" style="color:var(--danger)">Unverified</span>' : '')
+              : '<span class="muted small">—</span>' },
           { label: 'Status', render: (r) => r.attendance_status ? R.badge(r.attendance_status) : '<span class="badge badge-muted">Unmarked</span>' },
           { label: 'In', render: (r) => R.time(r.check_in_at) },
           { label: 'Out', render: (r) => R.time(r.check_out_at) },
@@ -64,12 +67,41 @@
           { label: '', align: 'right', render: (r) => {
             if (!canRecord) return '';
             if (!r.attendance_id) {
-              return '<div class="btn-group">' +
-                '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/learner-attendance/check-in\',{learnerId:\'' + R.attr(r.learner_id) + '\'},{successMessage:\'Checked in\'})">Check in</button>' +
-                '<button class="btn btn-sm btn-secondary" @click="openViewModal(\'absence\',\'' + R.attr(r.learner_id) + '\')">Absent</button></div>';
+              return '<div class="stack" style="gap:6px;max-width:340px" x-data="{ open: false, loading: false, options: null, sel: \'\', name: \'\', busy: false }">' +
+                '<div class="btn-group">' +
+                  '<button class="btn btn-sm btn-primary" @click="open = true; if (!options) { loading = true; window.Reel.api(\'GET\',\'/learner-attendance/bring-options/' + R.attr(r.learner_id) + '\').then(p => { options = p.data; loading = false; }); }">In</button>' +
+                  '<button class="btn btn-sm btn-secondary" @click="openViewModal(\'absence\',\'' + R.attr(r.learner_id) + '\')">Absent</button>' +
+                '</div>' +
+                '<div x-cloak x-show="open" style="border:1px solid var(--border-subtle);border-radius:14px;padding:10px">' +
+                  '<div class="muted small" style="margin-bottom:6px">Who brought ' + R.esc(r.first_name) + '?</div>' +
+                  '<div x-show="loading"><span class="spinner" style="width:14px;height:14px"></span></div>' +
+                  '<template x-if="options"><div class="stack" style="gap:6px;max-height:280px;overflow:auto">' +
+                    '<template x-for="g in options.guardians" :key="g.id">' +
+                      '<label class="collector-pick" style="display:flex;gap:10px;align-items:center;padding:6px 8px;border:1px solid var(--border-subtle);border-radius:10px;cursor:pointer">' +
+                        '<input type="radio" :value="\'g:\' + g.id" x-model="sel">' +
+                        '<span class="strong" style="min-width:0;font-size:0.86rem" x-text="g.name"></span>' +
+                        '<span class="badge badge-green" style="margin-left:auto">Guardian</span>' +
+                      '</label>' +
+                    '</template>' +
+                    '<template x-for="c in options.collectors" :key="c.id">' +
+                      '<label class="collector-pick" style="display:flex;gap:10px;align-items:center;padding:6px 8px;border:1px solid var(--border-subtle);border-radius:10px;cursor:pointer">' +
+                        '<input type="radio" :value="\'c:\' + c.id" x-model="sel">' +
+                        '<span class="strong" style="min-width:0;font-size:0.86rem" x-text="c.name"></span>' +
+                        '<span class="badge badge-sky" style="margin-left:auto">List</span>' +
+                      '</label>' +
+                    '</template>' +
+                    '<div class="divider" style="margin:6px 0"></div>' +
+                    '<input class="input" type="text" placeholder="Someone else (unverified)" x-model="name">' +
+                    '<div class="row" style="gap:6px;justify-content:flex-end">' +
+                      '<button class="btn btn-ghost btn-sm" @click="open = false">Cancel</button>' +
+                      '<button class="btn btn-primary btn-sm" :disabled="busy || (!sel && !name.trim())" @click="busy = true; const p = { learnerId: \'' + R.attr(r.learner_id) + '\' }; if (sel && sel.startsWith(\'g:\')) p.broughtByGuardianId = sel.slice(2); else if (sel && sel.startsWith(\'c:\')) p.broughtByCollectorId = sel.slice(2); else p.broughtByName = name.trim(); window.Reel.api(\'POST\',\'/learner-attendance/check-in\', p).then(() => { toast(\'' + R.attr(r.first_name) + ' in.\'); navigate(true); }).catch((e) => { busy = false; toast(e.message || \'Could not check in.\', \'error\'); })">Confirm</button>' +
+                    '</div>' +
+                  '</div></template>' +
+                '</div>' +
+              '</div>';
             }
             if (r.check_in_at && !r.check_out_at) {
-              return '<button class="btn btn-sm btn-secondary" @click="act(\'POST\',\'/learner-attendance/check-out\',{learnerId:\'' + R.attr(r.learner_id) + '\'},{successMessage:\'Checked out\'})">Check out</button>';
+              return '<a class="btn btn-sm btn-primary" href="#/app/collection-gate">' + R.icon('shield-check') + ' Release</a>';
             }
             return '<span class="muted small">' + (r.check_out_at ? 'Collected' : 'Recorded') + '</span>';
           } }
@@ -84,7 +116,7 @@
           '<div class="row" style="gap:10px;padding:10px;border:1px solid var(--border-subtle);border-radius:12px">' +
           '<div class="avatar">' + R.initials(l.first_name + ' ' + l.last_name) + '</div>' +
           '<div style="flex:1;min-width:0"><div class="strong" style="font-size:0.88rem">' + R.esc(l.first_name + ' ' + l.last_name) + '</div>' +
-          '<div class="muted small">' + R.esc(l.classroom_name || '') + ' · in at ' + R.time(l.check_in_at) + '</div></div>' +
+          '<div class="muted small">' + R.esc(l.classroom_name || '') + ' · in at ' + R.time(l.check_in_at) + (l.brought_by_name ? ' · with <strong>' + R.esc(l.brought_by_name) + '</strong>' + (l.brought_by_unverified ? ' <span style="color:var(--danger)">(unverified)</span>' : '') : '') + '</div></div>' +
           '<span class="dot"></span></div>').join('') + '</div>' : R.emptyState('No children checked in', 'Check children in from the register as they arrive.', '<a class="btn btn-secondary" href="#/app/learner-attendance">Open register</a>', 'users')) +
         '</div><div class="stack">' +
         R.card('Today at a glance', '<div class="kpi-list">' +
@@ -92,8 +124,8 @@
           '<div class="kpi-row"><span class="kpi-label">Expected</span><span class="kpi-value">' + R.number(p.expected) + '</span></div>' +
           '<div class="kpi-row"><span class="kpi-label">Not yet arrived</span><span class="kpi-value">' + Math.max(0, Number(p.expected || 0) - Number(p.present || 0)) + '</span></div>' +
           '</div>') +
-        R.card('Collection safety', '<p class="muted small">Only authorised collectors may collect a child. Record each collection against the child profile so there is a clear chain of custody.</p>' +
-          '<a class="btn btn-secondary btn-sm" href="#/app/learners">Open learner profiles</a>') +
+        R.card('Collection', '<p class="muted small">Children leave through the collection gate — whoever releases them there has been verified. Parents are told instantly.</p>' +
+          '<a class="btn btn-primary btn-sm" href="#/app/collection-gate">Open the collection gate</a>') +
         '</div></div>';
     },
 

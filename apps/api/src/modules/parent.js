@@ -441,7 +441,8 @@ function register(router) {
     const from = ctx.query.from || new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10);
     const to = ctx.query.to || today();
     const rows = await ctx.db.many(
-      `SELECT attendance_date, attendance_status, check_in_at, check_out_at, absence_reason
+      `SELECT attendance_date, attendance_status, check_in_at, check_out_at, absence_reason,
+              brought_by_name, brought_by_unverified
        FROM learner_attendance WHERE learner_id = $1 AND attendance_date BETWEEN $2 AND $3
        ORDER BY attendance_date DESC`, [learner.id, from, to]
     );

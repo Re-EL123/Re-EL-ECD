@@ -13,21 +13,69 @@ async function upsertAttendance(client, ctx, learner, data) {
   if (existing) {
     await client.query(
       `UPDATE learner_attendance SET check_in_at = $1, check_out_at = $2, attendance_status = $3,
-        absence_reason = $4, recorded_by = $5, updated_at = now() WHERE id = $6`,
-      [data.checkInAt || null, data.checkOutAt || null, data.status, data.absenceReason || null, ctx.user.id, existing.id]
+        absence_reason = $4, recorded_by = $5,
+        brought_by_collector_id = $6, brought_by_guardian_id = $7,
+        brought_by_name = $8, brought_by_unverified = $9,
+        updated_at = now() WHERE id = $10`,
+      [data.checkInAt || null, data.checkOutAt || null, data.status, data.absenceReason || null, ctx.user.id,
+        data.broughtByCollectorId || null, data.broughtByGuardianId || null, data.broughtByName || null,
+        data.broughtByUnverified ? true : false, existing.id]
     );
     return (await client.query('SELECT * FROM learner_attendance WHERE id = $1', [existing.id])).rows[0];
   }
   return (await client.query(
     `INSERT INTO learner_attendance (organisation_id, branch_id, learner_id, attendance_date, check_in_at, check_out_at,
-      attendance_status, absence_reason, recorded_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      attendance_status, absence_reason, recorded_by,
+      brought_by_collector_id, brought_by_guardian_id, brought_by_name, brought_by_unverified)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
     [ctx.organisationId, learner.branch_id, learner.id, data.date, data.checkInAt || null, data.checkOutAt || null,
-      data.status, data.absenceReason || null, ctx.user.id]
+      data.status, data.absenceReason || null, ctx.user.id,
+      data.broughtByCollectorId || null, data.broughtByGuardianId || null, data.broughtByName || null,
+      data.broughtByUnverified ? true : false]
   )).rows[0];
 }
 
+async function resolveBringer(ctx, learner, body) {
+  // Returns the brought-by fields, or throws AppError('VALIDATION') if the
+  // selection is not an approved collector / linked guardian / unverified adult.
+  const collectorId = body.broughtByCollectorId || null;
+  const guardianId = body.broughtByGuardianId || null;
+  const name = String(body.broughtByName || '').trim();
+  if (collectorId) {
+    const collector = await ctx.db.one(
+      `SELECT id, name, approval_status, status FROM authorised_collectors
+       WHERE id = $1 AND learner_id = $2 AND organisation_id = $3 AND status = 'active'`,
+      [collectorId, learner.id, ctx.organisationId]
+    );
+    if (!collector) {
+      throw new AppError('VALIDATION', [{ field: 'broughtByCollectorId', message: 'That person is not on this child’s trusted list.' }]);
+    }
+    if (collector.approval_status !== 'approved') {
+      throw new AppError('VALIDATION', [{ field: 'broughtByCollectorId', message: 'That person is not approved yet — the centre must approve them or a guardian must supply a photo.' }]);
+    }
+    return { broughtByCollectorId: collector.id, broughtByName: collector.name, broughtByUnverified: false };
+  }
+  if (guardianId) {
+    const guardian = await ctx.db.one(
+      `SELECT g.id, g.first_name || ' ' || g.last_name AS name
+       FROM learner_guardians lg JOIN guardians g ON g.id = lg.guardian_id
+       WHERE lg.learner_id = $1 AND lg.organisation_id = $2 AND lg.guardian_id = $3
+         AND lg.portal_access_status = 'active'`,
+      [learner.id, ctx.organisationId, guardianId]
+    );
+    if (!guardian) {
+      throw new AppError('VALIDATION', [{ field: 'broughtByGuardianId', message: 'That person is not a guardian of this child.' }]);
+    }
+    return { broughtByGuardianId: guardian.id, broughtByName: guardian.name, broughtByUnverified: false };
+  }
+  if (name) {
+    return { broughtByName: name.slice(0, 200), broughtByUnverified: true };
+  }
+  return { broughtByUnverified: true };
+}
+
 function register(router) {
+
   router.get('/learner-attendance', async (ctx) => {
     const date = ctx.query.date || today();
     const classroomId = ctx.query.classroomId || null;
@@ -47,7 +95,7 @@ function register(router) {
     const rows = await ctx.db.many(
       `SELECT l.id AS learner_id, l.first_name, l.last_name, l.learner_reference, l.classroom_id, l.branch_id,
               c.name AS classroom_name, a.id AS attendance_id, a.attendance_status, a.check_in_at, a.check_out_at,
-              a.absence_reason, a.recorded_by
+              a.absence_reason, a.recorded_by, a.brought_by_name, a.brought_by_unverified, a.brought_by_collector_id, a.brought_by_guardian_id
        FROM learners l
        LEFT JOIN classrooms c ON c.id = l.classroom_id
        LEFT JOIN learner_attendance a ON a.learner_id = l.id AND a.attendance_date = $2
@@ -97,7 +145,8 @@ function register(router) {
       const saved = await ctx.db.withTransaction((client) => upsertAttendance(client, ctx, learner, {
         date, status: record.status, absenceReason: record.absenceReason,
         checkInAt: record.checkInAt || (record.status === 'present' || record.status === 'late' ? new Date().toISOString() : null),
-        checkOutAt: record.checkOutAt || null
+        checkOutAt: record.checkOutAt || null,
+        broughtByUnverified: true
       }));
       results.push(saved);
     }
@@ -108,12 +157,38 @@ function register(router) {
     return { date, records: results };
   }, { permission: ['attendance.record.assigned', 'attendance.record.daycare'], permissionMode: 'any' });
 
+  // Who may bring this child in the morning: linked guardians + approved collectors.
+  router.get('/learner-attendance/bring-options/:learnerId', async (ctx) => {
+    const learner = await getLearner(ctx, ctx.params.learnerId);
+    const guardians = await ctx.db.many(
+      `SELECT g.id, g.first_name || ' ' || g.last_name AS name, lg.relationship_type AS relationship,
+              TRUE AS is_self
+       FROM learner_guardians lg JOIN guardians g ON g.id = lg.guardian_id
+       JOIN users u ON u.id = g.user_id
+       WHERE lg.learner_id = $1 AND lg.organisation_id = $2 AND lg.portal_access_status = 'active'
+       ORDER BY g.first_name`,
+      [learner.id, ctx.organisationId]
+    );
+    const collectors = await ctx.db.many(
+      `SELECT id, name, relationship, photo_url AS photo_url, is_trusted, identity_verification_policy AS policy
+       FROM authorised_collectors
+       WHERE learner_id = $1 AND organisation_id = $2 AND status = 'active' AND approval_status = 'approved'
+       ORDER BY is_trusted DESC, name`,
+      [learner.id, ctx.organisationId]
+    );
+    return { guardians, collectors };
+  }, { permission: ['attendance.record.assigned', 'attendance.record.daycare'], permissionMode: 'any' });
+
   router.post('/learner-attendance/check-in', async (ctx) => {
     const body = validate(ctx.body, {
       learnerId: { type: 'string', uuid: true },
-      status: { type: 'string', enum: ['present', 'late'], optional: true }
+      status: { type: 'string', enum: ['present', 'late'], optional: true },
+      broughtByCollectorId: { type: 'string', uuid: true, optional: true },
+      broughtByGuardianId: { type: 'string', uuid: true, optional: true },
+      broughtByName: { type: 'string', min: 2, max: 200, optional: true }
     });
     const learner = await getLearner(ctx, body.learnerId);
+    const bringer = await resolveBringer(ctx, learner, body);
     const existing = await ctx.db.one(
       'SELECT * FROM learner_attendance WHERE learner_id = $1 AND attendance_date = CURRENT_DATE', [learner.id]
     );
@@ -122,7 +197,7 @@ function register(router) {
     }
     const record = await ctx.db.withTransaction((client) => upsertAttendance(client, ctx, learner, {
       date: today(), status: body.status || 'present', checkInAt: new Date().toISOString(),
-      checkOutAt: null, absenceReason: null
+      checkOutAt: null, absenceReason: null, ...bringer
     }));
     await recordAudit(ctx.db, ctx, {
       action: 'attendance.learner_checked_in', resourceType: 'learner_attendance', resourceId: record.id,
