@@ -1,6 +1,26 @@
 'use strict';
 
 /* Settings: organisation profile, branches, classrooms, access and the audit log. */
+/* Gate QR page: draws the scannable entrance code after the view mounts. */
+window.Reel = window.Reel || {};
+window.Reel.renderGateQr = function (targetId) {
+  if (!window.QRCodeStyling || !document.getElementById(targetId)) return;
+  const url = window.location.origin + '/#/gate/' + (window.__reelGateSlug || 'little-sprouts');
+  try {
+    const qr = new window.QRCodeStyling({
+      width: 240,
+      height: 240,
+      margin: 4,
+      data: url,
+      dotsOptions: { color: '#111111', type: 'rounded' },
+      backgroundOptions: { color: '#ffffff' }
+    });
+    qr.append(document.getElementById(targetId));
+  } catch (e) {
+    const holder = document.getElementById(targetId);
+    if (holder) holder.innerHTML = '<p style="font-size:0.75rem;color:#666">QR failed to render in this browser.</p>';
+  }
+};
 (function () {
   const R = window.Reel;
   const V = R.views;
@@ -88,8 +108,8 @@
       return R.pageHead('Settings', 'How the centre is configured — the details every other screen depends on.',
         (canUpdate ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'organisation\')">' + R.icon('building-2') + ' Edit organisation</button>' : '') +
         (canManageBranches ? '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'branch\')">' + R.icon('plus') + ' Add branch</button>' : '')) +
-        R.tabs([{ key: 'organisation', label: 'Organisation' }, { key: 'branding', label: 'Branding' }, { key: 'branches', label: 'Branches (' + branches.length + ')' }, { key: 'operations', label: 'Operations' }, { key: 'onboarding', label: 'Setup checklist' }, { key: 'billing', label: 'Billing & payments' }], tab) +
-        (tab === 'branches' ? this.renderBranches(ctx, page) : tab === 'branding' ? this.renderBranding(ctx, page) : tab === 'operations' ? this.renderOperations(ctx, settings, hours, attendance, notifications, retention, canManageSettings, page, myPush) : tab === 'onboarding' ? this.renderOnboarding(onboarding) : tab === 'billing' ? this.renderBilling(ctx, page, canManageSettings) : this.renderOrganisation(org, branches, settings));
+        R.tabs([{ key: 'organisation', label: 'Organisation' }, { key: 'branding', label: 'Branding' }, { key: 'branches', label: 'Branches (' + branches.length + ')' }, { key: 'operations', label: 'Operations' }, { key: 'gateqr', label: 'Gate QR' }, { key: 'onboarding', label: 'Setup checklist' }, { key: 'billing', label: 'Billing & payments' }], tab) +
+        (tab === 'branches' ? this.renderBranches(ctx, page) : tab === 'branding' ? this.renderBranding(ctx, page) : tab === 'operations' ? this.renderOperations(ctx, settings, hours, attendance, notifications, retention, canManageSettings, page, myPush) : tab === 'gateqr' ? this.renderGateQr(org) : tab === 'onboarding' ? this.renderOnboarding(onboarding) : tab === 'billing' ? this.renderBilling(ctx, page, canManageSettings) : this.renderOrganisation(org, branches, settings));
     },
 
     renderOrganisation(org, branches, settings) {
@@ -123,6 +143,47 @@
         R.card('Collection gate', '<p class="muted small" style="margin:0 0 10px">Collections after this time are tagged as late automatically, and a parent is told at the gate if anyone unapproved tries to collect.</p>' +
           '<div class="row" style="gap:10px;align-items:center"><input class="input" type="time" id="collection-cutoff" value="' + R.attr((settings['collection.lateCutoff'] || settings.collectionLateCutoff || '17:30')) + '" style="max-width:140px">' +
           '<button class="btn btn-secondary btn-sm" @click="act(\'PATCH\',\'/organisations/current/settings\',{settings:{\'collection.lateCutoff\': document.getElementById(\'collection-cutoff\').value}},{successMessage:\'Collection cutoff saved.\'})">' + R.icon('save') + ' Save cutoff</button></div>') +
+        '</div></div>';
+    },
+
+    renderGateQr(org) {
+      try { window.__reelGateSlug = (org && org.slug) || 'little-sprouts'; } catch (e) { /* ignore */ }
+      const slug = (org && org.slug) || 'little-sprouts';
+      const url = (function () {
+        try {
+          return window.location.origin + '/#/gate/' + encodeURIComponent(slug);
+        } catch {
+          return 'https://ecd.re-el.co.za/#/gate/' + encodeURIComponent(slug);
+        }
+      })();
+      const orgName = R.esc((org && org.name) || 'Your centre');
+      return '<div class="split"><div class="stack">' +
+        R.card('Gate QR — print once, use every day',
+          '<div class="stack" style="gap:12px">' +
+            '<p class="muted small" style="margin:0">This is the QR your collectors scan at the entrance, the same QR we pin on our tablet. Print it, laminate it, tape it to the gate. It never changes unless your slug changes.</p>' +
+            '<div class="row" style="gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px">' +
+              '<code class="mono" style="background:var(--surface-2);padding:8px 12px;border-radius:8px;font-size:0.9rem;word-break:break-all">' + R.esc(url) + '</code>' +
+              '<button class="btn btn-secondary btn-sm" @click="navigator.clipboard.writeText(\'' + url + '\').then(() => this.toast ? this.toast(\'Copied.\') : null)">' + R.icon('copy') + ' Copy link</button>' +
+            '</div>' +
+            '<div class="row" style="gap:10px;align-items:center;margin-top:6px">' +
+              '<button class="btn btn-primary" @click="window.print()">' + R.icon('printer') + ' Print A4</button>' +
+              '<span class="muted small">Prints on one A4 sheet, centred, high contrast.</span>' +
+            '</div>' +
+            '<p class="muted small" style="margin:10px 0 0">Your PIN never changes and is not printed here — only the centre entrance tablet or the gate URL encodes access. Collectors sign in with their own name and PIN once they scan.</p>' +
+          '</div>') +
+        '</div><div class="stack">' +
+        '<div class="gate-print" id="gate-print-area" style="text-align:center;padding:32px 24px;background:#ffffff;border:2px solid #1a1a1a;border-radius:18px;max-width:540px;margin:0 auto">' +
+          '<p style="font-size:0.75rem;letter-spacing:0.16em;text-transform:uppercase;color:#555;margin:0 0 8px">Collection gate</p>' +
+          '<h1 style="font-family:Georgia,serif;font-size:2rem;margin:0 0 10px;color:#111">' + orgName + '</h1>' +
+          '<p style="font-size:0.88rem;color:#333;margin:0 0 18px">Scan with a phone to collect your child.</p>' +
+          '<div id="gate-qr-holder" x-cloak x-init="setTimeout(function(){window.Reel && window.Reel.renderGateQr && window.Reel.renderGateQr(\'gate-qr-holder\')}, 80)" style="margin:0 auto;width:260px;height:260px;display:flex;align-items:center;justify-content:center;border:1px solid #ddd;padding:12px;background:#fff"></div>' +
+          '<ol style="text-align:left;font-size:0.88rem;color:#222;padding-left:22px;margin:18px 0 0;line-height:1.65">' +
+            '<li>Point the phone camera at the QR — it opens instantly.</li>' +
+            '<li>Type your first name and the 6-digit PIN the centre gave you.</li>' +
+            '<li>Tap your child’s name, then <strong>I am here</strong>.</li>' +
+          '</ol>' +
+          '<p style="font-size:0.7rem;color:#888;margin:18px 0 0;word-break:break-all">' + R.esc(url) + '</p>' +
+        '</div>' +
         '</div></div>';
     },
 
