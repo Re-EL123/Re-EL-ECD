@@ -30,9 +30,10 @@
           '<div class="row" style="gap:12px;align-items:center;padding:10px;border:1px solid var(--border-subtle);border-radius:14px">' +
             '<div class="avatar" style="background:var(--forest-600);color:#fff;font-size:0.9rem">' + R.esc((d.name || '?')[0].toUpperCase()) + '</div>' +
             '<div style="flex:1;min-width:0"><div class="strong">' + R.esc(d.name) + '</div><div class="muted small">' +
-              (d.numberPlate ? 'Plate: ' + R.esc(d.numberPlate) + ' · ' : '') +
-              ((d.pkid_pickup_days || []).join(' ') || 'Unscheduled') +
-            '</div></div></div>').join('') + '</div>' : '<p class="muted small">No drivers registered yet.</p>',
+              (d.licence_plate ? 'Plate: ' + R.esc(d.licence_plate) + (d.vehicle_description ? ' · ' + R.esc(d.vehicle_description) : '') : (d.vehicle_description ? R.esc(d.vehicle_description) : 'No vehicle recorded')) +
+              ' · ' + (d.approval_status === 'approved' ? (d.pin_created_at ? 'PIN active' : 'No PIN yet — add one or tap New code') : 'Waiting for centre approval') + '</div></div>' +
+            '<button class="btn btn-sm btn-secondary" @click="act(\'POST\',\'/parent/children/' + R.attr(page.childId) + '/collectors/' + R.attr(d.id) + '/pin\',{},{successMessage:\'New PIN generated — give it to the driver now, it is not shown again.\'})">' + R.icon('key-round') + ' New code</button>' +
+            '</div>').join('') + '</div>' : '<p class="muted small">No drivers registered yet.</p>',
           '');
     },
 

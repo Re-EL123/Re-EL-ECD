@@ -217,8 +217,8 @@ function register(router) {
     if (!existing || !existing.check_in_at) fail('CONFLICT', null, 'This learner is not checked in.');
     if (existing.check_out_at) fail('CONFLICT', null, 'This learner has already been checked out.');
     // The register no longer checks children out for staff — that power belongs
-    // to the collection gate, where the collector is proven. Use it.
-    throw new AppError('CONFLICT', null, 'Use the Collection Gate to release ' + learner.first_name + ' — it verifies who is collecting before the child leaves.');
+    // to the gate, where the collector is proven by the centre QR.
+    throw new AppError('CONFLICT', null, 'The gate releases ' + learner.first_name + ': they sign in with the centre QR, then you tap Release on the "Today at the gate" panel above the register.');
 
   }, { permission: ['attendance.record.assigned', 'attendance.record.daycare'], permissionMode: 'any' });
 

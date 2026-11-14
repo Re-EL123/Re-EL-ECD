@@ -51,20 +51,22 @@
     },
 
     renderGatePanel(ctx, page) {
-      const scans = page.scans || [];
+      const scans = (page.scans || []).slice(0, 8);
+      const refresh = '<button class="btn btn-ghost btn-sm" @click="navigate(true)">' + R.icon('refresh-cw') + ' Refresh</button>';
       if (!scans.length) {
-        return '<div class="section"></div>' + R.card('Today at the gate', '<p class="muted small" style="margin:0 0 8px">No-one has tapped their way through the entrance yet. Parents and approved transport drivers sign in with the centre QR; the system shows their name here as soon as they arrive.</p>', '');
+        return '<div class="section"></div>' + R.card('Today at the gate', '<p class="muted small" style="margin:0 0 8px">No-one has tapped their way through the entrance yet. Parents and approved transport drivers sign in with the centre QR; the system shows their name here as soon as they arrive.</p>', refresh);
       }
       return '<div class="section"></div>' + R.card('Today at the gate', '<div class="stack" style="gap:8px">' +
-        scans.slice(0, 8).map((scan) =>
+        scans.map((scan) =>
           '<div class="row" style="gap:12px;align-items:center;padding:8px 10px;border:1px solid var(--border-subtle);border-radius:14px;background:var(--surface-2)">' +
             '<div class="avatar" style="width:48px;height:48px;font-size:1.1rem;background:var(--forest-100);color:var(--forest-700)">' + R.esc((scan.first_name || '?')[0].toUpperCase()) + '</div>' +
             '<div style="flex:1;min-width:0"><div class="strong" style="font-size:0.9rem">' + R.esc(scan.collector_name) + '</div>' +
-            '<div class="muted small">' + R.esc(scan.first_name + ' ' + (scan.last_name || '')) + (scan.collector_type === 'driver' ? ' · driver' : ' · family') + ' · ' + R.time(scan.confirmed_at) + '</div></div>' +
-            '<button class="btn btn-primary btn-sm" @click="releaseScan(\'' + R.attr(scan.id) + '\')">Release</button>' +
+            '<div class="muted small">' + R.esc(scan.first_name + ' ' + (scan.last_name || '')) + (scan.classroom_name ? ' · ' + R.esc(scan.classroom_name) : '') + (scan.collector_type === 'driver' || scan.collector_type === 'taxi' ? ' · driver' : '') + ' · signed in ' + R.time(scan.confirmed_at) + '</div></div>' +
+            (scan.on_hold ? '<span class="badge badge-danger">Hold — blocked</span>' : '') +
+            '<button class="btn btn-primary btn-sm" @click="releaseScan(\'' + R.attr(scan.id) + '\')" ' + (scan.on_hold || scan.check_out_at ? 'disabled' : '') + '>Release</button>' +
           '</div>').join('') +
         (scans.length > 8 ? '<div class="muted small" style="margin-top:4px">' + (scans.length - 8) + ' more…</div>' : '') +
-      '</div>', '');
+      '</div>', refresh);
     },
 
     renderRegister(ctx, page, canRecord) {
@@ -155,7 +157,13 @@
               '</div>';
             }
             if (r.check_in_at && !r.check_out_at) {
-              return '<button class="btn btn-sm btn-primary" @click="openViewModal(\'releaseGate\')">' + R.icon('shield-check') + ' Release</button>';
+              // Release only where a verified gate scan is waiting — the
+              // register has no silent check-out path.
+              const pendingScan = (page.scans || []).find((s) => s.learner_id === r.learner_id);
+              if (pendingScan) {
+                return '<button class="btn btn-sm btn-primary" @click="releaseScan(\'' + R.attr(pendingScan.id) + '\')" ' + (pendingScan.on_hold ? 'disabled' : '') + '>' + R.icon('shield-check') + ' Release</button>';
+              }
+              return '<span class="muted small">Waiting on the gate QR</span>';
             }
             return '<span class="muted small">' + (r.check_out_at ? 'Collected' : 'Recorded') + '</span>';
           } }

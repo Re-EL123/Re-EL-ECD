@@ -70,7 +70,7 @@ function register(router) {
     return ctx.db.many(
       `SELECT id, name, relationship, contact_phone, photo_url, identity_verification_policy AS policy,
               is_trusted, status, approval_status, approved_by, approved_at,
-              pin_created_at, created_at
+              pin_created_at, collector_type, vehicle_description, licence_plate, created_at
        FROM authorised_collectors
        WHERE learner_id = $1 AND organisation_id = $2 AND status <> 'revoked'
        ORDER BY approval_status DESC, is_trusted DESC, name`,
@@ -85,20 +85,29 @@ function register(router) {
       name: { type: 'string', min: 2, max: 200 },
       relationship: { type: 'string', min: 2, max: 80 },
       contactPhone: { type: 'string', max: 50, optional: true },
-      policy: { type: 'string', enum: ['photo_id', 'qr_code', 'pin', 'code_word'] },
+      policy: { type: 'string', enum: ['photo_id', 'qr_code', 'pin', 'code_word'], optional: true },
       photoUrl: { type: 'string', regex: /^https?:\/\//i, max: 1000, optional: true },
-      notes: { type: 'string', max: 500, optional: true }
+      notes: { type: 'string', max: 500, optional: true },
+      collectorType: { type: 'string', enum: ['family', 'driver', 'taxi'], optional: true },
+      vehicleDescription: { type: 'string', max: 200, optional: true },
+      licencePlate: { type: 'string', max: 30, optional: true },
+      pin: { type: 'string', min: 4, max: 12, optional: true }
     });
     // The house policy, held firmly: a photo means the centre trusts you
-    // automatically; no photo means the centre checks first.
-    const autoApprove = Boolean(body.photoUrl);
+    // automatically; a PIN means the parent has delegated gate access to this
+    // person directly (transport drivers); anything else waits for the centre.
+    const policy = body.policy || (body.photoUrl ? 'photo_id' : (body.pin ? 'pin' : 'code_word'));
+    const autoApprove = Boolean(body.photoUrl) || Boolean(body.pin);
     const row = await ctx.db.one(
       `INSERT INTO authorised_collectors (organisation_id, learner_id, name, relationship, contact_phone,
-        identity_verification_policy, photo_url, status, approval_status, approved_by, approved_at, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NULL,$10,$11) RETURNING *`,
+        identity_verification_policy, photo_url, status, approval_status, approved_by, approved_at, created_by,
+        collector_type, vehicle_description, licence_plate, pin_hash, pin_created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NULL,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
       [ctx.organisationId, learner.id, body.name.trim(), body.relationship.trim(), body.contactPhone || null,
-        body.policy, body.photoUrl || null, 'active', autoApprove ? 'approved' : 'pending',
-        autoApprove ? new Date() : null, ctx.user.id]
+        policy, body.photoUrl || null, 'active', autoApprove ? 'approved' : 'pending',
+        autoApprove ? new Date() : null, ctx.user.id,
+        body.collectorType || 'family', body.vehicleDescription || null, body.licencePlate || null,
+        body.pin ? hashPin(ctx.organisationId, body.pin) : null, body.pin ? new Date() : null]
     );
     await recordAudit(ctx.db, ctx, {
       action: 'parent.collector_added', resourceType: 'authorised_collector', resourceId: row.id,
