@@ -2443,23 +2443,23 @@
         }
       },
 
-      // Parent-app pickup: the guardian acts as the collector from their own
-      // signed-in phone — arriving checks the child in under their name,
-      // collecting opens a pending gate scan for reception to release.
-      async parentPickupAct(childId, action) {
+      // The guardian's own gate code: generated in the app, used at the
+      // centre QR. Shown once in a modal with a copy button, stored hashed —
+      // generating a new one stops the old code immediately.
+      async parentGateCode() {
         try {
-          const result = await Reel.api('POST', '/parent/children/' + encodeURIComponent(childId) + '/pickup', { action });
+          const result = await Reel.api('POST', '/parent/my-gate-code', {});
           const d = (result && result.data) || {};
-          if (action === 'arrive') {
-            this.toast(d.wasAlreadyIn ? (d.childName || 'Your child') + ' is already signed in — you are set.' : (d.childName || 'Your child') + ' signed in — have a good day!');
-          } else {
-            this.toast(d.alreadyWaiting
-              ? 'Reception already knows you are here.'
-              : 'Reception has been told you are here — they will bring ' + (d.childName || 'your child') + ' out.');
-          }
+          const pin = d.pin || '';
+          this.openDetail('Your gate code',
+            '<div style="text-align:center;padding:10px 0 4px">' +
+              '<div class="mono" style="font-size:2.1rem;letter-spacing:0.35em;font-weight:800;color:var(--forest-700)">' + Reel.esc(pin.split('').join(' ')) + '</div>' +
+              '<p class="muted small" style="margin:10px 0 14px">Shown once — this is <strong>your</strong> code. At the centre, scan the printed QR (or open the gate on your Pickup page), type your first name and this code, and you will see your children with Arriving and Collecting taps. It covers every child you guard, and it works until you generate a new one.</p>' +
+              '<button type="button" class="btn btn-secondary" onclick="var b=this;navigator.clipboard.writeText(\'' + pin + '\').then(function(){b.innerText=\'✓ Copied\'});">Copy code</button>' +
+            '</div>');
           await this.navigate(true);
         } catch (error) {
-          this.toast(error.message || 'Could not record that.', 'error');
+          this.toast(error.message || 'Could not generate your gate code.', 'error');
         }
       },
 

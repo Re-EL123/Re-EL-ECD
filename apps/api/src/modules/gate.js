@@ -42,6 +42,8 @@ async function loadGateOrg(db, slug) {
 
 // Name + PIN → every approved collector row that proves out. The same person
 // may be registered once per child; one sign-in must reveal all of them.
+// A guardian's own code (they are the most verified collector there is)
+// proves out the same way and covers every child they guard.
 async function authenticateCollector(db, org, body) {
   const rows = await db.many(
     `SELECT id, name, relationship, vehicle_description, vehicle_make_model, licence_plate,
@@ -52,15 +54,34 @@ async function authenticateCollector(db, org, body) {
     [org.id, body.name.trim()]
   );
   const matched = rows.filter((c) => verifyPin(org.id, body.pin, c.pin_hash));
-  if (!matched.length) {
+  const guardianRows = await db.many(
+    `SELECT g.id AS guardian_id, trim(g.first_name || ' ' || g.last_name) AS name,
+            g.collection_pin_hash, lg.learner_id
+     FROM guardians g
+     JOIN learner_guardians lg ON lg.guardian_id = g.id AND lg.organisation_id = g.organisation_id
+     WHERE g.organisation_id = $1 AND g.status = 'active' AND g.collection_pin_hash IS NOT NULL
+       AND (lower(g.first_name) = lower($2) OR lower(split_part(g.first_name, ' ', 1)) = lower($2)
+            OR lower(trim(g.first_name || ' ' || g.last_name)) = lower($2))`,
+    [org.id, body.name.trim()]
+  );
+  const guardianMatches = guardianRows.filter((g) => verifyPin(org.id, body.pin, g.collection_pin_hash));
+  if (!matched.length && !guardianMatches.length) {
     // Intentionally vague — never reveal which part was wrong.
     throw new AppError('UNAUTHENTICATED', null, 'That name or PIN does not match anyone cleared for this centre.');
   }
-  await db.query(
-    'UPDATE authorised_collectors SET pin_last_used_at = now() WHERE id = ANY($1::uuid[])',
-    [matched.map((c) => c.id)]
-  );
-  return matched;
+  if (matched.length) {
+    await db.query(
+      'UPDATE authorised_collectors SET pin_last_used_at = now() WHERE id = ANY($1::uuid[])',
+      [matched.map((c) => c.id)]
+    );
+  }
+  // Guardian matches become pseudo-collector rows so the whole gate pipeline
+  // (children list, arrive, collect) works on one shape.
+  const guardianCollectors = guardianMatches.map((g) => ({
+    id: null, guardian_id: g.guardian_id, name: g.name, relationship: 'Parent',
+    collector_type: 'family', learner_id: g.learner_id, created_by: null
+  }));
+  return matched.concat(guardianCollectors);
 }
 
 // The learners a matched collector may act on: the learners of every collector
@@ -156,6 +177,7 @@ function register(router) {
     const matched = await authenticateCollector(ctx.db, org, body);
     const learner = await assertLinkedLearner(ctx.db, org, matched, body.learnerId);
     const collector = matched.find((c) => c.learner_id === learner.id) || matched[0];
+    const isGuardian = Boolean(collector.guardian_id);
     const existing = await ctx.db.one(
       'SELECT * FROM learner_attendance WHERE learner_id = $1 AND attendance_date = CURRENT_DATE', [learner.id]
     );
@@ -163,15 +185,18 @@ function register(router) {
       fail('CONFLICT', null, learner.first_name + ' was already collected today.');
     }
     let wasAlreadyIn = false;
+    const bringerCols = isGuardian
+      ? ['brought_by_guardian_id', collector.guardian_id]
+      : ['brought_by_collector_id', collector.id];
     if (existing && existing.check_in_at) {
       // Already signed in today — idempotent: fill in the verified bringer if
       // the record so far has none (e.g. "mark all present" beat them to it).
       wasAlreadyIn = true;
       await ctx.db.query(
         `UPDATE learner_attendance
-         SET brought_by_collector_id = $1, brought_by_name = $2, brought_by_unverified = FALSE, updated_at = now()
+         SET ${bringerCols[0]} = $1, brought_by_name = $2, brought_by_unverified = FALSE, updated_at = now()
          WHERE id = $3 AND (brought_by_unverified = TRUE OR brought_by_name IS NULL)`,
-        [collector.id, collector.name, existing.id]
+        [bringerCols[1], collector.name, existing.id]
       );
     } else if (existing) {
       // A row exists but was never checked in (absent / excused / expected /
@@ -180,22 +205,22 @@ function register(router) {
       await ctx.db.query(
         `UPDATE learner_attendance
          SET check_in_at = now(), attendance_status = 'present', absence_reason = NULL,
-             brought_by_collector_id = $1, brought_by_name = $2, brought_by_unverified = FALSE,
+             ${bringerCols[0]} = $1, brought_by_name = $2, brought_by_unverified = FALSE,
              recorded_by = $3, updated_at = now()
          WHERE id = $4`,
-        [collector.id, collector.name, collector.created_by, existing.id]
+        [bringerCols[1], collector.name, collector.created_by, existing.id]
       );
     } else {
       await ctx.db.query(
         `INSERT INTO learner_attendance (organisation_id, branch_id, learner_id, attendance_date, check_in_at,
-          attendance_status, recorded_by, brought_by_collector_id, brought_by_name, brought_by_unverified)
+          attendance_status, recorded_by, ${bringerCols[0]}, brought_by_name, brought_by_unverified)
          VALUES ($1,$2,$3,CURRENT_DATE,now(),'present',$4,$5,$6,FALSE)`,
-        [org.id, learner.branch_id, learner.id, collector.created_by, collector.id, collector.name]
+        [org.id, learner.branch_id, learner.id, collector.created_by, bringerCols[1], collector.name]
       );
     }
     await recordAudit(ctx.db, ctx, {
       action: 'gate.drop_off', resourceType: 'learner', resourceId: learner.id,
-      metadata: { bringer: collector.name, collectorId: collector.id, wasAlreadyIn }
+      metadata: { bringer: collector.name, collectorId: collector.id, guardianId: collector.guardian_id || null, wasAlreadyIn }
     });
     return { checkedIn: true, childName: learner.first_name, wasAlreadyIn };
   }, { public: true });

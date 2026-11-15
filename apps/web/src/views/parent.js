@@ -515,17 +515,36 @@
         R.api('GET', '/parent/pickup').then((p) => p.data).catch(() => ({ children: [] })),
         R.api('GET', '/parent/collection-approvals').then((p) => p.data).catch(() => ({ approvals: [] }))
       ]);
-      return { children: pickup.children || [], date: pickup.date || R.today(), approvals: approvals.approvals || [] };
+      return {
+        children: pickup.children || [],
+        date: pickup.date || R.today(),
+        gateSlug: pickup.gateSlug || null,
+        hasGateCode: Boolean(pickup.hasGateCode),
+        approvals: approvals.approvals || []
+      };
     },
 
     render(ctx, params, page) {
       const children = page.children || [];
       const waiting = children.filter((c) => c.pending_scan_id);
-      return R.pageHead('Pickup', 'Arriving and collecting from your own phone — the centre sees your name, verified by your login.',
+      const gateUrl = '#/gate/' + (page.gateSlug || 'little-sprouts');
+      return R.pageHead('Pickup', 'The centre QR is the checkpoint — everyone signs in there, you included.',
         '<a class="btn btn-secondary btn-sm" href="#/parent/children">' + R.icon('key-round') + ' Collection codes</a>') +
         (waiting.length ? '<div class="section"></div><div class="alert alert-info" style="align-items:center">' + R.icon('bell') +
           '<div style="flex:1"><strong>Waiting for reception</strong><div class="muted small">' +
-          waiting.map((c) => R.esc(c.first_name)).join(', ') + ' — reception has been told you are here. No need to tap again.</div></div></div>' : '') +
+          waiting.map((c) => R.esc(c.first_name)).join(', ') + ' — reception has your scan. They will bring your child out.</div></div></div>' : '') +
+        '<div class="section"></div>' +
+        R.card('Your gate code',
+          '<div class="row" style="gap:14px;align-items:center;flex-wrap:wrap">' +
+            '<div style="flex:1;min-width:260px"><p class="muted small" style="margin:0">At the centre, scan the printed QR (or open the gate below), type your <strong>first name</strong> and <strong>your own code</strong>, then tap Arriving or Collecting on your child. Reception releases — the same tap that clears every other collector.</p>' +
+            (page.hasGateCode ? '<p class="muted small" style="margin:6px 0 0">You have a code. Generating a new one stops the old code working.</p>'
+              : '<p class="muted small" style="margin:6px 0 0"><strong>You have no code yet</strong> — generate one before you arrive.</p>') +
+            '</div>' +
+            '<div class="btn-group">' +
+              '<button class="btn btn-primary" @click="parentGateCode()">' + R.icon('key-round') + (page.hasGateCode ? ' New gate code' : ' Get my gate code') + '</button>' +
+              '<a class="btn btn-secondary" href="' + gateUrl + '">' + R.icon('qr-code') + ' Open the gate</a>' +
+            '</div>' +
+          '</div>') +
         (!children.length ? R.emptyState('No children linked yet', 'Once the centre links your children to your account they appear here.', '', 'users') : '') +
         '<div class="grid grid-2 section">' + children.map((c) => this.childCard(c)).join('') + '</div>' +
         R.card('Someone else collecting? Share a code.',
@@ -543,13 +562,11 @@
         'not-in': '<span class="badge badge-sun">Not in yet</span>'
       }[state];
       const sub = state === 'waiting'
-        ? 'Reception was told at ' + R.time(c.pending_since) + (c.pending_source === 'parent_app' ? ' · from your app' : '')
+        ? 'Scan was at ' + R.time(c.pending_since)
         : (c.check_in_at ? 'In at ' + R.time(c.check_in_at) + (c.brought_by_name ? ' · with ' + R.esc(c.brought_by_name) : '') : 'Arrives at ' + R.esc(c.classroom_name || 'the centre'));
-      const arriveDisabled = state !== 'not-in';
-      const collectDisabled = state !== 'in';
       const hint = state === 'gone' ? 'See you tomorrow'
-        : state === 'waiting' ? 'No need to tap again'
-        : state === 'in' ? 'Reception releases them' : 'Checks them in — verified in your name';
+        : state === 'waiting' ? 'Reception is releasing them'
+        : state === 'in' ? 'Scan the QR to collect' : 'Scan the QR to check in';
       return '<div class="card">' +
         '<div class="row" style="gap:12px;align-items:center">' +
           '<div class="avatar" style="width:52px;height:52px;border-radius:12px;font-size:1.2rem;background:var(--forest-100);color:var(--forest-700)">' + R.esc((c.first_name[0] || '?').toUpperCase()) + '</div>' +
@@ -557,11 +574,7 @@
             '<div class="muted small">' + sub + '</div></div>' +
           badge +
         '</div>' +
-        '<div class="btn-group" style="margin-top:14px">' +
-          '<button class="btn btn-sm btn-primary" ' + (arriveDisabled ? 'disabled' : '') + ' @click="parentPickupAct(\'' + R.attr(c.id) + '\', \'arrive\')">Arriving</button>' +
-          '<button class="btn btn-sm btn-secondary" ' + (collectDisabled ? 'disabled' : '') + ' @click="parentPickupAct(\'' + R.attr(c.id) + '\', \'collect\')">Collecting</button>' +
-          '<span class="muted small" style="align-self:center">' + hint + '</span>' +
-        '</div>' +
+        '<div class="muted small" style="margin-top:12px">' + hint + '</div>' +
       '</div>';
     },
 

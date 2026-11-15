@@ -161,41 +161,53 @@ test('parent-set collection PIN works at the gate', async () => {
   await parent.delete(`/parent/children/${amelia}/collectors/${added.data.id}`);
 });
 
-test('parent-app pickup: arriving and collecting from the signed-in guardian', async () => {
+test('parent gate code: the guardian signs in at the centre QR with their own PIN', async () => {
   // Start Amelia's day fresh for this flow; it ends collected, which the
   // later gate tests expect her to be.
   await db.query("DELETE FROM gate_scans WHERE learner_id = $1 AND confirmed_at::date = CURRENT_DATE", [amelia]);
   await db.query("DELETE FROM learner_attendance WHERE learner_id = $1 AND attendance_date = CURRENT_DATE", [amelia]);
 
+  // The app never records custody remotely — it hands the parent their own code.
+  const code = await parent.post('/parent/my-gate-code', {});
+  assert.equal(code.status, 200);
+  assert.match(code.data.pin, /^[0-9]{6}$/);
   const list = await parent.get('/parent/pickup');
   assert.equal(list.status, 200);
-  const mine = list.data.children.find((c) => c.id === amelia);
-  assert.ok(mine, 'the pickup page lists the guardian’s children with live state');
-  assert.equal(mine.check_in_at, null);
+  assert.equal(list.data.hasGateCode, true, 'the pickup page knows the parent has a code');
+  assert.equal(list.data.gateSlug, ORG, 'the pickup page links the parent to their centre’s gate');
 
-  // Arriving checks the child in under the guardian's name — verified.
-  const arrive = await parent.post(`/parent/children/${amelia}/pickup`, { action: 'arrive' });
+  // At the gate: first name + their own code lists every child they guard.
+  const signin = await createClient().post(`/gate/${ORG}/signin`, { name: 'Sarah', pin: code.data.pin });
+  assert.equal(signin.status, 200);
+  assert.deepEqual(signin.data.children.map((c) => c.id), [amelia]);
+  assert.equal(signin.data.collector.relationship, 'Parent');
+
+  // Arriving at the gate checks Amelia in under Sarah's name — verified.
+  const arrive = await createClient().post(`/gate/${ORG}/arrive`, { name: 'Sarah', pin: code.data.pin, learnerId: amelia });
   assert.equal(arrive.status, 200);
-  assert.equal(arrive.data.wasAlreadyIn, false);
   const row = (await principal.get('/learner-attendance')).data.rows.find((r) => r.learner_id === amelia);
   assert.equal(row.attendance_status, 'present');
   assert.equal(row.brought_by_unverified, false, 'the guardian is a verified bringer');
+  assert.ok(row.brought_by_guardian_id, 'the guardian link is recorded, not a collector row');
 
-  // Collecting opens a pending scan sourced from the app; reception releases.
-  const collect = await parent.post(`/parent/children/${amelia}/pickup`, { action: 'collect' });
+  // Collecting at the gate opens the same pending scan; reception releases.
+  const collect = await createClient().post(`/gate/${ORG}/collect`, { name: 'Sarah', pin: code.data.pin, learnerId: amelia });
   assert.equal(collect.status, 200);
   assert.equal(collect.data.waitingRelease, true);
-  const scans = await principal.get('/gate/scans');
-  const scan = scans.data.pending.find((s) => s.id === collect.data.scanId);
-  assert.ok(scan, 'the pending scan is on the register’s gate panel');
-  assert.equal(scan.source, 'parent_app', 'staff see the collector was verified in the app');
   const release = await principal.post(`/gate/scans/${collect.data.scanId}/release`, {});
   assert.equal(release.status, 200);
 
-  // The collected child shows the app custody record in the parent history.
+  // A fresh code replaces the old one immediately.
+  const fresh = await parent.post('/parent/my-gate-code', {});
+  assert.equal(fresh.status, 200);
+  const oldCode = await createClient().post(`/gate/${ORG}/signin`, { name: 'Sarah', pin: code.data.pin });
+  assert.equal(oldCode.status, 401, 'the replaced code stops working');
+  const newCode = await createClient().post(`/gate/${ORG}/signin`, { name: 'Sarah', pin: fresh.data.pin });
+  assert.equal(newCode.status, 200);
+
   const history = await parent.get(`/parent/children/${amelia}/collections`);
-  const appRow = history.data.find((r) => r.collector_name && r.verification_method === 'gate_qr');
-  assert.ok(appRow, 'the app release appears in the parent’s collection history');
+  const parentRow = history.data.find((r) => r.collector_name && r.verification_method === 'gate_qr');
+  assert.ok(parentRow, 'the parent’s gate release appears in their collection history');
 });
 
 test('morning cockpit: pending gate releases arrive in /staff/morning', async () => {

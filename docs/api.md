@@ -504,7 +504,6 @@ Generated from the router: **421 routes** across 25 modules.
 | POST | `/parent/children/:id/collectors/:collectorId/pin` | parent.read.own |
 | GET | `/parent/children/:id/daily-reports` | parent.read.own |
 | GET | `/parent/children/:id/invoices` | parent.finance.read.own |
-| POST | `/parent/children/:id/pickup` | parent.read.own |
 | GET | `/parent/children/:id/portfolio` | parent.read.own |
 | GET | `/parent/children/:id/progress` | parent.read.own |
 | GET | `/parent/collection-approvals` | parent.read.own |
@@ -515,6 +514,7 @@ Generated from the router: **421 routes** across 25 modules.
 | GET | `/parent/forms` | parent.forms.submit.own |
 | GET | `/parent/invoices/:id` | parent.finance.read.own |
 | POST | `/parent/invoices/:id/pay` | parent.finance.read.own |
+| POST | `/parent/my-gate-code` | parent.read.own |
 | POST | `/parent/observations/:id/read` | parent.read.own |
 | GET | `/parent/overview` | parent.read.own |
 | GET | `/parent/pickup` | parent.read.own |
