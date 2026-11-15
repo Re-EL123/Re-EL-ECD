@@ -265,7 +265,7 @@ test('bulk register skips already-checked-in children and preserves their bringe
   assert.equal(after.attendance_status, 'present');
 });
 
-test('manual release: sets collected, is audited, blocked on hold, and permission-gated', async () => {
+test('manual release: full custody evidence, code verification, hold block, permission gate', async () => {
   const free = await db.one(
     `SELECT l.id FROM learners l
      LEFT JOIN learner_attendance a ON a.learner_id = l.id AND a.attendance_date = CURRENT_DATE
@@ -275,29 +275,77 @@ test('manual release: sets collected, is audited, blocked on hold, and permissio
   await principal.post('/learner-attendance/register', { records: [{ learnerId: free.id, status: 'present' }] });
   const row = (await principal.get('/learner-attendance')).data.rows.find((r) => r.learner_id === free.id);
   const recordId = row.attendance_id;
+  const sig = 'data:image/png;base64,' + Buffer.from('test-signature').toString('base64').repeat(2);
 
-  // Reason is required and must be substantive.
+  // Name, signature and a substantive reason are all required.
   const short = await principal.post(`/learner-attendance/record/${recordId}/manual-release`, { reason: 'short' });
   assert.equal(short.status, 422);
-
-  const released = await principal.post(`/learner-attendance/record/${recordId}/manual-release`, {
-    reason: 'Parent arrived without their phone; identity verified at reception.'
+  const noSignature = await principal.post(`/learner-attendance/record/${recordId}/manual-release`, {
+    reason: 'Parent could not use the QR today.', collectorName: 'Test Aunt'
   });
-  assert.equal(released.status, 200);
-  assert.equal(released.data.attendance_status, 'collected');
-  assert.ok(released.data.check_out_at);
+  assert.equal(noSignature.status, 422);
 
-  // One release only.
-  const again = await principal.post(`/learner-attendance/record/${recordId}/manual-release`, {
-    reason: 'Parent arrived without their phone; identity verified at reception.'
+  // A wrong parent-given code is refused, never silently accepted.
+  const wrongPin = await principal.post(`/learner-attendance/record/${recordId}/manual-release`, {
+    reason: 'Collector says the parent gave them a code.',
+    collectorName: 'Test Aunt', collectorPin: '000000', signature: sig
   });
-  assert.equal(again.status, 409);
+  assert.equal(wrongPin.status, 422);
+
+  // A correct code verifies the collector against the trusted list.
+  const collector = (await db.query(
+    `INSERT INTO authorised_collectors (organisation_id, learner_id, name, relationship, status, approval_status, approved_at, pin_hash)
+     VALUES ($1,$2,'Code Aunt','Aunt','active','approved',now(),$3) RETURNING id`,
+    [orgId, free.id, pinHash('445566')]
+  )).rows[0].id;
+  try {
+    const released = await principal.post(`/learner-attendance/record/${recordId}/manual-release`, {
+      reason: 'Phone battery died; collector knew the parent-given code.',
+      collectorName: 'Test Aunt', collectorPin: '445566', signature: sig
+    });
+    assert.equal(released.status, 200);
+    assert.equal(released.data.attendance_status, 'collected');
+    assert.ok(released.data.check_out_at);
+    assert.equal(released.data.collectorVerifiedByCode, true);
+
+    // The custody event carries the signature and the verified collector.
+    const event = await db.one(
+      `SELECT collector_id, collector_name, verification_method, signature_captured,
+              (signature_data IS NOT NULL) AS has_signature, notes, override_by
+       FROM learner_collection_events WHERE learner_id = $1 ORDER BY recorded_at DESC LIMIT 1`, [free.id]
+    );
+    assert.equal(event.collector_id, collector);
+    assert.equal(event.verification_method, 'pin_manual');
+    assert.equal(event.signature_captured, true);
+    assert.equal(event.has_signature, true);
+    assert.match(event.notes, /battery died/);
+    assert.equal(event.override_by, null, 'a code-verified handover is not an override');
+
+    // One release only.
+    const again = await principal.post(`/learner-attendance/record/${recordId}/manual-release`, {
+      reason: 'Parent arrived without their phone; identity verified at reception.',
+      collectorName: 'Test Aunt', signature: sig
+    });
+    assert.equal(again.status, 409);
+  } finally {
+    await db.query("UPDATE authorised_collectors SET status = 'revoked' WHERE id = $1", [collector]);
+  }
 
   // Teachers cannot release without the gate — that is the whole point.
   const teacher = createClient();
   await teacher.login('teacher@littlesprouts.local');
   const denied = await teacher.post(`/learner-attendance/record/${recordId}/manual-release`, { reason: 'Teacher should never reach this.' });
   assert.equal(denied.status, 403);
+
+  // The audit trail carries the named release.
+  const audit = await db.one(
+    `SELECT metadata FROM audit_events WHERE organisation_id = $1 AND action = 'attendance.manual_release'
+     ORDER BY occurred_at DESC LIMIT 1`, [orgId]
+  );
+  assert.ok(audit, 'the release was audited');
+  assert.ok(audit.metadata.reason.includes('battery died'));
+  assert.equal(audit.metadata.signatureCaptured, true);
+  assert.equal(audit.metadata.collectorVerifiedByCode, true);
 
   // Custody hold blocks the manual release too — no path around a hold.
   const held = await db.one(
@@ -311,18 +359,13 @@ test('manual release: sets collected, is audited, blocked on hold, and permissio
   try {
     await principal.post('/learner-attendance/register', { records: [{ learnerId: held.id, status: 'present' }] });
     const heldRow = (await principal.get('/learner-attendance')).data.rows.find((r) => r.learner_id === held.id);
-    const heldRelease = await principal.post(`/learner-attendance/record/${heldRow.attendance_id}/manual-release`, { reason: 'Trying to release past a custody hold.' });
+    const heldRelease = await principal.post(`/learner-attendance/record/${heldRow.attendance_id}/manual-release`, {
+      reason: 'Trying to release past a custody hold.',
+      collectorName: 'Hold Tester', signature: sig
+    });
     assert.equal(heldRelease.status, 409);
     assert.match(heldRelease.error.message, /custody hold/i);
   } finally {
     await db.query('UPDATE learners SET collection_hold_reason = NULL WHERE id = $1', [held.id]);
   }
-
-  // The audit trail carries the named release.
-  const audit = await db.one(
-    `SELECT metadata FROM audit_events WHERE organisation_id = $1 AND action = 'attendance.manual_release'
-     ORDER BY occurred_at DESC LIMIT 1`, [orgId]
-  );
-  assert.ok(audit, 'the release was audited');
-  assert.ok(audit.metadata.reason.includes('without their phone'));
 });

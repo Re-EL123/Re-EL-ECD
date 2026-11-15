@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('node:crypto');
 const { validate } = require('../../../../packages/contracts/validate');
 const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
@@ -173,9 +174,19 @@ function register(router) {
 
   // Manager release without a gate scan: the parent's phone died, the QR
   // cannot be used, and the child still has to go home. Deliberate, named
-  // and audited — the register never releases silently.
+  // and audited — the register never releases silently. Full custody
+  // evidence is captured: who took the child, the parent-given code (if the
+  // collector knows it), and their hand signature on the tablet.
   router.post('/learner-attendance/record/:id/manual-release', async (ctx) => {
-    const body = validate(ctx.body, { reason: { type: 'string', min: 10, max: 500 } });
+    const body = validate(ctx.body, {
+      reason: { type: 'string', min: 10, max: 500 },
+      collectorName: { type: 'string', min: 2, max: 200 },
+      collectorPin: { type: 'string', min: 4, max: 12, optional: true },
+      signature: { type: 'string', min: 50, max: 500000 }
+    });
+    if (!/^data:image\/png;base64,/.test(body.signature)) {
+      fail('VALIDATION', [{ field: 'signature', message: 'A hand signature is required.' }]);
+    }
     const existing = await ctx.db.one(
       'SELECT * FROM learner_attendance WHERE id = $1 AND organisation_id = $2',
       [ctx.params.id, ctx.organisationId]
@@ -187,20 +198,57 @@ function register(router) {
     if (learner.collection_hold_reason) {
       fail('CONFLICT', null, 'A custody hold is on this child — collection is blocked until management clears it.');
     }
+    // If the collector knows the code the parent gave them, verify it
+    // against the trusted list — that upgrades the release from a staff
+    // override to a code-verified handover.
+    let collectorId = null;
+    let collectorName = body.collectorName.trim();
+    let verifiedByCode = false;
+    if (body.collectorPin) {
+      const hash = crypto.createHash('sha256')
+        .update(ctx.organisationId + '::collection-pin::' + body.collectorPin.trim().toLowerCase())
+        .digest('hex');
+      const collector = await ctx.db.one(
+        `SELECT id, name FROM authorised_collectors
+         WHERE learner_id = $1 AND organisation_id = $2 AND status = 'active'
+           AND approval_status = 'approved' AND pin_hash = $3`,
+        [existing.learner_id, ctx.organisationId, hash]
+      );
+      if (!collector) {
+        fail('VALIDATION', [{ field: 'collectorPin', message: 'That code does not match anyone on this child’s trusted list — check it with the parent, or release without the code.' }]);
+      }
+      collectorId = collector.id;
+      collectorName = collector.name;
+      verifiedByCode = true;
+    }
     const updated = await ctx.db.withTransaction(async (client) => {
       const row = await client.query(
         `UPDATE learner_attendance SET attendance_status = 'collected', check_out_at = now(),
            verified_by = $1, updated_at = now() WHERE id = $2 RETURNING *`,
         [ctx.user.id, existing.id]
       );
+      // The custody record lives with the other collection events, so the
+      // parent's history shows exactly who signed and who released.
+      await client.query(
+        `INSERT INTO learner_collection_events
+           (organisation_id, branch_id, learner_id, collector_id, collector_name, event_type,
+            verified_by, verification_method, signature_data, signature_captured, notes, override_by, override_reason)
+         VALUES ($1,$2,$3,$4,$5,'collection',$6,$7,$8,TRUE,$9,$10,$11)`,
+        [ctx.organisationId, learner.branch_id, existing.learner_id, collectorId, collectorName,
+          ctx.user.id, verifiedByCode ? 'pin_manual' : 'manual_release', body.signature, body.reason,
+          verifiedByCode ? null : ctx.user.id, verifiedByCode ? null : body.reason]
+      );
       return row.rows[0];
     });
     await recordAudit(ctx.db, ctx, {
       action: 'attendance.manual_release', resourceType: 'learner_attendance', resourceId: existing.id,
       branchId: learner.branch_id,
-      metadata: { child: learner.first_name + ' ' + learner.last_name, reason: body.reason, releasedBy: ctx.user.id }
+      metadata: {
+        child: learner.first_name + ' ' + learner.last_name, reason: body.reason, releasedBy: ctx.user.id,
+        collectorName, collectorVerifiedByCode: verifiedByCode, signatureCaptured: true
+      }
     });
-    return updated;
+    return Object.assign({}, updated, { custodyRecorded: true, collectorVerifiedByCode: verifiedByCode });
   }, { permission: 'collections.manage.daycare' });
 
   // Who may bring this child in the morning: linked guardians + approved collectors.

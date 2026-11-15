@@ -244,6 +244,7 @@
       automationSweepBusy: false,
       automationDigestBusy: false,
       modal: null,
+      signaturePads: {},
       toasts: [],
       unread: 0,
       _charts: [],
@@ -1439,6 +1440,7 @@
 
 
       openModal(config) {
+        this.signaturePads = {};
         const data = {};
         (config.fields || []).forEach((field) => {
           if (field.type === 'checkbox') {
@@ -1829,6 +1831,7 @@
       closeModal() {
         if (this.modal && this.modal.saving) return;
         this.modal = null;
+        this.signaturePads = {};
       },
 
       mediaPreview(field, url) {
@@ -2146,6 +2149,62 @@
         this.modal.data[field.name] = field.multiple ? [] : '';
         if (field.storageKeyField && this.modal.data[field.storageKeyField] !== undefined) {
           this.modal.data[field.storageKeyField] = '';
+        }
+      },
+
+      // Hand-signature capture for custody events: draw on the canvas, the
+      // stroke becomes a PNG data URL in modal.data on pointer release.
+      initSignaturePad(field, canvas) {
+        const ctx = canvas.getContext('2d');
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = '#111827';
+        const pad = { canvas, ctx, drawing: false, last: null };
+        this.signaturePads[field.name] = pad;
+        if (this.modal) this.modal.data[field.name] = '';
+        const point = (e) => {
+          const rect = canvas.getBoundingClientRect();
+          return {
+            x: (e.clientX - rect.left) * (canvas.width / rect.width),
+            y: (e.clientY - rect.top) * (canvas.height / rect.height)
+          };
+        };
+        const stroke = (e) => {
+          if (!pad.drawing) return;
+          const p = point(e);
+          ctx.beginPath();
+          ctx.moveTo(pad.last ? pad.last.x : p.x, pad.last ? pad.last.y : p.y);
+          ctx.lineTo(p.x, p.y);
+          ctx.stroke();
+          pad.last = p;
+        };
+        canvas.onpointerdown = (e) => {
+          pad.drawing = true;
+          pad.last = null;
+          try { canvas.setPointerCapture(e.pointerId); } catch { /* older browsers */ }
+          stroke(e);
+        };
+        canvas.onpointermove = stroke;
+        const finish = () => {
+          if (!pad.drawing) return;
+          pad.drawing = false;
+          if (this.modal && this.modal.data && field.name in this.modal.data) {
+            this.modal.data[field.name] = canvas.toDataURL('image/png');
+          }
+        };
+        canvas.onpointerup = finish;
+        canvas.onpointercancel = finish;
+        canvas.onpointerleave = finish;
+      },
+
+      clearSignaturePad(field) {
+        if (!this.modal) return;
+        this.modal.data[field.name] = '';
+        const pad = this.signaturePads[field.name];
+        if (pad) {
+          pad.ctx.clearRect(0, 0, pad.canvas.width, pad.canvas.height);
+          pad.last = null;
         }
       },
 

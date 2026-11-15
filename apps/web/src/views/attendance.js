@@ -98,14 +98,19 @@
           { label: 'Classroom', render: (r) => R.esc(r.classroom_name || '—') },
           { label: 'In by', render: (r) => {
               if (!r.attendance_id) return '<span class="muted small">Not checked in</span>';
-              const needsFix = r.brought_by_unverified || !r.brought_by_name;
               const id = r.attendance_id;
               const childId = r.learner_id;
               const firstName = r.first_name;
-              if (!needsFix) return '<span class="cell-strong">' + R.esc(r.brought_by_name) + '</span>';
-              return '<div class="stack" style="gap:4px" x-data="{ open: false, loading: false, options: null, sel: \'\', busy: false, name: \'\' }">' +
-                '<button type="button" class="btn btn-sm" style="justify-content:flex-start" @click="open = true; if (!options) { loading = true; window.Reel.api(\'GET\',\'/learner-attendance/bring-options/' + R.attr(childId) + '\').then(p => { options = p.data; loading = false; }); }">' +
-                  R.icon('user-plus') + ' Who brought ' + R.esc(firstName) + '?' +
+              const unverified = Boolean(r.brought_by_unverified);
+              // A recorded adult is the record — show it. Only the missing
+              // or flagged-unverified ones need action.
+              if (r.brought_by_name && !unverified) return '<span class="cell-strong">' + R.esc(r.brought_by_name) + '</span>';
+              const picker =
+                '<div class="stack" style="gap:4px" x-data="{ open: false, loading: false, options: null, sel: \'\', busy: false, name: \'' + R.attr(r.brought_by_name || '') + '\' }">' +
+                '<button type="button" class="btn btn-sm" style="justify-content:flex-start' + (r.brought_by_name ? '' : ';font-weight:600') + '" @click="open = true; if (!options) { loading = true; window.Reel.api(\'GET\',\'/learner-attendance/bring-options/' + R.attr(childId) + '\').then(p => { options = p.data; loading = false; }); }">' +
+                  (r.brought_by_name
+                    ? R.icon('user-pen') + ' ' + R.esc(r.brought_by_name) + ' <span class="badge badge-sun" style="font-size:0.62rem;margin-left:4px">unverified</span>'
+                    : R.icon('user-plus') + ' Who brought ' + R.esc(firstName) + '?') +
                 '</button>' +
                 '<div x-cloak x-show="open" style="border:1px solid var(--border-subtle);border-radius:14px;padding:10px;margin-top:4px">' +
                   '<div class="muted small" style="margin-bottom:6px">Who brought ' + R.esc(firstName) + '?</div>' +
@@ -126,7 +131,7 @@
                       '</label>' +
                     '</template>' +
                     '<div class="divider" style="margin:6px 0"></div>' +
-                    '<input class="input" type="text" placeholder="Someone else (name)" x-model="name">' +
+                    '<input class="input" type="text" placeholder="Someone else (edit the name if wrong)" x-model="name">' +
                     '<div class="row" style="gap:6px;justify-content:flex-end">' +
                       '<button class="btn btn-ghost btn-sm" @click="open = false">Cancel</button>' +
                       '<button class="btn btn-primary btn-sm" :disabled="busy || (!sel && !name.trim())" @click="busy = true; const p = {}; if (sel && sel.startsWith(\'g:\')) p.broughtByGuardianId = sel.slice(2); else if (sel && sel.startsWith(\'c:\')) p.broughtByCollectorId = sel.slice(2); else p.broughtByName = name.trim(); window.Reel.api(\'PATCH\',\'/learner-attendance/record/' + R.attr(id) + '/bringer\', p).then(() => { toast(\'Bringer recorded.\'); navigate(true); }).catch((e) => { busy = false; toast(e.message || \'Could not save the bringer.\', \'error\'); })">Save</button>' +
@@ -320,15 +325,19 @@
         });
       } else if (name === 'manualRelease' && id) {
         const row = ((ctx.page.register || {}).rows || []).find((r) => r.attendance_id === id) || {};
+        const child = row.first_name || 'this child';
         ctx.openModal({
-          title: 'Release ' + (row.first_name || 'this child') + ' without the QR',
-          description: 'Use this only when no collector can scan — a dead phone or a forgotten PIN. The release is recorded under your name with the reason you give, and the parent is notified.',
+          title: 'Release ' + child + ' without the QR',
+          description: 'Use this only when no collector can scan. Record who takes the child, their signature, and — if they know it — the code the parent gave them. The release is recorded under your name and the parent is notified.',
           endpoint: '/learner-attendance/record/' + id + '/manual-release',
           method: 'POST',
           submitLabel: 'Release child',
-          successMessage: 'Released — the parent has been notified and the audit trail records this.',
+          successMessage: 'Released — signature and custody record saved, and the parent has been notified.',
           fields: [
-            { name: 'reason', label: 'Why the QR was not used', type: 'textarea', required: true, span: 2, placeholder: 'Parent arrived without their phone; identity verified at reception…', help: 'At least 10 characters — this is written to the audit log.' }
+            { name: 'collectorName', label: 'Who is taking ' + child + ' (ask them)', type: 'text', required: true, span: 2, placeholder: 'Full name, as they tell you' },
+            { name: 'collectorPin', label: 'Parent-given code (optional)', type: 'text', span: 2, inputmode: 'numeric', maxlength: 8, placeholder: '6-digit code, if they know it', help: 'If they know the code the parent gave them it verifies them against the trusted list — otherwise leave it blank.' },
+            { name: 'signature', label: 'Their signature (draw on the line)', type: 'signature', required: true, span: 2 },
+            { name: 'reason', label: 'Why the QR was not used', type: 'textarea', required: true, span: 2, placeholder: 'Parent sent someone new without a phone; identity checked by signature and code…', help: 'At least 10 characters — this is written to the audit log.' }
           ]
         });
       } else if (name === 'absence' && id) {

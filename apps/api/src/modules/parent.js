@@ -243,7 +243,8 @@ function register(router) {
     if (match) {
       const cutoffMin = Number(match[1]) * 60 + Number(match[2]);
       for (const row of rows) {
-        if (row.verification_method !== 'gate_qr' || !row.recorded_at) continue;
+        if (!row.recorded_at) continue;
+        if (!['gate_qr', 'pin_manual', 'manual_release'].includes(row.verification_method)) continue;
         try {
           const parts = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Africa/Johannesburg' }).formatToParts(new Date(row.recorded_at));
           const hh = Number((parts.find((p) => p.type === 'hour') || {}).value);
