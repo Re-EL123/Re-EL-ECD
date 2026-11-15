@@ -139,6 +139,7 @@
                   '</div></template>' +
                 '</div>' +
               '</div>';
+              return picker;
             } },
           { label: 'Status', render: (r) => r.attendance_status ? R.badge(r.attendance_status) : '<span class="badge badge-muted">Unmarked</span>' },
           { label: 'In', render: (r) => R.time(r.check_in_at) },
