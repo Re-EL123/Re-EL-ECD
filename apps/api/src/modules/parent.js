@@ -91,12 +91,13 @@ function register(router) {
       collectorType: { type: 'string', enum: ['family', 'driver', 'taxi'], optional: true },
       vehicleDescription: { type: 'string', max: 200, optional: true },
       licencePlate: { type: 'string', max: 30, optional: true },
-      pin: { type: 'string', min: 4, max: 12, optional: true }
+      pin: { type: 'string', min: 4, max: 12, regex: /^[0-9]{4,12}$/, message: 'The collection code is 4–12 digits and required — without it nobody can authenticate at the gate.' }
     });
     // The house policy, held firmly: a photo means the centre trusts you
-    // automatically; a PIN means the parent has delegated gate access to this
-    // person directly (transport drivers); anything else waits for the centre.
-    const policy = body.policy || (body.photoUrl ? 'photo_id' : (body.pin ? 'pin' : 'code_word'));
+    // automatically; the mandatory code means the parent has delegated gate
+    // access to this person directly. Every collector can prove themselves
+    // at the gate with name + code — no code, no entry.
+    const policy = body.policy || (body.photoUrl ? 'photo_id' : 'pin');
     const autoApprove = Boolean(body.photoUrl) || Boolean(body.pin);
     const row = await ctx.db.one(
       `INSERT INTO authorised_collectors (organisation_id, learner_id, name, relationship, contact_phone,
@@ -107,7 +108,7 @@ function register(router) {
         policy, body.photoUrl || null, 'active', autoApprove ? 'approved' : 'pending',
         autoApprove ? new Date() : null, ctx.user.id,
         body.collectorType || 'family', body.vehicleDescription || null, body.licencePlate || null,
-        body.pin ? hashPin(ctx.organisationId, body.pin) : null, body.pin ? new Date() : null]
+        hashPin(ctx.organisationId, body.pin), new Date()]
     );
     await recordAudit(ctx.db, ctx, {
       action: 'parent.collector_added', resourceType: 'authorised_collector', resourceId: row.id,

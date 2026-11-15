@@ -2454,7 +2454,7 @@
           this.openDetail('Your gate code',
             '<div style="text-align:center;padding:10px 0 4px">' +
               '<div class="mono" style="font-size:2.1rem;letter-spacing:0.35em;font-weight:800;color:var(--forest-700)">' + Reel.esc(pin.split('').join(' ')) + '</div>' +
-              '<p class="muted small" style="margin:10px 0 14px">Shown once — this is <strong>your</strong> code. At the centre, scan the printed QR (or open the gate on your Pickup page), type your first name and this code, and you will see your children with Arriving and Collecting taps. It covers every child you guard, and it works until you generate a new one.</p>' +
+              '<p class="muted small" style="margin:10px 0 14px">Shown once — this is <strong>your</strong> code. At the centre, scan the printed QR at the gate, type your first name and this code, and you will see your children with Arriving and Collecting taps. It covers every child you guard, it works only at the gate QR, and it stops working the moment you generate a new one.</p>' +
               '<button type="button" class="btn btn-secondary" onclick="var b=this;navigator.clipboard.writeText(\'' + pin + '\').then(function(){b.innerText=\'✓ Copied\'});">Copy code</button>' +
             '</div>');
           await this.navigate(true);

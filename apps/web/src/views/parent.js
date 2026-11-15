@@ -453,7 +453,8 @@
                 (c.photo_url
                   ? '<img src="' + R.attr(c.photo_url) + '" alt="' + R.attr(c.name) + '" style="width:52px;height:52px;border-radius:12px;object-fit:cover">'
                   : '<div class="avatar" style="width:52px;height:52px;border-radius:12px;font-size:1.2rem;background:var(--forest-100);color:var(--forest-700)">' + R.esc((c.name[0] || '?').toUpperCase()) + '</div>') +
-                '<div style="min-width:0;flex:1"><div class="strong">' + R.esc(c.name) + '</div><div class="muted small">' + R.esc(c.relationship) + ' · ' + R.esc((c.policy || 'photo_id').replace(/_/g, ' ')) + '</div></div>' +
+                '<div style="min-width:0;flex:1"><div class="strong">' + R.esc(c.name) + '</div><div class="muted small">' + R.esc(c.relationship) + ' · ' + R.esc((c.policy || 'photo_id').replace(/_/g, ' ')) + '</div>' +
+                  (!c.pin_created_at ? '<div class="muted small" style="color:var(--danger)">No gate code — they cannot sign in. Press New code.</div>' : '') + '</div>' +
                 '<div class="stack" style="gap:4px;align-items:flex-end">' +
                   '<span class="badge ' + (c.approval_status === 'approved' ? (c.is_trusted ? 'badge-green' : 'badge-sky') : 'badge-sun') + '">' +
                     (c.approval_status === 'approved' ? (c.is_trusted ? 'Trusted' : 'Approved') : 'Waiting for the centre') + '</span>' +
@@ -479,17 +480,17 @@
       if (name === 'collectorAdd' && id) {
         ctx.openModal({
           title: 'Add someone who may collect',
-          description: 'Add a photo and they are trusted to collect immediately. Without a photo, the centre verifies them before their first pickup. With a collection code they can use the gate QR straight away.',
+          description: 'Every collector gets a 6-digit-style code they type at the gate QR — without the correct code they cannot authenticate and the centre will not release. Add a photo and they are also trusted on sight.',
           endpoint: '/parent/children/' + id + '/collectors',
           submitLabel: 'Add collector',
-          successMessage: 'Collector added — press New code on their card to get the code to share.',
+          successMessage: 'Collector added — press New code on their card any time to replace the code you chose.',
           fields: [
             { name: 'name', label: 'Full name', required: true, span: 2, placeholder: 'e.g. Gogo Miriam Johnson' },
             { name: 'relationship', label: 'Relationship', required: true, placeholder: 'Grandmother, uncle, driver…' },
             { name: 'contactPhone', label: 'Contact phone', placeholder: '+27 83 …' },
             { name: 'policy', label: 'Verification', type: 'select', options: ['photo_id', 'qr_code', 'pin', 'code_word'], value: 'photo_id' },
             { name: 'photoUrl', label: 'Photo (recommended)', type: 'media', accept: 'image/*', scope: 'collector', ownerType: 'learner', ownerId: id },
-            { name: 'pin', label: 'Collection code (optional)', placeholder: '4–12 digits they will type at the gate', span: 2, inputmode: 'numeric', maxlength: 12, help: 'Share this with them — at the gate they scan the centre QR and sign in with their first name and this code. Adding a code approves them for the gate immediately.' },
+            { name: 'pin', label: 'Collection code', required: true, span: 2, placeholder: '4–12 digits you will share with them', inputmode: 'numeric', maxlength: 12, help: 'Required. At the gate they scan the centre QR and sign in with their first name and this code. No correct code, no entry.' },
             { name: 'notes', label: 'Notes for the gate', type: 'textarea', span: 2, placeholder: 'Only on Fridays…' }
           ]
         });
@@ -527,8 +528,7 @@
     render(ctx, params, page) {
       const children = page.children || [];
       const waiting = children.filter((c) => c.pending_scan_id);
-      const gateUrl = '#/gate/' + (page.gateSlug || 'little-sprouts');
-      return R.pageHead('Pickup', 'The centre QR is the checkpoint — everyone signs in there, you included.',
+      return R.pageHead('Pickup', 'One QR at the centre gate — everyone proves themselves there, you included.',
         '<a class="btn btn-secondary btn-sm" href="#/parent/children">' + R.icon('key-round') + ' Collection codes</a>') +
         (waiting.length ? '<div class="section"></div><div class="alert alert-info" style="align-items:center">' + R.icon('bell') +
           '<div style="flex:1"><strong>Waiting for reception</strong><div class="muted small">' +
@@ -536,13 +536,12 @@
         '<div class="section"></div>' +
         R.card('Your gate code',
           '<div class="row" style="gap:14px;align-items:center;flex-wrap:wrap">' +
-            '<div style="flex:1;min-width:260px"><p class="muted small" style="margin:0">At the centre, scan the printed QR (or open the gate below), type your <strong>first name</strong> and <strong>your own code</strong>, then tap Arriving or Collecting on your child. Reception releases — the same tap that clears every other collector.</p>' +
+            '<div style="flex:1;min-width:260px"><p class="muted small" style="margin:0">At the centre, scan the printed QR <strong>at the gate</strong> with your phone camera — it opens the gate page only for someone standing there. Type your <strong>first name</strong> and <strong>your own code</strong>, then tap Arriving or Collecting on your child. The code never works on its own: no correct code, no authentication, no collection.</p>' +
             (page.hasGateCode ? '<p class="muted small" style="margin:6px 0 0">You have a code. Generating a new one stops the old code working.</p>'
-              : '<p class="muted small" style="margin:6px 0 0"><strong>You have no code yet</strong> — generate one before you arrive.</p>') +
+              : '<p class="muted small" style="margin:6px 0 0"><strong>You have no code yet</strong> — you cannot sign in at the gate without one. Generate it now.</p>') +
             '</div>' +
             '<div class="btn-group">' +
               '<button class="btn btn-primary" @click="parentGateCode()">' + R.icon('key-round') + (page.hasGateCode ? ' New gate code' : ' Get my gate code') + '</button>' +
-              '<a class="btn btn-secondary" href="' + gateUrl + '">' + R.icon('qr-code') + ' Open the gate</a>' +
             '</div>' +
           '</div>') +
         (!children.length ? R.emptyState('No children linked yet', 'Once the centre links your children to your account they appear here.', '', 'users') : '') +

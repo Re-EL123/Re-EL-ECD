@@ -38,7 +38,7 @@
           '<form x-show="step === \'signin\'" @submit.prevent="$data.signin()">' +
             '<div class="stack" style="gap:12px">' +
               '<h2 style="margin-top:0;font-size:1.05rem">Welcome — sign in to check in or collect</h2>' +
-              '<p class="muted small" style="margin:0">Cleared collectors tap Continue.</p>' +
+              '<p class="muted small" style="margin:0">Name and code are both required — nobody is checked in or released without the correct code.</p>' +
               '<label class="field" style="margin:0"><span class="field-label">Your name</span>' +
                 '<input class="input" type="text" x-model="name" placeholder="Type your first or last name" autocomplete="name" required>' +
               '</label>' +

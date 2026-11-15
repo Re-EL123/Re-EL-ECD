@@ -140,6 +140,12 @@ test('parent collection history: a released QR gate scan appears immediately', a
 });
 
 test('parent-set collection PIN works at the gate', async () => {
+  // A collector can no longer exist without a code: the gate requires it.
+  const noPin = await parent.post(`/parent/children/${amelia}/collectors`, {
+    name: 'No Code Nan', relationship: 'Grandmother'
+  });
+  assert.equal(noPin.status, 422, 'a collector without a code is refused at creation');
+
   // A guardian adds a collector with their own code — the person walks up,
   // types their first name and the code, and the gate verifies them.
   const added = await parent.post(`/parent/children/${amelia}/collectors`, {
