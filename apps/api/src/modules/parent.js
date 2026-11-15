@@ -154,9 +154,113 @@ function register(router) {
     return { pin, note: 'This code works once per collection, until you generate a new one. Tell only your collectors.' };
   }, { permission: 'parent.read.own' });
 
-  // --- Approvals at the gate --------------------------------------------------
-  router.get('/parent/collection-approvals', async (ctx) => {
+  // --- Pickup from the parent app ---------------------------------------------
+  // A guardian is the most verified collector there is: they are signed in.
+  // The app shows each child's live state and lets the parent act — arriving
+  // checks the child in under the guardian's name; collecting opens a
+  // pending gate scan that a staff member releases, exactly like the QR.
+
+  router.get('/parent/pickup', async (ctx) => {
     const ids = await guardianLearnerIds(ctx);
+    if (!ids.length) return { children: [] };
+    const children = await ctx.db.many(
+      `SELECT l.id, l.first_name, l.last_name, c.name AS classroom_name,
+              a.attendance_status, a.check_in_at, a.check_out_at,
+              a.brought_by_name,
+              gs.id AS pending_scan_id, gs.confirmed_at AS pending_since, gs.source AS pending_source
+       FROM learners l
+       LEFT JOIN classrooms c ON c.id = l.classroom_id
+       LEFT JOIN learner_attendance a ON a.learner_id = l.id AND a.attendance_date = CURRENT_DATE
+       LEFT JOIN gate_scans gs ON gs.learner_id = l.id AND gs.released_at IS NULL AND gs.confirmed_at::date = CURRENT_DATE
+       WHERE l.organisation_id = $1 AND l.status = 'enrolled' AND l.id = ANY($2::uuid[])
+       ORDER BY l.first_name`,
+      [ctx.organisationId, ids]
+    );
+    return { children, date: today() };
+  }, { permission: 'parent.read.own' });
+
+  router.post('/parent/children/:id/pickup', async (ctx) => {
+    const body = validate(ctx.body, { action: { type: 'string', enum: ['arrive', 'collect'] } });
+    const { learner, link } = await childOrFail(ctx, ctx.params.id);
+    const me = ctx.user.display_name || 'Parent';
+
+    if (body.action === 'arrive') {
+      const guardianId = link ? link.guardian_id : null;
+      const existing = await ctx.db.one(
+        'SELECT * FROM learner_attendance WHERE learner_id = $1 AND attendance_date = CURRENT_DATE', [learner.id]
+      );
+      if (existing && existing.check_out_at) {
+        fail('CONFLICT', null, learner.first_name + ' was already collected today.');
+      }
+      let wasAlreadyIn = false;
+      if (existing && existing.check_in_at) {
+        wasAlreadyIn = true;
+        await ctx.db.query(
+          `UPDATE learner_attendance
+           SET brought_by_guardian_id = COALESCE(brought_by_guardian_id, $1), brought_by_name = $2,
+               brought_by_unverified = FALSE, updated_at = now()
+           WHERE id = $3 AND (brought_by_unverified = TRUE OR brought_by_name IS NULL)`,
+          [guardianId, me, existing.id]
+        );
+      } else if (existing) {
+        await ctx.db.query(
+          `UPDATE learner_attendance
+           SET check_in_at = now(), attendance_status = 'present', absence_reason = NULL,
+               brought_by_guardian_id = $1, brought_by_name = $2, brought_by_unverified = FALSE,
+               recorded_by = $3, updated_at = now()
+           WHERE id = $4`,
+          [guardianId, me, ctx.user.id, existing.id]
+        );
+      } else {
+        await ctx.db.query(
+          `INSERT INTO learner_attendance (organisation_id, branch_id, learner_id, attendance_date, check_in_at,
+            attendance_status, recorded_by, brought_by_guardian_id, brought_by_name, brought_by_unverified)
+           VALUES ($1,$2,$3,CURRENT_DATE,now(),'present',$4,$5,$6,FALSE)`,
+          [ctx.organisationId, learner.branch_id, learner.id, ctx.user.id, guardianId, me]
+        );
+      }
+      await recordAudit(ctx.db, ctx, {
+        action: 'parent.pickup_arrive', resourceType: 'learner', resourceId: learner.id,
+        metadata: { child: learner.first_name, wasAlreadyIn }
+      });
+      return { action: 'arrive', childName: learner.first_name, wasAlreadyIn };
+    }
+
+    // Collecting: verified arrival, staff release — the same single
+    // transactional point as the QR gate.
+    if (learner.collection_hold_reason) {
+      fail('CONFLICT', null, 'The centre has placed a hold on ' + learner.first_name + '’s collection. Please speak to reception.');
+    }
+    const attendance = await ctx.db.one(
+      'SELECT * FROM learner_attendance WHERE learner_id = $1 AND attendance_date = CURRENT_DATE', [learner.id]
+    );
+    if (!attendance || !attendance.check_in_at) {
+      fail('CONFLICT', null, learner.first_name + ' is not signed in yet — tap Arriving at drop-off first.');
+    }
+    if (attendance.check_out_at) {
+      fail('CONFLICT', null, learner.first_name + ' has already gone home today.');
+    }
+    const dupe = await ctx.db.one(
+      `SELECT id FROM gate_scans WHERE learner_id = $1 AND released_at IS NULL AND confirmed_at::date = CURRENT_DATE
+       ORDER BY confirmed_at DESC LIMIT 1`, [learner.id]
+    );
+    if (dupe) {
+      return { action: 'collect', scanId: dupe.id, childName: learner.first_name, waitingRelease: true, alreadyWaiting: true };
+    }
+    const scan = await ctx.db.one(
+      `INSERT INTO gate_scans (organisation_id, branch_id, collector_name, collector_type, learner_id, confirmed_at, source)
+       VALUES ($1,$2,$3,'family',$4,now(),'parent_app') RETURNING id`,
+      [ctx.organisationId, learner.branch_id, me, learner.id]
+    );
+    await recordAudit(ctx.db, ctx, {
+      action: 'parent.pickup_collect', resourceType: 'learner', resourceId: learner.id,
+      metadata: { child: learner.first_name, collector: me, gateScanId: scan.id, source: 'parent_app' }
+    });
+    return { action: 'collect', scanId: scan.id, childName: learner.first_name, waitingRelease: true, alreadyWaiting: false };
+  }, { permission: 'parent.read.own' });
+
+  // --- Approvals at the gate --------------------------------------------------
+  router.get('/parent/collection-approvals', async (ctx) => {    const ids = await guardianLearnerIds(ctx);
     if (!ids.length) return { approvals: [] };
     const rows = await ctx.db.many(
       `SELECT r.id, r.learner_id, r.collector_name, r.status, r.reason, r.created_at,

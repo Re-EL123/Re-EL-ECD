@@ -86,6 +86,7 @@
     route('/parent/activities', 'parent', 'parentActivities', 'parent.read.own', 'Activity feed'),
     route('/parent/progress', 'parent', 'parentProgress', 'parent.read.own', 'Development'),
     route('/parent/attendance', 'parent', 'parentAttendance', 'parent.read.own', 'Attendance'),
+    route('/parent/pickup', 'parent', 'parentPickup', 'parent.read.own', 'Pickup'),
     route('/parent/forms', 'parent', 'parentForms', 'parent.forms.submit.own', 'Forms'),
     route('/parent/messages', 'parent', 'parentMessages', 'messages.read.own', 'Messages'),
     route('/parent/finance', 'parent', 'parentFinance', 'parent.finance.read.own', 'Fees'),
@@ -186,7 +187,8 @@
         { path: '/parent/children', label: 'My children', icon: 'users', permission: 'parent.read.own' },
         { path: '/parent/activities', label: 'Activity feed', icon: 'sparkles', permission: 'parent.read.own' },
         { path: '/parent/progress', label: 'Development', icon: 'line-chart', permission: 'parent.read.own' },
-        { path: '/parent/attendance', label: 'Attendance', icon: 'calendar-check', permission: 'parent.read.own' }
+        { path: '/parent/attendance', label: 'Attendance', icon: 'calendar-check', permission: 'parent.read.own' },
+        { path: '/parent/pickup', label: 'Pickup', icon: 'qr-code', permission: 'parent.read.own' }
       ] },
       { label: 'Connect', items: [
         { path: '/parent/forms', label: 'Forms', icon: 'file-text', permission: 'parent.forms.submit.own' },
@@ -2428,11 +2430,36 @@
       async regenerateCollectorPin(collectorId, name) {
         try {
           const result = await Reel.api('POST', '/parent/children/' + encodeURIComponent(this.collectionChildId()) + '/collectors/' + encodeURIComponent(collectorId) + '/pin', {});
-          const pin = result && result.data && result.data.pin;
-          window.alert((name || 'Collector') + '\n\nNew code (shown once):\n\n' + (pin || '').split('').join(' ') + '\n\nTell them only this code.');
+          const pin = (result && result.data && result.data.pin) || '';
+          this.openDetail('New collection code for ' + (name || 'your collector'),
+            '<div style="text-align:center;padding:10px 0 4px">' +
+              '<div class="mono" style="font-size:2.1rem;letter-spacing:0.35em;font-weight:800;color:var(--forest-700)">' + Reel.esc(pin.split('').join(' ')) + '</div>' +
+              '<p class="muted small" style="margin:10px 0 14px">Shown once — share it with ' + Reel.esc(name || 'them') + ' now. At the gate they scan the centre QR, type their first name and this code, and the centre sees them as verified. It works until you generate a new one.</p>' +
+              '<button type="button" class="btn btn-secondary" onclick="var b=this;navigator.clipboard.writeText(\'' + pin + '\').then(function(){b.innerText=\'✓ Copied\'});">Copy code</button>' +
+            '</div>');
           await this.navigate(true);
         } catch (error) {
           this.toast(error.message || 'Could not generate a new code.', 'error');
+        }
+      },
+
+      // Parent-app pickup: the guardian acts as the collector from their own
+      // signed-in phone — arriving checks the child in under their name,
+      // collecting opens a pending gate scan for reception to release.
+      async parentPickupAct(childId, action) {
+        try {
+          const result = await Reel.api('POST', '/parent/children/' + encodeURIComponent(childId) + '/pickup', { action });
+          const d = (result && result.data) || {};
+          if (action === 'arrive') {
+            this.toast(d.wasAlreadyIn ? (d.childName || 'Your child') + ' is already signed in — you are set.' : (d.childName || 'Your child') + ' signed in — have a good day!');
+          } else {
+            this.toast(d.alreadyWaiting
+              ? 'Reception already knows you are here.'
+              : 'Reception has been told you are here — they will bring ' + (d.childName || 'your child') + ' out.');
+          }
+          await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'Could not record that.', 'error');
         }
       },
 

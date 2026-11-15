@@ -447,6 +447,7 @@
         ], emptyTitle: 'No attendance in this range', emptyMessage: 'Try a wider date range.' }) +
         R.card('Who may collect ' + R.esc((page.child && page.child.firstName) || 'your child'),
           '<div class="stack">' +
+            '<p class="muted small" style="margin:0 0 4px">At the gate they scan the centre QR, type their first name and the code you share with them. The centre releases only people on this list.</p>' +
             (page.collectors || []).map((c) =>
               '<div class="row" style="gap:12px;align-items:center;padding:10px;border:1px solid var(--border-subtle);border-radius:14px">' +
                 (c.photo_url
@@ -478,16 +479,17 @@
       if (name === 'collectorAdd' && id) {
         ctx.openModal({
           title: 'Add someone who may collect',
-          description: 'Add a photo and they are trusted to collect immediately. Without a photo, the centre verifies them before their first pickup.',
+          description: 'Add a photo and they are trusted to collect immediately. Without a photo, the centre verifies them before their first pickup. With a collection code they can use the gate QR straight away.',
           endpoint: '/parent/children/' + id + '/collectors',
           submitLabel: 'Add collector',
-          successMessage: 'Collector added — the centre has the record.',
+          successMessage: 'Collector added — press New code on their card to get the code to share.',
           fields: [
             { name: 'name', label: 'Full name', required: true, span: 2, placeholder: 'e.g. Gogo Miriam Johnson' },
             { name: 'relationship', label: 'Relationship', required: true, placeholder: 'Grandmother, uncle, driver…' },
             { name: 'contactPhone', label: 'Contact phone', placeholder: '+27 83 …' },
             { name: 'policy', label: 'Verification', type: 'select', options: ['photo_id', 'qr_code', 'pin', 'code_word'], value: 'photo_id' },
             { name: 'photoUrl', label: 'Photo (recommended)', type: 'media', accept: 'image/*', scope: 'collector', ownerType: 'learner', ownerId: id },
+            { name: 'pin', label: 'Collection code (optional)', placeholder: '4–12 digits they will type at the gate', span: 2, inputmode: 'numeric', maxlength: 12, help: 'Share this with them — at the gate they scan the centre QR and sign in with their first name and this code. Adding a code approves them for the gate immediately.' },
             { name: 'notes', label: 'Notes for the gate', type: 'textarea', span: 2, placeholder: 'Only on Fridays…' }
           ]
         });
@@ -505,6 +507,65 @@
         successMessage: 'Absence reported. The centre has been notified.'
       });
     }
+  };
+
+  V.parentPickup = {
+    async load(ctx) {
+      const [pickup, approvals] = await Promise.all([
+        R.api('GET', '/parent/pickup').then((p) => p.data).catch(() => ({ children: [] })),
+        R.api('GET', '/parent/collection-approvals').then((p) => p.data).catch(() => ({ approvals: [] }))
+      ]);
+      return { children: pickup.children || [], date: pickup.date || R.today(), approvals: approvals.approvals || [] };
+    },
+
+    render(ctx, params, page) {
+      const children = page.children || [];
+      const waiting = children.filter((c) => c.pending_scan_id);
+      return R.pageHead('Pickup', 'Arriving and collecting from your own phone — the centre sees your name, verified by your login.',
+        '<a class="btn btn-secondary btn-sm" href="#/parent/children">' + R.icon('key-round') + ' Collection codes</a>') +
+        (waiting.length ? '<div class="section"></div><div class="alert alert-info" style="align-items:center">' + R.icon('bell') +
+          '<div style="flex:1"><strong>Waiting for reception</strong><div class="muted small">' +
+          waiting.map((c) => R.esc(c.first_name)).join(', ') + ' — reception has been told you are here. No need to tap again.</div></div></div>' : '') +
+        (!children.length ? R.emptyState('No children linked yet', 'Once the centre links your children to your account they appear here.', '', 'users') : '') +
+        '<div class="grid grid-2 section">' + children.map((c) => this.childCard(c)).join('') + '</div>' +
+        R.card('Someone else collecting? Share a code.',
+          '<p class="muted small" style="margin:0 0 10px">Open your child’s page — everyone on the “Who may collect” list has a <strong>New code</strong> button. Generate the 6-digit code, share it with them, and at the gate they scan the centre QR, type their first name and the code. The centre sees them as verified the moment the code matches. You can generate a fresh code any time — old ones stop working.</p>' +
+          '<a class="btn btn-secondary btn-sm" href="#/parent/children">Open my children</a>');
+    },
+
+    childCard(c) {
+      const state = (c.check_out_at || c.attendance_status === 'collected') ? 'gone'
+        : (c.pending_scan_id ? 'waiting' : (c.check_in_at ? 'in' : 'not-in'));
+      const badge = {
+        gone: '<span class="badge badge-muted">Gone home</span>',
+        waiting: '<span class="badge badge-sky">Waiting for reception</span>',
+        in: '<span class="badge badge-green">In now</span>',
+        'not-in': '<span class="badge badge-sun">Not in yet</span>'
+      }[state];
+      const sub = state === 'waiting'
+        ? 'Reception was told at ' + R.time(c.pending_since) + (c.pending_source === 'parent_app' ? ' · from your app' : '')
+        : (c.check_in_at ? 'In at ' + R.time(c.check_in_at) + (c.brought_by_name ? ' · with ' + R.esc(c.brought_by_name) : '') : 'Arrives at ' + R.esc(c.classroom_name || 'the centre'));
+      const arriveDisabled = state !== 'not-in';
+      const collectDisabled = state !== 'in';
+      const hint = state === 'gone' ? 'See you tomorrow'
+        : state === 'waiting' ? 'No need to tap again'
+        : state === 'in' ? 'Reception releases them' : 'Checks them in — verified in your name';
+      return '<div class="card">' +
+        '<div class="row" style="gap:12px;align-items:center">' +
+          '<div class="avatar" style="width:52px;height:52px;border-radius:12px;font-size:1.2rem;background:var(--forest-100);color:var(--forest-700)">' + R.esc((c.first_name[0] || '?').toUpperCase()) + '</div>' +
+          '<div style="flex:1;min-width:0"><div class="strong" style="font-size:0.95rem">' + R.esc(c.first_name + ' ' + c.last_name) + '</div>' +
+            '<div class="muted small">' + sub + '</div></div>' +
+          badge +
+        '</div>' +
+        '<div class="btn-group" style="margin-top:14px">' +
+          '<button class="btn btn-sm btn-primary" ' + (arriveDisabled ? 'disabled' : '') + ' @click="parentPickupAct(\'' + R.attr(c.id) + '\', \'arrive\')">Arriving</button>' +
+          '<button class="btn btn-sm btn-secondary" ' + (collectDisabled ? 'disabled' : '') + ' @click="parentPickupAct(\'' + R.attr(c.id) + '\', \'collect\')">Collecting</button>' +
+          '<span class="muted small" style="align-self:center">' + hint + '</span>' +
+        '</div>' +
+      '</div>';
+    },
+
+    openModal() { /* no modals on this view yet */ }
   };
 
   V.parentForms = {

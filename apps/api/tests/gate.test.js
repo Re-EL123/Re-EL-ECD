@@ -139,6 +139,65 @@ test('parent collection history: a released QR gate scan appears immediately', a
   assert.equal(row.event_type, 'collection');
 });
 
+test('parent-set collection PIN works at the gate', async () => {
+  // A guardian adds a collector with their own code — the person walks up,
+  // types their first name and the code, and the gate verifies them.
+  const added = await parent.post(`/parent/children/${amelia}/collectors`, {
+    name: 'Code Uncle', relationship: 'Uncle', pin: '246810'
+  });
+  assert.equal(added.status, 201);
+  assert.equal(added.data.approval_status, 'approved', 'a parent-set code delegates gate access');
+  const signin = await createClient().post(`/gate/${ORG}/signin`, { name: 'Code', pin: '246810' });
+  assert.equal(signin.status, 200);
+  assert.deepEqual(signin.data.children.map((c) => c.id), [amelia]);
+  // And a fresh generated code from the parent's New-code button replaces it.
+  const regenerated = await parent.post(`/parent/children/${amelia}/collectors/${added.data.id}/pin`, {});
+  assert.equal(regenerated.status, 200);
+  assert.match(regenerated.data.pin, /^[0-9]{6}$/);
+  const oldPin = await createClient().post(`/gate/${ORG}/signin`, { name: 'Code', pin: '246810' });
+  assert.equal(oldPin.status, 401, 'the replaced code stops working');
+  const newPin = await createClient().post(`/gate/${ORG}/signin`, { name: 'Code', pin: regenerated.data.pin });
+  assert.equal(newPin.status, 200);
+  await parent.delete(`/parent/children/${amelia}/collectors/${added.data.id}`);
+});
+
+test('parent-app pickup: arriving and collecting from the signed-in guardian', async () => {
+  // Start Amelia's day fresh for this flow; it ends collected, which the
+  // later gate tests expect her to be.
+  await db.query("DELETE FROM gate_scans WHERE learner_id = $1 AND confirmed_at::date = CURRENT_DATE", [amelia]);
+  await db.query("DELETE FROM learner_attendance WHERE learner_id = $1 AND attendance_date = CURRENT_DATE", [amelia]);
+
+  const list = await parent.get('/parent/pickup');
+  assert.equal(list.status, 200);
+  const mine = list.data.children.find((c) => c.id === amelia);
+  assert.ok(mine, 'the pickup page lists the guardian’s children with live state');
+  assert.equal(mine.check_in_at, null);
+
+  // Arriving checks the child in under the guardian's name — verified.
+  const arrive = await parent.post(`/parent/children/${amelia}/pickup`, { action: 'arrive' });
+  assert.equal(arrive.status, 200);
+  assert.equal(arrive.data.wasAlreadyIn, false);
+  const row = (await principal.get('/learner-attendance')).data.rows.find((r) => r.learner_id === amelia);
+  assert.equal(row.attendance_status, 'present');
+  assert.equal(row.brought_by_unverified, false, 'the guardian is a verified bringer');
+
+  // Collecting opens a pending scan sourced from the app; reception releases.
+  const collect = await parent.post(`/parent/children/${amelia}/pickup`, { action: 'collect' });
+  assert.equal(collect.status, 200);
+  assert.equal(collect.data.waitingRelease, true);
+  const scans = await principal.get('/gate/scans');
+  const scan = scans.data.pending.find((s) => s.id === collect.data.scanId);
+  assert.ok(scan, 'the pending scan is on the register’s gate panel');
+  assert.equal(scan.source, 'parent_app', 'staff see the collector was verified in the app');
+  const release = await principal.post(`/gate/scans/${collect.data.scanId}/release`, {});
+  assert.equal(release.status, 200);
+
+  // The collected child shows the app custody record in the parent history.
+  const history = await parent.get(`/parent/children/${amelia}/collections`);
+  const appRow = history.data.find((r) => r.collector_name && r.verification_method === 'gate_qr');
+  assert.ok(appRow, 'the app release appears in the parent’s collection history');
+});
+
 test('morning cockpit: pending gate releases arrive in /staff/morning', async () => {
   // Make a fresh verified arrival for a child still on site, then read the cockpit.
   const free = await db.one(

@@ -77,7 +77,7 @@
           '<div class="row" style="gap:12px;align-items:center;padding:8px 10px;border:1px solid var(--border-subtle);border-radius:14px;background:var(--surface-2)">' +
             '<div class="avatar" style="width:48px;height:48px;font-size:1.1rem;background:var(--forest-100);color:var(--forest-700)">' + R.esc((scan.first_name || '?')[0].toUpperCase()) + '</div>' +
             '<div style="flex:1;min-width:0"><div class="strong" style="font-size:0.9rem">' + R.esc(scan.collector_name) + '</div>' +
-            '<div class="muted small">' + R.esc(scan.first_name + ' ' + (scan.last_name || '')) + (scan.classroom_name ? ' · ' + R.esc(scan.classroom_name) : '') + (scan.collector_type === 'driver' || scan.collector_type === 'taxi' ? ' · driver' : '') + ' · signed in ' + R.time(scan.confirmed_at) + '</div></div>' +
+            '<div class="muted small">' + R.esc(scan.first_name + ' ' + (scan.last_name || '')) + (scan.classroom_name ? ' · ' + R.esc(scan.classroom_name) : '') + (scan.collector_type === 'driver' || scan.collector_type === 'taxi' ? ' · driver' : '') + ' · signed in ' + R.time(scan.confirmed_at) + (scan.source === 'parent_app' ? ' <span class="badge badge-sky" style="font-size:0.62rem">verified in app</span>' : '') + '</div></div>' +
             (scan.on_hold ? '<span class="badge badge-danger">Hold — blocked</span>' : '') +
             (scan.check_out_at
               ? '<span class="badge badge-green" style="white-space:nowrap">' + R.icon('check') + ' Already collected</span>'

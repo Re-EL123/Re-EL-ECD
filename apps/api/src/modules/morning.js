@@ -193,7 +193,7 @@ function register(router) {
     // teacher's cockpit counts and lists them so a waiting parent is seen.
     const gateScans = ids.length
       ? await ctx.db.many(
-          `SELECT gs.id, gs.collector_name, gs.collector_type, gs.confirmed_at,
+          `SELECT gs.id, gs.collector_name, gs.collector_type, gs.confirmed_at, gs.source,
                   l.first_name, l.last_name, c.name AS classroom_name,
                   (l.collection_hold_reason IS NOT NULL) AS on_hold
            FROM gate_scans gs JOIN learners l ON l.id = gs.learner_id
@@ -290,6 +290,7 @@ function register(router) {
         classroom: row.classroom_name || null,
         collectorName: row.collector_name,
         collectorType: row.collector_type || 'family',
+        source: row.source || 'gate_qr',
         confirmedAt: row.confirmed_at,
         onHold: row.on_hold
       })),
