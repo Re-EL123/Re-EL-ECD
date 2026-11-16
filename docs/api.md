@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **439 routes** across 27 modules.
+Generated from the router: **443 routes** across 27 modules.
 
 ## Access
 
@@ -136,6 +136,7 @@ Generated from the router: **439 routes** across 27 modules.
 | --- | --- | --- |
 | PUT | `/billing/payment-account` | organisation.settings.manage |
 | GET | `/billing/payouts` | organisation.settings.manage |
+| POST | `/billing/setup/pay` | organisation.settings.manage |
 | POST | `/billing/subscription/pay` | organisation.settings.manage |
 | GET | `/billing/summary` | organisation.settings.manage |
 
@@ -554,6 +555,9 @@ Generated from the router: **439 routes** across 27 modules.
 | GET | `/platform/organisations/:id/payment-account` | Platform only · platform.organisations.read |
 | PUT | `/platform/organisations/:id/payment-account` | Platform only · platform.organisations.manage |
 | POST | `/platform/organisations/:id/restore` | Platform only · platform.organisations.manage |
+| GET | `/platform/organisations/:id/setup-fee` | Platform only · platform.organisations.read |
+| POST | `/platform/organisations/:id/setup-fee/manual-payment` | Platform only · platform.subscriptions.manage |
+| POST | `/platform/organisations/:id/setup-fee/waive` | Platform only · platform.subscriptions.manage |
 | POST | `/platform/organisations/:id/subscription` | Platform only · platform.subscriptions.manage |
 | POST | `/platform/organisations/:id/subscription/checkout` | Platform only · platform.subscriptions.manage |
 | POST | `/platform/organisations/:id/subscription/manual-payment` | Platform only · platform.subscriptions.manage |

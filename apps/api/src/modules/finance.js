@@ -8,6 +8,7 @@ const { sendTemplate, appLink } = require('../services/email-service');
 const payfast = require('../services/payfast-service');
 const { resolveItnAccount } = require('../services/payment-accounts-service');
 const { settleSubscriptionPayment } = require('../services/subscription-billing-service');
+const { settleSetupFeePayment } = require('../services/setup-fee-service');
 const { createInvoiceIntent, createStatementIntent, outstandingFor, isPayable, guardianForInvoice, learnerName } = require('../services/payment-intent-service');
 const { parsePagination, sendText } = require('../utils/http');
 const bulk = require('../services/bulk-service');
@@ -1320,13 +1321,19 @@ function register(router) {
         }
       }
 
+      // A once-off R700 launch/setup package paid to the platform.
+      let setupFee = null;
+      if (intent.purpose === 'platform_setup' && intentMetadata.setupFeeId) {
+        setupFee = await settleSetupFeePayment(client, intent);
+      }
+
       await client.query(
         `UPDATE payment_intents SET status = 'paid', payment_id = $1, provider_reference = $2, completed_at = now()
          WHERE id = $3`,
         [payment.id, data.providerReference || null, intent.id]
       );
       await client.query('UPDATE payment_webhook_events SET processed_at = now() WHERE id = $1', [event.id]);
-      return { payment, allocations, application, subscription, subscriptionInvoice, formSubmission, reactivated };
+      return { payment, allocations, application, subscription, subscriptionInvoice, formSubmission, reactivated, setupFee };
     });
 
     const [guardian, organisation] = await Promise.all([
@@ -1346,7 +1353,8 @@ function register(router) {
         data: {
           organisationName: organisation.name,
           invoiceNumber: invoice ? invoice.invoice_number
-            : (result.subscriptionInvoice ? result.subscriptionInvoice.invoice_number : null),
+            : (result.subscriptionInvoice ? result.subscriptionInvoice.invoice_number
+            : (result.setupFee ? 'SETUP-' + String(result.setupFee.id).slice(0, 8).toUpperCase() : null)),
           amount: Number(result.payment.amount),
           currency: result.payment.currency,
           method: 'PayFast card payment',

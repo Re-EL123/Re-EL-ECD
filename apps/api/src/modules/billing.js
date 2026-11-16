@@ -17,6 +17,7 @@ const { validate } = require('../../../../packages/contracts/validate');
 const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
 const payfast = require('../services/payfast-service');
+const payfastFees = require('../services/payfast-fees');
 const { createPaymentIntent } = require('../services/payment-intent-service');
 const {
   currentSubscription,
@@ -26,6 +27,12 @@ const {
   runSubscriptionSweep
 } = require('../services/subscription-billing-service');
 const { maskedAccount, savePaymentAccount } = require('../services/payment-accounts-service');
+const {
+  SETUP_FEE_BASE_AMOUNT,
+  SETUP_FEE_INCLUDES,
+  ensureSetupFee,
+  summaryView: setupFeeSummaryView
+} = require('../services/setup-fee-service');
 
 const MANAGE = 'organisation.settings.manage';
 
@@ -81,9 +88,24 @@ function register(router) {
        ORDER BY paid_at DESC LIMIT 10`,
       [ctx.organisationId]
     );
+    const baseAmount = subscription ? invoiceAmountFor(subscription) : 0;
+    const recoverFees = payfast.isConfigured() && payfastFees.recoveryEnabledForSubscriptions();
+    const payfastRecovery = (subscription && baseAmount > 0)
+      ? payfastFees.estimate(baseAmount, process.env.PAYFAST_RECOVERY_PROFILE || 'standard_card')
+      : null;
+
+    const setupFeeRow = await ensureSetupFee(ctx.db, organisation);
+    const setupBaseAmount = setupFeeRow ? Number(setupFeeRow.amount) : 0;
+    const setupPayfastRecovery = (setupFeeRow && setupFeeRow.status === 'issued' && setupBaseAmount > 0)
+      ? payfastFees.estimate(setupBaseAmount, process.env.PAYFAST_RECOVERY_PROFILE || 'standard_card')
+      : null;
     return {
       organisation: { id: organisation.id, name: organisation.name, currency: organisation.currency || 'ZAR' },
-      payfast: { platformAvailable: payfast.isConfigured() },
+      payfast: {
+        platformAvailable: payfast.isConfigured(),
+        recoverSubscriptionFees: recoverFees,
+        recoveryProfile: payfastFees.resolveMethodKey(process.env.PAYFAST_RECOVERY_PROFILE || 'standard_card')
+      },
       workspaceSuspended: organisation.status === 'suspended',
       subscription: subscription ? {
         id: subscription.id,
@@ -91,16 +113,41 @@ function register(router) {
         planKey: subscription.plan_key,
         status: subscription.status,
         billingPeriod: subscription.billing_period,
-        amount: invoiceAmountFor(subscription),
+        amount: baseAmount,
         currency: subscription.plan_currency || organisation.currency || 'ZAR',
         currentPeriodStart: subscription.current_period_start,
         currentPeriodEnd: subscription.current_period_end,
         daysRemaining: subscription.current_period_end
           ? Math.max(0, Math.round((new Date(String(subscription.current_period_end).slice(0, 10) + 'T00:00:00Z') - new Date(todayDate() + 'T00:00:00Z')) / 86400000))
-          : null
+          : null,
+        payfast: payfastRecovery ? {
+          baseAmount: payfastRecovery.base,
+          processingFee: recoverFees ? payfastRecovery.fee : 0,
+          totalDue: recoverFees ? payfastRecovery.gross : payfastRecovery.base,
+          estimatedNet: recoverFees ? payfastRecovery.net : payfastRecovery.netIfUnrecovered,
+          method: payfastRecovery.method,
+          methodLabel: payfastRecovery.methodLabel,
+          includesPayout: payfastRecovery.includesPayout,
+          recovered: recoverFees
+        } : null
       } : null,
       invoices,
-      openInvoice,
+      openInvoice: openInvoice ? Object.assign({}, openInvoice, payfastRecovery ? {
+        payfastBaseAmount: payfastRecovery.base,
+        payfastProcessingFee: recoverFees ? payfastRecovery.fee : 0,
+        payfastTotalDue: recoverFees ? payfastRecovery.gross : payfastRecovery.base
+      } : {}) : null,
+      setupFee: setupFeeRow ? Object.assign({}, setupFeeSummaryView(setupFeeRow), {
+        payfast: setupPayfastRecovery ? {
+          baseAmount: setupPayfastRecovery.base,
+          processingFee: (payfast.isConfigured() && recoverFees) ? setupPayfastRecovery.fee : 0,
+          totalDue: (payfast.isConfigured() && recoverFees) ? setupPayfastRecovery.gross : setupPayfastRecovery.base,
+          estimatedNet: (payfast.isConfigured() && recoverFees) ? setupPayfastRecovery.net : setupPayfastRecovery.netIfUnrecovered,
+          method: setupPayfastRecovery.method,
+          methodLabel: setupPayfastRecovery.methodLabel,
+          recovered: payfast.isConfigured() && recoverFees
+        } : null
+      }) : null,
       paymentAccount: maskedAccount(account),
       collections: {
         collectedGross: money(collections.collected_gross),
@@ -141,7 +188,13 @@ function register(router) {
     }
     if (!invoice) fail('CONFLICT', null, 'This plan has no amount to charge. Contact support to set one up.');
 
-    const amount = Number(invoice.amount);
+    const baseAmount = Number(invoice.amount);
+    const recoverFees = payfastFees.recoveryEnabledForSubscriptions();
+    const feeQuote = recoverFees
+      ? payfastFees.estimate(baseAmount, process.env.PAYFAST_RECOVERY_PROFILE || 'standard_card')
+      : null;
+    const amount = feeQuote ? feeQuote.gross : baseAmount;
+
     // A double-click must not create two intents: reuse the pending one.
     const pending = await ctx.db.one(
       `SELECT * FROM payment_intents
@@ -151,11 +204,14 @@ function register(router) {
       [ctx.organisationId, invoice.id]
     );
     const itemName = 'Re-EL ECD — ' + subscription.plan_name + ' (' + subscription.billing_period + ')';
+    const itemDescription = feeQuote
+      ? organisation.name + ' (includes R' + payfastFees.round2(feeQuote.fee).toFixed(2) + ' secure online processing)'
+      : organisation.name;
     if (pending) {
       const checkout = payfast.buildCheckout({
         amount: Number(pending.amount),
         itemName: String(itemName).slice(0, 100),
-        itemDescription: organisation.name,
+        itemDescription,
         reference: pending.reference,
         email: undefined,
         organisationId: organisation.id,
@@ -163,7 +219,10 @@ function register(router) {
         cancelUrl: payfast.frontendBaseUrl() + '/#/app/settings?tab=billing&payment=cancelled',
         notifyUrl: payfast.apiBaseUrl(ctx.req) + '/api/v1/public/payfast/itn'
       });
-      return { invoice, amount: Number(pending.amount), currency: pending.currency, checkout, reused: true };
+      return {
+        invoice, baseAmount, processingFee: payfastFees.round2(Number(pending.amount) - baseAmount),
+        amount: Number(pending.amount), currency: pending.currency, checkout, reused: true
+      };
     }
 
     const nameParts = String(ctx.user.display_name || '').trim().split(/\s+/).filter(Boolean);
@@ -183,23 +242,121 @@ function register(router) {
         organisationId: organisation.id,
         payerEmail: payer.email,
         planName: subscription.plan_name,
-        billingPeriod: subscription.billing_period
+        billingPeriod: subscription.billing_period,
+        baseAmount,
+        processingFee: feeQuote ? feeQuote.fee : 0,
+        processingFeeMethod: feeQuote ? feeQuote.method : null,
+        processingFeeRecovered: Boolean(feeQuote)
       },
       payer,
       createdBy: ctx.user.id,
       req: ctx.req,
       scope: 'staff',
       itemName,
-      itemDescription: organisation.name,
+      itemDescription,
       returnUrl: payfast.frontendBaseUrl() + '/#/app/settings?tab=billing&payment=return',
       cancelUrl: payfast.frontendBaseUrl() + '/#/app/settings?tab=billing&payment=cancelled'
     });
     await recordAudit(ctx.db, ctx, {
       action: 'billing.subscription_checkout_created', resourceType: 'platform_subscription_invoice',
       resourceId: invoice.id, organisationId: ctx.organisationId,
-      metadata: { intentId: intent.id, amount, invoice: invoice.invoice_number }
+      metadata: { intentId: intent.id, amount, baseAmount, processingFee: feeQuote ? feeQuote.fee : 0, invoice: invoice.invoice_number }
     });
-    return { invoice, amount, currency: invoice.currency, checkout, intent: { id: intent.id, reference: intent.reference } };
+    return {
+      invoice, baseAmount, processingFee: feeQuote ? feeQuote.fee : 0,
+      amount, currency: invoice.currency, checkout, intent: { id: intent.id, reference: intent.reference }
+    };
+  }, { permission: MANAGE, allowSuspended: true });
+
+
+  router.post('/billing/setup/pay', async (ctx) => {
+    if (!payfast.isConfigured()) {
+      fail('CONFLICT', null, 'Online payments are not configured. Set PAYFAST_MERCHANT_ID and PAYFAST_MERCHANT_KEY on the API.');
+    }
+    const organisation = ctx.organisation;
+    const setupFee = await ensureSetupFee(ctx.db, organisation);
+    if (!setupFee) fail('CONFLICT', null, 'This organisation does not have a setup fee.');
+    if (setupFee.status === 'paid') fail('CONFLICT', null, 'The setup fee is already paid.');
+    if (setupFee.status === 'waived') fail('CONFLICT', null, 'The setup fee has been waived.');
+    if (setupFee.status === 'void') fail('CONFLICT', null, 'The setup fee is void.');
+
+    const baseAmount = Number(setupFee.amount);
+    const recoverFees = payfastFees.recoveryEnabledForSubscriptions();
+    const feeQuote = recoverFees
+      ? payfastFees.estimate(baseAmount, process.env.PAYFAST_RECOVERY_PROFILE || 'standard_card')
+      : null;
+    const amount = feeQuote ? feeQuote.gross : baseAmount;
+
+    const pending = await ctx.db.one(
+      `SELECT * FROM payment_intents
+       WHERE organisation_id = $1 AND purpose = 'platform_setup' AND status = 'pending'
+         AND (metadata->>'setupFeeId') = $2
+       ORDER BY created_at DESC LIMIT 1`,
+      [ctx.organisationId, setupFee.id]
+    );
+    const itemName = 'Re-EL ECD — Once-off setup & launch package';
+    const itemDescription = feeQuote
+      ? organisation.name + ' (R' + baseAmount.toFixed(2) + ' setup + R' + payfastFees.round2(feeQuote.fee).toFixed(2) + ' secure online processing)'
+      : organisation.name + ' — once-off R' + baseAmount.toFixed(2) + ' setup';
+    if (pending) {
+      const checkout = payfast.buildCheckout({
+        amount: Number(pending.amount),
+        itemName: String(itemName).slice(0, 100),
+        itemDescription,
+        reference: pending.reference,
+        email: undefined,
+        organisationId: organisation.id,
+        returnUrl: payfast.frontendBaseUrl() + '/#/app/settings?tab=billing&payment=return',
+        cancelUrl: payfast.frontendBaseUrl() + '/#/app/settings?tab=billing&payment=cancelled',
+        notifyUrl: payfast.apiBaseUrl(ctx.req) + '/api/v1/public/payfast/itn'
+      });
+      return {
+        setupFee: setupFeeSummaryView(setupFee), baseAmount,
+        processingFee: payfastFees.round2(Number(pending.amount) - baseAmount),
+        amount: Number(pending.amount), currency: pending.currency, checkout, reused: true
+      };
+    }
+
+    const nameParts = String(ctx.user.display_name || '').trim().split(/\s+/).filter(Boolean);
+    const payer = {
+      email: ctx.user.email,
+      first_name: nameParts[0] || organisation.name,
+      last_name: nameParts.slice(1).join(' ')
+    };
+    const { intent, checkout } = await createPaymentIntent(ctx.db, {
+      organisation,
+      amount,
+      currency: setupFee.currency || 'ZAR',
+      purpose: 'platform_setup',
+      metadata: {
+        setupFeeId: setupFee.id,
+        organisationId: organisation.id,
+        payerEmail: payer.email,
+        baseAmount,
+        processingFee: feeQuote ? feeQuote.fee : 0,
+        processingFeeMethod: feeQuote ? feeQuote.method : null,
+        processingFeeRecovered: Boolean(feeQuote)
+      },
+      payer,
+      createdBy: ctx.user.id,
+      req: ctx.req,
+      scope: 'staff',
+      itemName,
+      itemDescription,
+      returnUrl: payfast.frontendBaseUrl() + '/#/app/settings?tab=billing&payment=return',
+      cancelUrl: payfast.frontendBaseUrl() + '/#/app/settings?tab=billing&payment=cancelled'
+    });
+    await recordAudit(ctx.db, ctx, {
+      action: 'billing.setup_fee_checkout_created', resourceType: 'platform_setup_fee',
+      resourceId: setupFee.id, organisationId: ctx.organisationId,
+      metadata: { intentId: intent.id, amount, baseAmount, processingFee: feeQuote ? feeQuote.fee : 0 }
+    });
+    return {
+      setupFee: setupFeeSummaryView(setupFee), baseAmount,
+      processingFee: feeQuote ? feeQuote.fee : 0,
+      amount, currency: setupFee.currency || 'ZAR',
+      checkout, intent: { id: intent.id, reference: intent.reference }
+    };
   }, { permission: MANAGE, allowSuspended: true });
 
   router.get('/billing/payouts', async (ctx) => {

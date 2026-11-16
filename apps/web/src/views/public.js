@@ -967,7 +967,7 @@
       ctx.signupError = null;
       ctx.signupDone = false;
       ctx.signupStep = 1;
-      ctx.signupForm = { centreName: '', ownerName: '', ownerEmail: '', password: '', confirm: '', planKey: '', agreed: false };
+      ctx.signupForm = { centreName: '', ownerName: '', ownerEmail: '', password: '', confirm: '', planKey: '', includeSetup: false, agreed: false };
       try {
         const payload = await R.api('GET', '/public/platform');
         const data = (payload && payload.data) || {};
@@ -1014,6 +1014,7 @@
               '<div class="kpi-row"><span class="kpi-label">Sign-in email</span><span class="kpi-value" x-text="signupForm.ownerEmail"></span></div>' +
               '<div class="kpi-row"><span class="kpi-label">Role</span><span class="kpi-value">Owner / principal</span></div>' +
               '<div class="kpi-row"><span class="kpi-label">Next step</span><span class="kpi-value">Sign in and invite your team</span></div>' +
+              '<div class="kpi-row" x-show="signupForm.includeSetup"><span class="kpi-label">Setup package</span><span class="kpi-value">R700 once-off launch package selected</span></div>' +
             '</div>' +
           '</div>' +
           '<a class="btn btn-primary btn-block" href="#/login"><i data-lucide="log-in"></i> Go to sign in</a>' +
@@ -1054,6 +1055,16 @@
             '<h3>Choose a plan & confirm</h3>' +
             '<p class="muted small">Start with a 30-day trial. You can change plans anytime.</p>' +
             '<div class="field"><label for="signup-plan">Plan (30-day trial)</label><select class="select" id="signup-plan" name="planKey" x-model="signupForm.planKey">' + planOptions + '</select></div>' +
+            '<div class="card" style="margin-top:12px;background:var(--surface-2)">' +
+              '<label class="check-row" style="align-items:flex-start;gap:10px;margin:0">' +
+                '<input type="checkbox" name="includeSetup" x-model="signupForm.includeSetup" style="margin-top:3px">' +
+                '<span>' +
+                  '<span class="strong">Add the R700 once-off setup &amp; launch package <span class="badge badge-muted">Optional</span></span>' +
+                  '<div class="muted small" style="margin-top:4px">Includes 3 days staff training, platform setup, public website setup, curriculum template, module templates, activities templates, and launch marketing. If selected, it will be added to your billing so you can pay it in-app (R700 base + secure online processing when paying by card).</div>' +
+                  '<div class="muted small" style="margin-top:4px">You can add or arrange this later — it’s not required to create your workspace.</div>' +
+                '</span>' +
+              '</label>' +
+            '</div>' +
             '<div class="card signup-review">' +
               '<div class="strong" style="margin-bottom:8px">Review your details</div>' +
               '<div class="kpi-list">' +
@@ -1061,6 +1072,7 @@
                 '<div class="kpi-row"><span class="kpi-label">Owner</span><span class="kpi-value" x-text="signupForm.ownerName || \'—\'"></span></div>' +
                 '<div class="kpi-row"><span class="kpi-label">Email</span><span class="kpi-value" x-text="signupForm.ownerEmail || \'—\'"></span></div>' +
                 '<div class="kpi-row"><span class="kpi-label">Plan</span><span class="kpi-value" x-text="signupPlanName()"></span></div>' +
+                '<div class="kpi-row"><span class="kpi-label">R700 setup package</span><span class="kpi-value" x-text="signupForm.includeSetup ? \'Yes — R700 once-off (added to billing)\' : \'Not now (optional)\'"></span></div>' +
               '</div>' +
             '</div>' +
             '<label class="check-row" style="margin-top:12px"><input type="checkbox" name="agreed" x-model="signupForm.agreed"> <span>I accept the <a href="#/legal/terms" target="_blank">Terms of Service</a> and <a href="#/legal/privacy" target="_blank">Privacy Policy</a></span></label>' +

@@ -12,6 +12,7 @@ const payfast = require('../services/payfast-service');
 const { createPaymentIntent } = require('../services/payment-intent-service');
 const { recordManualPayment, dateString, runSubscriptionSweep } = require('../services/subscription-billing-service');
 const { maskedAccount, savePaymentAccount } = require('../services/payment-accounts-service');
+const { ensureSetupFee, recordManualSetupPayment, waiveSetupFee, summaryView: setupFeeSummaryView } = require('../services/setup-fee-service');
 const { createImpersonationSession, impersonationCookie } = require('../services/session-service');
 const secretbox = require('../services/secretbox');
 const storage = require('../services/storage-service');
@@ -83,7 +84,8 @@ function register(router) {
       ownerEmail: { type: 'string', email: true, max: 255 },
       password: { type: 'string', min: 10, max: 200 },
       planKey: { type: 'string', max: 40, optional: true },
-      timezone: { type: 'string', max: 64, optional: true }
+      timezone: { type: 'string', max: 64, optional: true },
+      includeSetup: { type: 'boolean', optional: true }
     });
     const email = body.ownerEmail.toLowerCase();
     const existingUser = await ctx.db.one('SELECT id FROM users WHERE email_normalized = $1', [email]);
@@ -104,6 +106,7 @@ function register(router) {
       if (attempt === 20) fail('CONFLICT', null, 'We could not find a free web address for that centre name. Try a more specific name.');
     }
     const passwordHash = await hashPassword(body.password);
+    const includeSetup = body.includeSetup === true;
     const result = await provisionOrganisation(ctx.db, {
       name: body.centreName,
       slug,
@@ -112,6 +115,7 @@ function register(router) {
       passwordHash,
       planKey: body.planKey || null,
       timezone: body.timezone || null,
+      includeSetup,
       source: 'self-signup'
     }, null);
     await sendTemplate(ctx.db, 'signupWelcome', {
@@ -124,7 +128,8 @@ function register(router) {
     return {
       organisation: { name: result.organisation.name, slug: result.organisation.slug, status: result.organisation.status },
       trialDays: 30,
-      planKey: body.planKey || null
+      planKey: body.planKey || null,
+      setupFee: { included: includeSetup, amount: 700, currency: 'ZAR' }
     };
   }, { public: true });
 
@@ -508,7 +513,7 @@ function register(router) {
   router.get('/platform/organisations/:id', async (ctx) => {
     const organisation = await ctx.db.one('SELECT * FROM organisations WHERE id = $1', [ctx.params.id]);
     if (!organisation) throw new AppError('NOT_FOUND');
-    const [branches, subscription, counts, settings] = await Promise.all([
+    const [branches, subscription, counts, settings, setupFee] = await Promise.all([
       ctx.db.many('SELECT * FROM branches WHERE organisation_id = $1 ORDER BY name', [organisation.id]),
       ctx.db.one(
         `SELECT ps.*, sp.name AS plan_name, sp.monthly_price FROM platform_subscriptions ps
@@ -521,9 +526,10 @@ function register(router) {
                 (SELECT COUNT(*)::int FROM branches WHERE organisation_id = $1) AS branches`,
         [organisation.id]
       ),
-      ctx.db.one('SELECT settings FROM organisation_settings WHERE organisation_id = $1', [organisation.id])
+      ctx.db.one('SELECT settings FROM organisation_settings WHERE organisation_id = $1', [organisation.id]),
+      ensureSetupFee(ctx.db, organisation)
     ]);
-    return { ...organisation, branches, subscription, counts, settings: settings ? settings.settings : {} };
+    return { ...organisation, branches, subscription, counts, settings: settings ? settings.settings : {}, setupFee: setupFeeSummaryView(setupFee) };
   }, { platformOnly: true, permission: 'platform.organisations.read' });
 
   router.post('/platform/organisations', async (ctx) => {
@@ -538,7 +544,8 @@ function register(router) {
       currency: { type: 'string', min: 3, max: 3, optional: true },
       timezone: { type: 'string', max: 64, optional: true },
       planKey: { type: 'string', max: 40, optional: true },
-      temporaryPassword: { type: 'string', min: 10, max: 200, optional: true }
+      temporaryPassword: { type: 'string', min: 10, max: 200, optional: true },
+      includeSetup: { type: 'boolean', optional: true }
     });
     const existing = await ctx.db.one('SELECT id FROM organisations WHERE slug = $1', [body.slug]);
     if (existing) fail('CONFLICT', null, 'That organisation slug is already in use.');
@@ -1140,6 +1147,53 @@ function register(router) {
     });
     return maskedAccount(account);
   }, { platformOnly: true, permission: 'platform.organisations.manage' });
+
+
+  router.get('/platform/organisations/:id/setup-fee', async (ctx) => {
+    const organisation = await ctx.db.one(
+      "SELECT * FROM organisations WHERE id = $1 AND slug <> 're-el-platform'", [ctx.params.id]
+    );
+    if (!organisation) throw new AppError('NOT_FOUND');
+    const setupFee = await ensureSetupFee(ctx.db, organisation);
+    return setupFeeSummaryView(setupFee);
+  }, { platformOnly: true, permission: 'platform.organisations.read' });
+
+  router.post('/platform/organisations/:id/setup-fee/manual-payment', async (ctx) => {
+    const organisation = await ctx.db.one(
+      "SELECT * FROM organisations WHERE id = $1 AND slug <> 're-el-platform'", [ctx.params.id]
+    );
+    if (!organisation) throw new AppError('NOT_FOUND');
+    const body = validate(ctx.body || {}, {
+      amount: { type: 'number', min: 0.01, max: 100000000, optional: true },
+      reference: { type: 'string', max: 60, optional: true },
+      notes: { type: 'string', max: 500, optional: true }
+    });
+    const result = await recordManualSetupPayment(ctx.db, organisation.id, body);
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.setup_fee_manual_payment', resourceType: 'platform_setup_fee',
+      resourceId: result.setupFee.id, organisationId: organisation.id,
+      metadata: { amount: result.amount, reference: body.reference || null, notes: body.notes || null }
+    });
+    return { setupFee: setupFeeSummaryView(result.setupFee), amount: result.amount };
+  }, { platformOnly: true, permission: 'platform.subscriptions.manage' });
+
+  router.post('/platform/organisations/:id/setup-fee/waive', async (ctx) => {
+    const organisation = await ctx.db.one(
+      "SELECT * FROM organisations WHERE id = $1 AND slug <> 're-el-platform'", [ctx.params.id]
+    );
+    if (!organisation) throw new AppError('NOT_FOUND');
+    const body = validate(ctx.body || {}, {
+      reason: { type: 'string', max: 200, optional: true },
+      notes: { type: 'string', max: 500, optional: true }
+    });
+    const result = await waiveSetupFee(ctx.db, organisation.id, body);
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.setup_fee_waived', resourceType: 'platform_setup_fee',
+      resourceId: result.setupFee.id, organisationId: organisation.id,
+      metadata: { reason: body.reason || null }
+    });
+    return { setupFee: setupFeeSummaryView(result.setupFee) };
+  }, { platformOnly: true, permission: 'platform.subscriptions.manage' });
 
   // Manual payment of a subscription (for example an EFT from the tenant).
   router.post('/platform/organisations/:id/subscription/manual-payment', async (ctx) => {

@@ -3082,6 +3082,7 @@
         const password = String(get('password') || '');
         const confirm = String(get('confirm') || '');
         const planKey = String((this.signupForm && this.signupForm.planKey != null ? this.signupForm.planKey : (form && form.planKey ? form.planKey.value : '')) || '');
+        const includeSetup = (this.signupForm && typeof this.signupForm.includeSetup === 'boolean') ? this.signupForm.includeSetup : (form && form.includeSetup ? form.includeSetup.checked === true : false);
         const agreed = (this.signupForm && typeof this.signupForm.agreed === 'boolean') ? this.signupForm.agreed : (form && form.agreed ? form.agreed.checked === true : false);
         this.signupError = null;
         if (centreName.length < 2) { this.signupError = 'Please enter your centre name.'; this.signupStep = 1; return; }
@@ -3092,7 +3093,7 @@
         if (!agreed) { this.signupError = 'Please accept the Terms of Service and Privacy Policy to continue.'; this.signupStep = 4; return; }
         this.signupBusy = true;
         try {
-          await Reel.api('POST', '/public/signup', { centreName, ownerName, ownerEmail, password, planKey: planKey || undefined });
+          await Reel.api('POST', '/public/signup', { centreName, ownerName, ownerEmail, password, planKey: planKey || undefined, includeSetup: includeSetup === true });
           this.signupDone = true;
         } catch (error) {
           this.signupError = error.message || 'We could not create your account. Please check the details and try again.';

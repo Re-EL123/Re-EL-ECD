@@ -295,6 +295,7 @@ window.Reel.renderGateQr = function (targetId) {
     renderBilling(ctx, page, canManage) {
       const billing = page.billing || {};
       const workspaceSuspended = billing.workspaceSuspended === true;
+      const setupFee = billing.setupFee || null;
       const suspendedBanner = workspaceSuspended
         ? '<div class="alert alert-danger" style="margin-bottom:14px"><i data-lucide="alert-triangle"></i><span><strong>Your workspace is currently suspended.</strong> Pay the outstanding subscription invoice below to restore access automatically — no need to contact support.</span></div>'
         : '';
@@ -323,6 +324,47 @@ window.Reel.renderGateQr = function (targetId) {
         : (ctx.query && ctx.query.payment === 'cancelled')
           ? '<div class="alert alert-warning" style="margin-bottom:14px"><i data-lucide="alert-triangle"></i><span>Checkout was cancelled. The invoice stays open and nothing was charged.</span></div>'
           : '';
+      const setupPay = setupFee && setupFee.payfast ? setupFee.payfast : null;
+      const setupStatusBadge = {
+        issued: { label: 'Awaiting payment', cls: 'badge-sun' },
+        paid: { label: 'Paid', cls: 'badge-green' },
+        waived: { label: 'Waived', cls: 'badge-muted' },
+        void: { label: 'Void', cls: 'badge-muted' }
+      };
+      const setupCard = R.card('Once-off setup & launch package',
+        setupFee
+          ? '<div class="detail-list">' +
+              R.detailItem('Status', '<span class="badge ' + ((setupStatusBadge[setupFee.status] || setupStatusBadge.issued).cls) + '">' + R.esc((setupStatusBadge[setupFee.status] || setupStatusBadge.issued).label) + '</span>') +
+              R.detailItem('Setup fee (base)', '<span class="cell-strong">' + R.money(setupFee.amount, setupFee.currency) + '</span> once-off') +
+              (setupFee.status === 'issued' && setupPay
+                ? R.detailItem('Pay online now', '<span class="cell-strong">' + R.money(setupPay.totalDue, setupFee.currency) + '</span>' +
+                    (Number(setupPay.processingFee || 0) > 0
+                      ? '<span class="cell-sub muted">Includes ' + R.money(setupPay.processingFee, setupFee.currency) + ' secure online processing so Re-EL receives the full setup amount</span>'
+                      : '<span class="cell-sub muted">No processing fee added</span>'))
+                : '') +
+              (setupFee.status === 'paid' ? R.detailItem('Paid', R.date(setupFee.paidAt) + (setupFee.paymentReference ? '<span class="cell-sub mono">' + R.esc(setupFee.paymentReference) + '</span>' : '')) : '') +
+              (setupFee.status === 'waived' ? R.detailItem('Waived', R.date(setupFee.waivedAt) + (setupFee.waivedReason ? '<span class="cell-sub">' + R.esc(setupFee.waivedReason) + '</span>' : '')) : '') +
+            '</div>' +
+            '<div class="alert alert-info" style="margin:10px 0">' + R.icon('badge-check') +
+              '<span><strong>What’s included:</strong> 3 days staff training, platform setup, public website setup, curriculum template, module templates, activities templates, and launch marketing.</span></div>' +
+            (setupFee.status === 'issued'
+              ? (canManage
+                  ? ('<div class="btn-group">' +
+                      (platformPayfast
+                        ? '<button class="btn btn-primary" @click="act(\'POST\',\'/billing/setup/pay\',{}, {redirectKey:\'checkout\', redirectField:\'action\', redirectForm:\'fields\', successMessage:\'Redirecting you to PayFast to complete the setup payment…\'})">' + R.icon('credit-card') + ' Pay ' + R.money((setupPay && setupPay.totalDue) || setupFee.amount, setupFee.currency) + ' setup online</button>'
+                        : '<button class="btn btn-secondary" disabled>Online payment not configured</button>') +
+                    '</div>' +
+                    (!platformPayfast
+                      ? '<div class="alert alert-warning" style="margin-top:12px"><i data-lucide="info"></i><span>Online setup payment isn’t available on this environment yet. Contact support to pay by EFT/bank transfer.</span></div>'
+                      : '<div class="muted small" style="margin-top:8px">You’ll be redirected to PayFast’s secure checkout.' + (Number(setupPay && setupPay.processingFee || 0) > 0 ? ' The total includes online processing so your centre’s setup is fully covered.' : '') + '</div>'))
+                  : '<div class="alert alert-info" style="margin-top:12px"><i data-lucide="lock"></i><span>Only an organisation owner or billing admin can pay the setup fee.</span></div>')
+              : (setupFee.status === 'paid'
+                  ? '<div class="alert alert-success" style="margin-top:12px"><i data-lucide="check-circle"></i><span>Your once-off setup package is paid. Thank you!</span></div>'
+                  : (setupFee.status === 'waived'
+                      ? '<div class="alert alert-success" style="margin-top:12px"><i data-lucide="check-circle"></i><span>Your once-off setup package has been waived.</span></div>'
+                      : '<div class="alert alert-info" style="margin-top:12px"><i data-lucide="info"></i><span>This setup fee is ' + R.esc(setupFee.status) + '.</span></div>')))
+          : '<div class="muted">No setup fee record found for this organisation.</div>');
+
       const subscriptionCard = R.card('Your plan',
         subscription
           ? '<div class="detail-list">' +
@@ -335,9 +377,9 @@ window.Reel.renderGateQr = function (targetId) {
               : '') +
             '</div>' +
             (openInvoice
-              ? '<div class="alert alert-warning" style="margin-top:12px"><i data-lucide="alert-circle"></i><span><strong>' + R.money(openInvoice.amount, openInvoice.currency) + '</strong> due for the current period. Pay securely with PayFast.</span></div>' +
+              ? '<div class="alert alert-warning" style="margin-top:12px"><i data-lucide="alert-circle"></i><span><strong>' + R.money(openInvoice.payfastTotalDue || openInvoice.amount, openInvoice.currency) + '</strong> due for the current period' + (Number(openInvoice.payfastProcessingFee || 0) > 0 ? ' <span class="muted small">(includes ' + R.money(openInvoice.payfastProcessingFee, openInvoice.currency) + ' secure online processing)</span>' : '') + '. Pay securely with PayFast.</span></div>' +
                 (canManage && platformPayfast
-                  ? '<button class="btn btn-primary" style="margin-top:12px" @click="paySubscription()">' + R.icon('credit-card') + ' Pay ' + R.money(openInvoice.amount, openInvoice.currency) + '</button>'
+                  ? '<button class="btn btn-primary" style="margin-top:12px" @click="paySubscription()">' + R.icon('credit-card') + ' Pay ' + R.money(openInvoice.payfastTotalDue || openInvoice.amount, openInvoice.currency) + '</button>'
                   : '<p class="muted small" style="margin-top:10px">' + (platformPayfast ? 'Ask an administrator with settings access to pay this invoice.' : 'Online payment is not configured. Ask support to record a bank transfer.') + '</p>')
               : '<div class="alert alert-success" style="margin-top:12px"><i data-lucide="check-circle"></i><span>You are up to date. Your plan renews on ' + R.date(subscription.currentPeriodEnd) + '.</span></div>')
           : '<div class="alert alert-warning"><i data-lucide="alert-circle"></i><span>This organisation has no plan yet. Contact support to set one up.</span></div>');
@@ -402,7 +444,7 @@ window.Reel.renderGateQr = function (targetId) {
           { label: 'Reference', render: (row) => row.reference ? '<span class="mono small">' + R.esc(row.reference) + '</span>' : '—' }
         ], emptyTitle: 'No payouts yet', emptyMessage: 'Once fees are collected, the platform settles them to your bank account and each payout appears here.' })) : '';
 
-      return suspendedBanner + backBanner + subscriptionCard + '<div class="section">' + invoicesCard + '</div><div class="section">' + accountCard + '</div>' + (payoutHistory ? '<div class="section">' + payoutHistory + '</div>' : '');
+      return suspendedBanner + backBanner + setupCard + '<div class="section">' + subscriptionCard + '</div><div class="section">' + invoicesCard + '</div><div class="section">' + accountCard + '</div>' + (payoutHistory ? '<div class="section">' + payoutHistory + '</div>' : '');
     },
 
     openModal(ctx, name, id) {

@@ -29,6 +29,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { start, stop, createClient, db } = require('./helpers');
 const payfast = require('../src/services/payfast-service');
+const payfastFees = require('../src/services/payfast-fees');
 
 test.before(start);
 test.after(stop);
@@ -130,16 +131,20 @@ test('a tenant pays the subscription invoice through PayFast; the invoice settle
   const pay = await client.post('/billing/subscription/pay', {}, { organisationId });
   assert.equal(pay.status, 200, pay.text);
   const { checkout, invoice } = pay.data;
-  assert.equal(Number(pay.data.amount), 999);
+  const quote = payfastFees.estimate(999, process.env.PAYFAST_RECOVERY_PROFILE || 'standard_card');
+  assert.equal(Number(pay.data.baseAmount), 999);
+  assert.equal(Number(pay.data.processingFee), quote.fee);
+  assert.equal(Number(pay.data.amount), quote.gross);
   assert.equal(checkout.fields.merchant_id, PLATFORM_MID);
-  assert.equal(checkout.fields.amount, '999.00');
+  assert.equal(checkout.fields.amount, payfast.money(quote.gross));
+  assert.ok(Number(checkout.fields.amount) > 999, 'processing recovery prevents a PayFast-fee loss');
   assert.match(checkout.fields.item_name, /Sapling/);
   assert.match(checkout.fields.return_url, /tab=billing&payment=return/);
 
   const reference = checkout.fields.m_payment_id;
   const paid = await createClient().postForm('/public/payfast/itn', itn(reference, {
     item_name: checkout.fields.item_name,
-    amount_gross: '999.00',
+    amount_gross: payfast.money(quote.gross),
     merchant_id: PLATFORM_MID,
     custom_str1: organisationId
   }));
@@ -330,7 +335,9 @@ test('a suspended tenant can still view and pay their subscription invoice; paym
   const pay = await tenant.post('/billing/subscription/pay', {}, { organisationId });
   assert.equal(pay.status, 200, pay.text);
   const checkout = pay.data.checkout;
-  assert.equal(Number(pay.data.amount), 999);
+  const quote = payfastFees.estimate(999, process.env.PAYFAST_RECOVERY_PROFILE || 'standard_card');
+  assert.equal(Number(pay.data.baseAmount), 999);
+  assert.equal(Number(pay.data.amount), quote.gross);
 
   // Still blocked from everything else until the payment lands.
   const stillBlocked = await tenant.get('/organisations/current', { organisationId });
@@ -339,7 +346,7 @@ test('a suspended tenant can still view and pay their subscription invoice; paym
   const reference = checkout.fields.m_payment_id;
   const paid = await createClient().postForm('/public/payfast/itn', itn(reference, {
     item_name: checkout.fields.item_name,
-    amount_gross: '999.00',
+    amount_gross: payfast.money(quote.gross),
     merchant_id: PLATFORM_MID,
     custom_str1: organisationId
   }));

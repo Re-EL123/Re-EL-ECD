@@ -36,7 +36,7 @@ function hasOwnCredentials(account) {
  * a tenant's money to the platform when a configured own account is unreadable.
  */
 async function resolveCheckoutAccount(db, organisation, purpose) {
-  if (purpose === 'platform_subscription') {
+  if (purpose === 'platform_subscription' || purpose === 'platform_setup') {
     return { settlement: 'platform', credentials: null, account: null };
   }
   if (!OWN_PURPOSES.has(purpose)) {

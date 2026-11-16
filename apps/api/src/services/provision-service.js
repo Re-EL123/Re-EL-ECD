@@ -10,6 +10,7 @@
  */
 
 const { invalidateAccess } = require('./access-service');
+const { ensureSetupFee } = require('./setup-fee-service');
 
 async function provisionOrganisation(db, input, actorUserId) {
   const result = await db.withTransaction(async (client) => {
@@ -61,10 +62,28 @@ async function provisionOrganisation(db, input, actorUserId) {
         );
       }
     }
+    // Once-off R700 launch/setup package (tracked per organisation). Optional at signup:
+    // if not included, record as waived so it is not due but remains tracked.
+    const includeSetup = input.includeSetup !== false;
+    await client.query(
+      `INSERT INTO platform_setup_fees (organisation_id, amount, currency, status, includes, waived_at, waived_reason, notes)
+       VALUES ($1,700.00,$2,$3,$4::jsonb,$5,$6,$7)
+       ON CONFLICT (organisation_id) DO NOTHING`,
+      [org.id, org.currency || 'ZAR',
+       includeSetup ? 'issued' : 'waived',
+       JSON.stringify([
+         '3 days staff training','Platform setup','Public website setup',
+         'Curriculum template','Module templates','Activities templates','Launch marketing'
+       ]),
+       includeSetup ? null : new Date().toISOString(),
+       includeSetup ? null : 'Declined during signup',
+       includeSetup ? null : 'Organisation opted out of the once-off setup package at signup.']
+    );
+
     await client.query(
       `INSERT INTO audit_events (actor_user_id, organisation_id, branch_id, action, resource_type, resource_id, metadata)
        VALUES ($1,$2,$3,'organisation.provisioned','organisation',$2,$4)`,
-      [actorUserId || null, org.id, branch.id, JSON.stringify({ planKey: input.planKey || null, source: input.source || 'admin' })]
+      [actorUserId || null, org.id, branch.id, JSON.stringify({ planKey: input.planKey || null, source: input.source || 'admin', includeSetup })]
     );
     return { organisation: org, branch, membership, owner, isNewOwner };
   });

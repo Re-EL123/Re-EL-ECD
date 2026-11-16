@@ -319,13 +319,15 @@
     render(ctx, params, page) {
       const o = page.org || {};
       const s = o.subscription || {};
+      const sf = o.setupFee || null;
       const counts = o.counts || {};
       return '<a href="#/platform/organisations" class="muted small">← All organisations</a>' +
         R.pageHead(o.name || 'Organisation', R.esc(o.legal_name || '') + ' · created ' + R.date(o.created_at),
           '<a class="btn btn-secondary btn-sm" href="#/platform/organisations">Back</a>' +
           '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'broadcastOrg\')">' + R.icon('megaphone') + ' Message tenant</button>' +
           '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'assignPlan\')">' + R.icon('credit-card') + ' Assign plan</button>' +
-          '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'manualSubscriptionPayment\')">' + R.icon('wallet') + ' Record payment</button>' +
+          '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'manualSubscriptionPayment\')">' + R.icon('wallet') + ' Record sub payment</button>' +
+          (sf && sf.status === 'issued' ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'manualSetupFeePayment\')">' + R.icon('badge-check') + ' Record setup payment</button><button class="btn btn-secondary btn-sm" @click="openNamedModal(\'waiveSetupFee\')">' + R.icon('badge-minus') + ' Waive setup fee</button>' : '') +
           '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'paymentAccount\')">' + R.icon('banknote') + ' Payment account</button>' +
           (o.status === 'suspended'
             ? '<button class="btn btn-primary btn-sm" @click="act(\'POST\',\'/platform/organisations/' + R.attr(o.id) + '/restore\',{},{successMessage:\'Organisation restored\'})">Restore access</button>'
@@ -359,6 +361,13 @@
           s.id && Number(s.monthly_price) > 0
             ? '<button class="btn btn-sm btn-primary" @click="billSubscription(\'' + R.attr(o.id) + '\')">' + R.icon('credit-card') + ' Bill via PayFast</button>'
             : '') +
+        R.card('Once-off setup package (R700)', sf ? '<div class="kpi-list">' +
+          '<div class="kpi-row"><span class="kpi-label">Status</span><span class="kpi-value">' + R.badge(sf.status === 'paid' ? 'active' : (sf.status === 'issued' ? 'overdue' : 'completed')) + '</span></div>' +
+          '<div class="kpi-row"><span class="kpi-label">Base amount</span><span class="kpi-value">' + R.money(sf.amount, sf.currency || o.currency) + '</span></div>' +
+          (sf.paidAt ? '<div class="kpi-row"><span class="kpi-label">Paid</span><span class="kpi-value">' + R.date(sf.paidAt) + '</span></div>' : '') +
+          (sf.paymentReference ? '<div class="kpi-row"><span class="kpi-label">Reference</span><span class="kpi-value mono small">' + R.esc(sf.paymentReference) + '</span></div>' : '') +
+          (sf.waivedAt ? '<div class="kpi-row"><span class="kpi-label">Waived</span><span class="kpi-value">' + R.date(sf.waivedAt) + (sf.waivedReason ? ' · ' + R.esc(sf.waivedReason) : '') + '</span></div>' : '') +
+          '</div><p class="muted small" style="margin-top:8px">Includes: 3 days staff training, platform setup, public website setup, curriculum template, module templates, activities templates, launch marketing.</p>' : R.emptyState('No setup fee', 'Setup fee tracking not found for this organisation.', '', 'badge-check')) +
         R.card('Settings', Object.keys(o.settings || {}).length
           ? '<div class="detail-list">' + Object.entries(o.settings).map(([key, value]) =>
             R.detailItem(settingLabel(key), settingValue(value))).join('') + '</div>'
@@ -403,6 +412,35 @@
               options: [{ value: 'active', label: 'Active' }, { value: 'trial', label: 'Trial' }, { value: 'past_due', label: 'Past due' }], value: 'active' },
             { name: 'billingPeriod', label: 'Billing period', type: 'select',
               options: [{ value: 'monthly', label: 'Monthly' }, { value: 'annual', label: 'Annual' }], value: 'monthly' }
+          ]
+        });
+        return;
+      }
+      if (name === 'manualSetupFeePayment') {
+        ctx.openModal({
+          title: 'Record setup fee payment — ' + (org.name || 'organisation'),
+          description: 'Records a manual/EFT payment for the once-off R700 setup & launch package and marks it paid.',
+          endpoint: '/platform/organisations/' + encodeURIComponent(org.id) + '/setup-fee/manual-payment',
+          submitLabel: 'Record setup payment',
+          successMessage: 'Setup fee payment recorded',
+          fields: [
+            { name: 'reference', label: 'Bank/reference', placeholder: 'e.g. EFT-SETUP-0001' },
+            { name: 'amount', label: 'Amount (optional)', type: 'number', value: 700, help: 'Defaults to R700 (base setup fee).' },
+            { name: 'notes', label: 'Notes', type: 'textarea', span: 2 }
+          ]
+        });
+        return;
+      }
+      if (name === 'waiveSetupFee') {
+        ctx.openModal({
+          title: 'Waive setup fee — ' + (org.name || 'organisation'),
+          description: 'Mark the once-off R700 setup & launch package as waived for this organisation.',
+          endpoint: '/platform/organisations/' + encodeURIComponent(org.id) + '/setup-fee/waive',
+          submitLabel: 'Waive setup fee',
+          successMessage: 'Setup fee waived',
+          fields: [
+            { name: 'reason', label: 'Reason', placeholder: 'e.g. Pilot partner / promo' },
+            { name: 'notes', label: 'Notes', type: 'textarea', span: 2 }
           ]
         });
         return;
