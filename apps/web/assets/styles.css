@@ -1379,3 +1379,25 @@ img, video, canvas, svg { max-width: 100%; }
   .brand-sub { display: none; }
   .sidebar { width: min(300px, 88vw); }
 }
+
+/* --- Today teacher workspace --------------------------------------------- */
+.today-wrap .section { margin-bottom: 18px; }
+.today-strip-stats { display: flex; flex-wrap: wrap; gap: 10px; }
+.today-timeline { display: flex; flex-direction: column; gap: 14px; }
+.today-block .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.today-prep { background: var(--surface-1); }
+.today-wrap h2, .today-wrap h3 { scroll-margin-top: 90px; }
+.today-block ul { color: var(--text); }
+.today-block .badge { white-space: nowrap; }
+@media (max-width: 900px) {
+  .today-block .grid-2 { grid-template-columns: 1fr; }
+}
+@media print {
+  body { background: #fff !important; }
+  .sidebar, .topbar, .toast-root, .btn, button, .site-nav, .banner, .impersonation-bar, .modal-backdrop { display: none !important; }
+  .main, .content { margin: 0 !important; padding: 0 !important; max-width: 100% !important; }
+  .today-strip, .today-wrapup, .today-next, .card.today-block { break-inside: avoid; box-shadow: none !important; }
+  .today-prep { display: block !important; }
+  .today-block .btn-group, .today-strip-links, .card-head .muted { display: none !important; }
+  a[href]:after { content: ''; }
+}

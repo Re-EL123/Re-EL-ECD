@@ -46,6 +46,7 @@
     route('/platform/support', 'platform', 'platformSupport', 'platform.support.manage', 'Support workspace'),
 
     route('/app/overview', 'app', 'overview', ['reports.read.daycare', 'tasks.read.own', 'attendance.read.assigned'], 'Overview'),
+    route('/app/today', 'app', 'today', ['curriculum.create.daycare', 'assessments.create.assigned', 'attendance.record.assigned', 'attendance.record.own', 'staff_attendance.record.assigned', 'staff_attendance.record.own'], 'Today'),
     route('/app/learners', 'app', 'learners', ['learners.read.daycare', 'learners.read.assigned'], 'Learners'),
     route('/app/learners/:id', 'app', 'learnerDetail', ['learners.read.daycare', 'learners.read.assigned'], 'Learner profile'),
     route('/app/admissions', 'app', 'admissions', 'admissions.read.daycare', 'Admissions'),
@@ -136,21 +137,20 @@
       ] }
     ],
     app: [
-      { label: 'Today', items: [
-        { path: '/app/overview', label: 'Overview', icon: 'layout-dashboard', permission: ['reports.read.daycare', 'tasks.read.own', 'attendance.read.assigned'] }
+      { label: 'Teaching', items: [
+        { path: '/app/today', label: 'Today', icon: 'sun', permission: ['curriculum.create.daycare', 'assessments.create.assigned', 'attendance.record.assigned', 'attendance.record.own', 'staff_attendance.record.assigned', 'staff_attendance.record.own'] },
+        { path: '/app/overview', label: 'Overview', icon: 'layout-dashboard', permission: ['reports.read.daycare', 'tasks.read.own', 'attendance.read.assigned'] },
+        { path: '/app/calendar', label: 'Calendar', icon: 'calendar-days', permission: 'curriculum.read.daycare' },
+        { path: '/app/modules', label: 'Modules', icon: 'blocks', permission: 'curriculum.read.daycare' },
+        { path: '/app/curriculum', label: 'Curriculum', icon: 'book-open', permission: 'curriculum.read.daycare' },
+        { path: '/app/activities', label: 'Activities', icon: 'puzzle', permission: 'curriculum.read.daycare' },
+        { path: '/app/assessments', label: 'Assessments', icon: 'clipboard-list', permission: ['assessments.read.daycare', 'assessments.read.assigned'] }
       ] },
       { label: 'Children', items: [
         { path: '/app/learners', label: 'Learners', icon: 'users', permission: ['learners.read.daycare', 'learners.read.assigned'] },
         { path: '/app/admissions', label: 'Admissions', icon: 'user-plus', permission: 'admissions.read.daycare' },
         { path: '/app/classrooms', label: 'Classrooms', icon: 'door-open', permission: 'classrooms.read.daycare' },
         { path: '/app/learner-attendance', label: 'Attendance', icon: 'calendar-check', permission: ['attendance.read.daycare', 'attendance.read.assigned'] },
-      ] },
-      { label: 'Learning', items: [
-        { path: '/app/curriculum', label: 'Curriculum', icon: 'book-open', permission: 'curriculum.read.daycare' },
-        { path: '/app/activities', label: 'Activities', icon: 'puzzle', permission: 'curriculum.read.daycare' },
-        { path: '/app/calendar', label: 'Calendar', icon: 'calendar-days', permission: 'curriculum.read.daycare' },
-        { path: '/app/modules', label: 'Modules', icon: 'blocks', permission: 'curriculum.read.daycare' },
-        { path: '/app/assessments', label: 'Assessments', icon: 'clipboard-list', permission: ['assessments.read.daycare', 'assessments.read.assigned'] }
       ] },
       { label: 'People', items: [
         { path: '/app/staff', label: 'Staff', icon: 'id-card', permission: 'staff.read.daycare' },
@@ -571,6 +571,10 @@
         if (!this.session) return '/login';
         if (this.isPlatformAdmin) return '/platform/overview';
         if (this.isParentOnly) return '/parent/overview';
+        // Teachers land on Today; managers/principals with the dashboard keep Overview.
+        if (!this.has('reports.read.daycare') && this.has(['curriculum.create.daycare', 'assessments.create.assigned', 'attendance.record.assigned', 'attendance.record.own', 'staff_attendance.record.assigned', 'staff_attendance.record.own'])) {
+          return '/app/today';
+        }
         return '/app/overview';
       },
 
