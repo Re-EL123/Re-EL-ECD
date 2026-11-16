@@ -350,7 +350,7 @@ function register(router) {
 
   router.get('/learner-attendance/current-presence', async (ctx) => {
     const rows = await ctx.db.many(
-      `SELECT a.*, l.first_name, l.last_name, l.learner_reference, c.name AS classroom_name
+      `SELECT a.*, l.first_name, l.last_name, l.learner_reference, l.profile_image_url, c.name AS classroom_name
        FROM learner_attendance a JOIN learners l ON l.id = a.learner_id
        LEFT JOIN classrooms c ON c.id = l.classroom_id
        WHERE a.organisation_id = $1 AND a.attendance_date = CURRENT_DATE

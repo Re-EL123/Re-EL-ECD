@@ -450,9 +450,7 @@
             '<p class="muted small" style="margin:0 0 4px">At the gate they scan the centre QR, type their first name and the code you share with them. The centre releases only people on this list.</p>' +
             (page.collectors || []).map((c) =>
               '<div class="row" style="gap:12px;align-items:center;padding:10px;border:1px solid var(--border-subtle);border-radius:14px">' +
-                (c.photo_url
-                  ? '<img src="' + R.attr(c.photo_url) + '" alt="' + R.attr(c.name) + '" style="width:52px;height:52px;border-radius:12px;object-fit:cover">'
-                  : '<div class="avatar" style="width:52px;height:52px;border-radius:12px;font-size:1.2rem;background:var(--forest-100);color:var(--forest-700)">' + R.esc((c.name[0] || '?').toUpperCase()) + '</div>') +
+                R.avatar(c, c.name, { size: 52, square: true, tip: c.name + ' · ' + R.titleCase(c.relationship || 'collector') }) +
                 '<div style="min-width:0;flex:1"><div class="strong">' + R.esc(c.name) + '</div><div class="muted small">' + R.esc(c.relationship) + ' · ' + R.esc((c.policy || 'photo_id').replace(/_/g, ' ')) + '</div>' +
                   (!c.pin_created_at ? '<div class="muted small" style="color:var(--danger)">No gate code — they cannot sign in. Press New code.</div>' : '') + '</div>' +
                 '<div class="stack" style="gap:4px;align-items:flex-end">' +
@@ -568,7 +566,7 @@
         : state === 'in' ? 'Scan the QR to collect' : 'Scan the QR to check in';
       return '<div class="card">' +
         '<div class="row" style="gap:12px;align-items:center">' +
-          '<div class="avatar" style="width:52px;height:52px;border-radius:12px;font-size:1.2rem;background:var(--forest-100);color:var(--forest-700)">' + R.esc((c.first_name[0] || '?').toUpperCase()) + '</div>' +
+          R.avatar(c, c.first_name + ' ' + c.last_name, { size: 52, square: true, tip: c.first_name + ' ' + c.last_name + (c.classroom_name ? ' · ' + c.classroom_name : '') }) +
           '<div style="flex:1;min-width:0"><div class="strong" style="font-size:0.95rem">' + R.esc(c.first_name + ' ' + c.last_name) + '</div>' +
             '<div class="muted small">' + sub + '</div></div>' +
           badge +

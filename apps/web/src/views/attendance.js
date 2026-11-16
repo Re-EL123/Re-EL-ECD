@@ -75,7 +75,7 @@
       return '<div class="section"></div>' + R.card('Today at the gate', '<div class="stack" style="gap:8px">' +
         scans.map((scan) =>
           '<div class="row" style="gap:12px;align-items:center;padding:8px 10px;border:1px solid var(--border-subtle);border-radius:14px;background:var(--surface-2)">' +
-            '<div class="avatar" style="width:48px;height:48px;font-size:1.1rem;background:var(--forest-100);color:var(--forest-700)">' + R.esc((scan.first_name || '?')[0].toUpperCase()) + '</div>' +
+            R.avatar(scan, scan.collector_name || (scan.first_name + ' ' + (scan.last_name || '')), { size: 48, tip: (scan.first_name + ' ' + (scan.last_name || '')).trim() + (scan.classroom_name ? ' · ' + scan.classroom_name : '') + ' · awaiting release' }) +
             '<div style="flex:1;min-width:0"><div class="strong" style="font-size:0.9rem">' + R.esc(scan.collector_name) + '</div>' +
             '<div class="muted small">' + R.esc(scan.first_name + ' ' + (scan.last_name || '')) + (scan.classroom_name ? ' · ' + R.esc(scan.classroom_name) : '') + (scan.collector_type === 'driver' || scan.collector_type === 'taxi' ? ' · driver' : '') + ' · signed in ' + R.time(scan.confirmed_at) + (scan.source === 'parent_app' ? ' <span class="badge badge-sky" style="font-size:0.62rem">verified in app</span>' : '') + '</div></div>' +
             (scan.on_hold ? '<span class="badge badge-danger">Hold — blocked</span>' : '') +
@@ -220,7 +220,7 @@
       return '<div class="split"><div class="stack">' +
         R.card('On site now', learners.length ? '<div class="grid grid-2">' + learners.map((l) =>
           '<div class="row" style="gap:10px;padding:10px;border:1px solid var(--border-subtle);border-radius:12px">' +
-          '<div class="avatar">' + R.initials(l.first_name + ' ' + l.last_name) + '</div>' +
+          R.avatar(l, l.first_name + ' ' + l.last_name, { tip: l.first_name + ' ' + l.last_name + ' · in at ' + R.time(l.check_in_at) }) +
           '<div style="flex:1;min-width:0"><div class="strong" style="font-size:0.88rem">' + R.esc(l.first_name + ' ' + l.last_name) + '</div>' +
           '<div class="muted small">' + R.esc(l.classroom_name || '') + ' · in at ' + R.time(l.check_in_at) + (l.brought_by_name ? ' · with <strong>' + R.esc(l.brought_by_name) + '</strong>' + (l.brought_by_unverified ? ' <span style="color:var(--danger)">(unverified)</span>' : '') : '') + '</div></div>' +
           '<span class="dot"></span></div>').join('') + '</div>' : R.emptyState('No children checked in', 'Check children in from the register as they arrive.', '<a class="btn btn-secondary" href="#/app/learner-attendance">Open register</a>', 'users')) +

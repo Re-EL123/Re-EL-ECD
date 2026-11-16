@@ -20,10 +20,10 @@ async function buildMorning(ctx, opts) {
   const scoped = assigned.length > 0;
   const learnerRows = await ctx.db.many(
     scoped
-      ? `SELECT l.id, l.first_name, l.last_name, l.classroom_id, c.name AS classroom_name
+      ? `SELECT l.id, l.first_name, l.last_name, l.classroom_id, c.name AS classroom_name, l.profile_image_url
          FROM learners l LEFT JOIN classrooms c ON c.id = l.classroom_id
          WHERE l.organisation_id = $1 AND l.status = 'enrolled' AND l.classroom_id = ANY($2::uuid[])`
-      : `SELECT l.id, l.first_name, l.last_name, l.classroom_id, c.name AS classroom_name
+      : `SELECT l.id, l.first_name, l.last_name, l.classroom_id, c.name AS classroom_name, l.profile_image_url
          FROM learners l LEFT JOIN classrooms c ON c.id = l.classroom_id
          WHERE l.organisation_id = $1 AND l.status = 'enrolled'`,
     scoped ? [ctx.organisationId, assigned] : [ctx.organisationId]
@@ -49,19 +49,20 @@ async function buildMorning(ctx, opts) {
     name: row.first_name + ' ' + row.last_name,
     firstName: row.first_name,
     classroom: row.classroom_name || null,
+    avatarUrl: row.profile_image_url || null,
     reason: (presence.find((presenceRow) => presenceRow.learner_id === row.id) || {}).absence_reason || null
   }));
 
   const focusChildren = ids.length
     ? await ctx.db.many(
         `SELECT l.id, l.first_name, l.last_name, l.classroom_id, c.name AS classroom_name,
-                MAX(o.observation_date) AS last_observation
+                l.profile_image_url, MAX(o.observation_date) AS last_observation
          FROM learners l
          LEFT JOIN classrooms c ON c.id = l.classroom_id
          LEFT JOIN learner_observations o
            ON o.learner_id = l.id AND o.assessment_status IN ('published','amended')
          WHERE l.organisation_id = $1 AND l.id = ANY($2::uuid[])
-         GROUP BY l.id, l.first_name, l.last_name, l.classroom_id, c.name
+         GROUP BY l.id, l.first_name, l.last_name, l.classroom_id, c.name, l.profile_image_url
          HAVING MAX(o.observation_date) IS NULL OR MAX(o.observation_date) < CURRENT_DATE - interval '30 days'
          ORDER BY MAX(o.observation_date) ASC NULLS FIRST, l.first_name
          LIMIT 4`,
@@ -95,7 +96,8 @@ async function buildMorning(ctx, opts) {
     name: row.first_name + ' ' + row.last_name,
     firstName: row.first_name,
     classroom: row.classroom_name || null,
-    classroomId: row.classroom_id || null
+    classroomId: row.classroom_id || null,
+    avatarUrl: row.profile_image_url || null
   }));
 
   const momentsThisWeek = ids.length
@@ -198,7 +200,7 @@ async function buildMorning(ctx, opts) {
   const gateScans = ids.length
     ? await ctx.db.many(
         `SELECT gs.id, gs.collector_name, gs.collector_type, gs.confirmed_at, gs.source,
-                l.first_name, l.last_name, c.name AS classroom_name,
+                l.first_name, l.last_name, l.profile_image_url, c.name AS classroom_name,
                 (l.collection_hold_reason IS NOT NULL) AS on_hold
          FROM gate_scans gs JOIN learners l ON l.id = gs.learner_id
          LEFT JOIN classrooms c ON c.id = l.classroom_id
@@ -268,6 +270,7 @@ async function buildMorning(ctx, opts) {
       name: row.first_name + ' ' + row.last_name,
       firstName: row.first_name,
       classroom: row.classroom_name || null,
+      avatarUrl: row.profile_image_url || null,
       lastObservation: row.last_observation || null
     })),
     unfinished: {
@@ -293,6 +296,7 @@ async function buildMorning(ctx, opts) {
       childFirst: row.first_name,
       childName: row.first_name + ' ' + row.last_name,
       classroom: row.classroom_name || null,
+      avatarUrl: row.profile_image_url || null,
       collectorName: row.collector_name,
       collectorType: row.collector_type || 'family',
       source: row.source || 'gate_qr',
@@ -487,6 +491,7 @@ async function buildToday(ctx) {
       firstName: c.firstName,
       classroom: c.classroom,
       classroomId: c.classroomId,
+      avatarUrl: c.avatarUrl || null,
       reportId: r ? r.id : null,
       reportShared: r ? Boolean(r.shared_with_guardians) : false,
       reportStarted: Boolean(r),

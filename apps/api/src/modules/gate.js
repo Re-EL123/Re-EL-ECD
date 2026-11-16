@@ -278,7 +278,7 @@ function register(router) {
   router.get('/gate/scans', async (ctx) => {
     const pending = await ctx.db.many(
       `SELECT gs.id, gs.learner_id, gs.collector_name, gs.collector_type, gs.confirmed_at, gs.source,
-              l.first_name, l.last_name, l.learner_reference,
+              l.first_name, l.last_name, l.learner_reference, l.profile_image_url,
               (l.collection_hold_reason IS NOT NULL) AS on_hold,
               c.name AS classroom_name,
               a.attendance_status, a.check_out_at

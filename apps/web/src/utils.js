@@ -644,6 +644,47 @@
     return '<div class="avatar avatar-img">' + mediaHtml(url, kind, { compact: true, alt: label }) + '</div>';
   }
 
+  /**
+   * Tooltip attributes for any hoverable element. Renders the native title
+   * (accessibility/fallback) plus `data-tip`, which the stylesheet turns into
+   * a styled tooltip. Pass `below: true` for elements pinned to the top of the
+   * viewport (topbar) so the bubble drops down instead of clipping.
+   */
+  function tip(text, options) {
+    if (!text) return '';
+    return ' title="' + attr(text) + '" data-tip="' + attr(text) + '"';
+  }
+
+  /**
+   * Avatar everywhere applicable: prefers the person's photo
+   * (avatarUrl / avatar_url / profile_image_url / photo_url / logoUrl on the
+   * passed object, or a URL string), falls back to initials. Optional size
+   * ('xs' | 'lg' | pixel number), square shape, tone class and tooltip.
+   */
+  function avatarHtml(source, label, opts) {
+    const o = opts || {};
+    const cls = ['avatar'];
+    if (o.size === 'xs') cls.push('avatar-xs');
+    else if (o.size === 'lg') cls.push('avatar-lg');
+    if (o.square) cls.push('avatar-sq');
+    if (o.tone) cls.push(o.tone);
+    let style = '';
+    if (typeof o.size === 'number') {
+      style = ' style="width:' + o.size + 'px;height:' + o.size + 'px;flex-basis:' + o.size +
+        'px;font-size:' + Math.max(0.55, Math.round(o.size * 0.023) / 1.1) + 'rem"';
+    }
+    const tipAttrs = o.tip ? tip(o.tip, o) : '';
+    const name = label || (source && (source.displayName || source.display_name || source.name)) || '?';
+    const url = typeof source === 'string'
+      ? source
+      : (source && (source.avatarUrl || source.avatar_url || source.profile_image_url || source.photoUrl || source.photo_url || source.logoUrl)) || null;
+    if (url) {
+      return '<div class="' + cls.join(' ') + ' avatar-img"' + tipAttrs + style + '>' +
+        mediaHtml(url, 'image', { compact: true, alt: name }) + '</div>';
+    }
+    return '<div class="' + cls.join(' ') + '"' + tipAttrs + style + '>' + esc(initials(name)) + '</div>';
+  }
+
   function mediaList(value) {
     if (Array.isArray(value)) return value.filter(Boolean);
     if (!value) return [];
@@ -783,6 +824,8 @@
   Reel.kindForUrl = kindForUrl;
   Reel.mediaHtml = mediaHtml;
   Reel.mediaThumb = mediaThumb;
+  Reel.avatar = avatarHtml;
+  Reel.tip = tip;
   Reel.mediaList = mediaList;
   Reel.uploadMedia = uploadMedia;
   Reel.uploadFormFile = uploadFormFile;

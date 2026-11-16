@@ -165,7 +165,7 @@ function register(router) {
     const ids = await guardianLearnerIds(ctx);
     if (!ids.length) return { children: [], gateSlug: null, hasGateCode: false };
     const children = await ctx.db.many(
-      `SELECT l.id, l.first_name, l.last_name, c.name AS classroom_name,
+      `SELECT l.id, l.first_name, l.last_name, l.profile_image_url, c.name AS classroom_name,
               a.attendance_status, a.check_in_at, a.check_out_at,
               a.brought_by_name,
               gs.id AS pending_scan_id, gs.confirmed_at AS pending_since, gs.source AS pending_source

@@ -241,7 +241,7 @@
         ], { hint: 'Suspending or disabling an account revokes every active session immediately.' }) : '') +
         R.table({ rows, selectable: canManage, columns: [
           { label: 'User', render: (u) => '<div class="row" style="gap:9px">' +
-            '<span class="avatar avatar-xs">' + R.esc(R.initials ? R.initials(u.display_name) : (u.display_name || '?').slice(0, 1)) + '</span>' +
+            R.avatar(u, u.display_name, { size: 'xs', tip: u.display_name + ' · ' + u.email }) +
             '<span><span class="cell-strong">' + R.esc(u.display_name) + '</span><span class="cell-sub">' + R.esc(u.email) + '</span></span></div>' },
           { label: 'Status', render: (u) => '<span class="badge ' + statusTone(u.status) + '">' + R.esc(R.titleCase(u.status)) + '</span>' +
             (u.mfa_enabled ? ' <span class="badge badge-green">MFA</span>' : '') },

@@ -2068,3 +2068,83 @@ a.crumb:hover { color: var(--text-strong); background: var(--surface-2); text-de
 @media (max-width: 720px) {
   .crumbs { display: none; }
 }
+
+/* --- Avatars everywhere applicable --------------------------------------- */
+.avatar-sq { border-radius: 12px; }
+.avatar-sq.avatar-img { border-radius: 12px; }
+.avatar-stack:hover .avatar { margin-left: -4px; transition: margin-left 0.25s cubic-bezier(0.3, 0.7, 0.3, 1); }
+
+/* --- Tooltips (CSS-only via data-tip) ------------------------------------- */
+[data-tip] { position: relative; }
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute; bottom: calc(100% + 9px); left: 50%;
+  transform: translateX(-50%) translateY(4px) scale(0.94);
+  background: #22301f; color: #fff;
+  padding: 6px 10px; border-radius: 9px;
+  font-size: 0.72rem; font-weight: 500; line-height: 1.25;
+  white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis;
+  box-shadow: 0 10px 28px -12px rgba(15, 25, 17, 0.5);
+  opacity: 0; pointer-events: none; z-index: 90;
+  transition: opacity 0.16s ease 0.3s, transform 0.24s cubic-bezier(0.3, 0.7, 0.3, 1) 0.3s;
+}
+[data-tip]::before {
+  content: ''; position: absolute; bottom: calc(100% + 3px); left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  border: 6px solid transparent; border-top-color: #22301f; border-bottom: 0;
+  opacity: 0; pointer-events: none; z-index: 90;
+  transition: opacity 0.16s ease 0.3s, transform 0.24s cubic-bezier(0.3, 0.7, 0.3, 1) 0.3s;
+}
+[data-tip]:hover::after, [data-tip]:focus-visible::after,
+[data-tip]:hover::before, [data-tip]:focus-visible::before {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+[data-tip]:focus-visible { outline: 2px solid var(--reel-green-500); outline-offset: 2px; }
+[data-tip].tip-below::after {
+  bottom: auto; top: calc(100% + 9px);
+  transform: translateX(-50%) translateY(-4px) scale(0.94);
+}
+[data-tip].tip-below::before {
+  bottom: auto; top: calc(100% + 3px);
+  transform: translateX(-50%) translateY(-4px);
+  border: 6px solid transparent; border-bottom-color: #22301f; border-top: 0;
+}
+[data-tip].tip-below:hover::after, [data-tip].tip-below:focus-visible::after,
+[data-tip].tip-below:hover::before, [data-tip].tip-below:focus-visible::before {
+  transform: translateX(-50%) translateY(0);
+}
+[data-theme="dark"] [data-tip]::after { background: #3d4a3f; box-shadow: 0 10px 28px -12px rgba(0, 0, 0, 0.7); }
+[data-theme="dark"] [data-tip]::before { border-top-color: #3d4a3f; }
+[data-theme="dark"] [data-tip].tip-below::before { border-bottom-color: #3d4a3f; border-top: 0; }
+@media (hover: none) {
+  [data-tip]::after, [data-tip]::before { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-tip]::after, [data-tip]::before { transition: none !important; }
+}
+@media print {
+  [data-tip]::after, [data-tip]::before { display: none !important; }
+}
+
+/* --- Today: suggested next steps ------------------------------------------ */
+.today-suggest .card-head h3 { display: inline-flex; align-items: center; gap: 8px; }
+.suggest-row {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+  background: var(--surface-2); border-radius: 12px;
+  transition: transform 0.35s cubic-bezier(0.3, 0.7, 0.3, 1), box-shadow 0.35s cubic-bezier(0.3, 0.7, 0.3, 1);
+}
+.suggest-row:hover { transform: translateX(5px); box-shadow: var(--shadow-sm); }
+.suggest-ico {
+  width: 34px; height: 34px; border-radius: 10px; display: inline-grid; place-items: center;
+  flex: 0 0 34px; background: var(--reel-green-100); color: var(--reel-green-800);
+}
+.suggest-ico svg { width: 16px; height: 16px; }
+.suggest-ico.suggest-sun { background: var(--reel-sun-200); color: var(--reel-sun-700); }
+.suggest-ico.suggest-clay { background: var(--reel-clay-100); color: var(--reel-clay-700); }
+.suggest-ico.suggest-sky { background: var(--reel-sky-100); color: var(--reel-sky-700); }
+.suggest-ico.suggest-ok { background: var(--reel-green-100); color: var(--reel-green-800); }
+@media (prefers-reduced-motion: reduce) {
+  .suggest-row { transition: none !important; }
+  .suggest-row:hover { transform: none; }
+}

@@ -178,6 +178,7 @@
       );
 
       // Manager dashboard (alerts, KPIs, charts, lists) — merged from Overview
+      html += this.renderSuggestions(ctx, page);
       if (page.canDashboard) {
         html += this.renderDashboard(ctx, page);
       }
@@ -193,6 +194,44 @@
 
       html += '</div>';
       return html;
+    },
+
+    renderSuggestions(ctx, page) {
+      const t = page.today || {};
+      const timeline = t.timeline || [];
+      const dr = t.dailyReports || { missing: 0, draft: 0, children: [] };
+      const gate = t.gateScans || [];
+      const unverified = t.unverifiedDropoffs || [];
+      const unmarked = (t.unmarkedIds || []).length;
+      const focus = t.focusChildren || [];
+      const tasksDue = ((t.unfinished || {}).tasksDueToday) || 0;
+
+      const suggestions = [];
+      if (gate.length) suggestions.push({ icon: 'door-open', tone: 'sun', text: R.number(gate.length) + (gate.length === 1 ? ' collector is' : ' collectors are') + ' waiting at the gate', foot: gate.slice(0, 2).map((g) => g.collectorName + ' for ' + g.childFirst).join(' · ') + (gate.length > 2 ? '…' : ''), href: '#/app/learner-attendance', action: 'Release' });
+      if (unverified.length) suggestions.push({ icon: 'user-plus', tone: 'clay', text: 'Verify ' + R.number(unverified.length) + ' unverified drop-off' + (unverified.length === 1 ? '' : 's'), foot: unverified.map((d) => d.childFirst + ' with ' + d.broughtByName).join(' · '), href: '#/app/learner-attendance', action: 'Fix' });
+      if (unmarked) suggestions.push({ icon: 'clipboard-check', tone: 'sun', text: 'Finish marking the register', foot: R.number(unmarked) + (unmarked === 1 ? ' child' : ' children') + ' not marked yet', href: '#/app/learner-attendance', action: 'Open register' });
+      if (dr.missing) suggestions.push({ icon: 'file-text', tone: 'clay', text: 'Write ' + R.number(dr.missing) + ' daily report' + (dr.missing === 1 ? '' : 's'), foot: 'Guardians are waiting for today’s news', go: 'today-wrapup', action: 'Wrap up' });
+      else if (dr.draft) suggestions.push({ icon: 'send', tone: 'sun', text: 'Share ' + R.number(dr.draft) + ' draft report' + (dr.draft === 1 ? '' : 's'), foot: 'Drafts don’t reach guardians until shared', go: 'today-wrapup', action: 'Wrap up' });
+      if (focus.length) suggestions.push({ icon: 'eye', tone: 'sky', text: 'Capture a moment for ' + esc(focus[0].firstName || focus[0].name), foot: 'No fresh observation in a while', click: 'openNamedModal(\'quickMomentFor\',\'' + R.attr(focus[0].id) + '\')', action: 'Quick moment' });
+      if (tasksDue) suggestions.push({ icon: 'list-checks', tone: 'clay', text: 'Complete ' + R.number(tasksDue) + (tasksDue === 1 ? ' task' : ' tasks') + ' due today', foot: 'Due by end of day', href: '#/app/tasks', action: 'Open tasks' });
+      if (!timeline.length && (page.teachingPerms || t.expected)) suggestions.push({ icon: 'calendar-days', tone: 'sky', text: 'Nothing is scheduled yet today', foot: 'Plan the day so the team knows what’s next', href: '#/app/calendar', action: 'Plan the day' });
+
+      if (!suggestions.length) {
+        if (!(t.expected || page.teachingPerms)) return '';
+        return '<div class="card glass section today-suggest anim-in"><div class="row" style="gap:10px;align-items:center;padding:6px 2px">' +
+          '<span class="suggest-ico suggest-ok">' + R.icon('check-circle') + '</span>' +
+          '<div style="flex:1"><div class="strong" style="font-size:0.9rem">All caught up</div><div class="muted small">Nothing needs your attention right now — nice work.</div></div></div></div>';
+      }
+
+      return '<div class="card glass section today-suggest anim-in"><div class="card-head"><h3>' + R.icon('sparkles') + ' Suggested next steps</h3><span class="muted small">Picked up from today’s register, reports and tasks</span></div>' +
+        '<div class="stack" style="gap:8px">' + suggestions.slice(0, 5).map((s) =>
+          '<div class="suggest-row">' +
+            '<span class="suggest-ico suggest-' + esc(s.tone) + '">' + R.icon(s.icon) + '</span>' +
+            '<div style="flex:1;min-width:0"><div class="strong" style="font-size:0.9rem">' + esc(s.text) + '</div>' + (s.foot ? '<div class="muted small">' + esc(s.foot) + '</div>' : '') + '</div>' +
+            (s.href
+              ? '<a class="btn btn-sm btn-secondary" href="' + R.attr(s.href) + '">' + esc(s.action) + ' ' + R.icon('arrow-right') + '</a>'
+              : '<button class="btn btn-sm btn-secondary" @click="' + R.attr(s.click) + '">' + esc(s.action) + '</button>') +
+          '</div>').join('') + '</div></div>';
     },
 
     renderDashboard(ctx, page) {
@@ -295,7 +334,7 @@
       if (!focus.length) return '';
       return '<div class="card glass section anim-in"><div class="card-head"><h3>' + R.icon('eye') + ' Observe today</h3><span class="muted small">Children who could use a fresh observation</span></div>' +
         '<div class="stack">' + focus.map((c) => '<div class="row" style="gap:10px;justify-content:space-between;padding:8px 10px;background:var(--surface-2);border-radius:12px">' +
-          '<div class="row" style="gap:10px;min-width:0"><span class="avatar avatar-xs">' + esc((c.firstName || c.name || '?')[0] || '?') + '</span>' +
+          '<div class="row" style="gap:10px;min-width:0">' + R.avatar(c, c.name, { size: 'xs', tip: c.name + ' · ' + (c.lastObservation ? 'last observed ' + R.date(c.lastObservation) : 'no observation yet') }) +
           '<div style="min-width:0"><div class="strong" style="font-size:0.88rem">' + esc(c.name) + '</div><div class="muted small">' + esc(c.classroom || 'Classroom') + (c.lastObservation ? ' · last ' + R.date(c.lastObservation) : ' · no observation yet') + '</div></div></div>' +
           '<div class="btn-group"><button class="btn btn-sm btn-secondary" @click="openNamedModal(\'quickMomentFor\',\'' + R.attr(c.id) + '\')">' + R.icon('camera') + ' Moment</button>' +
           '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'observationFor\',\'' + R.attr(c.id) + '\')">' + R.icon('plus') + ' Observe</button></div></div>').join('') + '</div></div>';
@@ -442,7 +481,7 @@
       const tasksDue = ((t.unfinished || {}).tasksDueToday) || 0;
       const unopened = t.unopened || [];
 
-      let html = '<div class="card glass section today-wrapup anim-in"><div class="card-head"><h3>' + R.icon('sunset') + ' Wrap up the day</h3><span class="muted small">Close the loop before you go</span></div>';
+      let html = '<div class="card glass section today-wrapup anim-in" id="today-wrapup"><div class="card-head"><h3>' + R.icon('sunset') + ' Wrap up the day</h3><span class="muted small">Close the loop before you go</span></div>';
       html += '<div class="grid grid-3" style="margin-bottom:14px">' +
         R.statCard({ label: 'Unfinished blocks', value: R.number(unfinished.length), icon: 'clock', tone: unfinished.length ? 'sun' : 'green', foot: unfinished.length ? 'Not yet completed' : 'All done' }) +
         R.statCard({ label: 'Daily reports', value: R.number(dr.missing) + ' / ' + R.number(dr.presentCount), icon: 'file-text', tone: dr.missing ? 'clay' : 'green', foot: dr.missing ? (dr.missing + ' still to write') : (dr.draft ? (dr.draft + ' draft to share') : 'All present children covered') }) +
@@ -465,8 +504,8 @@
               : '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'dailyReport\',\'' + R.attr(c.id) + '\')">' + R.icon('plus') + ' Write report</button>';
             const hint = c.todayActivities && c.todayActivities.length ? '<div class="muted small">Today: ' + esc(R.truncate(c.todayActivities.join(', '), 70)) + '</div>' : '';
             return '<div class="row" style="gap:10px;justify-content:space-between;padding:8px 10px;background:var(--surface-2);border-radius:12px;align-items:flex-start">' +
-              '<div class="row" style="gap:10px;min-width:0"><span class="avatar avatar-xs">' + esc((c.firstName || c.name || '?')[0] || '?') + '</span>' +
-              '<div style="min-width:0"><div class="strong" style="font-size:0.88rem">' + esc(c.name) + ' ' + badge + '</div><div class="muted small">' + esc(c.classroom || 'Classroom') + '</div>' + hint + '</div></div>' +
+              R.avatar(c, c.name, { size: 'xs', tip: c.name + ' · ' + (c.reportId ? (c.reportShared ? 'report shared' : 'draft report') : 'no report yet') }) +
+              '<div style="min-width:0"><div class="strong" style="font-size:0.88rem">' + esc(c.name) + ' ' + badge + '</div><div class="muted small">' + esc(c.classroom || 'Classroom') + '</div>' + hint + '</div>' +
               '<div class="btn-group">' + btn + '</div></div>';
           }).join('') + '</div>';
       } else {
