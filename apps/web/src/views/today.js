@@ -53,8 +53,15 @@
   }
 
   function statPill(label, value, icon) {
-    return '<div class="row" style="gap:8px;align-items:center;background:var(--surface-2);padding:8px 12px;border-radius:12px">' +
+    return '<div class="row today-pill" style="gap:8px;align-items:center;padding:8px 12px;border-radius:12px">' +
       R.icon(icon) + '<div><div class="strong" style="font-size:0.95rem;line-height:1.1">' + esc(value) + '</div><div class="muted small">' + esc(label) + '</div></div></div>';
+  }
+
+  function timeOfDay(now) {
+    const h = (now instanceof Date ? now : new Date()).getHours();
+    if (h < 12) return { greeting: 'Good morning', label: 'Morning', icon: 'sunrise', tone: 'A calm start to the day.' };
+    if (h < 17) return { greeting: 'Good afternoon', label: 'Afternoon', icon: 'sun', tone: 'Keep the momentum going.' };
+    return { greeting: 'Good evening', label: 'Evening', icon: 'sunset', tone: 'A good moment to wrap up.' };
   }
 
   V.today = {
@@ -97,6 +104,8 @@
       const timeline = t.timeline || [];
       const now = new Date(page.nowIso || Date.now());
       const nowMs = now.getTime();
+      const tod = timeOfDay(now);
+      const firstName = (ctx.session && ctx.session.user && ctx.session.user.displayName ? String(ctx.session.user.displayName).split(' ')[0] : 'there');
       const next = timeline.find((b) => b.status === 'scheduled' || b.status === 'in_progress') || null;
       const nextIdx = next ? timeline.indexOf(next) : -1;
 
@@ -121,12 +130,37 @@
         });
       }
 
+      // Teaching day charts (rings & progress)
+      const rings = t.rings || {};
+      const hasDayData = (t.expected || 0) > 0 || page.teachingPerms;
+      if (hasDayData) {
+        const present = Number(t.present || 0);
+        const away = Math.max(0, Number(t.expected || 0) - present);
+        ctx.chart('today-register', 'doughnut', {
+          labels: ['Present', 'Away / not in yet'],
+          datasets: [{ data: [present, away || (present ? 0 : 1)], backgroundColor: ['#3A7D44', '#E8E3D8'], borderWidth: 0 }]
+        }, { cutout: '70%' });
+        ctx.chart('today-progress', 'bar', {
+          labels: ['Register', 'Observations', 'Daily reports'],
+          datasets: [{ label: 'Progress %', data: [Number(rings.registerPct || 0), Number(rings.observationsPublishedPct || 0), Number(rings.dailyReportsPct || 0)], backgroundColor: ['#3D8FAE', '#81599B', '#E89A2B'], borderRadius: 8, barThickness: 22 }]
+        }, { scales: { y: { beginAtZero: true, max: 100, ticks: { callback: (v) => v + '%' } } }, plugins: { legend: { display: false } } });
+        const doneBlocks = timeline.filter((b) => b.status === 'completed').length;
+        const inProg = timeline.filter((b) => b.status === 'in_progress').length;
+        const remaining = Math.max(0, timeline.length - doneBlocks - inProg);
+        ctx.chart('today-blocks', 'doughnut', {
+          labels: ['Completed', 'In progress', 'Remaining'],
+          datasets: [{ data: [doneBlocks, inProg, remaining || (timeline.length ? 0 : 1)], backgroundColor: ['#3A7D44', '#E89A2B', '#E8E3D8'], borderWidth: 0 }]
+        }, { cutout: '68%' });
+      }
+
       const headerSub = timeline.length
         ? (next ? ('Up next: ' + next.title + ' at ' + time(next.startsAt) + '.') : 'All planned blocks are complete — nice work.')
         : (page.canDashboard ? 'Your centre at a glance for ' + R.date(page.date) + '.' : 'Nothing scheduled on the calendar yet. Schedule your day and it will appear here.');
 
+      const timeLine = '<span class="today-time-badge">' + R.icon(tod.icon) + ' ' + esc(tod.label) + ' · ' + R.time(now.toISOString()) + '</span>';
+
       let html = '<div class="today-wrap" id="today-root">';
-      html += R.pageHead('Today', headerSub,
+      html += R.pageHead(tod.greeting + ', ' + esc(firstName), headerSub + ' ' + esc(tod.tone) + '<div style="margin-top:6px">' + timeLine + ' · ' + R.date(page.date) + '</div>',
         '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'quickMoment\')">' + R.icon('camera') + ' Quick moment</button>' +
         '<button class="btn btn-secondary btn-sm" onclick="window.print()">' + R.icon('printer') + ' Prep list</button>' +
         (page.canDashboard && ctx.has('learners.create.daycare') ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'learner\')">' + R.icon('user-plus') + ' Add learner</button>' : '') +
@@ -138,8 +172,9 @@
         html += this.renderDashboard(ctx, page);
       }
 
-      // Teaching day: people/context + timeline + wrap-up
+      // Teaching day: people/context + insights + timeline + wrap-up
       html += this.renderPeopleStrip(ctx, page);
+      html += this.renderInsights(ctx, page);
       html += this.renderFocus(ctx, page);
       html += this.renderUpNext(ctx, page, next);
       html += this.renderTimeline(ctx, page, timeline, nextIdx, nowMs);
@@ -195,7 +230,7 @@
       const unverified = t.unverifiedDropoffs || [];
       const gate = t.gateScans || [];
       const expected = t.expected || 0;
-      return '<div class="card today-strip section">' +
+      return '<div class="card glass today-strip section anim-in">' +
         '<div class="today-strip-stats">' +
           statPill('Present', R.number(t.present || 0) + ' / ' + R.number(expected), 'user-check') +
           statPill('Absent', R.number(absentees.length), 'user-x') +
@@ -220,10 +255,35 @@
         '</div>';
     },
 
+    renderInsights(ctx, page) {
+      const t = page.today || {};
+      const timeline = t.timeline || [];
+      const rings = t.rings || {};
+      const dr = t.dailyReports || { presentCount: 0, missing: 0, draft: 0 };
+      const doneBlocks = timeline.filter((b) => b.status === 'completed').length;
+      const moments = t.moments || { children: [], streak: 0 };
+      const momentsDone = (moments.children || []).filter((c) => c.done).length;
+      if (!(t.expected || 0) && !page.teachingPerms && !timeline.length) return '';
+      return '<div class="grid grid-3 section today-insights">' +
+        R.card('Classroom now', '<div style="position:relative;height:190px"><canvas id="today-register"></canvas></div>' +
+          '<div class="kpi-list" style="margin-top:8px">' +
+            '<div class="kpi-row"><span class="kpi-label">Present</span><span class="kpi-value">' + R.number(t.present || 0) + ' / ' + R.number(t.expected || 0) + '</span></div>' +
+            '<div class="kpi-row"><span class="kpi-label">Recorded</span><span class="kpi-value">' + R.percent(t.registerPct || 0) + '</span></div>' +
+          '</div>') +
+        R.card('Today’s progress', '<div style="position:relative;height:190px"><canvas id="today-progress"></canvas></div>' +
+          '<div class="muted small" style="margin-top:8px">' + esc(rings.label || 'This month') + ' · observations ' + R.percent(rings.observationsPublishedPct || 0) + ' · reports ' + R.percent(rings.dailyReportsPct || 0) + '</div>') +
+        R.card('Blocks & moments', '<div style="position:relative;height:190px"><canvas id="today-blocks"></canvas></div>' +
+          '<div class="kpi-list" style="margin-top:8px">' +
+            '<div class="kpi-row"><span class="kpi-label">Blocks completed</span><span class="kpi-value">' + R.number(doneBlocks) + ' / ' + R.number(timeline.length) + '</span></div>' +
+            '<div class="kpi-row"><span class="kpi-label">Moments this week</span><span class="kpi-value">' + R.number(momentsDone) + ' / ' + R.number((moments.children || []).length) + (moments.streak ? ' · ' + R.number(moments.streak) + ' wk streak' : '') + '</span></div>' +
+          '</div>') +
+        '</div>';
+    },
+
     renderFocus(ctx, page) {
       const focus = ((page.today || {}).focusChildren) || [];
       if (!focus.length) return '';
-      return '<div class="card section"><div class="card-head"><h3>' + R.icon('eye') + ' Observe today</h3><span class="muted small">Children who could use a fresh observation</span></div>' +
+      return '<div class="card glass section anim-in"><div class="card-head"><h3>' + R.icon('eye') + ' Observe today</h3><span class="muted small">Children who could use a fresh observation</span></div>' +
         '<div class="stack">' + focus.map((c) => '<div class="row" style="gap:10px;justify-content:space-between;padding:8px 10px;background:var(--surface-2);border-radius:12px">' +
           '<div class="row" style="gap:10px;min-width:0"><span class="avatar avatar-xs">' + esc((c.firstName || c.name || '?')[0] || '?') + '</span>' +
           '<div style="min-width:0"><div class="strong" style="font-size:0.88rem">' + esc(c.name) + '</div><div class="muted small">' + esc(c.classroom || 'Classroom') + (c.lastObservation ? ' · last ' + R.date(c.lastObservation) : ' · no observation yet') + '</div></div></div>' +
@@ -240,7 +300,7 @@
       else if (mins <= 0) nudge = 'It’s time — start this block when you’re ready.';
       else if (mins <= 10) nudge = 'Starting in ' + mins + ' min — time for a smooth transition.';
       else nudge = 'Up next at ' + time(next.startsAt) + '.';
-      return '<div class="card section today-next" style="border-left:4px solid var(--reel-green-500)"><div class="row" style="justify-content:space-between;gap:12px;align-items:flex-start">' +
+      return '<div class="card glass today-next section anim-in pulse-now" style="border-left:4px solid var(--reel-green-500)"><div class="row" style="justify-content:space-between;gap:12px;align-items:flex-start">' +
         '<div><div class="muted small">Up next</div><div class="strong" style="font-size:1.05rem">' + esc(next.title) + '</div>' +
         '<div class="muted small">' + esc(nudge) + (next.classroom ? ' · ' + esc(next.classroom) : '') + '</div></div>' +
         '<div class="btn-group">' +
@@ -285,7 +345,7 @@
       const border = b.status === 'completed' ? 'var(--reel-green-500)' : b.status === 'in_progress' ? 'var(--reel-sun-500)' : (isNext ? 'var(--reel-sky-500)' : 'var(--border-subtle)');
       const bg = b.status === 'completed' ? 'rgba(58,125,68,0.04)' : (current ? 'rgba(232,154,43,0.06)' : 'var(--surface-1)');
 
-      let h = '<div class="card today-block" data-block="' + R.attr(b.id) + '" style="border-left:4px solid ' + border + ';background:' + bg + '">';
+      let h = '<div class="card glass today-block anim-in" data-block="' + R.attr(b.id) + '" style="border-left:4px solid ' + border + ';--block-bg:' + bg + '">';
       h += '<div class="row" style="justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">' +
         '<div style="min-width:0;flex:1">' +
           '<div class="row" style="gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px">' +
@@ -369,7 +429,7 @@
       const tasksDue = ((t.unfinished || {}).tasksDueToday) || 0;
       const unopened = t.unopened || [];
 
-      let html = '<div class="card section today-wrapup"><div class="card-head"><h3>' + R.icon('sunset') + ' Wrap up the day</h3><span class="muted small">Close the loop before you go</span></div>';
+      let html = '<div class="card glass section today-wrapup anim-in"><div class="card-head"><h3>' + R.icon('sunset') + ' Wrap up the day</h3><span class="muted small">Close the loop before you go</span></div>';
       html += '<div class="grid grid-3" style="margin-bottom:14px">' +
         R.statCard({ label: 'Unfinished blocks', value: R.number(unfinished.length), icon: 'clock', tone: unfinished.length ? 'sun' : 'green', foot: unfinished.length ? 'Not yet completed' : 'All done' }) +
         R.statCard({ label: 'Daily reports', value: R.number(dr.missing) + ' / ' + R.number(dr.presentCount), icon: 'file-text', tone: dr.missing ? 'clay' : 'green', foot: dr.missing ? (dr.missing + ' still to write') : (dr.draft ? (dr.draft + ' draft to share') : 'All present children covered') }) +
@@ -424,7 +484,7 @@
           if (!seen.has(k)) { seen.add(k); materials.push(m); }
         });
       });
-      let h = '<div class="card section today-prep" id="today-prep"><div class="card-head"><h3>' + R.icon('clipboard-list') + ' Prep list for today</h3><span class="muted small">Materials, safety notes and schedule — handy to print</span></div>';
+      let h = '<div class="card glass section today-prep anim-in" id="today-prep"><div class="card-head"><h3>' + R.icon('clipboard-list') + ' Prep list for today</h3><span class="muted small">Materials, safety notes and schedule — handy to print</span></div>';
       h += '<div class="grid grid-2" style="gap:16px"><div><div class="strong small" style="margin-bottom:6px">Schedule</div>' +
         (timeline.length ? '<ol style="margin:0;padding-left:18px">' + timeline.map((b) => '<li style="margin-bottom:6px"><strong>' + esc(time(b.startsAt)) + '</strong> — ' + esc(b.title) + (b.classroom ? ' <span class="muted">(' + esc(b.classroom) + ')</span>' : '') + '</li>').join('') + '</ol>' : '<p class="muted small">No blocks scheduled.</p>') +
         '</div><div><div class="strong small" style="margin-bottom:6px">Materials to gather</div>' +
