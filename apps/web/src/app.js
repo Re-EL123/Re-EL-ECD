@@ -229,6 +229,7 @@
       denied: false,
       suspendedWorkspace: false,
       billingLocked: false,
+      crumbs: [],
       tab: null,
       filters: {},
       sidebarOpen: false,
@@ -579,6 +580,68 @@
         return '/app/today';
       },
 
+      /**
+       * Morph breadcrumb trail: workspace/portal › section › current page.
+       * Parent crumbs are links; the current page is the highlighted crumb.
+       */
+      computeCrumbs(route) {
+        if (!route || route.area === 'public') return [];
+        const groups = NAV[route.area] || [];
+        const home = route.area === 'app'
+          ? { label: this.brandName || 'Workspace', path: '/app/today' }
+          : route.area === 'platform'
+            ? { label: 'Platform', path: '/platform/overview' }
+            : route.area === 'parent'
+              ? { label: 'Parent portal', path: '/parent/overview' }
+              : null;
+        let match = null;
+        for (const group of groups) {
+          const item = group.items.find((entry) => entry.path === route.path);
+          if (item) { match = { group, item }; break; }
+        }
+        // Detail pages (for example /app/learners/:id) belong to the section
+        // whose landing route matches the first two path segments.
+        if (!match && route.area && groups.length) {
+          const prefix = '/' + String(route.path || '').split('/').filter(Boolean).slice(0, 2).join('/');
+          for (const group of groups) {
+            const item = group.items.find((entry) => prefix === entry.path || prefix.startsWith(entry.path + '/'));
+            if (item) { match = { group, item }; break; }
+          }
+        }
+        const crumbs = [];
+        if (home && (!match || match.item.path !== home.path)) crumbs.push(home);
+        if (match) {
+          const landing = match.group.items[0].path;
+          if (match.item.path !== landing) crumbs.push({ label: match.group.label, path: landing });
+          if (route.path !== match.item.path) {
+            crumbs.push({ label: match.item.label, path: match.item.path });
+            crumbs.push({ label: route.title, path: null });
+          } else {
+            crumbs.push({ label: match.item.label, path: null });
+          }
+        } else {
+          crumbs.push({ label: route.title, path: null });
+        }
+        return crumbs;
+      },
+
+      /** Position the morph highlight behind the current crumb. */
+      updateCrumbHighlight() {
+        const nav = document.querySelector('.crumbs');
+        if (!nav) return;
+        const current = nav.querySelector('.crumb.current');
+        if (!current || current.offsetParent === null) {
+          nav.style.removeProperty('--crumb-left');
+          nav.style.removeProperty('--crumb-width');
+          return;
+        }
+        const navRect = nav.getBoundingClientRect();
+        const rect = current.getBoundingClientRect();
+        nav.style.setProperty('--crumb-left', Math.max(0, rect.left - navRect.left) + 'px');
+        nav.style.setProperty('--crumb-width', Math.max(0, rect.width) + 'px');
+        nav.classList.add('is-measured');
+      },
+
       async switchOrganisation(id) {
         if (!id || id === this.activeOrganisationId) return;
         this.activeOrganisationId = id;
@@ -629,6 +692,7 @@
         const matched = matchRoute(path);
         if (!matched) {
           if (Reel.resetSeo) Reel.resetSeo();
+          this.crumbs = [];
           this.denied = false;
           this.suspendedWorkspace = false;
           this.billingLocked = false;
@@ -654,6 +718,7 @@
         this.params = matched.params;
         this.area = matched.route.area;
         this.pageTitle = matched.route.title;
+        this.crumbs = this.computeCrumbs(matched.route);
         if (query.tab) this.tab = query.tab;
 
         if (matched.route.area === 'parent' && this.session) {
@@ -814,9 +879,22 @@
         if (window.gsap && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
           const root = document.getElementById('view-root');
           if (root) {
-            window.gsap.fromTo(root.querySelectorAll('.card, .page-head, .table-wrap'), { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.32, stagger: 0.035, ease: 'power2.out', overwrite: true });
+            // Bloom entrance: widgets grow out of a soft blur into place.
+            const targets = root.querySelectorAll('.card, .stat-card, .today-pill, .page-head, .table-wrap, .theme-card');
+            window.gsap.fromTo(targets, { opacity: 0, y: 14, scale: 0.955, filter: 'blur(7px)' },
+              { opacity: 1, y: 0, scale: 1, filter: 'blur(0px)', duration: 0.5, stagger: 0.045, ease: 'power2.out', overwrite: true, clearProps: 'filter,transform' });
+          }
+        } else {
+          const root = document.getElementById('view-root');
+          if (root && !window.gsap) {
+            const targets = root.querySelectorAll('.card, .stat-card, .today-pill, .page-head, .table-wrap, .theme-card');
+            targets.forEach((el, index) => {
+              el.classList.add('bloom-in');
+              el.style.animationDelay = Math.min(index * 45, 480) + 'ms';
+            });
           }
         }
+        this.$nextTick(() => this.updateCrumbHighlight());
         this.refreshUnread();
       },
 

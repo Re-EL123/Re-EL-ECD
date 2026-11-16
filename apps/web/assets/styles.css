@@ -1989,3 +1989,82 @@ img, video, canvas, svg { max-width: 100%; }
   .cal-day-card, .cal-dayview, .cal-week-wrap, .cal-grid-wrap { break-inside: avoid; }
   .cal-event { border: 1px solid #ccc !important; }
 }
+
+/* --- Liquid dots loader (page-level) ------------------------------------- */
+.liquid-dots { display: inline-flex; align-items: center; gap: 7px; height: 24px; }
+.liquid-dots i {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--reel-green-600);
+  transform-origin: center;
+  animation: liquid-dot 1.25s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+.liquid-dots i:nth-child(1) { background: var(--reel-green-600); }
+.liquid-dots i:nth-child(2) { animation-delay: 0.12s; background: var(--reel-green-500, var(--reel-green-600)); }
+.liquid-dots i:nth-child(3) { animation-delay: 0.24s; background: var(--reel-green-700, var(--reel-green-600)); }
+.liquid-dots i:nth-child(4) { animation-delay: 0.36s; background: var(--reel-green-500, var(--reel-green-600)); }
+.liquid-dots i:nth-child(5) { animation-delay: 0.48s; background: var(--reel-green-600); }
+@keyframes liquid-dot {
+  0%, 100% { transform: translateY(0) scale(1, 1); opacity: 0.5; }
+  25% { transform: translateY(-8px) scale(0.78, 1.24); opacity: 1; }
+  42% { transform: translateY(0) scale(1.22, 0.78); opacity: 0.95; }
+  58% { transform: translateY(4px) scale(0.86, 1.1); opacity: 0.8; }
+  74% { transform: translateY(0) scale(1.06, 0.94); opacity: 0.6; }
+}
+
+/* --- Morph breadcrumb ----------------------------------------------------- */
+.crumbs {
+  position: relative; display: flex; align-items: center; gap: 2px;
+  min-width: 0; max-width: 52vw; overflow: hidden; padding: 2px;
+  border-radius: 999px;
+}
+.crumb-glide {
+  position: absolute; top: 4px; bottom: 4px;
+  left: var(--crumb-left, 0px); width: var(--crumb-width, 0px);
+  border-radius: 999px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  opacity: 0; transition: left 0.34s cubic-bezier(0.3, 0.7, 0.3, 1), width 0.34s cubic-bezier(0.3, 0.7, 0.3, 1), opacity 0.2s ease;
+}
+.crumbs.is-measured .crumb-glide { opacity: 1; }
+.crumb-wrap { display: inline-flex; align-items: center; gap: 2px; min-width: 0; }
+.crumb {
+  position: relative; z-index: 1;
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 11px; border-radius: 999px;
+  font-size: 0.8rem; line-height: 1.2; white-space: nowrap;
+  color: var(--text-muted); text-decoration: none;
+  animation: crumb-in 0.3s cubic-bezier(0.3, 0.7, 0.3, 1) both;
+}
+a.crumb:hover { color: var(--text-strong); background: var(--surface-2); text-decoration: none; }
+.crumb.current { color: var(--text-strong); font-weight: 650; }
+.crumb-sep { display: inline-flex; color: var(--text-faint, var(--text-muted)); opacity: 0.6; flex: 0 0 auto; }
+.crumb-sep svg { width: 12px; height: 12px; }
+@keyframes crumb-in { from { opacity: 0; transform: translateY(5px) scale(0.94); } }
+@media (prefers-reduced-motion: reduce) {
+  .crumb { animation: none !important; }
+  .crumb-glide { transition: none !important; }
+}
+
+/* --- Bloom widgets -------------------------------------------------------- */
+.bloom-in { animation: bloom-in 0.5s cubic-bezier(0.3, 0.7, 0.3, 1) both; }
+@keyframes bloom-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.955); filter: blur(7px); }
+  to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+@media (hover: hover) and (pointer: fine) {
+  .card, .stat-card { transition: transform 0.25s ease, box-shadow 0.25s ease; }
+  .card:hover, .stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 34px -18px rgba(31, 50, 35, 0.28), var(--shadow-xs);
+  }
+  [data-theme="dark"] .card:hover, [data-theme="dark"] .stat-card:hover {
+    box-shadow: 0 14px 34px -18px rgba(0, 0, 0, 0.45), var(--shadow-xs);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bloom-in { animation: none !important; }
+  .card, .stat-card { transition: none !important; }
+}
+@media (max-width: 720px) {
+  .crumbs { display: none; }
+}
