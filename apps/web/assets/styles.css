@@ -1470,3 +1470,39 @@ img, video, canvas, svg { max-width: 100%; }
   .today-wrap .anim-in, .today-next.pulse-now { animation: none !important; }
   a[href]:after { content: ''; }
 }
+
+/* --- Interactive whiteboards -------------------------------------------- */
+.wb-toolbar-card { padding: 10px 12px; margin-bottom: 12px; }
+.wb-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.wb-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.wb-tool.active { background: var(--reel-green-700); color: var(--text-inverse); border-color: var(--reel-green-700); }
+.wb-color { display: inline-flex; align-items: center; }
+.wb-color input[type="color"] { width: 34px; height: 34px; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 2px; background: var(--surface-1); cursor: pointer; }
+.wb-select { min-height: 34px; height: 34px; padding: 4px 8px; font-size: 0.85rem; width: auto; }
+.wb-mathbar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-subtle); }
+.wb-math { min-width: 34px; padding: 4px 8px; font-family: "Segoe UI", Arial, sans-serif; }
+.wb-canvas-wrap { background: #fafbf8; }
+[data-theme="dark"] .wb-canvas-wrap { background: #1a241c; }
+.wb-canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+.wb-hint { position: absolute; left: 12px; bottom: 10px; background: var(--surface-glass-strong); padding: 4px 10px; border-radius: 999px; pointer-events: none; border: 1px solid var(--border-subtle); }
+@media (max-width: 700px) {
+  .wb-canvas-wrap { height: 60vh; min-height: 340px; }
+  .wb-toolbar { gap: 8px; }
+}
+
+/* --- Interactive slide add-ons in guide --------------------------------- */
+.guide-interactive { margin-top: 14px; padding: 14px; border: 1px solid var(--border-subtle); border-radius: 14px; background: var(--surface-glass-strong); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.guide-interactive h5 { margin: 0 0 6px; font-size: 1rem; }
+.interactive-options { display: grid; gap: 8px; margin: 10px 0; }
+.interactive-option { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--surface-1); cursor: pointer; transition: border-color .15s, background .15s; }
+.interactive-option:hover { border-color: var(--reel-green-400); background: var(--surface-2); }
+.interactive-option.selected { border-color: var(--reel-green-600); background: rgba(58,125,68,0.08); }
+.interactive-results { margin-top: 12px; display: grid; gap: 8px; }
+.result-row { display: grid; grid-template-columns: minmax(0,1fr) 1fr auto; gap: 10px; align-items: center; }
+.result-bar { height: 10px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.result-bar span { display: block; height: 100%; background: linear-gradient(90deg, var(--reel-green-500), var(--reel-sky-500)); border-radius: inherit; transition: width .3s ease; }
+.dragdrop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+.drag-item, .drop-target { padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--surface-1); }
+.drop-target { min-height: 48px; border-style: dashed; }
+.drop-target.filled { border-style: solid; background: rgba(58,125,68,0.06); }
+@media (max-width: 700px) { .dragdrop-grid { grid-template-columns: 1fr; } .result-row { grid-template-columns: 1fr; gap: 4px; } }

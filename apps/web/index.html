@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/styles.css?v=20261255">
+  <link rel="stylesheet" href="assets/styles.css?v=20261256">
   <link rel="icon" href="assets/branding/favicon-32.png" sizes="32x32" type="image/png">
   <link rel="icon" href="assets/branding/favicon-64.png" sizes="64x64" type="image/png">
   <link rel="manifest" href="manifest.webmanifest">
@@ -20,37 +20,38 @@
   <meta property="og:type" content="website">
   <!-- Vendor libraries are self-hosted: a blocked CDN must not stop the app booting. -->
   <!-- Icons are cosmetic: load them async so a slow request never delays boot. -->
-  <script src="vendor/lucide.min.js?v=20261255" async onload="if (window.lucide) window.lucide.createIcons()"></script>
-  <script src="vendor/gsap.min.js?v=20261255" defer></script>
-  <script src="vendor/chart.umd.min.js?v=20261255" defer></script>
+  <script src="vendor/lucide.min.js?v=20261256" async onload="if (window.lucide) window.lucide.createIcons()"></script>
+  <script src="vendor/gsap.min.js?v=20261256" defer></script>
+  <script src="vendor/chart.umd.min.js?v=20261256" defer></script>
   <!-- qr-code-styling 1.9.2 (MIT) - QR codes are generated locally in the browser -->
-  <script src="vendor/qr-code-styling.min.js?v=20261255" defer></script>
-  <script src="config.js?v=20261255"></script>
-  <script src="src/utils.js?v=20261255" defer></script>
-  <script src="src/views/public.js?v=20261255" defer></script>
-  <script src="src/views/platform.js?v=20261255" defer></script>
-  <script src="src/views/overview.js?v=20261255" defer></script>
-  <script src="src/views/pkid-drivers.js?v=20261255" defer></script>
-  <script src="src/views/gate.js?v=20261255" defer></script>
-  <script src="src/views/learners.js?v=20261255" defer></script>
-  <script src="src/views/admissions.js?v=20261255" defer></script>
-  <script src="src/views/curriculum.js?v=20261255" defer></script>
-  <script src="src/views/modules.js?v=20261255" defer></script>
-  <script src="src/views/assessments.js?v=20261255" defer></script>
-  <script src="src/views/attendance.js?v=20261255" defer></script>
-  <script src="src/views/staff.js?v=20261255" defer></script>
-  <script src="src/views/activity.js?v=20261255" defer></script>
-  <script src="src/views/forms.js?v=20261255" defer></script>
-  <script src="src/views/communications.js?v=20261255" defer></script>
-  <script src="src/views/finance.js?v=20261255" defer></script>
-  <script src="src/views/safety.js?v=20261255" defer></script>
-  <script src="src/views/operations.js?v=20261255" defer></script>
-  <script src="src/views/settings.js?v=20261255" defer></script>
-  <script src="src/views/parent.js?v=20261255" defer></script>
-  <script src="src/views/manuals.js?v=20261255" defer></script>
-  <script src="src/views/today.js?v=20261255" defer></script>
-  <script src="src/app.js?v=20261255" defer></script>
-  <script src="vendor/alpine.min.js?v=20261255" defer></script>
+  <script src="vendor/qr-code-styling.min.js?v=20261256" defer></script>
+  <script src="config.js?v=20261256"></script>
+  <script src="src/utils.js?v=20261256" defer></script>
+  <script src="src/views/public.js?v=20261256" defer></script>
+  <script src="src/views/platform.js?v=20261256" defer></script>
+  <script src="src/views/overview.js?v=20261256" defer></script>
+  <script src="src/views/pkid-drivers.js?v=20261256" defer></script>
+  <script src="src/views/gate.js?v=20261256" defer></script>
+  <script src="src/views/learners.js?v=20261256" defer></script>
+  <script src="src/views/admissions.js?v=20261256" defer></script>
+  <script src="src/views/curriculum.js?v=20261256" defer></script>
+  <script src="src/views/whiteboards.js?v=20261256" defer></script>
+  <script src="src/views/modules.js?v=20261256" defer></script>
+  <script src="src/views/assessments.js?v=20261256" defer></script>
+  <script src="src/views/attendance.js?v=20261256" defer></script>
+  <script src="src/views/staff.js?v=20261256" defer></script>
+  <script src="src/views/activity.js?v=20261256" defer></script>
+  <script src="src/views/forms.js?v=20261256" defer></script>
+  <script src="src/views/communications.js?v=20261256" defer></script>
+  <script src="src/views/finance.js?v=20261256" defer></script>
+  <script src="src/views/safety.js?v=20261256" defer></script>
+  <script src="src/views/operations.js?v=20261256" defer></script>
+  <script src="src/views/settings.js?v=20261256" defer></script>
+  <script src="src/views/parent.js?v=20261256" defer></script>
+  <script src="src/views/manuals.js?v=20261256" defer></script>
+  <script src="src/views/today.js?v=20261256" defer></script>
+  <script src="src/app.js?v=20261256" defer></script>
+  <script src="vendor/alpine.min.js?v=20261256" defer></script>
 </head>
 <body x-data="reelApp()" x-init="boot()" @keydown.window.escape="closeOverlays()" @keydown.window.k="if (($event.metaKey || $event.ctrlKey) && !$event.shiftKey) { $event.preventDefault(); openCommand(); }">
 
@@ -505,8 +506,95 @@
               <span class="muted small" x-show="step.duration_minutes" x-text="step.duration_minutes + ' min'"></span>
               <span class="muted small" x-text="'Step ' + (index + 1) + ' of ' + (guide ? guide.steps.length : 0)"></span>
             </div>
-            <h4 class="guide-step-title" x-text="step.title"></h4>
-            <p class="guide-body" x-text="step.body"></p>
+            <h4 class="guide-step-title" x-text="step.title || (guideInteractive(step).question || 'Interactive activity')"></h4>
+            <p class="guide-body" x-show="step.body" x-text="step.body"></p>
+
+            <!-- Dynamic slide add-ons: live questions, polls, drag-and-drop, whiteboard -->
+            <div class="guide-interactive" x-show="guideIsInteractive(step)">
+              <div class="row" style="justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
+                <h5 x-text="step.step_type === 'whiteboard' ? 'Interactive whiteboard' : (guideInteractive(step).question || step.title || 'Live activity')"></h5>
+                <div class="btn-group" x-show="step.step_type !== 'whiteboard'">
+                  <button type="button" class="btn btn-sm btn-primary" x-show="!guide.session" @click="guideStartSession()"><i data-lucide="radio"></i> Start live session</button>
+                  <span class="badge badge-green" x-show="guide.session && guide.session.status !== 'closed'">Live session active</span>
+                  <span class="badge badge-muted" x-show="guide.session && guide.session.status === 'closed'">Session closed</span>
+                  <button type="button" class="btn btn-sm btn-secondary" x-show="guide.session && guide.session.status !== 'closed'" @click="guideCloseSession()">Close</button>
+                </div>
+              </div>
+              <p class="muted small" x-show="step.step_type !== 'whiteboard' && !guide.session">Start a live session to collect responses and see results in real time.</p>
+
+              <!-- Poll / Multiple choice -->
+              <template x-if="step.step_type === 'poll' || step.step_type === 'mcq'">
+                <div>
+                  <div class="interactive-options">
+                    <template x-for="(opt, oi) in (guideInteractive(step).options || [])" :key="oi">
+                      <label class="interactive-option" :class="{ selected: guidePicked(step.id) == oi }" @click="guidePick(step.id, oi)">
+                        <input type="radio" :name="'step-' + step.id" :checked="guidePicked(step.id) == oi" @change="guidePick(step.id, oi)">
+                        <span x-text="typeof opt === 'string' ? opt : (opt.label || opt)"></span>
+                      </label>
+                    </template>
+                  </div>
+                  <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap" x-show="guide.session && guide.session.status !== 'closed'">
+                    <input class="input" style="max-width:220px" placeholder="Participant name" x-model="guide.participantName">
+                    <button type="button" class="btn btn-sm btn-primary" @click="guideSubmitResponse(step)"><i data-lucide="send"></i> Submit answer</button>
+                  </div>
+                  <div class="interactive-results" x-show="guideResultFor(step)">
+                    <div class="muted small"><strong>Live results</strong> · <span x-text="(guideResultFor(step).aggregate.total || 0) + ' response(s)'"></span></div>
+                    <template x-for="(opt, oi) in ((guideResultFor(step) || {}).aggregate || {}).options || []" :key="'r'+oi">
+                      <div class="result-row">
+                        <span x-text="opt"></span>
+                        <div class="result-bar"><span :style="{ width: (((guideResultFor(step).aggregate.counts || [])[oi] || 0) / Math.max(1, guideResultFor(step).aggregate.total || 1) * 100) + '%' }"></span></div>
+                        <span class="muted small" x-text="((guideResultFor(step).aggregate.counts || [])[oi] || 0)"></span>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </template>
+
+              <!-- Drag-and-drop activity -->
+              <template x-if="step.step_type === 'dragdrop'">
+                <div>
+                  <p class="muted small">Match each item to the correct target, then submit.</p>
+                  <div class="dragdrop-grid">
+                    <div>
+                      <div class="strong small" style="margin-bottom:6px">Items</div>
+                      <template x-for="(item, ii) in (guideInteractive(step).items || [])" :key="'i'+ii">
+                        <div class="drag-item" style="margin-bottom:8px">
+                          <div style="margin-bottom:6px" x-text="typeof item === 'string' ? item : (item.label || item)"></div>
+                          <select class="select" @change="guideSetPlacement(step.id, ii, $event.target.value)">
+                            <option value="">Place in…</option>
+                            <template x-for="(tgt, ti) in (guideInteractive(step).targets || [])" :key="'t'+ti">
+                              <option :value="ti" :selected="guidePlacement(step.id, ii) == ti" x-text="typeof tgt === 'string' ? tgt : (tgt.label || tgt)"></option>
+                            </template>
+                          </select>
+                        </div>
+                      </template>
+                    </div>
+                    <div>
+                      <div class="strong small" style="margin-bottom:6px">Targets</div>
+                      <template x-for="(tgt, ti) in (guideInteractive(step).targets || [])" :key="'tg'+ti">
+                        <div class="drop-target" style="margin-bottom:8px"><span x-text="typeof tgt === 'string' ? tgt : (tgt.label || tgt)"></span></div>
+                      </template>
+                    </div>
+                  </div>
+                  <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px" x-show="guide.session && guide.session.status !== 'closed'">
+                    <input class="input" style="max-width:220px" placeholder="Participant name" x-model="guide.participantName">
+                    <button type="button" class="btn btn-sm btn-primary" @click="guideSubmitResponse(step)"><i data-lucide="send"></i> Submit</button>
+                  </div>
+                  <div class="interactive-results" x-show="guideResultFor(step)">
+                    <div class="muted small"><strong>Live results</strong> · <span x-text="(guideResultFor(step).aggregate.total || 0) + ' response(s)'"></span> · <span x-text="(guideResultFor(step).aggregate.correctCount || 0) + ' fully correct'"></span></div>
+                  </div>
+                </div>
+              </template>
+
+              <!-- Whiteboard step -->
+              <template x-if="step.step_type === 'whiteboard'">
+                <div>
+                  <p class="muted small">Open an infinite canvas for drawing, annotation, math/science sketching and collaborative problem-solving.</p>
+                  <button type="button" class="btn btn-primary" @click="openWhiteboardForStep(step)"><i data-lucide="presentation"></i> Open whiteboard canvas</button>
+                </div>
+              </template>
+            </div>
+
             <div class="row" style="gap:8px;margin-top:10px;align-items:center">
               <button type="button" class="btn btn-sm btn-secondary" @click="speakCurrentStep()">
                 <i data-lucide="volume-2"></i> <span x-text="speechSupported() ? 'Read aloud' : 'Read aloud (not supported here)'"></span>
@@ -532,6 +620,9 @@
 
         <div class="row guide-nav" style="justify-content:space-between;margin-top:14px">
           <button type="button" class="btn btn-secondary" @click="guideBack()" :disabled="Boolean(!guide || guide.index === 0)"><i data-lucide="arrow-left"></i> Back</button>
+          <div class="btn-group">
+            <button type="button" class="btn btn-secondary" x-show="guide && guide.canEdit" @click="guideAddInteractive()"><i data-lucide="square-plus"></i> Add interactive slide</button>
+          </div>
           <button type="button" class="btn btn-primary" x-show="guide && guide.index < guide.steps.length - 1" @click="guideNext()">Next <i data-lucide="arrow-right"></i></button>
           <button type="button" class="btn btn-primary" x-show="guide && guide.index >= guide.steps.length - 1" @click="closeGuide()">Finish <i data-lucide="check"></i></button>
         </div>

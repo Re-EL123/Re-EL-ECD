@@ -25,7 +25,9 @@ const modules = [
   require('./documents'),
   require('./push'),
   require('./morning'),
-  require('./gate')
+  require('./gate'),
+  require('./whiteboards'),
+  require('./interactions')
 ];
 
 function register(router) {

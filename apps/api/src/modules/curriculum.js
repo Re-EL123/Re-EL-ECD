@@ -17,9 +17,9 @@ async function copySteps(db, fromPlanId, toPlanId, organisationId) {
   const steps = await db.many('SELECT * FROM lesson_steps WHERE lesson_plan_id = $1 ORDER BY position', [fromPlanId]);
   for (const step of steps) {
     await db.query(
-      `INSERT INTO lesson_steps (organisation_id, lesson_plan_id, position, step_type, title, body, media_url, duration_minutes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [organisationId, toPlanId, step.position, step.step_type, step.title, step.body, step.media_url || null, step.duration_minutes || null]
+      `INSERT INTO lesson_steps (organisation_id, lesson_plan_id, position, step_type, title, body, media_url, duration_minutes, interactive_data)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
+      [organisationId, toPlanId, step.position, step.step_type, step.title, step.body, step.media_url || null, step.duration_minutes || null, step.interactive_data ? JSON.stringify(step.interactive_data) : null]
     );
   }
   return steps.length;
@@ -290,7 +290,7 @@ function register(router) {
     if (!plan) plan = await findOfficialPlan(ctx, ctx.params.id);
     if (!plan) throw new AppError('NOT_FOUND');
     const steps = await ctx.db.many(
-      `SELECT id, position, step_type, title, body, media_url, duration_minutes FROM lesson_steps
+      `SELECT id, position, step_type, title, body, media_url, duration_minutes, interactive_data FROM lesson_steps
        WHERE lesson_plan_id = $1 ORDER BY position`,
       [plan.id]
     );
@@ -500,6 +500,76 @@ function register(router) {
   // the copy keeps the NCF badge, which is honest attribution, and becomes a
   // normal editable record.
 
+  router.post('/curriculum/lesson-plans/:id/steps', async (ctx) => {
+    const plan = await ctx.db.one('SELECT * FROM lesson_plans WHERE id = $1 AND organisation_id = $2', [ctx.params.id, ctx.organisationId]);
+    if (!plan) {
+      if (await findOfficialPlan(ctx, ctx.params.id)) fail('FORBIDDEN', null, 'Official content is read-only. Adopt it to make it yours.');
+      throw new AppError('NOT_FOUND');
+    }
+    const body = validate(ctx.body, {
+      stepType: { type: 'string', enum: ['intro','text','song','rhyme','story','activity','reflection','audio','video','image','book','poll','mcq','dragdrop','whiteboard'] },
+      title: { type: 'string', max: 200, optional: true },
+      body: { type: 'string', max: 8000, optional: true },
+      mediaUrl: { type: 'string', max: 2000, optional: true },
+      durationMinutes: { type: 'integer', min: 0, max: 600, optional: true },
+      interactive: { type: 'object', optional: true },
+      position: { type: 'integer', min: 1, optional: true }
+    });
+    const maxPos = await ctx.db.one('SELECT COALESCE(MAX(position), 0)::int AS max FROM lesson_steps WHERE lesson_plan_id = $1', [plan.id]);
+    const pos = body.position || (maxPos.max + 1);
+    const interactive = body.interactive && typeof body.interactive === 'object' ? JSON.stringify(body.interactive) : null;
+    const row = await ctx.db.one(
+      `INSERT INTO lesson_steps (organisation_id, lesson_plan_id, position, step_type, title, body, media_url, duration_minutes, interactive_data)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb) RETURNING *`,
+      [ctx.organisationId, plan.id, pos, body.stepType, body.title || null, body.body || null, body.mediaUrl || null, body.durationMinutes || null, interactive]
+    );
+    ctx.status = 201;
+    return row;
+  }, { permission: 'curriculum.create.daycare' });
+
+  router.patch('/curriculum/lesson-steps/:id', async (ctx) => {
+    const step = await ctx.db.one(
+      `SELECT s.*, p.organisation_id AS plan_org FROM lesson_steps s JOIN lesson_plans p ON p.id = s.lesson_plan_id WHERE s.id = $1`,
+      [ctx.params.id]
+    );
+    if (!step) throw new AppError('NOT_FOUND');
+    if (step.plan_org !== ctx.organisationId) fail('FORBIDDEN', null, 'Official content is read-only. Adopt it to make it yours.');
+    const body = validate(ctx.body, {
+      stepType: { type: 'string', enum: ['intro','text','song','rhyme','story','activity','reflection','audio','video','image','book','poll','mcq','dragdrop','whiteboard'], optional: true },
+      title: { type: 'string', max: 200, optional: true },
+      body: { type: 'string', max: 8000, optional: true },
+      mediaUrl: { type: 'string', max: 2000, optional: true },
+      durationMinutes: { type: 'integer', min: 0, max: 600, optional: true },
+      interactive: { type: 'object', optional: true },
+      position: { type: 'integer', min: 1, optional: true }
+    });
+    const interactive = body.interactive !== undefined ? JSON.stringify(body.interactive || {}) : null;
+    const row = await ctx.db.one(
+      `UPDATE lesson_steps SET
+         step_type = COALESCE($1, step_type),
+         title = COALESCE($2, title),
+         body = COALESCE($3, body),
+         media_url = COALESCE($4, media_url),
+         duration_minutes = COALESCE($5, duration_minutes),
+         position = COALESCE($6, position),
+         interactive_data = CASE WHEN $7::boolean THEN $8::jsonb ELSE interactive_data END
+       WHERE id = $9 RETURNING *`,
+      [body.stepType || null, body.title || null, body.body || null, body.mediaUrl || null, body.durationMinutes == null ? null : body.durationMinutes, body.position || null, body.interactive !== undefined, interactive, step.id]
+    );
+    return row;
+  }, { permission: 'curriculum.create.daycare' });
+
+  router.delete('/curriculum/lesson-steps/:id', async (ctx) => {
+    const step = await ctx.db.one(
+      `SELECT s.id, p.organisation_id AS plan_org FROM lesson_steps s JOIN lesson_plans p ON p.id = s.lesson_plan_id WHERE s.id = $1`,
+      [ctx.params.id]
+    );
+    if (!step) throw new AppError('NOT_FOUND');
+    if (step.plan_org !== ctx.organisationId) fail('FORBIDDEN', null, 'Official content is read-only. Adopt it to make it yours.');
+    await ctx.db.query('DELETE FROM lesson_steps WHERE id = $1', [step.id]);
+    return { deleted: true };
+  }, { permission: 'curriculum.create.daycare' });
+
   router.post('/curriculum/adopt', async (ctx) => {
     const body = validate(ctx.body, {
       kind: { type: 'string', enum: ['lesson_plan', 'activity', 'module', 'framework'] },
@@ -610,9 +680,9 @@ function register(router) {
         const steps = await client.query('SELECT * FROM lesson_steps WHERE lesson_plan_id = $1 ORDER BY position', [plan.id]);
         for (const step of steps.rows) {
           await client.query(
-            `INSERT INTO lesson_steps (organisation_id, lesson_plan_id, position, step_type, title, body, media_url, duration_minutes)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-            [ctx.organisationId, inserted.rows[0].id, step.position, step.step_type, step.title, step.body, step.media_url || null, step.duration_minutes || null]
+            `INSERT INTO lesson_steps (organisation_id, lesson_plan_id, position, step_type, title, body, media_url, duration_minutes, interactive_data)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
+            [ctx.organisationId, inserted.rows[0].id, step.position, step.step_type, step.title, step.body, step.media_url || null, step.duration_minutes || null, step.interactive_data ? JSON.stringify(step.interactive_data) : null]
           );
           stepCount += 1;
         }

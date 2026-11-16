@@ -55,6 +55,8 @@
     route('/app/calendar', 'app', 'calendar', 'curriculum.read.daycare', 'Calendar'),
     route('/app/modules', 'app', 'modules', 'curriculum.read.daycare', 'Learning modules'),
     route('/app/modules/:id', 'app', 'moduleDetail', 'curriculum.read.daycare', 'Learning module'),
+    route('/app/whiteboards', 'app', 'whiteboards', 'curriculum.read.daycare', 'Whiteboards'),
+    route('/app/whiteboards/:id', 'app', 'whiteboardDetail', 'curriculum.read.daycare', 'Whiteboard'),
     route('/app/assessments', 'app', 'assessments', ['assessments.read.daycare', 'assessments.read.assigned'], 'Assessments'),
     route('/app/learner-attendance', 'app', 'attendance', ['attendance.read.daycare', 'attendance.read.assigned'], 'Learner attendance'),
     route('/app/staff', 'app', 'staff', 'staff.read.daycare', 'Staff'),
@@ -139,6 +141,7 @@
       { label: 'Teaching', items: [
         { path: '/app/today', label: 'Today', icon: 'sun', permission: ['reports.read.daycare', 'tasks.read.own', 'attendance.read.assigned', 'curriculum.create.daycare', 'assessments.create.assigned', 'attendance.record.assigned', 'attendance.record.own', 'staff_attendance.record.assigned', 'staff_attendance.record.own'] },
         { path: '/app/calendar', label: 'Calendar', icon: 'calendar-days', permission: 'curriculum.read.daycare' },
+        { path: '/app/whiteboards', label: 'Whiteboards', icon: 'presentation', permission: 'curriculum.read.daycare' },
         { path: '/app/modules', label: 'Modules', icon: 'blocks', permission: 'curriculum.read.daycare' },
         { path: '/app/curriculum', label: 'Curriculum', icon: 'book-open', permission: 'curriculum.read.daycare' },
         { path: '/app/activities', label: 'Activities', icon: 'puzzle', permission: 'curriculum.read.daycare' },
@@ -794,6 +797,9 @@
       afterRender() {
         this.renderIconsNow();
         this.mountCharts();
+        if (this.route && this.route.view === 'whiteboardDetail' && window.Reel && window.Reel.views && window.Reel.views._initWhiteboard) {
+          try { window.Reel.views._initWhiteboard(this, this.page); } catch (e) { console.warn('whiteboard init failed', e); }
+        }
         if (window.gsap && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
           const root = document.getElementById('view-root');
           if (root) {
@@ -846,6 +852,10 @@
       destroyCharts() {
         for (const chart of this._chartInstances) { try { chart.destroy(); } catch { /* ignore */ } }
         this._chartInstances = [];
+        try {
+          const wb = document.getElementById('wb-canvas-wrap');
+          if (wb && wb._wbCleanup) { wb._wbCleanup(); wb._wbCleanup = null; }
+        } catch { /* ignore */ }
       },
 
       setTab(tab) {
@@ -1657,8 +1667,16 @@
           this.guide = {
             planId, title: (data.plan && data.plan.title) || 'Lesson guide',
             theme: (data.plan && data.plan.theme) || '', moduleTitle: (data.module && data.module.title) || '',
-            steps, index: 0, downloaded
+            steps, index: 0, downloaded,
+            isOfficial: Boolean(data.plan && data.plan.isOfficial),
+            canEdit: !Boolean(data.plan && data.plan.isOfficial) && this.has('curriculum.create.daycare'),
+            session: null,
+            interactiveResults: {},
+            participantName: (this.session && this.session.user && this.session.user.displayName) || '',
+            answerByStep: {},
+            placementsByStep: {}
           };
+          this._guidePoll = null;
           this.renderIconsNow();
         } catch (error) {
           this.toast(error.message || 'The lesson guide could not be opened.', 'error');
@@ -1666,6 +1684,7 @@
       },
 
       closeGuide() {
+        if (this._guidePoll) { clearInterval(this._guidePoll); this._guidePoll = null; }
         this.guide = null;
       },
 
@@ -1710,6 +1729,170 @@
           if (body) body.scrollTop = 0;
         });
       },
+
+      guideIsInteractive(step) {
+        return step && ['poll','mcq','dragdrop','whiteboard'].includes(step.step_type);
+      },
+
+      guideInteractive(step) {
+        return (step && (step.interactive_data || step.interactive)) || {};
+      },
+
+      async guideStartSession() {
+        if (!this.guide) return;
+        try {
+          const payload = await Reel.api('POST', '/presentations/sessions', { lessonPlanId: this.guide.planId, title: this.guide.title });
+          this.guide.session = payload.data || payload;
+          this.toast('Live session started — responses will appear here.');
+          this.guideLoadResults();
+          this.guideStartPolling();
+        } catch (e) {
+          this.toast(e.message || 'Could not start the live session.', 'error');
+        }
+      },
+
+      async guideCloseSession() {
+        if (!this.guide || !this.guide.session) return;
+        try {
+          await Reel.api('POST', '/presentations/sessions/' + this.guide.session.id + '/close', {});
+          this.guide.session.status = 'closed';
+          this.toast('Live session closed.');
+          this.guideStopPolling();
+        } catch (e) {
+          this.toast(e.message || 'Could not close the session.', 'error');
+        }
+      },
+
+      async guideLoadResults() {
+        if (!this.guide || !this.guide.session) return;
+        try {
+          const payload = await Reel.api('GET', '/presentations/sessions/' + this.guide.session.id + '/results');
+          const data = payload.data || payload;
+          const map = {};
+          (data.results || []).forEach((r) => { map[r.stepId] = r; });
+          this.guide.interactiveResults = map;
+          if (data.session) this.guide.session = Object.assign({}, this.guide.session, data.session);
+        } catch (_) { /* polling best-effort */ }
+      },
+
+      guideStartPolling() {
+        this.guideStopPolling();
+        this._guidePoll = setInterval(() => { if (this.guide && this.guide.session && this.guide.session.status !== 'closed') this.guideLoadResults(); }, 3000);
+      },
+
+      guideStopPolling() {
+        if (this._guidePoll) { clearInterval(this._guidePoll); this._guidePoll = null; }
+      },
+
+      guideResultFor(step) {
+        if (!this.guide || !step) return null;
+        return (this.guide.interactiveResults || {})[step.id] || null;
+      },
+
+      guidePick(stepId, idx) {
+        if (!this.guide) return;
+        this.guide.answerByStep = Object.assign({}, this.guide.answerByStep, { [stepId]: idx });
+      },
+
+      guidePicked(stepId) {
+        return this.guide && this.guide.answerByStep ? this.guide.answerByStep[stepId] : undefined;
+      },
+
+      guideSetPlacement(stepId, itemIdx, targetIdx) {
+        if (!this.guide) return;
+        const all = Object.assign({}, this.guide.placementsByStep || {});
+        const cur = Object.assign({}, all[stepId] || {});
+        cur[String(itemIdx)] = Number(targetIdx);
+        all[stepId] = cur;
+        this.guide.placementsByStep = all;
+      },
+
+      guidePlacement(stepId, itemIdx) {
+        return this.guide && this.guide.placementsByStep && this.guide.placementsByStep[stepId] ? this.guide.placementsByStep[stepId][String(itemIdx)] : undefined;
+      },
+
+      async guideSubmitResponse(step) {
+        if (!this.guide || !this.guide.session || !step) return;
+        const name = String(this.guide.participantName || '').trim() || 'Participant';
+        let response = {};
+        if (step.step_type === 'poll' || step.step_type === 'mcq') {
+          const choice = this.guidePicked(step.id);
+          if (choice === undefined || choice === null || choice === '') { this.toast('Choose an answer first.', 'warn'); return; }
+          response = { choice: Number(choice) };
+        } else if (step.step_type === 'dragdrop') {
+          response = { placements: (this.guide.placementsByStep || {})[step.id] || {} };
+        } else {
+          return;
+        }
+        try {
+          await Reel.api('POST', '/presentations/sessions/' + this.guide.session.id + '/responses', { stepId: step.id, participantName: name, response });
+          this.toast('Response recorded.');
+          this.guideLoadResults();
+        } catch (e) {
+          this.toast(e.message || 'Could not submit the response.', 'error');
+        }
+      },
+
+      async openWhiteboardForStep(step) {
+        // open linked whiteboard if configured, else whiteboards list
+        const wbId = step && step.interactive_data && step.interactive_data.whiteboardId;
+        if (wbId) { location.hash = '#/app/whiteboards/' + wbId; this.closeGuide(); }
+        else { location.hash = '#/app/whiteboards'; this.closeGuide(); }
+      },
+
+      guideAddInteractive() {
+        if (!this.guide) return;
+        const planId = this.guide.planId;
+        const self = this;
+        this.openModal({
+          title: 'Add interactive slide',
+          description: 'Inject a live question, poll, or drag-and-drop activity into this presentation.',
+          fields: [
+            { name: 'stepType', label: 'Type', type: 'select', required: true, value: 'poll', options: [
+              { value: 'poll', label: 'Poll (live responses)' },
+              { value: 'mcq', label: 'Multiple-choice question' },
+              { value: 'dragdrop', label: 'Drag-and-drop activity' },
+              { value: 'whiteboard', label: 'Whiteboard canvas slide' }
+            ] },
+            { name: 'title', label: 'Title', required: true, placeholder: 'e.g. Quick check: shapes' },
+            { name: 'question', label: 'Question / prompt', type: 'textarea', span: 2, placeholder: 'What do you want learners to answer or explore?' },
+            { name: 'options', label: 'Options (one per line, for poll/MCQ)', type: 'textarea', span: 2, placeholder: 'Option A\nOption B\nOption C' },
+            { name: 'correct', label: 'Correct option number (MCQ, 1-based, optional)', placeholder: 'e.g. 2' },
+            { name: 'items', label: 'Drag items (one per line, for drag-and-drop)', type: 'textarea', span: 2, placeholder: 'Item 1\nItem 2' },
+            { name: 'targets', label: 'Drop targets (one per line, for drag-and-drop)', type: 'textarea', span: 2, placeholder: 'Target A\nTarget B' }
+          ],
+          submitLabel: 'Add to presentation',
+          endpoint: '/curriculum/lesson-plans/' + planId + '/steps',
+          transform: (data) => {
+            const type = data.stepType;
+            const interactive = {};
+            if (data.question) interactive.question = String(data.question).trim();
+            if (type === 'poll' || type === 'mcq') {
+              interactive.options = String(data.options || '').split('\n').map(s => s.trim()).filter(Boolean);
+              if (type === 'mcq' && data.correct) { const n = parseInt(data.correct, 10); if (!isNaN(n)) interactive.correct = [n - 1]; }
+            }
+            if (type === 'dragdrop') {
+              const items = String(data.items || '').split('\n').map(s => s.trim()).filter(Boolean);
+              const targets = String(data.targets || '').split('\n').map(s => s.trim()).filter(Boolean);
+              interactive.items = items.map((label) => ({ label }));
+              interactive.targets = targets.map((label) => ({ label }));
+            }
+            return { stepType: type, title: data.title, body: data.question || '', interactive };
+          },
+          onSuccess: async () => {
+            try {
+              const payload = await Reel.api('GET', '/curriculum/lesson-plans/' + encodeURIComponent(planId) + '/guide');
+              const data = payload.data || {};
+              const steps = (data.steps || []).slice().sort((a,b)=>(a.position||0)-(b.position||0));
+              if (self.guide && self.guide.planId === planId) {
+                self.guide.steps = steps;
+                self.guide.index = Math.max(0, steps.length - 1);
+              }
+            } catch (_) { /* ignore */ }
+          }
+        });
+      },
+
 
       speechSupported() {
         return typeof window !== 'undefined' && 'speechSynthesis' in window;
@@ -2236,14 +2419,19 @@
           if (body && typeof body === 'object') {
             try { body = JSON.parse(JSON.stringify(body)); } catch { /* send as-is */ }
           }
-          if (this.modal.onSuccess) body = this.modal.onSuccess(body) || body;
-          if (this.modal.onSubmit) await this.modal.onSubmit(body, this.modal.data);
-          else await Reel.api(this.modal.method, this.modal.endpoint, body);
+          let result = null;
+          if (this.modal.onSubmit) result = await this.modal.onSubmit(body, this.modal.data);
+          else result = await Reel.api(this.modal.method, this.modal.endpoint, body);
           const message = this.modal.successMessage || 'Saved successfully.';
+          const onSuccess = this.modal.onSuccess;
           this.modal = null;
           if (/^\/organisations\/current$/.test(endpoint) || /^\/platform\/settings$/.test(endpoint)) await this.refreshSession();
           this.toast(message);
-          await this.navigate(true);
+          if (typeof onSuccess === 'function') {
+            try { onSuccess(result && result.data !== undefined ? result.data : result); } catch (_) { /* ignore */ }
+          } else {
+            await this.navigate(true);
+          }
         } catch (error) {
           this.modal.error = error.message || 'The action failed.';
           if (error.details && Array.isArray(error.details)) {

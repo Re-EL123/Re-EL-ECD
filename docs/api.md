@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **422 routes** across 25 modules.
+Generated from the router: **439 routes** across 27 modules.
 
 ## Access
 
@@ -221,8 +221,13 @@ Generated from the router: **422 routes** across 25 modules.
 | GET | `/curriculum/lesson-plans/:id` | curriculum.read.daycare |
 | PATCH | `/curriculum/lesson-plans/:id` | curriculum.create.daycare |
 | GET | `/curriculum/lesson-plans/:id/guide` | curriculum.read.daycare |
+| GET | `/curriculum/lesson-plans/:id/interactions` | curriculum.read.daycare |
+| POST | `/curriculum/lesson-plans/:id/steps` | curriculum.create.daycare |
 | POST | `/curriculum/lesson-plans/:id/transition` | curriculum.create.daycare |
 | POST | `/curriculum/lesson-plans/bulk` | curriculum.create.daycare |
+| DELETE | `/curriculum/lesson-steps/:id` | curriculum.create.daycare |
+| PATCH | `/curriculum/lesson-steps/:id` | curriculum.create.daycare |
+| PUT | `/curriculum/lesson-steps/:stepId/interactive` | curriculum.create.daycare |
 | GET | `/curriculum/objectives` | curriculum.read.daycare |
 | POST | `/curriculum/objectives` | curriculum.create.daycare |
 | GET | `/curriculum/overview` | curriculum.read.daycare |
@@ -577,6 +582,17 @@ Generated from the router: **422 routes** across 25 modules.
 | POST | `/platform/users/:id/status` | Platform only · platform.organisations.manage |
 | POST | `/platform/users/bulk` | Platform only · platform.organisations.manage |
 
+## Presentations
+
+| Method | Path | Access |
+| --- | --- | --- |
+| GET | `/presentations/sessions` | curriculum.read.daycare |
+| POST | `/presentations/sessions` | curriculum.create.daycare |
+| GET | `/presentations/sessions/:id` | curriculum.read.daycare |
+| POST | `/presentations/sessions/:id/close` | curriculum.create.daycare |
+| POST | `/presentations/sessions/:id/responses` | curriculum.read.daycare OR curriculum.create.daycare |
+| GET | `/presentations/sessions/:id/results` | curriculum.read.daycare |
+
 ## Public
 
 | Method | Path | Access |
@@ -726,6 +742,17 @@ Generated from the router: **422 routes** across 25 modules.
 | POST | `/website/domains/:id/verify` | website.manage.daycare |
 | POST | `/website/publish` | website.manage.daycare |
 | POST | `/website/unpublish` | website.manage.daycare |
+
+## Whiteboards
+
+| Method | Path | Access |
+| --- | --- | --- |
+| GET | `/whiteboards` | curriculum.read.daycare OR curriculum.create.daycare |
+| POST | `/whiteboards` | curriculum.create.daycare |
+| DELETE | `/whiteboards/:id` | curriculum.create.daycare |
+| GET | `/whiteboards/:id` | curriculum.read.daycare OR curriculum.create.daycare |
+| PATCH | `/whiteboards/:id` | curriculum.create.daycare |
+| PUT | `/whiteboards/:id/state` | curriculum.create.daycare |
 
 ## Common status codes
 
