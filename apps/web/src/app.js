@@ -1845,42 +1845,75 @@
         if (!this.guide) return;
         const planId = this.guide.planId;
         const self = this;
+        const isChoice = (d) => d && (d.stepType === 'poll' || d.stepType === 'mcq');
+        const isMcq = (d) => d && d.stepType === 'mcq';
+        const isDrag = (d) => d && d.stepType === 'dragdrop';
+        const isWhiteboard = (d) => d && d.stepType === 'whiteboard';
         this.openModal({
           title: 'Add interactive slide',
-          description: 'Inject a live question, poll, or drag-and-drop activity into this presentation.',
+          description: 'Choose a slide type and fill in only what’s needed. You can start a live session during the lesson to collect responses in real time.',
           fields: [
-            { name: 'stepType', label: 'Type', type: 'select', required: true, value: 'poll', options: [
-              { value: 'poll', label: 'Poll (live responses)' },
-              { value: 'mcq', label: 'Multiple-choice question' },
-              { value: 'dragdrop', label: 'Drag-and-drop activity' },
-              { value: 'whiteboard', label: 'Whiteboard canvas slide' }
-            ] },
-            { name: 'title', label: 'Title', required: true, placeholder: 'e.g. Quick check: shapes' },
-            { name: 'question', label: 'Question / prompt', type: 'textarea', span: 2, placeholder: 'What do you want learners to answer or explore?' },
-            { name: 'options', label: 'Options (one per line, for poll/MCQ)', type: 'textarea', span: 2, placeholder: 'Option A\nOption B\nOption C' },
-            { name: 'correct', label: 'Correct option number (MCQ, 1-based, optional)', placeholder: 'e.g. 2' },
-            { name: 'items', label: 'Drag items (one per line, for drag-and-drop)', type: 'textarea', span: 2, placeholder: 'Item 1\nItem 2' },
-            { name: 'targets', label: 'Drop targets (one per line, for drag-and-drop)', type: 'textarea', span: 2, placeholder: 'Target A\nTarget B' }
+            { name: 'stepType', label: 'Slide type', type: 'select', required: true, value: 'poll', options: [
+              { value: 'poll', label: 'Poll — gather live responses' },
+              { value: 'mcq', label: 'Multiple-choice question — check understanding' },
+              { value: 'dragdrop', label: 'Match activity — pair items to targets' },
+              { value: 'whiteboard', label: 'Whiteboard — draw, sketch & collaborate' }
+            ], help: 'The form below updates to show the right fields for the selected type.' },
+            { name: 'title', label: 'Slide title', required: true, span: 2, placeholder: 'e.g. Quick check: Shapes around us' },
+            { name: 'question', label: 'Question / prompt', type: 'textarea', span: 2,
+              placeholder: 'What should learners answer, think about, or explore?',
+              showIf: (d) => !isWhiteboard(d),
+              help: 'Shown at the top of the slide to guide learners.' },
+            { name: 'options', label: 'Answer options', type: 'textarea', span: 2,
+              placeholder: 'Circle\nSquare\nTriangle\nRectangle',
+              help: 'Enter one option per line (2 or more recommended).',
+              showIf: isChoice },
+            { name: 'correct', label: 'Correct answer (optional)', placeholder: 'Option number, e.g. 2',
+              help: 'For MCQ: which option number is correct? Leave blank for no auto-marking.',
+              showIf: isMcq },
+            { name: 'items', label: 'Items to match', type: 'textarea', span: 2,
+              placeholder: 'Cat\nDog\nBird',
+              help: 'Enter one item per line — learners will match each to a target.',
+              showIf: isDrag },
+            { name: 'targets', label: 'Match targets', type: 'textarea', span: 2,
+              placeholder: 'Meow\nWoof\nChirp',
+              help: 'Enter one target per line in the order that matches the items (used to check answers).',
+              showIf: isDrag },
+            { name: 'whiteboardNote', label: 'Whiteboard tip', type: 'textarea', span: 2,
+              value: 'Use this slide to draw, annotate, sketch maths/science ideas, or solve problems together on an infinite canvas.',
+              help: 'This note appears on the slide. You can open a live whiteboard canvas during the lesson.',
+              showIf: isWhiteboard }
           ],
-          submitLabel: 'Add to presentation',
+          submitLabel: 'Add interactive slide',
           endpoint: '/curriculum/lesson-plans/' + planId + '/steps',
           transform: (data) => {
-            const type = data.stepType;
+            const type = data.stepType || 'poll';
             const interactive = {};
-            if (data.question) interactive.question = String(data.question).trim();
+            const title = String(data.title || '').trim() || (type === 'whiteboard' ? 'Whiteboard activity' : 'Interactive slide');
+            const question = String(data.question || '').trim();
+            if (question && type !== 'whiteboard') interactive.question = question;
             if (type === 'poll' || type === 'mcq') {
-              interactive.options = String(data.options || '').split('\n').map(s => s.trim()).filter(Boolean);
-              if (type === 'mcq' && data.correct) { const n = parseInt(data.correct, 10); if (!isNaN(n)) interactive.correct = [n - 1]; }
+              const options = String(data.options || '').split('\n').map(s => s.trim()).filter(Boolean);
+              interactive.options = options.length ? options : ['Option 1', 'Option 2'];
+              if (type === 'mcq' && data.correct) { const n = parseInt(data.correct, 10); if (!isNaN(n) && n >= 1) interactive.correct = [n - 1]; }
             }
             if (type === 'dragdrop') {
               const items = String(data.items || '').split('\n').map(s => s.trim()).filter(Boolean);
               const targets = String(data.targets || '').split('\n').map(s => s.trim()).filter(Boolean);
-              interactive.items = items.map((label) => ({ label }));
-              interactive.targets = targets.map((label) => ({ label }));
+              const safeItems = items.length ? items : ['Item 1', 'Item 2'];
+              const safeTargets = targets.length ? targets : ['Target 1', 'Target 2'];
+              interactive.items = safeItems.map((label) => ({ label }));
+              interactive.targets = safeTargets.map((label) => ({ label }));
+              if (!interactive.question) interactive.question = question || 'Match each item to the correct target.';
             }
-            return { stepType: type, title: data.title, body: data.question || '', interactive };
+            if (type === 'whiteboard') {
+              interactive.note = String(data.whiteboardNote || data.question || '').trim() || 'Draw, annotate and solve together on the whiteboard.';
+            }
+            const body = type === 'whiteboard' ? interactive.note : (question || interactive.question || '');
+            return { stepType: type, title, body, interactive };
           },
           onSuccess: async () => {
+            self.toast('Interactive slide added to the presentation.');
             try {
               const payload = await Reel.api('GET', '/curriculum/lesson-plans/' + encodeURIComponent(planId) + '/guide');
               const data = payload.data || {};

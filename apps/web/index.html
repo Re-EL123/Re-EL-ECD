@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/styles.css?v=20261265">
+  <link rel="stylesheet" href="assets/styles.css?v=20261266">
   <link rel="icon" href="assets/branding/favicon-32.png" sizes="32x32" type="image/png">
   <link rel="icon" href="assets/branding/favicon-64.png" sizes="64x64" type="image/png">
   <link rel="manifest" href="manifest.webmanifest">
@@ -20,38 +20,38 @@
   <meta property="og:type" content="website">
   <!-- Vendor libraries are self-hosted: a blocked CDN must not stop the app booting. -->
   <!-- Icons are cosmetic: load them async so a slow request never delays boot. -->
-  <script src="vendor/lucide.min.js?v=20261265" async onload="if (window.lucide) window.lucide.createIcons()"></script>
-  <script src="vendor/gsap.min.js?v=20261265" defer></script>
-  <script src="vendor/chart.umd.min.js?v=20261265" defer></script>
+  <script src="vendor/lucide.min.js?v=20261266" async onload="if (window.lucide) window.lucide.createIcons()"></script>
+  <script src="vendor/gsap.min.js?v=20261266" defer></script>
+  <script src="vendor/chart.umd.min.js?v=20261266" defer></script>
   <!-- qr-code-styling 1.9.2 (MIT) - QR codes are generated locally in the browser -->
-  <script src="vendor/qr-code-styling.min.js?v=20261265" defer></script>
-  <script src="config.js?v=20261265"></script>
-  <script src="src/utils.js?v=20261265" defer></script>
-  <script src="src/views/public.js?v=20261265" defer></script>
-  <script src="src/views/platform.js?v=20261265" defer></script>
-  <script src="src/views/overview.js?v=20261265" defer></script>
-  <script src="src/views/pkid-drivers.js?v=20261265" defer></script>
-  <script src="src/views/gate.js?v=20261265" defer></script>
-  <script src="src/views/learners.js?v=20261265" defer></script>
-  <script src="src/views/admissions.js?v=20261265" defer></script>
-  <script src="src/views/curriculum.js?v=20261265" defer></script>
-  <script src="src/views/whiteboards.js?v=20261265" defer></script>
-  <script src="src/views/modules.js?v=20261265" defer></script>
-  <script src="src/views/assessments.js?v=20261265" defer></script>
-  <script src="src/views/attendance.js?v=20261265" defer></script>
-  <script src="src/views/staff.js?v=20261265" defer></script>
-  <script src="src/views/activity.js?v=20261265" defer></script>
-  <script src="src/views/forms.js?v=20261265" defer></script>
-  <script src="src/views/communications.js?v=20261265" defer></script>
-  <script src="src/views/finance.js?v=20261265" defer></script>
-  <script src="src/views/safety.js?v=20261265" defer></script>
-  <script src="src/views/operations.js?v=20261265" defer></script>
-  <script src="src/views/settings.js?v=20261265" defer></script>
-  <script src="src/views/parent.js?v=20261265" defer></script>
-  <script src="src/views/manuals.js?v=20261265" defer></script>
-  <script src="src/views/today.js?v=20261265" defer></script>
-  <script src="src/app.js?v=20261265" defer></script>
-  <script src="vendor/alpine.min.js?v=20261265" defer></script>
+  <script src="vendor/qr-code-styling.min.js?v=20261266" defer></script>
+  <script src="config.js?v=20261266"></script>
+  <script src="src/utils.js?v=20261266" defer></script>
+  <script src="src/views/public.js?v=20261266" defer></script>
+  <script src="src/views/platform.js?v=20261266" defer></script>
+  <script src="src/views/overview.js?v=20261266" defer></script>
+  <script src="src/views/pkid-drivers.js?v=20261266" defer></script>
+  <script src="src/views/gate.js?v=20261266" defer></script>
+  <script src="src/views/learners.js?v=20261266" defer></script>
+  <script src="src/views/admissions.js?v=20261266" defer></script>
+  <script src="src/views/curriculum.js?v=20261266" defer></script>
+  <script src="src/views/whiteboards.js?v=20261266" defer></script>
+  <script src="src/views/modules.js?v=20261266" defer></script>
+  <script src="src/views/assessments.js?v=20261266" defer></script>
+  <script src="src/views/attendance.js?v=20261266" defer></script>
+  <script src="src/views/staff.js?v=20261266" defer></script>
+  <script src="src/views/activity.js?v=20261266" defer></script>
+  <script src="src/views/forms.js?v=20261266" defer></script>
+  <script src="src/views/communications.js?v=20261266" defer></script>
+  <script src="src/views/finance.js?v=20261266" defer></script>
+  <script src="src/views/safety.js?v=20261266" defer></script>
+  <script src="src/views/operations.js?v=20261266" defer></script>
+  <script src="src/views/settings.js?v=20261266" defer></script>
+  <script src="src/views/parent.js?v=20261266" defer></script>
+  <script src="src/views/manuals.js?v=20261266" defer></script>
+  <script src="src/views/today.js?v=20261266" defer></script>
+  <script src="src/app.js?v=20261266" defer></script>
+  <script src="vendor/alpine.min.js?v=20261266" defer></script>
 </head>
 <body x-data="reelApp()" x-init="boot()" @keydown.window.escape="closeOverlays()" @keydown.window.k="if (($event.metaKey || $event.ctrlKey) && !$event.shiftKey) { $event.preventDefault(); openCommand(); }">
 
@@ -520,86 +520,120 @@
 
             <!-- Dynamic slide add-ons: live questions, polls, drag-and-drop, whiteboard -->
             <div class="guide-interactive" x-show="guideIsInteractive(step)">
-              <div class="row" style="justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
-                <h5 x-text="step.step_type === 'whiteboard' ? 'Interactive whiteboard' : (guideInteractive(step).question || step.title || 'Live activity')"></h5>
+              <div class="interactive-head row" style="justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
+                <div>
+                  <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap">
+                    <span class="badge" :class="step.step_type === 'mcq' ? 'badge-sky' : (step.step_type === 'poll' ? 'badge-sun' : (step.step_type === 'dragdrop' ? 'badge-green' : 'badge-plum'))" x-text="step.step_type === 'poll' ? 'Live poll' : (step.step_type === 'mcq' ? 'Multiple choice' : (step.step_type === 'dragdrop' ? 'Match activity' : 'Whiteboard'))"></span>
+                    <span class="badge badge-green" x-show="guide.session && guide.session.status !== 'closed' && step.step_type !== 'whiteboard'"><i data-lucide="radio" style="width:12px;height:12px"></i> Live</span>
+                    <span class="badge badge-muted" x-show="guide.session && guide.session.status === 'closed' && step.step_type !== 'whiteboard'">Session closed</span>
+                  </div>
+                  <h5 style="margin:6px 0 0" x-text="step.step_type === 'whiteboard' ? (step.title || 'Interactive whiteboard') : (guideInteractive(step).question || step.title || 'Live activity')"></h5>
+                </div>
                 <div class="btn-group" x-show="step.step_type !== 'whiteboard'">
                   <button type="button" class="btn btn-sm btn-primary" x-show="!guide.session" @click="guideStartSession()"><i data-lucide="radio"></i> Start live session</button>
-                  <span class="badge badge-green" x-show="guide.session && guide.session.status !== 'closed'">Live session active</span>
-                  <span class="badge badge-muted" x-show="guide.session && guide.session.status === 'closed'">Session closed</span>
-                  <button type="button" class="btn btn-sm btn-secondary" x-show="guide.session && guide.session.status !== 'closed'" @click="guideCloseSession()">Close</button>
+                  <button type="button" class="btn btn-sm btn-secondary" x-show="guide.session && guide.session.status !== 'closed'" @click="guideLoadResults()"><i data-lucide="refresh-cw"></i> Refresh</button>
+                  <button type="button" class="btn btn-sm btn-secondary" x-show="guide.session && guide.session.status !== 'closed'" @click="guideCloseSession()">Close session</button>
                 </div>
               </div>
-              <p class="muted small" x-show="step.step_type !== 'whiteboard' && !guide.session">Start a live session to collect responses and see results in real time.</p>
+              <div class="alert alert-info" style="margin:10px 0" x-show="step.step_type !== 'whiteboard' && !guide.session"><i data-lucide="sparkles"></i><span><strong>Make it live:</strong> start a session to collect answers and see results update in real time on this screen.</span></div>
 
               <!-- Poll / Multiple choice -->
               <template x-if="step.step_type === 'poll' || step.step_type === 'mcq'">
-                <div>
-                  <div class="interactive-options">
+                <div class="interactive-block">
+                  <p class="muted small" style="margin:0 0 8px" x-show="step.step_type === 'mcq'">Tap an answer, then submit. <span x-show="(guideInteractive(step).correct || []).length">Results will highlight the correct choice.</span></p>
+                  <p class="muted small" style="margin:0 0 8px" x-show="step.step_type === 'poll'">Tap your choice to vote.</p>
+                  <div class="interactive-options interactive-options-cards">
                     <template x-for="(opt, oi) in (guideInteractive(step).options || [])" :key="oi">
-                      <label class="interactive-option" :class="{ selected: guidePicked(step.id) == oi }" @click="guidePick(step.id, oi)">
-                        <input type="radio" :name="'step-' + step.id" :checked="guidePicked(step.id) == oi" @change="guidePick(step.id, oi)">
-                        <span x-text="typeof opt === 'string' ? opt : (opt.label || opt)"></span>
-                      </label>
+                      <button type="button" class="interactive-option interactive-option-card" :class="{ selected: guidePicked(step.id) == oi }" @click="guidePick(step.id, oi)">
+                        <span class="interactive-option-letter" x-text="String.fromCharCode(65 + (oi % 26))"></span>
+                        <span class="interactive-option-text" x-text="typeof opt === 'string' ? opt : (opt.label || opt)"></span>
+                        <i data-lucide="check-circle" x-show="guidePicked(step.id) == oi"></i>
+                      </button>
                     </template>
                   </div>
-                  <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap" x-show="guide.session && guide.session.status !== 'closed'">
-                    <input class="input" style="max-width:220px" placeholder="Participant name" x-model="guide.participantName">
-                    <button type="button" class="btn btn-sm btn-primary" @click="guideSubmitResponse(step)"><i data-lucide="send"></i> Submit answer</button>
+                  <div class="interactive-submit-row" x-show="guide.session && guide.session.status !== 'closed'">
+                    <input class="input" style="max-width:240px" placeholder="Your name (optional)" x-model="guide.participantName">
+                    <button type="button" class="btn btn-primary" @click="guideSubmitResponse(step)" :disabled="Boolean(guidePicked(step.id) === undefined || guidePicked(step.id) === null || guidePicked(step.id) === '')"><i data-lucide="send"></i> Submit answer</button>
                   </div>
+                  <div class="muted small" style="margin-top:8px" x-show="!guide.session">Pick an answer now — start a live session when you’re ready to collect and show responses.</div>
                   <div class="interactive-results" x-show="guideResultFor(step)">
-                    <div class="muted small"><strong>Live results</strong> · <span x-text="(guideResultFor(step).aggregate.total || 0) + ' response(s)'"></span></div>
+                    <div class="row" style="justify-content:space-between;gap:8px;align-items:center;margin-bottom:6px">
+                      <div class="strong small">Live results</div>
+                      <span class="badge badge-muted" x-text="(guideResultFor(step).aggregate.total || 0) + ' response' + ((guideResultFor(step).aggregate.total || 0) === 1 ? '' : 's')"></span>
+                    </div>
                     <template x-for="(opt, oi) in ((guideResultFor(step) || {}).aggregate || {}).options || []" :key="'r'+oi">
-                      <div class="result-row">
-                        <span x-text="opt"></span>
+                      <div class="result-row result-row-rich" :class="{ 'is-correct': step.step_type === 'mcq' && (guideInteractive(step).correct || []).indexOf(oi) !== -1 }">
+                        <span class="result-label"><span x-text="opt"></span> <span class="badge badge-green" style="margin-left:6px" x-show="step.step_type === 'mcq' && (guideInteractive(step).correct || []).indexOf(oi) !== -1">Correct</span></span>
                         <div class="result-bar"><span :style="{ width: (((guideResultFor(step).aggregate.counts || [])[oi] || 0) / Math.max(1, guideResultFor(step).aggregate.total || 1) * 100) + '%' }"></span></div>
-                        <span class="muted small" x-text="((guideResultFor(step).aggregate.counts || [])[oi] || 0)"></span>
+                        <span class="muted small result-count" x-text="((guideResultFor(step).aggregate.counts || [])[oi] || 0) + ' (' + Math.round((((guideResultFor(step).aggregate.counts || [])[oi] || 0) / Math.max(1, guideResultFor(step).aggregate.total || 1)) * 100) + '%)' "></span>
                       </div>
                     </template>
                   </div>
                 </div>
               </template>
 
-              <!-- Drag-and-drop activity -->
+              <!-- Drag-and-drop / match activity -->
               <template x-if="step.step_type === 'dragdrop'">
-                <div>
-                  <p class="muted small">Match each item to the correct target, then submit.</p>
-                  <div class="dragdrop-grid">
-                    <div>
-                      <div class="strong small" style="margin-bottom:6px">Items</div>
+                <div class="interactive-block">
+                  <p class="muted small" style="margin:0 0 10px">Match each item on the left to the right target, then submit your answers.</p>
+                  <div class="dragdrop-grid dragdrop-grid-rich">
+                    <div class="dragdrop-col">
+                      <div class="strong small" style="margin-bottom:8px"><i data-lucide="grip-vertical" style="width:14px;height:14px"></i> Items to match</div>
                       <template x-for="(item, ii) in (guideInteractive(step).items || [])" :key="'i'+ii">
-                        <div class="drag-item" style="margin-bottom:8px">
-                          <div style="margin-bottom:6px" x-text="typeof item === 'string' ? item : (item.label || item)"></div>
+                        <div class="drag-item drag-item-rich">
+                          <div class="drag-item-label"><span class="interactive-option-letter" x-text="ii + 1"></span><span x-text="typeof item === 'string' ? item : (item.label || item)"></span></div>
                           <select class="select" @change="guideSetPlacement(step.id, ii, $event.target.value)">
-                            <option value="">Place in…</option>
+                            <option value="">Choose a target…</option>
                             <template x-for="(tgt, ti) in (guideInteractive(step).targets || [])" :key="'t'+ti">
                               <option :value="ti" :selected="guidePlacement(step.id, ii) == ti" x-text="typeof tgt === 'string' ? tgt : (tgt.label || tgt)"></option>
                             </template>
                           </select>
+                          <div class="muted small" style="margin-top:4px" x-show="guidePlacement(step.id, ii) !== undefined && guidePlacement(step.id, ii) !== ''"><i data-lucide="check" style="width:12px;height:12px"></i> Matched</div>
                         </div>
                       </template>
                     </div>
-                    <div>
-                      <div class="strong small" style="margin-bottom:6px">Targets</div>
+                    <div class="dragdrop-col">
+                      <div class="strong small" style="margin-bottom:8px"><i data-lucide="target" style="width:14px;height:14px"></i> Targets</div>
                       <template x-for="(tgt, ti) in (guideInteractive(step).targets || [])" :key="'tg'+ti">
-                        <div class="drop-target" style="margin-bottom:8px"><span x-text="typeof tgt === 'string' ? tgt : (tgt.label || tgt)"></span></div>
+                        <div class="drop-target drop-target-rich"><span class="interactive-option-letter" x-text="String.fromCharCode(65 + (ti % 26))"></span><span x-text="typeof tgt === 'string' ? tgt : (tgt.label || tgt)"></span></div>
                       </template>
                     </div>
                   </div>
-                  <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px" x-show="guide.session && guide.session.status !== 'closed'">
-                    <input class="input" style="max-width:220px" placeholder="Participant name" x-model="guide.participantName">
-                    <button type="button" class="btn btn-sm btn-primary" @click="guideSubmitResponse(step)"><i data-lucide="send"></i> Submit</button>
+                  <div class="interactive-submit-row" x-show="guide.session && guide.session.status !== 'closed'">
+                    <input class="input" style="max-width:240px" placeholder="Your name (optional)" x-model="guide.participantName">
+                    <button type="button" class="btn btn-primary" @click="guideSubmitResponse(step)"><i data-lucide="send"></i> Submit matches</button>
                   </div>
+                  <div class="muted small" style="margin-top:8px" x-show="!guide.session">Make your matches — start a live session when you’re ready to collect and see results.</div>
                   <div class="interactive-results" x-show="guideResultFor(step)">
-                    <div class="muted small"><strong>Live results</strong> · <span x-text="(guideResultFor(step).aggregate.total || 0) + ' response(s)'"></span> · <span x-text="(guideResultFor(step).aggregate.correctCount || 0) + ' fully correct'"></span></div>
+                    <div class="row" style="justify-content:space-between;gap:8px;align-items:center">
+                      <div class="strong small">Live results</div>
+                      <div class="row" style="gap:8px">
+                        <span class="badge badge-muted" x-text="(guideResultFor(step).aggregate.total || 0) + ' response' + ((guideResultFor(step).aggregate.total || 0) === 1 ? '' : 's')"></span>
+                        <span class="badge badge-green" x-text="(guideResultFor(step).aggregate.correctCount || 0) + ' fully correct'"></span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </template>
 
               <!-- Whiteboard step -->
               <template x-if="step.step_type === 'whiteboard'">
-                <div>
-                  <p class="muted small">Open an infinite canvas for drawing, annotation, math/science sketching and collaborative problem-solving.</p>
-                  <button type="button" class="btn btn-primary" @click="openWhiteboardForStep(step)"><i data-lucide="presentation"></i> Open whiteboard canvas</button>
+                <div class="interactive-block">
+                  <div class="whiteboard-slide-card">
+                    <div class="whiteboard-slide-icon"><i data-lucide="pen-tool"></i></div>
+                    <div>
+                      <div class="strong">Collaborative whiteboard canvas</div>
+                      <p class="muted small" style="margin:6px 0 0" x-text="guideInteractive(step).note || step.body || 'Draw, annotate, sketch maths or science ideas, and solve problems together on an infinite canvas.'"></p>
+                      <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px">
+                        <span class="badge badge-muted"><i data-lucide="pencil" style="width:12px;height:12px"></i> Draw & annotate</span>
+                        <span class="badge badge-muted"><i data-lucide="users" style="width:12px;height:12px"></i> Collaborate</span>
+                        <span class="badge badge-muted"><i data-lucide="infinity" style="width:12px;height:12px"></i> Infinite canvas</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div style="margin-top:12px">
+                    <button type="button" class="btn btn-primary" @click="openWhiteboardForStep(step)"><i data-lucide="presentation"></i> Open whiteboard canvas</button>
+                  </div>
                 </div>
               </template>
             </div>
