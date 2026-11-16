@@ -1507,3 +1507,43 @@ img, video, canvas, svg { max-width: 100%; }
 .drop-target { min-height: 48px; border-style: dashed; }
 .drop-target.filled { border-style: solid; background: rgba(58,125,68,0.06); }
 @media (max-width: 700px) { .dragdrop-grid { grid-template-columns: 1fr; } .result-row { grid-template-columns: 1fr; gap: 4px; } }
+
+/* --- Signup journey ----------------------------------------------------- */
+.signup-card { padding: 22px; }
+.signup-stepper { display: flex; align-items: flex-start; gap: 0; margin: 4px 0 18px; }
+.signup-step-item { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 72px; flex: 0 0 auto; }
+.signup-step-dot { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 0.85rem; color: var(--text-muted); background: var(--surface-2); border: 2px solid var(--border-subtle); transition: all .2s ease; }
+.signup-step-item.active .signup-step-dot { background: var(--reel-green-700); color: #fff; border-color: var(--reel-green-700); box-shadow: 0 0 0 4px rgba(58,125,68,0.12); }
+.signup-step-item.done .signup-step-dot { background: var(--reel-green-100); color: var(--reel-green-700); border-color: var(--reel-green-500); }
+[data-theme="dark"] .signup-step-item.done .signup-step-dot { background: rgba(58,125,68,0.18); color: #cfead3; }
+.signup-step-label { font-size: 0.72rem; color: var(--text-muted); text-align: center; font-weight: 600; line-height: 1.2; max-width: 90px; }
+.signup-step-item.active .signup-step-label { color: var(--text-strong); }
+.signup-step-line { flex: 1 1 auto; height: 2px; background: var(--border-subtle); margin-top: 15px; border-radius: 2px; min-width: 12px; }
+.signup-step-line.done { background: var(--reel-green-500); }
+.signup-form { margin-top: 6px; }
+.signup-panel { animation: todayFadeUp .3s ease both; }
+.signup-panel h3 { margin: 0 0 4px; font-size: 1.15rem; }
+.signup-hint { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); color: var(--text); font-size: 0.86rem; margin-top: 8px; }
+.signup-hint i, .signup-hint svg { width: 18px; height: 18px; flex: 0 0 18px; margin-top: 1px; color: var(--reel-green-600); }
+.signup-strength { display: flex; gap: 6px; align-items: center; font-size: 0.78rem; color: var(--text-muted); margin-top: 6px; }
+.signup-strength svg { width: 14px; height: 14px; }
+.signup-strength.ok { color: var(--reel-green-700); }
+.signup-strength.warn { color: var(--reel-danger-600, #b42318); }
+[data-theme="dark"] .signup-strength.ok { color: #9fd8a8; }
+.req { color: var(--reel-danger-600, #b42318); }
+.signup-review { background: var(--surface-2); box-shadow: none; }
+.signup-actions { display: flex; align-items: center; gap: 10px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border-subtle); }
+.signup-actions .row-end { flex: 1; }
+.signup-success { text-align: center; padding: 8px 4px 4px; animation: todayFadeUp .35s ease both; }
+.signup-success-icon { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; margin: 0 auto 12px; background: var(--reel-green-100); color: var(--reel-green-700); }
+[data-theme="dark"] .signup-success-icon { background: rgba(58,125,68,0.18); color: #cfead3; }
+.signup-success-icon svg { width: 30px; height: 30px; }
+.signup-success h2 { margin: 0 0 6px; }
+@media (max-width: 560px) {
+  .signup-stepper { gap: 0; }
+  .signup-step-label { font-size: 0.66rem; max-width: 70px; }
+  .signup-step-item { min-width: 56px; }
+  .signup-card { padding: 16px; }
+  .signup-actions { flex-wrap: wrap; }
+  .signup-actions .btn { flex: 1 1 auto; }
+}

@@ -957,6 +957,8 @@
       ctx.signupBusy = false;
       ctx.signupError = null;
       ctx.signupDone = false;
+      ctx.signupStep = 1;
+      ctx.signupForm = { centreName: '', ownerName: '', ownerEmail: '', password: '', confirm: '', planKey: '', agreed: false };
       try {
         const payload = await R.api('GET', '/public/platform');
         const data = (payload && payload.data) || {};
@@ -970,27 +972,109 @@
     },
     render(ctx, params, page) {
       const enabled = ctx.signupEnabled === true;
-      const plans = (ctx.signupPlans || []).map((p) =>
+      const planOptions = '<option value="">Decide later — choose in settings</option>' + (ctx.signupPlans || []).map((p) =>
         '<option value="' + R.attr(p.plan_key) + '">' + R.esc(p.name) + ' — R' + R.esc(String(p.monthly_price)) + '/mo</option>'
       ).join('');
+
+      const steps = [
+        { n: 1, label: 'Your centre', icon: 'school' },
+        { n: 2, label: 'Your account', icon: 'user' },
+        { n: 3, label: 'Secure access', icon: 'lock' },
+        { n: 4, label: 'Plan & confirm', icon: 'sparkles' }
+      ];
+
+      const stepper = '<div class="signup-stepper" aria-label="Signup progress">' +
+        steps.map((st) => (
+          '<div class="signup-step-item" :class="{ active: signupStep === ' + st.n + ', done: signupStep > ' + st.n + ' }">' +
+            '<div class="signup-step-dot">' +
+              '<span x-show="signupStep <= ' + st.n + '">' + st.n + '</span>' +
+              '<i data-lucide="check" x-show="signupStep > ' + st.n + '" x-cloak></i>' +
+            '</div>' +
+            '<div class="signup-step-label">' + R.esc(st.label) + '</div>' +
+          '</div>' + (st.n < 4 ? '<div class="signup-step-line" :class="{ done: signupStep > ' + st.n + ' }"></div>' : '')
+        )).join('') +
+      '</div>';
+
+      const success = '' +
+        '<div class="signup-success" x-show="signupDone" x-cloak>' +
+          '<div class="signup-success-icon"><i data-lucide="party-popper"></i></div>' +
+          '<h2>Your centre is ready</h2>' +
+          '<p class="muted">Welcome to Re-EL ECD. Your workspace for <strong x-text="signupForm.centreName || \'your centre\'"></strong> has been created and a 30-day trial has started.</p>' +
+          '<div class="card" style="text-align:left;margin:16px 0;background:var(--surface-2)">' +
+            '<div class="kpi-list">' +
+              '<div class="kpi-row"><span class="kpi-label">Sign-in email</span><span class="kpi-value" x-text="signupForm.ownerEmail"></span></div>' +
+              '<div class="kpi-row"><span class="kpi-label">Role</span><span class="kpi-value">Owner / principal</span></div>' +
+              '<div class="kpi-row"><span class="kpi-label">Next step</span><span class="kpi-value">Sign in and invite your team</span></div>' +
+            '</div>' +
+          '</div>' +
+          '<a class="btn btn-primary btn-block" href="#/login"><i data-lucide="log-in"></i> Go to sign in</a>' +
+          '<p class="muted small" style="margin-top:10px">A welcome email is on its way to <span x-text="signupForm.ownerEmail"></span>.</p>' +
+        '</div>';
+
+      const journey = '' +
+        stepper +
+        '<div class="alert alert-danger" x-show="signupError" style="margin-top:14px"><i data-lucide="alert-circle"></i><span x-text="signupError"></span></div>' +
+        '<form @submit.prevent="submitSignup($event)" x-show="!signupDone" class="signup-form" novalidate>' +
+
+          '<section class="signup-panel" x-show="signupStep === 1">' +
+            '<h3>Tell us about your centre</h3>' +
+            '<p class="muted small">This is how your workspace will be named. You can update details later in settings.</p>' +
+            '<div class="field"><label for="signup-centre">Centre name <span class="req">*</span></label><input class="input" id="signup-centre" name="centreName" autocomplete="organization" required minlength="2" maxlength="200" placeholder="e.g. Little Sprouts Early Learning" x-model="signupForm.centreName"></div>' +
+            '<div class="signup-hint"><i data-lucide="info"></i><span>We’ll create a secure workspace for attendance, learning, families and daily operations.</span></div>' +
+          '</section>' +
+
+          '<section class="signup-panel" x-show="signupStep === 2" x-cloak>' +
+            '<h3>Create your account</h3>' +
+            '<p class="muted small">You’ll be the owner of this workspace and can invite teachers and staff.</p>' +
+            '<div class="field"><label for="signup-owner">Your full name <span class="req">*</span></label><input class="input" id="signup-owner" name="ownerName" autocomplete="name" required minlength="2" maxlength="120" placeholder="Owner / principal name" x-model="signupForm.ownerName"></div>' +
+            '<div class="field"><label for="signup-email">Work email <span class="req">*</span></label><input class="input" id="signup-email" name="ownerEmail" type="email" autocomplete="email" required placeholder="you@centre.co.za" x-model="signupForm.ownerEmail"><div class="hint">You’ll use this to sign in.</div></div>' +
+          '</section>' +
+
+          '<section class="signup-panel" x-show="signupStep === 3" x-cloak>' +
+            '<h3>Secure your access</h3>' +
+            '<p class="muted small">Choose a strong password to protect your centre’s information.</p>' +
+            '<div class="field"><label for="signup-password">Password <span class="req">*</span></label><input class="input" id="signup-password" name="password" type="password" autocomplete="new-password" minlength="10" required placeholder="At least 10 characters" x-model="signupForm.password">' +
+              '<div class="signup-strength" :class="{ ok: (signupForm.password || \'\').length >= 10 }"><i data-lucide="check-circle"></i><span>At least 10 characters</span></div>' +
+            '</div>' +
+            '<div class="field"><label for="signup-confirm">Confirm password <span class="req">*</span></label><input class="input" id="signup-confirm" name="confirm" type="password" autocomplete="new-password" minlength="10" required placeholder="Re-enter password" x-model="signupForm.confirm">' +
+              '<div class="signup-strength" :class="{ ok: signupForm.confirm && signupForm.password === signupForm.confirm, warn: signupForm.confirm && signupForm.password !== signupForm.confirm }"><i data-lucide="check-circle"></i><span x-text="signupForm.confirm && signupForm.password !== signupForm.confirm ? \'Passwords do not match yet\' : \'Passwords match\'"></span></div>' +
+            '</div>' +
+          '</section>' +
+
+          '<section class="signup-panel" x-show="signupStep === 4" x-cloak>' +
+            '<h3>Choose a plan & confirm</h3>' +
+            '<p class="muted small">Start with a 30-day trial. You can change plans anytime.</p>' +
+            '<div class="field"><label for="signup-plan">Plan (30-day trial)</label><select class="select" id="signup-plan" name="planKey" x-model="signupForm.planKey">' + planOptions + '</select></div>' +
+            '<div class="card signup-review">' +
+              '<div class="strong" style="margin-bottom:8px">Review your details</div>' +
+              '<div class="kpi-list">' +
+                '<div class="kpi-row"><span class="kpi-label">Centre</span><span class="kpi-value" x-text="signupForm.centreName || \'—\'"></span></div>' +
+                '<div class="kpi-row"><span class="kpi-label">Owner</span><span class="kpi-value" x-text="signupForm.ownerName || \'—\'"></span></div>' +
+                '<div class="kpi-row"><span class="kpi-label">Email</span><span class="kpi-value" x-text="signupForm.ownerEmail || \'—\'"></span></div>' +
+                '<div class="kpi-row"><span class="kpi-label">Plan</span><span class="kpi-value" x-text="signupPlanName()"></span></div>' +
+              '</div>' +
+            '</div>' +
+            '<label class="check-row" style="margin-top:12px"><input type="checkbox" name="agreed" x-model="signupForm.agreed"> <span>I accept the <a href="#/legal/terms" target="_blank">Terms of Service</a> and <a href="#/legal/privacy" target="_blank">Privacy Policy</a></span></label>' +
+          '</section>' +
+
+          '<div class="signup-actions">' +
+            '<button type="button" class="btn btn-secondary" @click="signupBack()" x-show="signupStep > 1"><i data-lucide="arrow-left"></i> Back</button>' +
+            '<span class="row-end"></span>' +
+            '<button type="button" class="btn btn-primary" @click="signupNext()" x-show="signupStep < 4">Continue <i data-lucide="arrow-right"></i></button>' +
+            '<button type="submit" class="btn btn-primary" x-show="signupStep === 4" :disabled="signupBusy"><span class="spinner" x-show="signupBusy" style="width:15px;height:15px"></span><span x-text="signupBusy ? \'Creating your workspace…\' : \'Create my centre\'"></span></button>' +
+          '</div>' +
+        '</form>' + success;
+
       const body = enabled
-        ? '<div class="alert alert-success" x-show="signupDone"><i data-lucide="check-circle"></i><span>Your centre is created. Sign in with the email and password you chose — a welcome email is on its way.</span></div>' +
-        '<div class="alert alert-danger" x-show="signupError" style="margin-top:10px"><i data-lucide="alert-circle"></i><span x-text="signupError"></span></div>' +
-        '<form @submit.prevent="submitSignup($event)" x-show="!signupDone">' +
-        '<div class="field"><label for="signup-centre">Centre name</label><input class="input" id="signup-centre" name="centreName" autocomplete="organization" required minlength="2" maxlength="200" placeholder="e.g. Little Sprouts Early Learning"></div>' +
-        '<div class="field"><label for="signup-owner">Your name</label><input class="input" id="signup-owner" name="ownerName" autocomplete="name" required minlength="2" maxlength="120" placeholder="Owner / principal name"></div>' +
-        '<div class="field"><label for="signup-email">Email</label><input class="input" id="signup-email" name="ownerEmail" type="email" autocomplete="email" required placeholder="you@centre.co.za"></div>' +
-        '<div class="field"><label for="signup-plan">Plan (30-day trial)</label><select class="select" id="signup-plan" name="planKey"><option value="">No plan yet — choose later</option>' + plans + '</select></div>' +
-        '<div class="field"><label for="signup-password">Password</label><input class="input" id="signup-password" name="password" type="password" autocomplete="new-password" minlength="10" required placeholder="At least 10 characters"></div>' +
-        '<div class="field"><label for="signup-confirm">Confirm password</label><input class="input" id="signup-confirm" name="confirm" type="password" autocomplete="new-password" minlength="10" required></div>' +
-        '<label class="check-row"><input type="checkbox" name="agreed"> <span>I accept the <a href="#/legal/terms">Terms of Service</a> and <a href="#/legal/privacy">Privacy Policy</a></span></label>' +
-        '<button class="btn btn-primary btn-block" type="submit" :disabled="signupBusy"><span class="spinner" x-show="signupBusy" style="width:15px;height:15px"></span><span x-text="signupBusy ? \'Creating…\' : \'Create my centre\'"></span></button></form>' +
-        '<div class="row" style="margin-top:14px"><a class="muted small" href="#/login" x-show="signupDone">Go to sign in →</a></div>'
+        ? journey
         : '<div class="alert alert-info"><i data-lucide="info"></i><span>New centres are currently created by invitation. Contact Re-EL ECD and we will set up your workspace.</span></div>' +
-        '<a class="btn btn-primary" href="#/login">Back to sign in</a>';
+          '<a class="btn btn-primary" href="#/login">Back to sign in</a>';
+
       return platformShell(ctx, platformNav(ctx) +
-        '<section class="public-section" style="max-width:520px;margin:40px auto"><h1>Create your centre</h1><p class="lede">Start a 30-day trial. You become the owner of your workspace and can invite your team.</p>' +
-        '<div class="card glass" style="margin-top:16px">' + body + '</div></section>');
+        '<section class="public-section" style="max-width:640px;margin:40px auto"><h1>Create your centre</h1><p class="lede">Set up your Re-EL ECD workspace in a few simple steps. Start a 30-day trial — you’ll be the owner and can invite your team.</p>' +
+        '<div class="card glass signup-card" style="margin-top:16px">' + body + '</div>' +
+        '<div class="row" style="margin-top:12px;justify-content:center"><a class="muted small" href="#/login">Already have an account? Sign in</a></div>' +
+        '</section>');
     }
   };
 

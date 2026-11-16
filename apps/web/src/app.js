@@ -3073,26 +3073,64 @@
 
       async submitSignup(event) {
         const form = event && event.target ? event.target : null;
-        const centreName = form ? form.centreName.value.trim() : '';
-        const ownerName = form ? form.ownerName.value.trim() : '';
-        const ownerEmail = form ? form.ownerEmail.value.trim() : '';
-        const password = form ? form.password.value : '';
-        const confirm = form ? form.confirm.value : '';
-        const planKey = form && form.planKey ? form.planKey.value : '';
-        const agreed = form ? form.agreed.checked === true : false;
+        const get = (k) => (this.signupForm && this.signupForm[k] != null && this.signupForm[k] !== '' ? this.signupForm[k] : (form && form[k] ? form[k].value : ''));
+        const centreName = String(get('centreName') || '').trim();
+        const ownerName = String(get('ownerName') || '').trim();
+        const ownerEmail = String(get('ownerEmail') || '').trim();
+        const password = String(get('password') || '');
+        const confirm = String(get('confirm') || '');
+        const planKey = String((this.signupForm && this.signupForm.planKey != null ? this.signupForm.planKey : (form && form.planKey ? form.planKey.value : '')) || '');
+        const agreed = (this.signupForm && typeof this.signupForm.agreed === 'boolean') ? this.signupForm.agreed : (form && form.agreed ? form.agreed.checked === true : false);
         this.signupError = null;
-        if (password.length < 10) { this.signupError = 'Use a password of at least 10 characters.'; return; }
-        if (password !== confirm) { this.signupError = 'The two passwords do not match.'; return; }
-        if (!agreed) { this.signupError = 'Please accept the Terms of Service to continue.'; return; }
+        if (centreName.length < 2) { this.signupError = 'Please enter your centre name.'; this.signupStep = 1; return; }
+        if (ownerName.length < 2) { this.signupError = 'Please enter your name.'; this.signupStep = 2; return; }
+        if (!ownerEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) { this.signupError = 'Please enter a valid email address.'; this.signupStep = 2; return; }
+        if (password.length < 10) { this.signupError = 'Use a password of at least 10 characters.'; this.signupStep = 3; return; }
+        if (password !== confirm) { this.signupError = 'The two passwords do not match.'; this.signupStep = 3; return; }
+        if (!agreed) { this.signupError = 'Please accept the Terms of Service and Privacy Policy to continue.'; this.signupStep = 4; return; }
         this.signupBusy = true;
         try {
           await Reel.api('POST', '/public/signup', { centreName, ownerName, ownerEmail, password, planKey: planKey || undefined });
           this.signupDone = true;
         } catch (error) {
-          this.signupError = error.message || 'We could not create your account. Please check the fields and try again.';
+          this.signupError = error.message || 'We could not create your account. Please check the details and try again.';
         } finally {
           this.signupBusy = false;
         }
+      },
+
+      signupValidateStep(step) {
+        const f = this.signupForm || {};
+        const s = step || this.signupStep || 1;
+        this.signupError = null;
+        if (s === 1) {
+          if (!String(f.centreName || '').trim() || String(f.centreName || '').trim().length < 2) { this.signupError = 'Please enter your centre name (at least 2 characters).'; return false; }
+        } else if (s === 2) {
+          if (!String(f.ownerName || '').trim() || String(f.ownerName || '').trim().length < 2) { this.signupError = 'Please enter your name.'; return false; }
+          const email = String(f.ownerEmail || '').trim();
+          if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { this.signupError = 'Please enter a valid email address.'; return false; }
+        } else if (s === 3) {
+          const pw = String(f.password || '');
+          if (pw.length < 10) { this.signupError = 'Choose a password with at least 10 characters.'; return false; }
+          if (pw !== String(f.confirm || '')) { this.signupError = 'The two passwords do not match.'; return false; }
+        }
+        return true;
+      },
+
+      signupNext() {
+        if (!this.signupValidateStep(this.signupStep)) return;
+        this.signupStep = Math.min(4, (this.signupStep || 1) + 1);
+      },
+
+      signupBack() {
+        this.signupError = null;
+        this.signupStep = Math.max(1, (this.signupStep || 1) - 1);
+      },
+
+      signupPlanName() {
+        const key = this.signupForm && this.signupForm.planKey;
+        const plan = (this.signupPlans || []).find((p) => p.plan_key === key);
+        return plan ? (plan.name + ' — R' + plan.monthly_price + '/mo') : 'Decide later (you can choose in settings)';
       },
 
       async submitResetPassword(event) {
@@ -3140,7 +3178,9 @@
       signupError: null,
       signupDone: false,
       signupPlans: [],
-      signupEnabled: false
+      signupEnabled: false,
+      signupStep: 1,
+      signupForm: { centreName: '', ownerName: '', ownerEmail: '', password: '', confirm: '', planKey: '', agreed: false }
     };
   }
 
