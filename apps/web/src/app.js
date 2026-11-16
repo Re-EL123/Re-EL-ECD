@@ -341,7 +341,8 @@
         if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
           window.speechSynthesis.onvoiceschanged = () => this.refreshVoices();
         }
-        try { this.theme = localStorage.getItem('reel.theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch { this.theme = 'light'; }
+        // Default to light for a consistent first impression; honour an explicit choice.
+        try { this.theme = localStorage.getItem('reel.theme') || 'light'; } catch { this.theme = 'light'; }
         try { this.sidebarCollapsed = localStorage.getItem('reel.sidebar') !== 'expanded'; } catch { this.sidebarCollapsed = true; }
         this.viewportWidth = window.innerWidth;
         window.addEventListener('resize', () => {
@@ -749,6 +750,7 @@
         if (window.Alpine && window.Alpine.destroyTree) window.Alpine.destroyTree(root);
         root.innerHTML = html;
         if (window.Alpine && window.Alpine.initTree) window.Alpine.initTree(root);
+        window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
       },
 
       /**
@@ -2657,6 +2659,7 @@
         if (!root) return;
         root.innerHTML = Reel.views.auth ? Reel.views.auth.render(this) : '';
         if (window.Alpine && window.Alpine.initTree) window.Alpine.initTree(root);
+        window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
       },
 
       async renderPublic(route, params, seq) {
@@ -2699,9 +2702,11 @@
           }
           if (window.Alpine && window.Alpine.initTree) window.Alpine.initTree(root);
           this.renderIconsNow();
+          window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
         } catch (error) {
           const homeLink = params && params.slug ? '#/site/' + encodeURIComponent(params.slug) : '#/login';
           root.innerHTML = '<div style="min-height:100vh;display:grid;place-items:center;padding:24px"><div class="card" style="max-width:520px;text-align:center"><h2>Website unavailable</h2><p class="muted">' + Reel.esc(error.message) + '</p><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px"><a class="btn btn-primary" href="#/login">Parent sign-in</a><a class="btn btn-secondary" href="' + homeLink + '">Back to website</a></div></div></div>';
+          window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
         }
       },
 
