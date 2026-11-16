@@ -2137,77 +2137,111 @@ a.crumb:hover { color: var(--text-strong); background: var(--surface-2); text-de
 }
 
 /* --- Neon glass cards (all through the platform) --------------------------
-   Every card becomes a pane of tinted glass: a soft diagonal sheen, a lime
-   neon hairline along the top edge and a low green glow. Dark theme raises
-   the neon edges; print reverts to plain paper. */
+   Every card becomes a pane of tinted glass: a lime glow blooming from the
+   top-left over a soft mint gradient, a bright neon hairline along the top
+   edge, a glass rim and a green halo beneath. Dark theme lifts the neon;
+   print reverts to plain paper. */
 :root {
-  --neon-edge: rgba(141, 226, 160, 0.62);
-  --neon-glow: rgba(92, 214, 116, 0.16);
-  --neon-glow-strong: rgba(92, 214, 116, 0.30);
-  --neon-border: rgba(92, 214, 116, 0.24);
-  --neon-border-strong: rgba(141, 226, 160, 0.45);
+  --neon-edge: rgba(168, 240, 185, 0.95);
+  --neon-glow: rgba(92, 214, 116, 0.38);
+  --neon-glow-strong: rgba(92, 214, 116, 0.55);
+  --neon-border: rgba(122, 214, 140, 0.42);
+  --neon-border-strong: rgba(122, 214, 140, 0.68);
 }
 .card {
   isolation: isolate;
   background:
-    linear-gradient(150deg, rgba(255, 255, 255, 0.66), rgba(255, 255, 255, 0.20) 42%, rgba(141, 226, 160, 0.10) 100%),
+    radial-gradient(130% 115% at 6% -8%, rgba(168, 240, 185, 0.34) 0%, rgba(168, 240, 185, 0.10) 38%, rgba(168, 240, 185, 0) 62%),
+    linear-gradient(155deg, rgba(255, 255, 255, 0.94) 0%, rgba(242, 250, 245, 0.85) 45%, rgba(219, 242, 227, 0.92) 100%),
     var(--surface-1);
-  border-color: var(--neon-border);
+  border: 1px solid var(--neon-border);
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.34),
-    var(--shadow-xs),
-    0 12px 38px -18px var(--neon-glow);
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    0 1px 2px rgba(28, 42, 30, 0.05),
+    0 4px 12px -4px rgba(92, 214, 116, 0.22),
+    8px 10px 26px -14px rgba(31, 50, 35, 0.16),
+    0 18px 46px -16px var(--neon-glow);
   transition: box-shadow 0.45s cubic-bezier(0.3, 0.7, 0.3, 1), border-color 0.35s cubic-bezier(0.3, 0.7, 0.3, 1);
 }
 .card::before {
   content: ''; position: absolute; inset: 0; border-radius: inherit;
   z-index: -1; pointer-events: none;
   background:
-    linear-gradient(115deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0) 30%),
-    radial-gradient(120% 90% at 85% -10%, rgba(141, 226, 160, 0.14), rgba(141, 226, 160, 0) 60%);
+    linear-gradient(112deg, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0.16) 26%, rgba(255, 255, 255, 0) 46%),
+    radial-gradient(95% 75% at 92% 110%, rgba(168, 240, 185, 0.30), rgba(168, 240, 185, 0) 58%);
 }
 .card::after {
-  content: ''; position: absolute; top: 0; left: 10%; right: 10%; height: 1px;
-  border-radius: 1px; z-index: -1; pointer-events: none;
-  background: linear-gradient(90deg, rgba(141, 226, 160, 0), var(--neon-edge) 30%, var(--neon-edge) 70%, rgba(141, 226, 160, 0));
-  opacity: 0.55;
+  content: ''; position: absolute; top: 0; left: 8%; right: 8%; height: 2px;
+  border-radius: 2px; z-index: -1; pointer-events: none;
+  background: linear-gradient(90deg, rgba(168, 240, 185, 0) 0%, var(--neon-edge) 28%, var(--neon-edge) 72%, rgba(168, 240, 185, 0) 100%);
+  box-shadow: 0 0 10px rgba(150, 232, 172, 0.75);
 }
 .card:hover {
   border-color: var(--neon-border-strong);
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.4),
-    var(--shadow-sm),
-    0 16px 46px -16px var(--neon-glow-strong);
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 2px 4px rgba(28, 42, 30, 0.06),
+    0 6px 16px -4px rgba(92, 214, 116, 0.34),
+    10px 12px 30px -14px rgba(31, 50, 35, 0.20),
+    0 22px 56px -16px var(--neon-glow-strong);
 }
 .card.glass {
   background:
-    linear-gradient(150deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.14) 42%, rgba(141, 226, 160, 0.08) 100%),
+    radial-gradient(130% 115% at 6% -8%, rgba(168, 240, 185, 0.26) 0%, rgba(168, 240, 185, 0.06) 40%, rgba(168, 240, 185, 0) 62%),
+    linear-gradient(155deg, rgba(255, 255, 255, 0.72) 0%, rgba(255, 255, 255, 0.42) 45%, rgba(230, 246, 236, 0.55) 100%),
     var(--surface-glass-strong);
 }
 .modal {
   position: relative;
   background:
-    linear-gradient(150deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.24) 42%, rgba(141, 226, 160, 0.10) 100%),
+    radial-gradient(130% 115% at 6% -8%, rgba(168, 240, 185, 0.30) 0%, rgba(168, 240, 185, 0.08) 40%, rgba(168, 240, 185, 0) 62%),
+    linear-gradient(155deg, rgba(255, 255, 255, 0.95) 0%, rgba(244, 251, 246, 0.88) 45%, rgba(224, 244, 231, 0.94) 100%),
     var(--surface-1);
-  border-color: var(--neon-border);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.34), var(--shadow-lg), 0 18px 52px -20px var(--neon-glow);
+  border: 1px solid var(--neon-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85), var(--shadow-lg), 0 20px 56px -18px var(--neon-glow);
 }
 .modal::after {
-  content: ''; position: absolute; top: 0; left: 12%; right: 12%; height: 1px; z-index: 3; pointer-events: none;
-  background: linear-gradient(90deg, rgba(141, 226, 160, 0), var(--neon-edge) 30%, var(--neon-edge) 70%, rgba(141, 226, 160, 0));
-  opacity: 0.6;
+  content: ''; position: absolute; top: 0; left: 10%; right: 10%; height: 2px; z-index: 3; pointer-events: none;
+  border-radius: 2px;
+  background: linear-gradient(90deg, rgba(168, 240, 185, 0) 0%, var(--neon-edge) 28%, var(--neon-edge) 72%, rgba(168, 240, 185, 0) 100%);
+  box-shadow: 0 0 10px rgba(150, 232, 172, 0.75);
 }
 [data-theme="dark"] .card {
   background:
-    linear-gradient(150deg, rgba(230, 244, 232, 0.07), rgba(230, 244, 232, 0.02) 42%, rgba(141, 226, 160, 0.05) 100%),
+    radial-gradient(130% 115% at 6% -8%, rgba(168, 240, 185, 0.20) 0%, rgba(168, 240, 185, 0.04) 40%, rgba(168, 240, 185, 0) 62%),
+    linear-gradient(155deg, rgba(230, 244, 232, 0.12) 0%, rgba(230, 244, 232, 0.04) 45%, rgba(141, 226, 160, 0.11) 100%),
     var(--surface-1);
-  box-shadow: inset 0 0 0 1px rgba(230, 244, 232, 0.05), var(--shadow-xs), 0 12px 38px -18px var(--neon-glow);
+  border-color: rgba(141, 226, 160, 0.34);
+  box-shadow:
+    inset 0 1px 0 rgba(230, 244, 232, 0.12),
+    var(--shadow-xs),
+    0 18px 46px -18px rgba(92, 214, 116, 0.30);
+}
+[data-theme="dark"] .card::before {
+  background:
+    linear-gradient(112deg, rgba(230, 244, 232, 0.14) 0%, rgba(230, 244, 232, 0.02) 28%, rgba(230, 244, 232, 0) 46%),
+    radial-gradient(95% 75% at 92% 110%, rgba(141, 226, 160, 0.16), rgba(141, 226, 160, 0) 58%);
 }
 [data-theme="dark"] .card:hover {
-  border-color: var(--neon-border-strong);
-  box-shadow: inset 0 0 0 1px rgba(141, 226, 160, 0.12), var(--shadow-sm), 0 16px 46px -16px var(--neon-glow-strong);
+  border-color: rgba(168, 240, 185, 0.55);
+  box-shadow:
+    inset 0 1px 0 rgba(230, 244, 232, 0.16),
+    var(--shadow-sm),
+    0 22px 56px -16px rgba(92, 214, 116, 0.45);
 }
-[data-theme="dark"] .card::after { opacity: 0.4; }
+[data-theme="dark"] .card::after { opacity: 0.85; }
+[data-theme="dark"] .card.glass {
+  background:
+    radial-gradient(130% 115% at 6% -8%, rgba(168, 240, 185, 0.14) 0%, rgba(168, 240, 185, 0.02) 42%, rgba(168, 240, 185, 0) 62%),
+    linear-gradient(155deg, rgba(230, 244, 232, 0.10) 0%, rgba(230, 244, 232, 0.03) 45%, rgba(141, 226, 160, 0.08) 100%),
+    var(--surface-glass-strong);
+}
+[data-theme="dark"] .modal {
+  background:
+    radial-gradient(130% 115% at 6% -8%, rgba(168, 240, 185, 0.16) 0%, rgba(168, 240, 185, 0.03) 42%, rgba(168, 240, 185, 0) 62%),
+    linear-gradient(155deg, rgba(230, 244, 232, 0.12) 0%, rgba(230, 244, 232, 0.04) 45%, rgba(141, 226, 160, 0.09) 100%),
+    var(--surface-1);
+}
 @media (prefers-reduced-motion: reduce) {
   .card, .modal { transition: none !important; }
 }
