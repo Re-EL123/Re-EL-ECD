@@ -1,8 +1,9 @@
 'use strict';
 
 /**
- * Unified "Today" teacher workspace: one timeline for the day that brings
- * together schedule, plans/activities/modules/guides, classroom context,
+ * Unified "Today" workspace: one home for the day that brings together
+ * management attention (dashboard/alerts/KPIs), the teaching timeline
+ * (schedule, plans/activities/modules/guides), classroom/gate context,
  * in-flow evidence capture and end-of-day wrap-up.
  */
 (function () {
@@ -11,11 +12,6 @@
 
   function esc(s) { return R.esc(s == null ? '' : String(s)); }
   function time(iso) { return R.time ? R.time(iso) : (iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'); }
-  function clockHM(iso) {
-    if (!iso) return '';
-    const d = new Date(iso);
-    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
-  }
 
   function statusLabel(s) {
     return ({ scheduled: 'Scheduled', in_progress: 'In progress', completed: 'Completed', cancelled: 'Cancelled' })[s] || R.titleCase(s || '');
@@ -56,55 +52,154 @@
     return child && child.activitiesSummary ? child.activitiesSummary : '';
   }
 
+  function statPill(label, value, icon) {
+    return '<div class="row" style="gap:8px;align-items:center;background:var(--surface-2);padding:8px 12px;border-radius:12px">' +
+      R.icon(icon) + '<div><div class="strong" style="font-size:0.95rem;line-height:1.1">' + esc(value) + '</div><div class="muted small">' + esc(label) + '</div></div></div>';
+  }
+
   V.today = {
     async load(ctx) {
-      const data = await R.api('GET', '/staff/today').then((p) => p.data).catch(() => null);
-      // Domains for quick moments (best-effort).
-      let domains = [];
-      try { domains = (await R.api('GET', '/curriculum/domains')).data || []; } catch {}
+      const canDashboard = ctx.has('reports.read.daycare');
+      const teachingPerms = ctx.has(['curriculum.create.daycare', 'assessments.create.assigned', 'attendance.record.assigned', 'attendance.record.own', 'staff_attendance.record.assigned', 'staff_attendance.record.own']);
+      const settled = await Promise.allSettled([
+        teachingPerms ? R.api('GET', '/staff/today').catch(() => null) : Promise.resolve(null),
+        canDashboard ? R.api('GET', '/dashboard').catch(() => null) : Promise.resolve(null),
+        R.api('GET', '/tasks?status=open').catch(() => null),
+        R.api('GET', '/notifications?pageSize=6').catch(() => null),
+        ctx.has('curriculum.read.daycare')
+          ? R.api('GET', '/curriculum/calendar?from=' + R.today() + '&to=' + R.today()).catch(() => null) : Promise.resolve(null),
+        R.api('GET', '/curriculum/domains').catch(() => null)
+      ]);
+      const [todayRes, dashRes, tasksRes, notifRes, calRes, domainsRes] = settled;
+      const today = todayRes.status === 'fulfilled' && todayRes.value ? todayRes.value.data : null;
+      const dashboard = dashRes.status === 'fulfilled' && dashRes.value ? dashRes.value.data : null;
+      const tasks = tasksRes.status === 'fulfilled' && tasksRes.value ? tasksRes.value.data : [];
+      const notifications = notifRes.status === 'fulfilled' && notifRes.value ? notifRes.value.data : [];
+      const calendarToday = calRes.status === 'fulfilled' && calRes.value ? calRes.value.data : [];
+      const domains = domainsRes.status === 'fulfilled' && domainsRes.value ? domainsRes.value.data : [];
       const now = new Date();
-      return Object.assign({ domains, nowIso: now.toISOString() }, data || {});
+      return {
+        today: today || { expected: 0, present: 0, recorded: 0, children: [], timeline: [], absentees: [], focusChildren: [], unverifiedDropoffs: [], gateScans: [], unopened: [], unfinished: {}, dailyReports: { children: [], missing: 0, draft: 0, presentCount: 0 }, wrapUp: { unfinishedBlocks: [], unfinishedCount: 0 }, unmarkedIds: [] },
+        dashboard,
+        tasks: tasks || [],
+        notifications: notifications || [],
+        calendarToday: calendarToday || [],
+        domains: domains || [],
+        canDashboard,
+        teachingPerms,
+        nowIso: now.toISOString(),
+        date: R.today()
+      };
     },
 
     render(ctx, params, page) {
-      if (!page || page.expected === undefined) {
-        return R.pageHead('Today', 'Your teaching day, in one place.') +
-          R.emptyState('Could not load today', 'We couldn’t load your day right now. Try again.', '<button class="btn btn-primary" @click="navigate(true)">Retry</button>', 'alert-circle');
-      }
-      const p = page;
-      const timeline = p.timeline || [];
-      const now = new Date(p.nowIso || Date.now());
+      const t = page.today || {};
+      const timeline = t.timeline || [];
+      const now = new Date(page.nowIso || Date.now());
       const nowMs = now.getTime();
-
       const next = timeline.find((b) => b.status === 'scheduled' || b.status === 'in_progress') || null;
       const nextIdx = next ? timeline.indexOf(next) : -1;
-      const unfinished = (p.wrapUp && p.wrapUp.unfinishedBlocks) || [];
-      const dr = p.dailyReports || { children: [], missing: 0, draft: 0, presentCount: 0 };
-      const focus = p.focusChildren || [];
-      const absentees = p.absentees || [];
-      const unverified = p.unverifiedDropoffs || [];
-      const gate = p.gateScans || [];
-      const unopened = p.unopened || [];
-      const tasksDue = ((p.unfinished || {}).tasksDueToday) || 0;
-      const drafts = ((p.unfinished || {}).draftObservations) || 0;
+
+      // Charts for manager dashboard
+      const d = page.dashboard || {};
+      const trend = d.attendanceTrend || [];
+      const revenue = d.revenueByMonth || [];
+      if (page.canDashboard) {
+        ctx.chart('attendance-trend', 'line', {
+          labels: trend.map((x) => new Date(x.attendance_date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })),
+          datasets: [
+            { label: 'Present', data: trend.map((x) => x.present), borderColor: '#3A7D44', backgroundColor: 'rgba(58,125,68,0.12)', fill: true, tension: 0.35, pointRadius: 2 },
+            { label: 'Marked', data: trend.map((x) => x.marked), borderColor: '#E89A2B', backgroundColor: 'transparent', borderDash: [4, 4], tension: 0.35, pointRadius: 0 }
+          ]
+        });
+        ctx.chart('revenue-chart', 'bar', {
+          labels: revenue.map((r) => r.month),
+          datasets: [
+            { label: 'Invoiced', data: revenue.map((r) => r.invoiced), backgroundColor: '#A8D5AE', borderRadius: 6 },
+            { label: 'Collected', data: revenue.map((r) => r.collected), backgroundColor: '#3A7D44', borderRadius: 6 }
+          ]
+        });
+      }
 
       const headerSub = timeline.length
         ? (next ? ('Up next: ' + next.title + ' at ' + time(next.startsAt) + '.') : 'All planned blocks are complete — nice work.')
-        : 'Nothing scheduled on the calendar yet. Schedule your day and it will appear here.';
+        : (page.canDashboard ? 'Your centre at a glance for ' + R.date(page.date) + '.' : 'Nothing scheduled on the calendar yet. Schedule your day and it will appear here.');
 
       let html = '<div class="today-wrap" id="today-root">';
       html += R.pageHead('Today', headerSub,
         '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'quickMoment\')">' + R.icon('camera') + ' Quick moment</button>' +
         '<button class="btn btn-secondary btn-sm" onclick="window.print()">' + R.icon('printer') + ' Prep list</button>' +
+        (page.canDashboard && ctx.has('learners.create.daycare') ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'learner\')">' + R.icon('user-plus') + ' Add learner</button>' : '') +
         '<button class="btn btn-primary btn-sm" @click="navigate(true)">' + R.icon('refresh-cw') + ' Refresh</button>'
       );
 
-      // People / classroom context strip
-      html += '<div class="card today-strip section">' +
+      // Manager dashboard (alerts, KPIs, charts, lists) — merged from Overview
+      if (page.canDashboard) {
+        html += this.renderDashboard(ctx, page);
+      }
+
+      // Teaching day: people/context + timeline + wrap-up
+      html += this.renderPeopleStrip(ctx, page);
+      html += this.renderFocus(ctx, page);
+      html += this.renderUpNext(ctx, page, next);
+      html += this.renderTimeline(ctx, page, timeline, nextIdx, nowMs);
+      html += this.renderWrapUp(ctx, page);
+      html += this.renderPrepList(page);
+
+      html += '</div>';
+      return html;
+    },
+
+    renderDashboard(ctx, page) {
+      const d = page.dashboard || {};
+      const finance = d.finance || {};
+      const attendance = d.attendance || {};
+      const learners = d.learners || {};
+      const alerts = d.alerts || [];
+      const tasks = (page.tasks || []).slice(0, 6);
+      const upcoming = d.upcoming || page.calendarToday || [];
+      const notifications = page.notifications || [];
+
+      let html = '';
+      if (alerts.length) {
+        html += '<div class="stack section">' + alerts.map((a) => '<div class="alert ' + (a.severity === 'critical' || a.severity === 'warning' ? 'alert-warn' : 'alert-info') + '">' + R.icon('info') + '<span>' + esc(a.message) + '</span>' + (a.link ? '<a class="btn btn-sm btn-ghost row-end" href="' + R.attr(a.link) + '">Open</a>' : '') + '</div>').join('') + '</div>';
+      }
+
+      html += '<div class="grid grid-4 section">' +
+        R.statCard({ label: 'Enrolled learners', value: R.number(learners.enrolled), icon: 'users', foot: learners.waitlisted ? learners.waitlisted + ' waitlisted' : 'All places confirmed' }) +
+        R.statCard({ label: 'Attendance today', value: R.percent(attendance.rate), icon: 'calendar-check', tone: 'sky', foot: (attendance.present || 0) + ' present · ' + (attendance.absent || 0) + ' absent' }) +
+        R.statCard({ label: 'Outstanding fees', value: R.money(finance.outstanding), icon: 'wallet', tone: 'clay', foot: 'Collected today ' + R.money(finance.collected) }) +
+        R.statCard({ label: 'Open incidents', value: R.number((d.incidents || {}).total), icon: 'shield-alert', tone: (d.incidents || {}).total ? 'danger' : 'green', foot: 'Health and safety register' }) +
+        '</div>';
+
+      html += '<div class="split section"><div class="stack">' +
+        R.card('Attendance trend', '<div style="position:relative;height:270px"><canvas id="attendance-trend"></canvas></div>', '<a class="btn btn-sm btn-ghost" href="#/app/learner-attendance">Open register ' + R.icon('arrow-right') + '</a>') +
+        R.card('Revenue and collections', '<div style="position:relative;height:250px"><canvas id="revenue-chart"></canvas></div>', '<a class="btn btn-sm btn-ghost" href="#/app/finance">Finance ' + R.icon('arrow-right') + '</a>') +
+        R.card('Tasks needing attention', tasks.length ? '<div class="stack">' + tasks.map((t) => '<div class="row" style="gap:10px;align-items:flex-start"><span class="badge ' + R.priorityTone(t.priority) + '">' + esc(t.priority) + '</span><div style="flex:1;min-width:0"><div class="strong" style="font-size:0.88rem">' + esc(t.title) + '</div><div class="muted small">' + esc(t.assignee_name || 'Unassigned') + ' · due ' + R.date(t.due_at) + '</div></div><button class="btn btn-sm btn-secondary" @click="act(\'PATCH\',\'/tasks/' + R.attr(t.id) + '\',{status:\'done\'},{successMessage:\'Task completed\'})">Done</button></div>').join('') + '</div>' : R.emptyState('No open tasks', 'Everything assigned is complete.', '', 'check-circle'), '<a class="btn btn-sm btn-ghost" href="#/app/tasks">All tasks ' + R.icon('arrow-right') + '</a>') +
+        '</div><div class="stack">' +
+        R.card('Coming up', upcoming.length ? '<div class="timeline">' + upcoming.map((event) => '<div class="timeline-item"><div class="t-time">' + R.time(event.starts_at) + ' · ' + esc(event.classroom_name || '') + '</div><div class="t-title">' + esc(event.title) + '</div><div class="t-body">' + esc(R.titleCase(event.status || 'scheduled')) + '</div></div>').join('') + '</div>' : R.emptyState('Nothing scheduled', 'The calendar is clear for now.', '<a class="btn btn-sm btn-secondary" href="#/app/calendar">Open calendar</a>', 'calendar'), '<a class="btn btn-sm btn-ghost" href="#/app/calendar">Calendar ' + R.icon('arrow-right') + '</a>') +
+        R.card('At a glance', '<div class="kpi-list">' +
+          '<div class="kpi-row"><span class="kpi-label">Staff on record</span><span class="kpi-value">' + R.number((d.staff || {}).total) + '</span></div>' +
+          '<div class="kpi-row"><span class="kpi-label">Applications in progress</span><span class="kpi-value">' + R.number((d.applications || {}).total) + '</span></div>' +
+          '<div class="kpi-row"><span class="kpi-label">Published observations</span><span class="kpi-value">' + R.number((d.observations || {}).total) + '</span></div>' +
+          '<div class="kpi-row"><span class="kpi-label">Unread notifications</span><span class="kpi-value">' + R.number(ctx.unread) + '</span></div>' +
+          '</div>') +
+        R.card('Latest notifications', notifications.length ? '<ul class="list-clean">' + notifications.map((n) => '<li><span class="dot ' + (n.read_at ? 'muted' : '') + '"></span><div style="flex:1"><div class="strong" style="font-size:0.86rem">' + esc(n.title) + '</div><div class="muted small">' + esc(R.truncate(n.body, 90)) + '</div><div class="muted" style="font-size:0.72rem">' + R.relative(n.created_at) + '</div></div></li>').join('') + '</ul>' : R.emptyState('All caught up', 'No notifications right now.', '', 'bell'), '<a class="btn btn-sm btn-ghost" href="#/app/communications">Open ' + R.icon('arrow-right') + '</a>') +
+        '</div></div>';
+      return html;
+    },
+
+    renderPeopleStrip(ctx, page) {
+      const t = page.today || {};
+      const absentees = t.absentees || [];
+      const unverified = t.unverifiedDropoffs || [];
+      const gate = t.gateScans || [];
+      const expected = t.expected || 0;
+      return '<div class="card today-strip section">' +
         '<div class="today-strip-stats">' +
-          statPill('Present', R.number(p.present) + ' / ' + R.number(p.expected), 'user-check') +
+          statPill('Present', R.number(t.present || 0) + ' / ' + R.number(expected), 'user-check') +
           statPill('Absent', R.number(absentees.length), 'user-x') +
-          statPill('Unmarked', R.number((p.unmarkedIds || []).length), 'help-circle') +
+          statPill('Unmarked', R.number((t.unmarkedIds || []).length), 'help-circle') +
           (gate.length ? statPill('Gate releases', R.number(gate.length), 'door-open') : '') +
           (unverified.length ? statPill('Unverified drop-offs', R.number(unverified.length), 'alert-triangle') : '') +
         '</div>' +
@@ -123,39 +218,41 @@
           gate.slice(0,3).map((g) => esc(g.collectorName) + ' for ' + esc(g.childFirst)).join(' · ') + (gate.length > 3 ? '…' : '') + '</div></div>' +
           '<a class="btn btn-sm btn-primary" href="#/app/learner-attendance">Release</a></div>' : '') +
         '</div>';
+    },
 
-      // Focus / observe today prompts
-      if (focus.length) {
-        html += '<div class="card section"><div class="card-head"><h3>' + R.icon('eye') + ' Observe today</h3><span class="muted small">Children who could use a fresh observation</span></div>' +
-          '<div class="stack">' + focus.map((c) => '<div class="row" style="gap:10px;justify-content:space-between;padding:8px 10px;background:var(--surface-2);border-radius:12px">' +
-            '<div class="row" style="gap:10px;min-width:0"><span class="avatar avatar-xs">' + esc((c.firstName || c.name || '?')[0] || '?') + '</span>' +
-            '<div style="min-width:0"><div class="strong" style="font-size:0.88rem">' + esc(c.name) + '</div><div class="muted small">' + esc(c.classroom || 'Classroom') + (c.lastObservation ? ' · last ' + R.date(c.lastObservation) : ' · no observation yet') + '</div></div></div>' +
-            '<div class="btn-group"><button class="btn btn-sm btn-secondary" @click="openNamedModal(\'quickMomentFor\',\'' + R.attr(c.id) + '\')">' + R.icon('camera') + ' Moment</button>' +
-            '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'observationFor\',\'' + R.attr(c.id) + '\')">' + R.icon('plus') + ' Observe</button></div></div>').join('') + '</div></div>';
-      }
+    renderFocus(ctx, page) {
+      const focus = ((page.today || {}).focusChildren) || [];
+      if (!focus.length) return '';
+      return '<div class="card section"><div class="card-head"><h3>' + R.icon('eye') + ' Observe today</h3><span class="muted small">Children who could use a fresh observation</span></div>' +
+        '<div class="stack">' + focus.map((c) => '<div class="row" style="gap:10px;justify-content:space-between;padding:8px 10px;background:var(--surface-2);border-radius:12px">' +
+          '<div class="row" style="gap:10px;min-width:0"><span class="avatar avatar-xs">' + esc((c.firstName || c.name || '?')[0] || '?') + '</span>' +
+          '<div style="min-width:0"><div class="strong" style="font-size:0.88rem">' + esc(c.name) + '</div><div class="muted small">' + esc(c.classroom || 'Classroom') + (c.lastObservation ? ' · last ' + R.date(c.lastObservation) : ' · no observation yet') + '</div></div></div>' +
+          '<div class="btn-group"><button class="btn btn-sm btn-secondary" @click="openNamedModal(\'quickMomentFor\',\'' + R.attr(c.id) + '\')">' + R.icon('camera') + ' Moment</button>' +
+          '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'observationFor\',\'' + R.attr(c.id) + '\')">' + R.icon('plus') + ' Observe</button></div></div>').join('') + '</div></div>';
+    },
 
-      // Up next nudge
-      if (next) {
-        const mins = Math.round((new Date(next.startsAt).getTime() - nowMs) / 60000);
-        let nudge = '';
-        if (next.status === 'in_progress') nudge = 'In progress now — keep the guide handy.';
-        else if (mins <= 0) nudge = 'It’s time — start this block when you’re ready.';
-        else if (mins <= 10) nudge = 'Starting in ' + mins + ' min — time for a smooth transition.';
-        else nudge = 'Up next at ' + time(next.startsAt) + '.';
-        html += '<div class="card section today-next" style="border-left:4px solid var(--reel-green-500)"><div class="row" style="justify-content:space-between;gap:12px;align-items:flex-start">' +
-          '<div><div class="muted small">Up next</div><div class="strong" style="font-size:1.05rem">' + esc(next.title) + '</div>' +
-          '<div class="muted small">' + esc(nudge) + (next.classroom ? ' · ' + esc(next.classroom) : '') + '</div></div>' +
-          '<div class="btn-group">' +
-            (next.lessonPlanId ? '<button class="btn btn-sm btn-secondary" @click="openGuide(\'' + R.attr(next.lessonPlanId) + '\')">' + R.icon('book-open') + ' Guide</button>' : '') +
-            (next.status === 'scheduled' ? '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/curriculum/calendar/events/' + R.attr(next.id) + '/start\',{},{successMessage:\'Block started — enjoy teaching.\'})">' + R.icon('play') + ' Start</button>' : '') +
-            (next.status === 'in_progress' ? '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'completeBlock\',\'' + R.attr(next.id) + '\')">' + R.icon('check') + ' Complete</button>' : '') +
-          '</div></div></div>';
-      }
+    renderUpNext(ctx, page, next) {
+      if (!next) return '';
+      const nowMs = new Date(page.nowIso || Date.now()).getTime();
+      const mins = Math.round((new Date(next.startsAt).getTime() - nowMs) / 60000);
+      let nudge = '';
+      if (next.status === 'in_progress') nudge = 'In progress now — keep the guide handy.';
+      else if (mins <= 0) nudge = 'It’s time — start this block when you’re ready.';
+      else if (mins <= 10) nudge = 'Starting in ' + mins + ' min — time for a smooth transition.';
+      else nudge = 'Up next at ' + time(next.startsAt) + '.';
+      return '<div class="card section today-next" style="border-left:4px solid var(--reel-green-500)"><div class="row" style="justify-content:space-between;gap:12px;align-items:flex-start">' +
+        '<div><div class="muted small">Up next</div><div class="strong" style="font-size:1.05rem">' + esc(next.title) + '</div>' +
+        '<div class="muted small">' + esc(nudge) + (next.classroom ? ' · ' + esc(next.classroom) : '') + '</div></div>' +
+        '<div class="btn-group">' +
+          (next.lessonPlanId ? '<button class="btn btn-sm btn-secondary" @click="openGuide(\'' + R.attr(next.lessonPlanId) + '\')">' + R.icon('book-open') + ' Guide</button>' : '') +
+          (next.status === 'scheduled' ? '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/curriculum/calendar/events/' + R.attr(next.id) + '/start\',{},{successMessage:\'Block started — enjoy teaching.\'})">' + R.icon('play') + ' Start</button>' : '') +
+          (next.status === 'in_progress' ? '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'completeBlock\',\'' + R.attr(next.id) + '\')">' + R.icon('check') + ' Complete</button>' : '') +
+        '</div></div></div>';
+    },
 
-      // Timeline
-      html += '<div class="section"><div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px"><h2 style="font-size:1.1rem;margin:0">Today’s timeline</h2>' +
+    renderTimeline(ctx, page, timeline, nextIdx, nowMs) {
+      let html = '<div class="section"><div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px"><h2 style="font-size:1.1rem;margin:0">Today’s timeline</h2>' +
         '<span class="muted small">' + R.number(timeline.length) + ' block' + (timeline.length === 1 ? '' : 's') + '</span></div>';
-
       if (!timeline.length) {
         html += R.emptyState('No blocks scheduled for today', 'Plan your day from the calendar — link lesson plans and activities so everything shows up here, ready to teach.',
           '<a class="btn btn-primary" href="#/app/calendar">' + R.icon('calendar-plus') + ' Schedule the day</a>', 'calendar-days');
@@ -166,15 +263,113 @@
           const startMs = b.startsAt ? new Date(b.startsAt).getTime() : 0;
           const endMs = b.endsAt ? new Date(b.endsAt).getTime() : 0;
           const current = b.status === 'in_progress' || (b.status === 'scheduled' && startMs <= nowMs && (endMs ? nowMs < endMs : nowMs - startMs < 45 * 60000));
-          html += this.renderBlock(ctx, page, b, { isNext, current });
+          html += this.renderBlock(page, b, { isNext, current });
         });
         html += '</div>';
       }
       html += '</div>';
+      return html;
+    },
 
-      // End-of-day wrap-up
-      html += '<div class="card section today-wrapup"><div class="card-head"><h3>' + R.icon('sunset') + ' Wrap up the day</h3><span class="muted small">Close the loop before you go</span></div>';
+    renderBlock(page, b, flags) {
+      const isNext = flags && flags.isNext;
+      const current = flags && flags.current;
+      const plan = b.plan;
+      const act = b.activity;
+      const mod = b.module;
+      const part = b.participation || [];
+      const learners = participationLearners(page.today || {}, b);
+      const absentInScope = learners.filter((l) => !l.present);
+      const materials = materialList(act && act.materials);
+      const safety = act && act.safetyNotes ? String(act.safetyNotes).trim() : '';
+      const border = b.status === 'completed' ? 'var(--reel-green-500)' : b.status === 'in_progress' ? 'var(--reel-sun-500)' : (isNext ? 'var(--reel-sky-500)' : 'var(--border-subtle)');
+      const bg = b.status === 'completed' ? 'rgba(58,125,68,0.04)' : (current ? 'rgba(232,154,43,0.06)' : 'var(--surface-1)');
 
+      let h = '<div class="card today-block" data-block="' + R.attr(b.id) + '" style="border-left:4px solid ' + border + ';background:' + bg + '">';
+      h += '<div class="row" style="justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">' +
+        '<div style="min-width:0;flex:1">' +
+          '<div class="row" style="gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px">' +
+            '<span class="strong">' + esc(time(b.startsAt)) + (b.endsAt ? ' – ' + esc(time(b.endsAt)) : '') + '</span>' +
+            '<span class="badge ' + statusTone(b.status) + '">' + esc(statusLabel(b.status)) + '</span>' +
+            (isNext && b.status === 'scheduled' ? '<span class="badge badge-sky">Up next</span>' : '') +
+            (current && b.status === 'scheduled' ? '<span class="badge badge-sun">Now</span>' : '') +
+          '</div>' +
+          '<div class="strong" style="font-size:1.02rem">' + esc(b.title) + '</div>' +
+          '<div class="muted small">' + esc(b.classroom || 'Whole centre') + (b.staffName ? ' · ' + esc(b.staffName) : '') + '</div>' +
+        '</div>' +
+        '<div class="btn-group" style="flex-wrap:wrap">' +
+          (b.lessonPlanId ? '<button class="btn btn-sm btn-secondary" @click="openGuide(\'' + R.attr(b.lessonPlanId) + '\')">' + R.icon('book-open') + ' ' + (b.guide && b.guide.available ? 'Teach / Guide' : 'Guide') + '</button>' : '') +
+          (b.status === 'scheduled' ? '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/curriculum/calendar/events/' + R.attr(b.id) + '/start\',{},{successMessage:\'Block started — enjoy teaching.\'})">' + R.icon('play') + ' Start</button>' : '') +
+          (b.status === 'in_progress' ? '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'completeBlock\',\'' + R.attr(b.id) + '\')">' + R.icon('check-circle') + ' Complete</button>' : '') +
+          (b.status === 'completed' ? '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'completeBlock\',\'' + R.attr(b.id) + '\')" title="Edit participation">' + R.icon('edit-2') + ' Participation</button>' : '') +
+        '</div></div>';
+
+      if (mod && (mod.title || mod.position)) {
+        h += '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px">' +
+          '<a class="badge badge-muted" href="#/app/modules/' + R.attr(mod.id) + '">' + R.icon('blocks') + ' ' + esc(mod.title || 'Module') + '</a>' +
+          (mod.position ? '<span class="muted small">Plan ' + R.number(mod.position) + (mod.total ? ' of ' + R.number(mod.total) : '') + ' in the sequence</span>' : '') +
+          (mod.theme ? '<span class="muted small">· ' + esc(mod.theme) + '</span>' : '') +
+        '</div>';
+      }
+
+      if (plan) {
+        h += '<div style="margin-top:10px"><div class="muted small" style="margin-bottom:4px">Lesson plan' + (plan.theme ? ': <strong>' + esc(plan.theme) + '</strong>' : '') + '</div>';
+        if (plan.objectives && plan.objectives.length) {
+          h += '<div class="row" style="gap:6px;flex-wrap:wrap">' + plan.objectives.slice(0, 8).map((o) => '<span class="badge badge-muted" title="' + R.attr(o.description) + '">' + esc(o.code || 'Objective') + (o.domain ? ' · ' + esc(R.truncate(o.domain, 18)) : '') + '</span>').join('') +
+            (plan.objectives.length > 8 ? '<span class="muted small">+' + (plan.objectives.length - 8) + ' more</span>' : '') + '</div>';
+        } else {
+          h += '<div class="muted small">No objectives linked yet — <a href="#/app/curriculum">link objectives</a> to capture evidence in-flow.</div>';
+        }
+        if (plan.preparationNotes) h += '<div class="muted small" style="margin-top:6px"><strong>Prep:</strong> ' + esc(R.truncate(plan.preparationNotes, 160)) + '</div>';
+      }
+
+      if (act || materials.length || safety) {
+        h += '<div class="grid grid-2" style="margin-top:10px;gap:10px">';
+        h += '<div style="background:var(--surface-2);border-radius:12px;padding:10px"><div class="strong small" style="margin-bottom:4px">' + R.icon('package') + ' Materials & setup</div>';
+        if (materials.length) h += '<ul style="margin:0;padding-left:18px" class="small">' + materials.slice(0, 10).map((m) => '<li>' + esc(m) + '</li>').join('') + '</ul>';
+        else if (act && act.description) h += '<div class="muted small">' + esc(R.truncate(act.description, 140)) + '</div>';
+        else h += '<div class="muted small">No materials listed — <a href="#/app/activities">add them to the activity</a>.</div>';
+        if (act && act.durationMinutes) h += '<div class="muted small" style="margin-top:4px">~' + R.number(act.durationMinutes) + ' min' + (act.type ? ' · ' + esc(R.titleCase(act.type)) : '') + '</div>';
+        h += '</div>';
+        h += '<div style="background:var(--surface-2);border-radius:12px;padding:10px"><div class="strong small" style="margin-bottom:4px">' + R.icon('shield') + ' Safety & notes</div>';
+        h += safety ? '<div class="small">' + esc(safety) + '</div>' : '<div class="muted small">No specific safety notes. Supervise as usual.</div>';
+        h += '</div></div>';
+      }
+
+      h += '<div style="margin-top:10px"><div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">' +
+        '<div class="muted small">' + R.number(part.length) + ' participation record' + (part.length === 1 ? '' : 's') + (absentInScope.length ? ' · ' + R.number(absentInScope.length) + ' away in this group' : '') + '</div>' +
+        '<div class="btn-group"><button class="btn btn-sm btn-ghost" @click="openNamedModal(\'blockObserve\',\'' + R.attr(b.id) + '\')">' + R.icon('sparkles') + ' Capture moment</button></div></div>';
+      if (absentInScope.length) {
+        h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px"><span class="muted small">Away:</span>' +
+          absentInScope.slice(0, 8).map((c) => '<span class="badge badge-muted">' + esc(c.firstName || c.name) + '</span>').join('') +
+          (absentInScope.length > 8 ? '<span class="muted small">+' + (absentInScope.length - 8) + '</span>' : '') + '</div>';
+      }
+      if (part.length) {
+        h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">' +
+          part.slice(0, 10).map((p) => '<span class="badge ' + (p.status === 'participated' ? 'badge-green' : p.status === 'partial' ? 'badge-sun' : 'badge-muted') + '">' + esc(p.name.split(' ')[0]) + ' · ' + esc(p.status) + '</span>').join('') +
+          (part.length > 10 ? '<span class="muted small">+' + (part.length - 10) + '</span>' : '') + '</div>';
+      }
+      h += '</div>';
+
+      h += '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:10px;border-top:1px solid var(--border-subtle)">' +
+        (b.lessonPlanId ? '<a class="btn btn-sm btn-ghost" href="#/app/curriculum?tab=plans">Plan</a>' : '') +
+        (mod ? '<a class="btn btn-sm btn-ghost" href="#/app/modules/' + R.attr(mod.id) + '">Module</a>' : '') +
+        (b.activityId ? '<a class="btn btn-sm btn-ghost" href="#/app/activities">Activity</a>' : '') +
+        '<a class="btn btn-sm btn-ghost" href="#/app/calendar">Calendar</a>' +
+      '</div>';
+      h += '</div>';
+      return h;
+    },
+
+    renderWrapUp(ctx, page) {
+      const t = page.today || {};
+      const unfinished = (t.wrapUp && t.wrapUp.unfinishedBlocks) || [];
+      const dr = t.dailyReports || { children: [], missing: 0, draft: 0, presentCount: 0 };
+      const drafts = ((t.unfinished || {}).draftObservations) || 0;
+      const tasksDue = ((t.unfinished || {}).tasksDueToday) || 0;
+      const unopened = t.unopened || [];
+
+      let html = '<div class="card section today-wrapup"><div class="card-head"><h3>' + R.icon('sunset') + ' Wrap up the day</h3><span class="muted small">Close the loop before you go</span></div>';
       html += '<div class="grid grid-3" style="margin-bottom:14px">' +
         R.statCard({ label: 'Unfinished blocks', value: R.number(unfinished.length), icon: 'clock', tone: unfinished.length ? 'sun' : 'green', foot: unfinished.length ? 'Not yet completed' : 'All done' }) +
         R.statCard({ label: 'Daily reports', value: R.number(dr.missing) + ' / ' + R.number(dr.presentCount), icon: 'file-text', tone: dr.missing ? 'clay' : 'green', foot: dr.missing ? (dr.missing + ' still to write') : (dr.draft ? (dr.draft + ' draft to share') : 'All present children covered') }) +
@@ -215,121 +410,12 @@
       if (tasksDue) {
         html += '<div class="section"></div><a class="btn btn-sm btn-secondary" href="#/app/tasks">' + R.icon('list-checks') + ' View ' + R.number(tasksDue) + ' task' + (tasksDue === 1 ? '' : 's') + ' due today</a>';
       }
-      html += '</div>'; // wrap-up
-
-      // Print / prep list (visible in print)
-      html += this.renderPrepList(page);
-
-      html += '</div>'; // today-wrap
+      html += '</div>';
       return html;
     },
 
-    renderBlock(ctx, page, b, flags) {
-      const isNext = flags && flags.isNext;
-      const current = flags && flags.current;
-      const plan = b.plan;
-      const act = b.activity;
-      const mod = b.module;
-      const part = b.participation || [];
-      const learners = participationLearners(page, b);
-      const absentInScope = learners.filter((l) => !l.present);
-
-      const materials = materialList(act && act.materials);
-      const safety = act && act.safetyNotes ? String(act.safetyNotes).trim() : '';
-
-      const border = b.status === 'completed' ? 'var(--reel-green-500)' : b.status === 'in_progress' ? 'var(--reel-sun-500)' : (isNext ? 'var(--reel-sky-500)' : 'var(--border-subtle)');
-      const bg = b.status === 'completed' ? 'rgba(58,125,68,0.04)' : (current ? 'rgba(232,154,43,0.06)' : 'var(--surface-1)');
-
-      let h = '<div class="card today-block" data-block="' + R.attr(b.id) + '" style="border-left:4px solid ' + border + ';background:' + bg + '">';
-      // header
-      h += '<div class="row" style="justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">' +
-        '<div style="min-width:0;flex:1">' +
-          '<div class="row" style="gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px">' +
-            '<span class="strong">' + esc(time(b.startsAt)) + (b.endsAt ? ' – ' + esc(time(b.endsAt)) : '') + '</span>' +
-            '<span class="badge ' + statusTone(b.status) + '">' + esc(statusLabel(b.status)) + '</span>' +
-            (isNext && b.status === 'scheduled' ? '<span class="badge badge-sky">Up next</span>' : '') +
-            (current && b.status === 'scheduled' ? '<span class="badge badge-sun">Now</span>' : '') +
-          '</div>' +
-          '<div class="strong" style="font-size:1.02rem">' + esc(b.title) + '</div>' +
-          '<div class="muted small">' + esc(b.classroom || 'Whole centre') + (b.staffName ? ' · ' + esc(b.staffName) : '') + '</div>' +
-        '</div>' +
-        '<div class="btn-group" style="flex-wrap:wrap">' +
-          (b.lessonPlanId ? '<button class="btn btn-sm btn-secondary" @click="openGuide(\'' + R.attr(b.lessonPlanId) + '\')">' + R.icon('book-open') + ' ' + (b.guide && b.guide.available ? 'Teach / Guide' : 'Guide') + '</button>' : '') +
-          (b.status === 'scheduled' ? '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/curriculum/calendar/events/' + R.attr(b.id) + '/start\',{},{successMessage:\'Block started — enjoy teaching.\'})">' + R.icon('play') + ' Start</button>' : '') +
-          (b.status === 'in_progress' ? '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'completeBlock\',\'' + R.attr(b.id) + '\')">' + R.icon('check-circle') + ' Complete</button>' : '') +
-          (b.status === 'completed' ? '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'completeBlock\',\'' + R.attr(b.id) + '\')" title="Edit participation">' + R.icon('edit-2') + ' Participation</button>' : '') +
-        '</div></div>';
-
-      // Module / sequence context
-      if (mod && (mod.title || mod.position)) {
-        h += '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px">' +
-          '<a class="badge badge-muted" href="#/app/modules/' + R.attr(mod.id) + '">' + R.icon('blocks') + ' ' + esc(mod.title || 'Module') + '</a>' +
-          (mod.position ? '<span class="muted small">Plan ' + R.number(mod.position) + (mod.total ? ' of ' + R.number(mod.total) : '') + ' in the sequence</span>' : '') +
-          (mod.theme ? '<span class="muted small">· ' + esc(mod.theme) + '</span>' : '') +
-        '</div>';
-      }
-
-      // Plan & objectives
-      if (plan) {
-        h += '<div style="margin-top:10px"><div class="muted small" style="margin-bottom:4px">Lesson plan' + (plan.theme ? ': <strong>' + esc(plan.theme) + '</strong>' : '') + '</div>';
-        if (plan.objectives && plan.objectives.length) {
-          h += '<div class="row" style="gap:6px;flex-wrap:wrap">' + plan.objectives.slice(0, 8).map((o) => '<span class="badge badge-muted" title="' + R.attr(o.description) + '">' + esc(o.code || 'Objective') + (o.domain ? ' · ' + esc(R.truncate(o.domain, 18)) : '') + '</span>').join('') +
-            (plan.objectives.length > 8 ? '<span class="muted small">+' + (plan.objectives.length - 8) + ' more</span>' : '') + '</div>';
-        } else {
-          h += '<div class="muted small">No objectives linked yet — <a href="#/app/curriculum">link objectives</a> to capture evidence in-flow.</div>';
-        }
-        if (plan.preparationNotes) h += '<div class="muted small" style="margin-top:6px"><strong>Prep:</strong> ' + esc(R.truncate(plan.preparationNotes, 160)) + '</div>';
-      }
-
-      // Activity: materials & safety inline
-      if (act || materials.length || safety) {
-        h += '<div class="grid grid-2" style="margin-top:10px;gap:10px">';
-        h += '<div style="background:var(--surface-2);border-radius:12px;padding:10px"><div class="strong small" style="margin-bottom:4px">' + R.icon('package') + ' Materials & setup</div>';
-        if (materials.length) {
-          h += '<ul style="margin:0;padding-left:18px" class="small">' + materials.slice(0, 10).map((m) => '<li>' + esc(m) + '</li>').join('') + '</ul>';
-        } else if (act && act.description) {
-          h += '<div class="muted small">' + esc(R.truncate(act.description, 140)) + '</div>';
-        } else {
-          h += '<div class="muted small">No materials listed — <a href="#/app/activities">add them to the activity</a>.</div>';
-        }
-        if (act && act.durationMinutes) h += '<div class="muted small" style="margin-top:4px">~' + R.number(act.durationMinutes) + ' min' + (act.type ? ' · ' + esc(R.titleCase(act.type)) : '') + '</div>';
-        h += '</div>';
-        h += '<div style="background:var(--surface-2);border-radius:12px;padding:10px"><div class="strong small" style="margin-bottom:4px">' + R.icon('shield') + ' Safety & notes</div>';
-        h += safety ? '<div class="small">' + esc(safety) + '</div>' : '<div class="muted small">No specific safety notes. Supervise as usual.</div>';
-        h += '</div></div>';
-      }
-
-      // People context: participation / absentees in this block
-      h += '<div style="margin-top:10px"><div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">' +
-        '<div class="muted small">' + R.number(part.length) + ' participation record' + (part.length === 1 ? '' : 's') + (absentInScope.length ? ' · ' + R.number(absentInScope.length) + ' away in this group' : '') + '</div>' +
-        '<div class="btn-group"><button class="btn btn-sm btn-ghost" @click="openNamedModal(\'blockObserve\',\'' + R.attr(b.id) + '\')">' + R.icon('sparkles') + ' Capture moment</button></div></div>';
-
-      if (absentInScope.length) {
-        h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px"><span class="muted small">Away:</span>' +
-          absentInScope.slice(0, 8).map((c) => '<span class="badge badge-muted">' + esc(c.firstName || c.name) + '</span>').join('') +
-          (absentInScope.length > 8 ? '<span class="muted small">+' + (absentInScope.length - 8) + '</span>' : '') + '</div>';
-      }
-      if (part.length) {
-        h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">' +
-          part.slice(0, 10).map((p) => '<span class="badge ' + (p.status === 'participated' ? 'badge-green' : p.status === 'partial' ? 'badge-sun' : 'badge-muted') + '">' + esc(p.name.split(' ')[0]) + ' · ' + esc(p.status) + '</span>').join('') +
-          (part.length > 10 ? '<span class="muted small">+' + (part.length - 10) + '</span>' : '') + '</div>';
-      }
-      h += '</div>';
-
-      // Deep links
-      h += '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:10px;border-top:1px solid var(--border-subtle)">' +
-        (b.lessonPlanId ? '<a class="btn btn-sm btn-ghost" href="#/app/curriculum?tab=plans">Plan</a>' : '') +
-        (mod ? '<a class="btn btn-sm btn-ghost" href="#/app/modules/' + R.attr(mod.id) + '">Module</a>' : '') +
-        (b.activityId ? '<a class="btn btn-sm btn-ghost" href="#/app/activities">Activity</a>' : '') +
-        '<a class="btn btn-sm btn-ghost" href="#/app/calendar">Calendar</a>' +
-      '</div>';
-
-      h += '</div>';
-      return h;
-    },
-
     renderPrepList(page) {
-      const timeline = (page && page.timeline) || [];
+      const timeline = ((page.today || {}).timeline) || [];
       const materials = [];
       const seen = new Set();
       timeline.forEach((b) => {
@@ -355,16 +441,31 @@
 
     openModal(ctx, name, id) {
       const page = ctx.page || {};
-      if (name === 'startBlock') {
-        const b = findBlock(page, id);
+      const t = page.today || {};
+      if (name === 'completeBlock' || name === 'blockObserve') {
+        const b = findBlock(t, id);
+        if (name === 'blockObserve') {
+          // fall through to quick capture with block context
+          const learners = blockClassroomLearners(t, b || {});
+          const options = learners.map((c) => ({ value: c.id, label: c.name + (c.classroom ? ' · ' + c.classroom : '') }));
+          const domains = page.domains || [];
+          ctx.openModal({
+            title: b ? 'Capture a moment — ' + b.title : 'Capture a moment',
+            description: 'One photo, one tag, one sentence — shared with the family in moments.' + (b && b.plan && b.plan.objectives && b.plan.objectives.length ? ' This block works towards: ' + b.plan.objectives.map((o) => o.code).filter(Boolean).join(', ') + '.' : ''),
+            endpoint: '/assessments/quick-moments',
+            submitLabel: 'Share with the family',
+            successMessage: 'Moment shared — the family will see it shortly.',
+            fields: [
+              { name: 'learnerId', label: 'Child', type: 'select', required: true, options, value: options.length === 1 ? options[0].value : undefined },
+              { name: 'domainId', label: 'What was it about? (optional)', type: 'select', options: domains.map((d) => ({ value: d.id, label: d.name })), placeholder: 'Pick the domain it showed' },
+              { name: 'photoUrls', label: 'Photo', type: 'media', multiple: true, accept: 'image/*', capture: 'environment', scope: 'observation', ownerType: 'learner' },
+              { name: 'note', label: 'One sentence', type: 'textarea', span: 2, placeholder: b ? ('During ' + b.title + ', …') : 'A lovely moment from today…' }
+            ]
+          });
+          return;
+        }
         if (!b) return;
-        ctx.act('POST', '/curriculum/calendar/events/' + b.id + '/start', {}, { successMessage: 'Block started — enjoy teaching.' });
-        return;
-      }
-      if (name === 'completeBlock') {
-        const b = findBlock(page, id);
-        if (!b) return;
-        const learners = participationLearners(page, b);
+        const learners = participationLearners(t, b);
         const existing = new Map((b.participation || []).map((p) => [p.learnerId, p]));
         const rows = learners.map((l) => {
           const prev = existing.get(l.id);
@@ -377,7 +478,7 @@
           submitLabel: 'Mark complete',
           successMessage: 'Block completed and participation saved.',
           size: 'wide',
-          description: 'Capture who took part and any notes. This also feeds daily reports and the evidence loop.',
+          description: 'Capture who took part and any notes. This feeds daily reports and the evidence loop.',
           fields: [
             { name: 'notes', label: 'Overall notes', type: 'textarea', span: 2, value: b.notes || '' },
             { name: 'participation', label: 'Participation', type: 'repeater', itemLabel: 'Child', span: 2,
@@ -396,40 +497,9 @@
         });
         return;
       }
-      if (name === 'quickMoment' || name === 'quickMomentFor' || name === 'blockObserve') {
-        const b = name === 'blockObserve' ? findBlock(page, id) : null;
-        const children = blockClassroomLearners(page, b || {});
-        const options = children.map((c) => ({ value: c.id, label: c.name + (c.classroom ? ' · ' + c.classroom : '') }));
-        const domains = page.domains || [];
-        const presetChild = name === 'quickMomentFor' ? id : (options.length === 1 ? options[0].value : '');
-        ctx.openModal({
-          title: b ? 'Capture a moment — ' + b.title : 'Capture a moment',
-          description: 'One photo, one tag, one sentence — shared with the family in moments.' + (b && b.plan && b.plan.objectives && b.plan.objectives.length ? ' This block works towards: ' + b.plan.objectives.map((o) => o.code).filter(Boolean).join(', ') + '.' : ''),
-          endpoint: '/assessments/quick-moments',
-          submitLabel: 'Share with the family',
-          successMessage: 'Moment shared — the family will see it shortly.',
-          fields: [
-            { name: 'learnerId', label: 'Child', type: 'select', required: true, options, value: presetChild || undefined },
-            { name: 'domainId', label: 'What was it about? (optional)', type: 'select', options: domains.map((d) => ({ value: d.id, label: d.name })), placeholder: 'Pick the domain it showed' },
-            { name: 'photoUrls', label: 'Photo', type: 'media', multiple: true, accept: 'image/*', capture: 'environment', scope: 'observation', ownerType: 'learner' },
-            { name: 'note', label: 'One sentence', type: 'textarea', span: 2, placeholder: b ? ('During ' + b.title + ', …') : 'A lovely moment from today…', help: 'Leave blank and we will write “Captured a lovely moment in the classroom.”' }
-          ]
-        });
-        return;
-      }
-      if (name === 'observationFor') {
-        Promise.all([
-          R.api('GET', '/curriculum/objectives').then((p) => p.data).catch(() => []),
-          R.api('GET', '/learners?pageSize=200').then((p) => p.data).catch(() => []),
-          R.api('GET', '/templates?kind=observation').then((p) => (p.data && p.data.data) || []).catch(() => [])
-        ]).then(([objectives, learners, observationTemplates]) => {
-          V.assessments.observationModal({ ...ctx, page: Object.assign({}, ctx.page || {}, { objectives, learners, observationTemplates }) }, id);
-        });
-        return;
-      }
       if (name === 'dailyReport') {
-        const dr = ((page.dailyReports || {}).children || []).find((c) => c.id === id);
-        const child = dr || ((page.children || []).find((c) => c.id === id)) || { id: id, name: 'child' };
+        const dr = (((t.dailyReports || {}).children) || []).find((c) => c.id === id);
+        const child = dr || (((t.children || []).find((c) => c.id === id)) || { id: id, name: 'child' });
         const prefill = buildPrefillSummary(child);
         ctx.openModal({
           title: 'Daily report — ' + (child.name || 'Child'),
@@ -439,12 +509,12 @@
           size: 'wide',
           description: 'Prefilled from today’s participation where possible — edit and share when ready.',
           fields: [
-            { name: 'reportDate', label: 'Date', type: 'date', value: page.date || R.today(), required: true },
+            { name: 'reportDate', label: 'Date', type: 'date', value: t.date || R.today(), required: true },
             { name: 'mood', label: 'Mood', type: 'select', options: ['Happy', 'Calm', 'Curious', 'Tired', 'Upset', 'Energetic'], placeholder: 'How was their day?' },
-            { name: 'meals', label: 'Meals', type: 'textarea', span: 2, placeholder: 'What and how they ate' },
+            { name: 'meals', label: 'Meals', type: 'textarea', span: 2 },
             { name: 'naps', label: 'Naps / rest', type: 'textarea', span: 2 },
             { name: 'toileting', label: 'Toileting', type: 'textarea', span: 2 },
-            { name: 'activitiesSummary', label: 'Activities & highlights', type: 'textarea', span: 2, value: prefill, placeholder: 'What they enjoyed and explored today' },
+            { name: 'activitiesSummary', label: 'Activities & highlights', type: 'textarea', span: 2, value: prefill },
             { name: 'notes', label: 'Notes for family', type: 'textarea', span: 2 },
             { name: 'photoUrls', label: 'Photos', type: 'media', multiple: true, accept: 'image/*', capture: 'environment', scope: 'daily_report', ownerType: 'learner', ownerId: child.id },
             { name: 'sharedWithGuardians', label: 'Share with guardians now', type: 'checkbox', value: false }
@@ -452,11 +522,33 @@
         });
         return;
       }
+      if (name === 'learner') {
+        ctx.openModal({
+          title: 'Add a learner',
+          endpoint: '/learners',
+          submitLabel: 'Create learner',
+          fields: [
+            { name: 'firstName', label: 'First name', required: true },
+            { name: 'lastName', label: 'Last name', required: true },
+            { name: 'dateOfBirth', label: 'Date of birth', type: 'date', required: true },
+            { name: 'branchId', label: 'Branch', type: 'select', required: true, options: ctx.branches.map((b) => ({ value: b.id, label: b.name })) },
+            { name: 'gender', label: 'Gender', type: 'select', options: ['female', 'male', 'other', 'prefer not to say'] },
+            { name: 'homeLanguage', label: 'Home language' },
+            { name: 'enrolmentDate', label: 'Enrolment date', type: 'date', value: R.today() },
+            { name: 'notes', label: 'Notes', type: 'textarea', span: 2 }
+          ]
+        });
+        return;
+      }
+      if (name === 'task') {
+        ctx.openModal({ title: 'New task', endpoint: '/tasks', submitLabel: 'Create task', fields: [
+          { name: 'title', label: 'Task title', required: true, span: 2 },
+          { name: 'description', label: 'Description', type: 'textarea', span: 2 },
+          { name: 'priority', label: 'Priority', type: 'select', options: ['low', 'medium', 'high', 'urgent'], value: 'medium' },
+          { name: 'dueAt', label: 'Due date', type: 'date' }
+        ] });
+        return;
+      }
     }
   };
-
-  function statPill(label, value, icon) {
-    return '<div class="row" style="gap:8px;align-items:center;background:var(--surface-2);padding:8px 12px;border-radius:12px">' +
-      R.icon(icon) + '<div><div class="strong" style="font-size:0.95rem;line-height:1.1">' + esc(value) + '</div><div class="muted small">' + esc(label) + '</div></div></div>';
-  }
 })();

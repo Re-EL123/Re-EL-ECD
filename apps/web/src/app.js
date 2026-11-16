@@ -45,8 +45,7 @@
     route('/platform/settings', 'platform', 'platformSettings', 'platform.organisations.read', 'Platform settings'),
     route('/platform/support', 'platform', 'platformSupport', 'platform.support.manage', 'Support workspace'),
 
-    route('/app/overview', 'app', 'overview', ['reports.read.daycare', 'tasks.read.own', 'attendance.read.assigned'], 'Overview'),
-    route('/app/today', 'app', 'today', ['curriculum.create.daycare', 'assessments.create.assigned', 'attendance.record.assigned', 'attendance.record.own', 'staff_attendance.record.assigned', 'staff_attendance.record.own'], 'Today'),
+    route('/app/today', 'app', 'today', ['reports.read.daycare', 'tasks.read.own', 'attendance.read.assigned', 'curriculum.create.daycare', 'assessments.create.assigned', 'attendance.record.assigned', 'attendance.record.own', 'staff_attendance.record.assigned', 'staff_attendance.record.own'], 'Today'),
     route('/app/learners', 'app', 'learners', ['learners.read.daycare', 'learners.read.assigned'], 'Learners'),
     route('/app/learners/:id', 'app', 'learnerDetail', ['learners.read.daycare', 'learners.read.assigned'], 'Learner profile'),
     route('/app/admissions', 'app', 'admissions', 'admissions.read.daycare', 'Admissions'),
@@ -138,8 +137,7 @@
     ],
     app: [
       { label: 'Teaching', items: [
-        { path: '/app/today', label: 'Today', icon: 'sun', permission: ['curriculum.create.daycare', 'assessments.create.assigned', 'attendance.record.assigned', 'attendance.record.own', 'staff_attendance.record.assigned', 'staff_attendance.record.own'] },
-        { path: '/app/overview', label: 'Overview', icon: 'layout-dashboard', permission: ['reports.read.daycare', 'tasks.read.own', 'attendance.read.assigned'] },
+        { path: '/app/today', label: 'Today', icon: 'sun', permission: ['reports.read.daycare', 'tasks.read.own', 'attendance.read.assigned', 'curriculum.create.daycare', 'assessments.create.assigned', 'attendance.record.assigned', 'attendance.record.own', 'staff_attendance.record.assigned', 'staff_attendance.record.own'] },
         { path: '/app/calendar', label: 'Calendar', icon: 'calendar-days', permission: 'curriculum.read.daycare' },
         { path: '/app/modules', label: 'Modules', icon: 'blocks', permission: 'curriculum.read.daycare' },
         { path: '/app/curriculum', label: 'Curriculum', icon: 'book-open', permission: 'curriculum.read.daycare' },
@@ -571,11 +569,7 @@
         if (!this.session) return '/login';
         if (this.isPlatformAdmin) return '/platform/overview';
         if (this.isParentOnly) return '/parent/overview';
-        // Teachers land on Today; managers/principals with the dashboard keep Overview.
-        if (!this.has('reports.read.daycare') && this.has(['curriculum.create.daycare', 'assessments.create.assigned', 'attendance.record.assigned', 'attendance.record.own', 'staff_attendance.record.assigned', 'staff_attendance.record.own'])) {
-          return '/app/today';
-        }
-        return '/app/overview';
+        return '/app/today';
       },
 
       async switchOrganisation(id) {
@@ -621,6 +615,8 @@
 
       async navigateInner(force, seq) {
         const { path, query } = this.parseHash();
+        // Overview has been merged into Today.
+        if (path === '/app/overview') { location.hash = '#/app/today'; return; }
         this.selectedIds = [];
         this.query = query;
         const matched = matchRoute(path);
@@ -2344,6 +2340,51 @@
       },
 
       openNamedModal(name, id) {
+        // Cross-cutting actions available from any screen (Today, Overview, etc.).
+        if (name === 'observationFor' && id) {
+          Promise.all([
+            Reel.api('GET', '/curriculum/objectives').then((p) => p.data).catch(() => []),
+            Reel.api('GET', '/learners?pageSize=200').then((p) => p.data).catch(() => []),
+            Reel.api('GET', '/templates?kind=observation').then((p) => (p.data && p.data.data) || []).catch(() => [])
+          ]).then(([objectives, learners, observationTemplates]) => {
+            if (V.assessments && V.assessments.observationModal) {
+              V.assessments.observationModal({ ...this, page: Object.assign({}, this.page || {}, { objectives, learners, observationTemplates }) }, id);
+            } else {
+              this.toast('The observation form is not available right now.', 'warn');
+            }
+          }).catch(() => this.toast('Could not open the observation form.', 'error'));
+          return;
+        }
+        if (name === 'quickMoment' || name === 'quickMomentFor') {
+          const page = this.page || {};
+          const children = (page.children || (((page.morning || {}).children) || (((page.today || {}).children) || (((page.dailyReports || {}).children) || []))));
+          let options = children.map((child) => ({ value: child.id, label: child.name + (child.classroom ? ' · ' + child.classroom : '') }));
+          const presetChild = name === 'quickMomentFor' ? id : (options.length === 1 ? options[0].value : '');
+          Reel.api('GET', '/curriculum/domains').then((p) => p.data).catch(() => []).then((domains) => {
+            if (!options.length) {
+              return Reel.api('GET', '/learners?pageSize=200').then((p) => p.data || []).catch(() => []).then((learners) => {
+                options = (learners || []).map((l) => ({ value: l.id, label: (l.first_name || '') + ' ' + (l.last_name || '') }));
+                return domains;
+              });
+            }
+            return domains;
+          }).then((domains) => {
+            this.openModal({
+              title: 'Capture a moment',
+              description: 'One photo, one tag, one sentence — shared with the family in moments.',
+              endpoint: '/assessments/quick-moments',
+              submitLabel: 'Share with the family',
+              successMessage: 'Moment shared — the family will see it shortly.',
+              fields: [
+                { name: 'learnerId', label: 'Child', type: 'select', required: true, options: options.length ? options : [{ value: presetChild || '', label: 'Child' }], value: presetChild || undefined },
+                { name: 'domainId', label: 'What was it about? (optional)', type: 'select', options: (domains || []).map((d) => ({ value: d.id, label: d.name })), placeholder: 'Pick the domain it showed' },
+                { name: 'photoUrls', label: 'Photo', type: 'media', multiple: true, accept: 'image/*', capture: 'environment', scope: 'observation', ownerType: 'learner' },
+                { name: 'note', label: 'One sentence', type: 'textarea', span: 2, placeholder: 'A lovely moment from today…', help: 'Leave blank and we will write “Captured a lovely moment in the classroom.”' }
+              ]
+            });
+          });
+          return;
+        }
         const view = this.route && V[this.route.view];
         if (view && view.openModal) { view.openModal(this, name, id); return; }
         this.toast('Open the relevant page to use this action.', 'warn');
