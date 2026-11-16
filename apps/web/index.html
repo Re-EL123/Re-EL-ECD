@@ -86,7 +86,7 @@
       <button type="button" class="btn btn-sm btn-secondary" @click="stopImpersonation()"><i data-lucide="undo-2"></i> Return to platform</button>
     </div>
     <div class="sidebar-scrim" x-show="sidebarOpen" @click="closeSidebar()"></div>
-    <aside class="sidebar" :class="{ open: sidebarOpen, collapsed: sidebarCollapsed }" aria-label="Primary navigation">
+    <aside class="sidebar" :class="{ open: sidebarOpen, collapsed: sidebarCollapsed }" x-show="!billingLocked" aria-label="Primary navigation">
       <div class="sidebar-brand">
         <span class="brand-logo" :class="{ 'brand-logo-fallback': !brandLogo }">
           <img x-show="brandLogo" :src="brandLogo" alt="" width="40" height="40">
@@ -135,7 +135,7 @@
     </aside>
 
     <!-- Collapsed sidebar flyout: the group's items in a clickable popover. -->
-    <div class="nav-flyout" x-show="navFlyout" x-cloak
+    <div class="nav-flyout" x-show="navFlyout && !billingLocked" x-cloak
       :style="navFlyout ? 'top:' + navFlyout.top + 'px;left:' + navFlyout.left + 'px' : ''"
       @mouseenter="cancelHideFlyout()" @mouseleave="scheduleHideFlyout()">
       <div class="nav-flyout-head" x-text="navFlyout ? navFlyout.label : ''"></div>
@@ -155,12 +155,12 @@
         </button>
         <div class="topbar-title" x-text="pageTitle"></div>
         <div class="topbar-spacer"></div>
-        <button class="btn btn-secondary btn-sm topbar-search" @click="openCommand()" title="Search (Ctrl/Cmd + K)" aria-label="Search">
+        <button class="btn btn-secondary btn-sm topbar-search" x-show="!billingLocked" @click="openCommand()" title="Search (Ctrl/Cmd + K)" aria-label="Search">
           <i data-lucide="search"></i>
           <span class="topbar-action-label">Search</span>
           <span class="muted mono topbar-shortcut" style="font-size:0.68rem">⌘K</span>
         </button>
-        <button class="btn btn-primary btn-sm topbar-quick" @click="quickOpen = !quickOpen" aria-haspopup="true" :aria-expanded="quickOpen">
+        <button class="btn btn-primary btn-sm topbar-quick" x-show="!billingLocked" @click="quickOpen = !quickOpen" aria-haspopup="true" :aria-expanded="quickOpen">
           <i data-lucide="plus"></i>
           <span class="topbar-action-label">Quick add</span>
         </button>

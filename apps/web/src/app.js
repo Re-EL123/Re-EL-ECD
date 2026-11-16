@@ -2544,7 +2544,7 @@
       },
 
       openCommand() {
-        if (!this.session) return;
+        if (!this.session || this.billingLocked) return;
         this.commandOpen = true;
         this.commandQuery = '';
         this.commandIndex = 0;
