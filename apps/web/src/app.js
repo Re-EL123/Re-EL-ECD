@@ -10,6 +10,8 @@
   }
 
   const ROUTES = [
+    route('/', 'public', 'platformHome', null, 'Re-EL ECD'),
+    route('/home', 'public', 'platformHome', null, 'Re-EL ECD'),
     route('/login', 'login', null, null, 'Sign in'),
     route('/signup', 'public', 'signup', null, 'Sign up'),
     route('/site', 'public', 'publicSite', null, 'Daycare website'),
@@ -365,7 +367,7 @@
         if (!this.session) await this.loadPlatformBranding();
         if (!location.hash && Reel.isPlatformHost && Reel.isPlatformHost()) {
           // replaceState avoids a second hashchange-driven navigate on boot.
-          history.replaceState(null, '', '#' + (this.session ? this.defaultRoute() : '/login'));
+          history.replaceState(null, '', '#' + (this.session ? this.defaultRoute() : '/'));
         }
         await this.navigate();
       },
@@ -587,8 +589,8 @@
 
       parseHash() {
         // On a tenant-owned domain the root address is the public website, not
-        // the staff sign-in screen. Custom domains are resolved by hostname.
-        const fallback = Reel.isPlatformHost && Reel.isPlatformHost() ? '/login' : '/site';
+        // the staff sign-in screen. On the platform host, show the marketing homepage.
+        const fallback = Reel.isPlatformHost && Reel.isPlatformHost() ? '/' : '/site';
         const raw = (location.hash || '#' + fallback).replace(/^#/, '') || fallback;
         const [path, queryString] = raw.split('?');
         const query = {};

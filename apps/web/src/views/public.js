@@ -183,8 +183,17 @@
   }
 
   function platformNav(ctx, links) {
-    return '<nav class="public-nav site-nav"><a class="site-brand" href="#/login">' + platformLockup(ctx) + '</a>' +
-      '<div class="links">' + (links || '<a href="#/login">Sign in</a>') + '</div></nav>';
+    const brand = (ctx && ctx.platformBrand) || {};
+    const canSignup = brand.allowTenantSignup === true || (ctx && ctx.signupEnabled === true);
+    const home = (ctx && (ctx.route && ctx.route.view === 'platformHome' || location.hash === '#/' || location.hash === '#/home' || location.hash === ''));
+    const defaultLinks = '<a href="#/">Home</a>' +
+      '<a href="#/?section=setup">Setup &amp; launch</a>' +
+      '<a href="#/legal">Legal</a>' +
+      '<a href="#/login">Sign in</a>' +
+      (canSignup ? '<a class="btn btn-primary btn-sm" href="#/signup">Get started</a>' : '<a class="btn btn-primary btn-sm" href="#/signup">Get started</a>');
+    return '<nav class="public-nav site-nav">' +
+      '<a class="site-brand" href="#/">' + platformLockup(ctx, R.PLATFORM_BRAND.tagline) + '</a>' +
+      '<div class="links">' + (links || defaultLinks) + '</div></nav>';
   }
 
   function platformShell(ctx, body) {
@@ -1077,6 +1086,125 @@
         '</section>');
     }
   };
+
+  V.platformHome = {
+    async load(ctx) {
+      try {
+        const payload = await R.api('GET', '/public/platform');
+        const data = (payload && payload.data) || {};
+        ctx.signupEnabled = data.allowTenantSignup === true;
+        ctx.platformPlans = Array.isArray(data.plans) ? data.plans : [];
+      } catch {
+        ctx.signupEnabled = ctx.signupEnabled || false;
+        ctx.platformPlans = ctx.platformPlans || [];
+      }
+      return {};
+    },
+    render(ctx) {
+      const canSignup = ctx.signupEnabled === true;
+      const startHref = canSignup ? '#/signup' : '#/signup';
+      const startLabel = 'Start your 30-day trial';
+
+      const hero = '' +
+        '<section class="home-hero">' +
+          '<div class="home-hero-copy">' +
+            '<span class="badge badge-green">Built for South African ECD centres</span>' +
+            '<h1>Run your ECD centre with calm, clarity and care.</h1>' +
+            '<p class="lede">Re-EL ECD brings attendance and safe gate collection, teaching and curriculum, family communication, admissions and daily operations into one simple workspace — so you spend less time on admin and more time with children.</p>' +
+            '<div class="site-actions" style="margin-top:18px">' +
+              '<a class="btn btn-primary" href="' + startHref + '">' + R.icon('sparkles') + ' ' + startLabel + '</a>' +
+              '<a class="btn btn-secondary" href="#/login">' + R.icon('log-in') + ' Sign in</a>' +
+              '<a class="btn btn-ghost" href="#/?section=setup">See the R700 setup</a>' +
+            '</div>' +
+            '<div class="home-proof muted small"><span>' + R.icon('shield-check') + ' Custody-aware gate & register</span><span>' + R.icon('book-open') + ' Curriculum, guides & evidence</span><span>' + R.icon('users') + ' Parent engagement</span></div>' +
+          '</div>' +
+          '<div class="home-hero-art card glass">' +
+            '<div class="home-mock">' +
+              '<div class="home-mock-row"><span class="dot" style="background:#3A7D44"></span><span class="strong">Today at your centre</span><span class="row-end badge badge-green">Live</span></div>' +
+              '<div class="home-mock-grid">' +
+                '<div class="home-mock-stat"><div class="kpi-label">Present</div><div class="kpi-value">18 / 22</div></div>' +
+                '<div class="home-mock-stat"><div class="kpi-label">Gate releases</div><div class="kpi-value">Verified</div></div>' +
+                '<div class="home-mock-stat"><div class="kpi-label">Lesson blocks</div><div class="kpi-value">On track</div></div>' +
+                '<div class="home-mock-stat"><div class="kpi-label">Family updates</div><div class="kpi-value">Ready</div></div>' +
+              '</div>' +
+              '<div class="home-mock-list">' +
+                '<div class="home-mock-item">' + R.icon('door-open') + '<span>Secure check-in & collection at the gate</span></div>' +
+                '<div class="home-mock-item">' + R.icon('presentation') + '<span>Interactive lessons, whiteboards & guides</span></div>' +
+                '<div class="home-mock-item">' + R.icon('heart-handshake') + '<span>Daily reports and moments for families</span></div>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+        '</section>';
+
+      const features = [
+        ['door-open', 'Safe attendance & gate', 'One centre QR for verified check-in, check-out and collection with audited custody and collector codes.'],
+        ['sun', '“Today” teaching workspace', 'A single home for the day: timeline, people, up-next, in-flow evidence, wrap-up and report shortcuts.'],
+        ['book-open', 'Curriculum & lesson guides', 'Plans, modules, activities and step-by-step guides ready to teach — plus objectives and evidence.'],
+        ['presentation', 'Whiteboards & live activities', 'Infinite canvases and interactive polls, questions and activities for engaging lessons.'],
+        ['users', 'Families in the loop', 'Parent portal for updates, daily reports, moments, forms and clear communication.'],
+        ['wallet', 'Admissions & operations', 'Enquiries, enrolment, staff, tasks, finance basics and reports in one place.']
+      ].map((f) => '<div class="card glass home-feature"><div class="home-feature-icon">' + R.icon(f[0]) + '</div><h3>' + R.esc(f[1]) + '</h3><p class="muted small">' + R.esc(f[2]) + '</p></div>').join('');
+
+      const setupItems = [
+        ['graduation-cap', '3 days staff training', 'Hands-on, practical training so your team is confident using Re-EL ECD in daily routines.'],
+        ['settings', 'Platform setup', 'Your centre configured: branches, classrooms, roles, registers and day-to-day workflows ready to go.'],
+        ['globe', 'Public website setup', 'A professional centre website set up for enquiries and families to find and trust you.'],
+        ['book-open', 'Curriculum template', 'A structured curriculum framework to plan learning outcomes and guide teaching.'],
+        ['blocks', 'Module templates', 'Ready-to-use learning modules you can adapt to your themes and age groups.'],
+        ['puzzle', 'Activities templates', 'Activity templates to plan engaging, developmentally appropriate experiences.'],
+        ['megaphone', 'Launch marketing', 'Launch support to introduce your centre and new digital experience to families.']
+      ].map((i) => '<div class="home-setup-item"><div class="home-setup-icon">' + R.icon(i[0]) + '</div><div><div class="strong">' + R.esc(i[1]) + '</div><div class="muted small">' + R.esc(i[2]) + '</div></div></div>').join('');
+
+      const setup = '' +
+        '<section class="home-section" id="setup">' +
+          '<div class="home-section-head"><span class="badge badge-sun">Once-off launch package</span><h2>Get set up properly for R700</h2><p class="lede">A once-off <strong>R700 setup fee</strong> covers everything you need to launch with confidence — training, configuration and ready-to-use content — so your centre is up and running from day one.</p></div>' +
+          '<div class="home-setup card glass">' +
+            '<div class="home-setup-price">' +
+              '<div class="home-price-tag"><span class="home-currency">R</span><span class="home-amount">700</span></div>' +
+              '<div class="muted">once-off setup fee</div>' +
+              '<div class="home-price-note">Everything included to launch your centre on Re-EL ECD</div>' +
+              '<a class="btn btn-primary btn-block" style="margin-top:14px" href="' + startHref + '">' + R.icon('arrow-right') + ' ' + startLabel + '</a>' +
+            '</div>' +
+            '<div class="home-setup-list">' +
+              '<div class="strong" style="margin-bottom:10px">What’s included</div>' +
+              '<div class="home-setup-grid">' + setupItems + '</div>' +
+            '</div>' +
+          '</div>' +
+          '<p class="muted small" style="margin-top:10px;text-align:center">The R700 is a once-off setup and launch fee. Ongoing platform access is billed separately on your chosen subscription plan (30-day trial available).</p>' +
+        '</section>';
+
+      const cta = '' +
+        '<section class="home-section home-cta card glass">' +
+          '<div><h2>Ready to simplify your ECD centre?</h2><p class="muted">Start a 30-day trial, set up with the R700 launch package, and bring your team, families and teaching into one place.</p></div>' +
+          '<div class="site-actions"><a class="btn btn-primary" href="' + startHref + '">' + R.icon('sparkles') + ' ' + startLabel + '</a><a class="btn btn-secondary" href="#/login">Sign in</a></div>' +
+        '</section>';
+
+      const footer = '' +
+        '<footer class="site-footer" style="margin-top:24px">' +
+          '<div class="site-footer-grid">' +
+            '<div><div class="row" style="gap:10px;margin-bottom:8px">' + platformLockup(ctx) + '</div><p class="muted small">A caring, all-in-one workspace for Early Childhood Development centres in South Africa.</p></div>' +
+            '<div><div class="strong small">Product</div><div class="stack" style="margin-top:8px"><a href="#/">Home</a><a href="#/?section=setup">R700 setup &amp; launch</a><a href="#/signup">Get started</a><a href="#/login">Sign in</a></div></div>' +
+            '<div><div class="strong small">Legal</div><div class="stack" style="margin-top:8px"><a href="#/legal/terms">Terms</a><a href="#/legal/privacy">Privacy</a><a href="#/legal/cookies">Cookies</a><a href="#/legal/safeguarding">Safeguarding</a></div></div>' +
+          '</div>' +
+          '<div class="muted small" style="margin-top:16px">© ' + new Date().getFullYear() + ' ' + R.esc(R.PLATFORM_BRAND.name) + '. All rights reserved.</div>' +
+        '</footer>';
+
+      const html = platformShell(ctx, platformNav(ctx) +
+        '<main class="home-page">' + hero +
+        '<section class="home-section"><div class="home-section-head"><h2>Everything your centre needs, in one place</h2><p class="lede">From the gate to the classroom to the family — built for the realities of South African ECD centres.</p></div><div class="home-features">' + features + '</div></section>' +
+        setup + cta + footer +
+        '</main>');
+
+      // scroll to setup anchor if requested
+      ctx.$nextTick && ctx.$nextTick(() => {
+        const q = (location.hash.split('?')[1] || '');
+        if (q.includes('section=setup')) { const el = document.getElementById('setup'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }
+      });
+
+      return html;
+    }
+  };
+
 
   /* --- Legal pages (South Africa) -----------------------------------------
    * Platform policies. These pages are templates for a South African SaaS
