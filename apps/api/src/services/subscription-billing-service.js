@@ -155,6 +155,16 @@ async function settleSubscriptionPayment(db, intent) {
  * the platform). Marks the current period's invoice as paid (issuing it
  * first if missing) and extends the subscription exactly once.
  */
+async function reactivateIfBillingLockout(client, organisationId) {
+  await client.query(
+    `UPDATE organisations
+     SET status = 'active', suspended_reason = NULL, suspended_at = NULL, subscription_status = 'active', updated_at = now()
+     WHERE id = $1 AND status = 'suspended'
+       AND (suspended_reason IS NULL OR suspended_reason ILIKE '%subscription%' OR suspended_reason ILIKE '%overdue%')`,
+    [organisationId]
+  );
+}
+
 async function recordManualPayment(db, organisationId, { amount, reference, notes } = {}) {
   const organisation = await db.one('SELECT * FROM organisations WHERE id = $1', [organisationId]);
   if (!organisation) throw new AppError('NOT_FOUND');
@@ -182,6 +192,7 @@ async function recordManualPayment(db, organisationId, { amount, reference, note
        WHERE id = $3 RETURNING *`,
       [base, nextEnd, subscription.id]
     )).rows[0];
+    await reactivateIfBillingLockout(client, organisationId);
     return { subscription: updated, invoice: paidInvoice, organisation, amount: paidAmount, notes: notes || null };
   });
 }

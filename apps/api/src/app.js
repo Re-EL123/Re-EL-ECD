@@ -93,8 +93,40 @@ async function resolveOrganisation(ctx, route) {
   if (!access.membership || access.membership.status !== 'active') throw new AppError('TENANT_MISMATCH');
   const organisation = await ctx.db.one('SELECT * FROM organisations WHERE id = $1', [organisationId]);
   if (!organisation) throw new AppError('NOT_FOUND');
+
+  // Automatic lockout for overdue subscription payments: if the current
+  // subscription period has ended unpaid (past_due), block workspace access
+  // until the invoice is paid. Billing/payment routes are allowSuspended so
+  // tenants can pay and resume.
+  if (organisation.slug !== 're-el-platform' && organisation.status !== 'suspended') {
+    const sub = await ctx.db.one(
+      `SELECT status, current_period_end FROM platform_subscriptions
+       WHERE organisation_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [organisationId]
+    );
+    const overdue = Boolean(
+      sub && (
+        sub.status === 'past_due' ||
+        ((sub.status === 'trial' || sub.status === 'active') && sub.current_period_end && String(sub.current_period_end).slice(0, 10) < new Date().toISOString().slice(0, 10))
+      )
+    );
+    if (overdue && !route.options.allowSuspended) {
+      // Mark subscription past_due if needed and enforce lockout.
+      if (sub.status !== 'past_due') {
+        await ctx.db.query("UPDATE platform_subscriptions SET status = 'past_due' WHERE organisation_id = $1 AND status IN ('trial','active')", [organisationId]);
+      }
+      throw new AppError('FORBIDDEN', { reason: 'Subscription payment overdue', billingLock: true },
+        'Your workspace is locked because your subscription payment is overdue. Pay the outstanding invoice to resume access.');
+    }
+  }
+
   if (organisation.status === 'suspended' && !route.options.allowSuspended) {
-    throw new AppError('FORBIDDEN', null, 'This organisation is suspended. Contact platform support.');
+    const reason = organisation.suspended_reason || null;
+    const billingLock = /subscription|overdue|billing/i.test(String(reason || ''));
+    const message = billingLock
+      ? 'Your workspace is locked because your subscription payment is overdue. Pay the outstanding invoice to resume access.'
+      : 'This organisation is suspended. Contact platform support.';
+    throw new AppError('FORBIDDEN', { reason, billingLock }, message);
   }
   ctx.organisationId = organisationId;
   ctx.organisation = organisation;

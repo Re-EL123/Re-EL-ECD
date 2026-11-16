@@ -768,9 +768,9 @@ async function seedDevelopment({ force = false } = {}) {
     planIds[row.plan_key] = row.id;
   }
   await pool.query(`INSERT INTO platform_subscriptions (organisation_id, plan_id, status, current_period_start, current_period_end)
-    VALUES ($1,$2,'active','2026-10-01','2026-10-31')`, [orgId, planIds.sapling]);
+    VALUES ($1,$2,'active',CURRENT_DATE - interval '15 days', CURRENT_DATE + interval '15 days')`, [orgId, planIds.sapling]);
   await pool.query(`INSERT INTO platform_subscriptions (organisation_id, plan_id, status, current_period_start, current_period_end)
-    VALUES ($1,$2,'trial','2026-10-15','2026-11-14')`, [org2Id, planIds.seedling]);
+    VALUES ($1,$2,'trial',CURRENT_DATE - interval '5 days', CURRENT_DATE + interval '25 days')`, [org2Id, planIds.seedling]);
   await pool.query(
     `INSERT INTO audit_events (actor_user_id, organisation_id, branch_id, action, resource_type, resource_id, metadata)
      VALUES ($1,$2,$3,'organisation.provisioned','organisation',$2,$4)`,

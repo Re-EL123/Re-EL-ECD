@@ -228,6 +228,7 @@
       errorTitle: null,
       denied: false,
       suspendedWorkspace: false,
+      billingLocked: false,
       tab: null,
       filters: {},
       sidebarOpen: false,
@@ -630,6 +631,7 @@
           if (Reel.resetSeo) Reel.resetSeo();
           this.denied = false;
           this.suspendedWorkspace = false;
+          this.billingLocked = false;
           this.loading = false;
           this.error = null;
           this.pageTitle = 'Page not found';
@@ -687,6 +689,7 @@
         if (matched.route.area === 'platform' && !this.isPlatformAdmin) {
           this.mode = 'app';
           this.denied = true;
+          this.billingLocked = false;
           this.loading = false;
           return;
         }
@@ -694,6 +697,7 @@
         if (matched.route.area === 'parent' && !this.has('parent.read.own')) {
           this.mode = 'app';
           this.denied = true;
+          this.billingLocked = false;
           this.loading = false;
           return;
         }
@@ -701,6 +705,7 @@
         this.mode = 'app';
         this.denied = false;
         this.suspendedWorkspace = false;
+        this.billingLocked = false;
         this.error = null;
         this.loading = true;
         this.sidebarOpen = false;
@@ -714,6 +719,7 @@
 
         if (!this.has(matched.route.permission)) {
           this.denied = true;
+          this.billingLocked = false;
           this.loading = false;
           return;
         }
@@ -733,7 +739,9 @@
           if (seq !== this._navSeq) return;
           this.loading = false;
           if (error instanceof Reel.ApiError && (error.code === 'FORBIDDEN' || error.status === 403)) {
-            this.suspendedWorkspace = /suspended/i.test(error.message || '');
+            const billingLock = Boolean(error.details && error.details.billingLock) || /subscription payment is overdue/i.test(error.message || '');
+            this.suspendedWorkspace = billingLock || /suspended/i.test(error.message || '');
+            this.billingLocked = billingLock;
             this.denied = true;
             return;
           }
@@ -1323,6 +1331,47 @@
         } catch (error) {
           this.toast(error.message || 'We could not start the subscription payment.', 'error');
         }
+      },
+
+      async paySetupFee() {
+        const page = this.page || {};
+        const billing = page.billing || {};
+        const setupFee = billing.setupFee || (billing.setupFee === null ? null : null);
+        // Try to get latest details if on billing page
+        const existing = (setupFee && setupFee.visitDetails) || (this.page && this.page.billing && this.page.billing.setupFee && this.page.billing.setupFee.visitDetails) || {};
+        const ctx = this;
+        this.openModal({
+          title: 'Setup visit details',
+          description: 'Before paying the once-off setup online, please provide contact and visit details so Re-EL representatives can come to your centre (training, platform & website setup, launch support).',
+          submitLabel: 'Continue to secure payment',
+          size: 'wide',
+          fields: [
+            { name: 'contactName', label: 'Contact person name', required: true, span: 2, value: existing.contactName || ((ctx.session && ctx.session.user && ctx.session.user.displayName) || '') },
+            { name: 'contactPhone', label: 'Contact phone number', required: true, value: existing.contactPhone || '' },
+            { name: 'contactEmail', label: 'Contact email', type: 'email', value: existing.contactEmail || ((ctx.session && ctx.session.user && ctx.session.user.email) || '') },
+            { name: 'centreAddress', label: 'Centre physical address (where we should come)', type: 'textarea', required: true, span: 2, value: existing.centreAddress || '' },
+            { name: 'preferredVisitDate', label: 'Preferred visit date', type: 'date', value: existing.preferredVisitDate || '' },
+            { name: 'preferredVisitTime', label: 'Preferred time / availability', placeholder: 'e.g. Morning, 09:00–12:00', value: existing.preferredVisitTime || '' },
+            { name: 'alternatePhone', label: 'Alternate phone number', value: existing.alternatePhone || '' },
+            { name: 'notes', label: 'Notes for our representatives', type: 'textarea', span: 2, placeholder: 'Directions, gate/access info, number of staff to train, or anything else we should know', value: existing.notes || '' }
+          ],
+          onSubmit: async (data) => {
+            try {
+              const result = await Reel.api('POST', '/billing/setup/pay', data);
+              const checkout = (result && result.data && result.data.checkout) || null;
+              if (checkout) {
+                ctx.toast('Redirecting you to secure payment…');
+                ctx.closeModal();
+                ctx.submitCheckout(checkout);
+                return { data: result.data, skipNavigate: true };
+              }
+              throw new Error('Could not start the setup payment.');
+            } catch (error) {
+              ctx.toast(error.message || 'We could not start the setup payment.', 'error');
+              throw error;
+            }
+          }
+        });
       },
 
       /**

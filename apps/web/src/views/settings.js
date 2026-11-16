@@ -351,9 +351,12 @@ window.Reel.renderGateQr = function (targetId) {
               ? (canManage
                   ? ('<div class="btn-group">' +
                       (platformPayfast
-                        ? '<button class="btn btn-primary" @click="act(\'POST\',\'/billing/setup/pay\',{}, {redirectKey:\'checkout\', redirectField:\'action\', redirectForm:\'fields\', successMessage:\'Redirecting you to PayFast to complete the setup payment…\'})">' + R.icon('credit-card') + ' Pay ' + R.money((setupPay && setupPay.totalDue) || setupFee.amount, setupFee.currency) + ' setup online</button>'
+                        ? '<button class="btn btn-primary" @click="paySetupFee()">' + R.icon('credit-card') + ' Pay ' + R.money((setupPay && setupPay.totalDue) || setupFee.amount, setupFee.currency) + ' setup online</button>'
                         : '<button class="btn btn-secondary" disabled>Online payment not configured</button>') +
                     '</div>' +
+                    (setupFee.visitDetails
+                      ? '<div class="alert alert-success" style="margin-top:10px"><i data-lucide="check-circle"></i><span>Visit details on file for <strong>' + R.esc(setupFee.visitDetails.contactName || 'your centre') + '</strong>' + (setupFee.visitDetails.preferredVisitDate ? ' (preferred ' + R.esc(setupFee.visitDetails.preferredVisitDate) + ')' : '') + '. You can review/update them before paying.</span></div>'
+                      : '<div class="alert alert-info" style="margin-top:10px"><i data-lucide="map-pin"></i><span>Before paying online, you’ll be asked for contact and visit details so Re-EL representatives can come to your centre.</span></div>') +
                     (!platformPayfast
                       ? '<div class="alert alert-warning" style="margin-top:12px"><i data-lucide="info"></i><span>Online setup payment isn’t available on this environment yet. Contact support to pay by EFT/bank transfer.</span></div>'
                       : '<div class="muted small" style="margin-top:8px">You’ll be redirected to PayFast’s secure checkout.' + (Number(setupPay && setupPay.processingFee || 0) > 0 ? ' The total includes online processing so your centre’s setup is fully covered.' : '') + '</div>'))

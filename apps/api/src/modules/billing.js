@@ -31,6 +31,7 @@ const {
   SETUP_FEE_BASE_AMOUNT,
   SETUP_FEE_INCLUDES,
   ensureSetupFee,
+  saveVisitDetails,
   summaryView: setupFeeSummaryView
 } = require('../services/setup-fee-service');
 
@@ -273,12 +274,25 @@ function register(router) {
     if (!payfast.isConfigured()) {
       fail('CONFLICT', null, 'Online payments are not configured. Set PAYFAST_MERCHANT_ID and PAYFAST_MERCHANT_KEY on the API.');
     }
+    const visit = validate(ctx.body || {}, {
+      contactName: { type: 'string', min: 2, max: 120 },
+      contactPhone: { type: 'string', min: 5, max: 40 },
+      contactEmail: { type: 'string', email: true, optional: true },
+      centreAddress: { type: 'string', min: 5, max: 300 },
+      preferredVisitDate: { type: 'string', date: true, optional: true },
+      preferredVisitTime: { type: 'string', max: 60, optional: true },
+      alternatePhone: { type: 'string', max: 40, optional: true },
+      notes: { type: 'string', max: 1000, optional: true }
+    });
     const organisation = ctx.organisation;
-    const setupFee = await ensureSetupFee(ctx.db, organisation);
+    let setupFee = await ensureSetupFee(ctx.db, organisation);
     if (!setupFee) fail('CONFLICT', null, 'This organisation does not have a setup fee.');
     if (setupFee.status === 'paid') fail('CONFLICT', null, 'The setup fee is already paid.');
     if (setupFee.status === 'waived') fail('CONFLICT', null, 'The setup fee has been waived.');
     if (setupFee.status === 'void') fail('CONFLICT', null, 'The setup fee is void.');
+
+    // Save visit/on-site details so Re-EL representatives can come to the centre.
+    setupFee = await saveVisitDetails(ctx.db, organisation.id, Object.assign({}, visit, { capturedAt: new Date().toISOString() })) || setupFee;
 
     const baseAmount = Number(setupFee.amount);
     const recoverFees = payfastFees.recoveryEnabledForSubscriptions();
@@ -335,7 +349,10 @@ function register(router) {
         baseAmount,
         processingFee: feeQuote ? feeQuote.fee : 0,
         processingFeeMethod: feeQuote ? feeQuote.method : null,
-        processingFeeRecovered: Boolean(feeQuote)
+        processingFeeRecovered: Boolean(feeQuote),
+        visitContactName: visit.contactName,
+        visitContactPhone: visit.contactPhone,
+        visitPreferredDate: visit.preferredVisitDate || null
       },
       payer,
       createdBy: ctx.user.id,

@@ -1309,15 +1309,22 @@ function register(router) {
           subscription = settled.subscription;
           subscriptionInvoice = settled.invoice;
           const orgId = intentMetadata.organisationId || intent.organisation_id;
-          const orgRow = (await client.query('SELECT status FROM organisations WHERE id = $1', [orgId])).rows[0];
-          reactivated = Boolean(orgRow && orgRow.status === 'suspended');
-          // A paid subscription buys the workspace back: a suspended centre
-          // that pays its platform invoice is restored automatically.
-          await client.query(
-            `UPDATE organisations SET status = 'active', suspended_reason = NULL, suspended_at = NULL,
-               subscription_status = 'active', updated_at = now() WHERE id = $1`,
-            [orgId]
-          );
+          const orgRow = (await client.query('SELECT status, suspended_reason FROM organisations WHERE id = $1', [orgId])).rows[0];
+          const billingLock = orgRow && orgRow.status === 'suspended'
+            && (!orgRow.suspended_reason || /subscription|overdue|billing/i.test(String(orgRow.suspended_reason)));
+          reactivated = Boolean(billingLock);
+          if (billingLock) {
+            await client.query(
+              `UPDATE organisations SET status = 'active', suspended_reason = NULL, suspended_at = NULL,
+                 subscription_status = 'active', updated_at = now() WHERE id = $1`,
+              [orgId]
+            );
+          } else {
+            await client.query(
+              "UPDATE organisations SET subscription_status = 'active', updated_at = now() WHERE id = $1",
+              [orgId]
+            );
+          }
         }
       }
 

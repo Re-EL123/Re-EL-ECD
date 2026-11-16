@@ -110,12 +110,24 @@ function summaryView(fee) {
     currency: fee.currency || SETUP_FEE_CURRENCY,
     status: fee.status,
     includes: Array.isArray(fee.includes) ? fee.includes : SETUP_FEE_INCLUDES,
+    visitDetails: fee.visit_details || null,
     paidAt: fee.paid_at || null,
     waivedAt: fee.waived_at || null,
     waivedReason: fee.waived_reason || null,
     paymentReference: fee.payment_reference || null,
     createdAt: fee.created_at || null
   };
+}
+
+async function saveVisitDetails(db, organisationId, details) {
+  const updated = (await db.query(
+    `UPDATE platform_setup_fees
+     SET visit_details = $2::jsonb, updated_at = now()
+     WHERE organisation_id = $1
+     RETURNING *`,
+    [organisationId, JSON.stringify(details || {})]
+  )).rows[0] || null;
+  return updated;
 }
 
 module.exports = {
@@ -127,5 +139,6 @@ module.exports = {
   settleSetupFeePayment,
   recordManualSetupPayment,
   waiveSetupFee,
+  saveVisitDetails,
   summaryView
 };

@@ -221,15 +221,30 @@
         </div>
 
         <div x-show="!loading && denied" class="empty-state">
-          <div class="empty-icon"><i data-lucide="lock"></i></div>
-          <template x-if="suspendedWorkspace">
+          <div class="empty-icon"><i :data-lucide="billingLocked ? 'lock' : 'lock'"></i></div>
+          <template x-if="billingLocked">
             <div>
-              <h3>Your workspace is suspended</h3>
-              <p>Your subscription is unpaid. Pay the outstanding invoice to restore access automatically — it takes a minute and you can sign in again right away.</p>
-              <a class="btn btn-primary" href="#/app/settings?tab=billing">Pay your subscription</a>
+              <h3>Workspace locked — subscription payment overdue</h3>
+              <p>Your subscription payment is overdue, so this workspace is temporarily locked. Pay the outstanding subscription invoice to resume access automatically.</p>
+              <div class="btn-group" style="justify-content:center;margin-top:14px;flex-wrap:wrap">
+                <button class="btn btn-primary" @click="paySubscription()"><i data-lucide="credit-card"></i> Pay and resume workspace</button>
+                <button class="btn btn-secondary" @click="navigate(true)">Refresh status</button>
+                <button class="btn btn-ghost" @click="signOut()">Sign out</button>
+              </div>
+              <p class="muted small" style="margin-top:10px">After payment you’ll return here — use Refresh status if access hasn’t resumed yet.</p>
             </div>
           </template>
-          <template x-if="!suspendedWorkspace">
+          <template x-if="!billingLocked && suspendedWorkspace">
+            <div>
+              <h3>Your workspace is suspended</h3>
+              <p>Access to this workspace is currently unavailable. If this is due to an unpaid subscription, pay the outstanding invoice to restore access. Otherwise, contact platform support for help.</p>
+              <div class="btn-group" style="justify-content:center;margin-top:14px;flex-wrap:wrap">
+                <button class="btn btn-primary" @click="paySubscription()">Pay subscription</button>
+                <button class="btn btn-secondary" @click="navigate(true)">Refresh</button>
+              </div>
+            </div>
+          </template>
+          <template x-if="!billingLocked && !suspendedWorkspace">
             <div>
               <h3>You do not have access to this page</h3>
               <p>Your role does not include the permission required for this area. Ask an administrator if you believe this is a mistake.</p>
