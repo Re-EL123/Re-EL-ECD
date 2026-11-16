@@ -418,9 +418,10 @@ table.table { width: 100%; border-collapse: collapse; font-size: 0.86rem; min-wi
 /* --- Modal, toast, command palette ------------------------------------- */
 .modal-backdrop {
   position: fixed; inset: 0; background: rgba(15, 25, 17, 0.48);
-  backdrop-filter: blur(4px); z-index: 100; display: grid; place-items: center; padding: 20px;
+  backdrop-filter: blur(4px); z-index: 120; display: grid; place-items: center; padding: 20px;
   animation: fade-in 160ms ease;
 }
+.modal-backdrop.guide-backdrop { z-index: 100; }
 .modal {
   background: var(--surface-1); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
   width: min(640px, 100%); max-height: min(88vh, 900px); overflow: auto;
