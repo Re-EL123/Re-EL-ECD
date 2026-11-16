@@ -96,10 +96,21 @@ function register(router) {
     const rows = await ctx.db.many(
       `SELECT l.id AS learner_id, l.first_name, l.last_name, l.learner_reference, l.classroom_id, l.branch_id,
               c.name AS classroom_name, a.id AS attendance_id, a.attendance_status, a.check_in_at, a.check_out_at,
-              a.absence_reason, a.recorded_by, a.brought_by_name, a.brought_by_unverified, a.brought_by_collector_id, a.brought_by_guardian_id
+              a.absence_reason, a.recorded_by, a.brought_by_name, a.brought_by_unverified, a.brought_by_collector_id, a.brought_by_guardian_id,
+              COALESCE(gcol.name, ecol.name) AS collected_by_name
        FROM learners l
        LEFT JOIN classrooms c ON c.id = l.classroom_id
        LEFT JOIN learner_attendance a ON a.learner_id = l.id AND a.attendance_date = $2
+       LEFT JOIN LATERAL (
+         SELECT gs.collector_name AS name FROM gate_scans gs
+         WHERE gs.learner_id = l.id AND gs.released_at IS NOT NULL AND gs.confirmed_at::date = $2::date
+         ORDER BY gs.released_at DESC LIMIT 1
+       ) gcol ON true
+       LEFT JOIN LATERAL (
+         SELECT e.collector_name AS name FROM learner_collection_events e
+         WHERE e.learner_id = l.id AND e.recorded_at::date = $2::date
+         ORDER BY e.recorded_at DESC LIMIT 1
+       ) ecol ON true
        WHERE l.organisation_id = $1 AND l.status = 'enrolled'
          AND ($3::uuid IS NULL OR l.classroom_id = $3::uuid)
          AND ($4::uuid IS NULL OR l.branch_id = $4::uuid)${extra}

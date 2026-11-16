@@ -144,6 +144,7 @@
           { label: 'Status', render: (r) => r.attendance_status ? R.badge(r.attendance_status) : '<span class="badge badge-muted">Unmarked</span>' },
           { label: 'In', render: (r) => R.time(r.check_in_at) },
           { label: 'Out', render: (r) => R.time(r.check_out_at) },
+          { label: 'Collected by', render: (r) => r.collected_by_name ? '<span class="cell-strong">' + R.esc(r.collected_by_name) + '</span>' : '<span class="muted small">—</span>' },
           { label: 'Note', render: (r) => R.esc(r.absence_reason || '') },
           { label: '', align: 'right', render: (r) => {
             if (!canRecord) return '';
