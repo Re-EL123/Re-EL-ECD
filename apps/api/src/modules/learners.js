@@ -781,7 +781,8 @@ function register(router) {
           isOverride ? ctx.user.id : null, isOverride ? body.overrideReason.trim() : null, body.requestId || null]
       )).rows[0];
       await client.query(
-        `UPDATE learner_attendance SET attendance_status = 'collected', check_out_at = now(), updated_at = now()
+        `UPDATE learner_attendance SET attendance_status = 'collected',
+           check_out_at = GREATEST(now(), COALESCE(check_in_at, now())), updated_at = now()
          WHERE id = $1`, [attendance.id]
       );
       return row;

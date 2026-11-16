@@ -223,7 +223,8 @@ function register(router) {
     }
     const updated = await ctx.db.withTransaction(async (client) => {
       const row = await client.query(
-        `UPDATE learner_attendance SET attendance_status = 'collected', check_out_at = now(),
+        `UPDATE learner_attendance SET attendance_status = 'collected',
+           check_out_at = GREATEST(now(), COALESCE(check_in_at, now())),
            verified_by = $1, updated_at = now() WHERE id = $2 RETURNING *`,
         [ctx.user.id, existing.id]
       );

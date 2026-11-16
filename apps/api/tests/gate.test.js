@@ -218,13 +218,24 @@ test('parent gate code: the guardian signs in at the centre QR with their own PI
 
 test('morning cockpit: pending gate releases arrive in /staff/morning', async () => {
   // Make a fresh verified arrival for a child still on site, then read the cockpit.
-  const free = await db.one(
+  let free = await db.one(
     `SELECT l.id FROM learners l
      JOIN classrooms c ON c.id = l.classroom_id
      LEFT JOIN learner_attendance a ON a.learner_id = l.id AND a.attendance_date = CURRENT_DATE
      WHERE l.organisation_id = $1 AND l.status = 'enrolled' AND l.id <> $2
        AND c.name IN ('Butterflies','Sunflowers') AND a.id IS NULL LIMIT 1`, [orgId, amelia]
   );
+  if (!free) {
+    free = await db.one(
+      `SELECT l.id FROM learners l JOIN classrooms c ON c.id = l.classroom_id
+       WHERE l.organisation_id = $1 AND l.status = 'enrolled' AND l.id <> $2
+         AND c.name IN ('Butterflies','Sunflowers') LIMIT 1`, [orgId, amelia]
+    );
+    if (free) {
+      await db.query("DELETE FROM gate_scans WHERE learner_id = $1 AND confirmed_at::date = CURRENT_DATE", [free.id]);
+      await db.query("DELETE FROM learner_attendance WHERE learner_id = $1 AND attendance_date = CURRENT_DATE", [free.id]);
+    }
+  }
   assert.ok(free, 'seed leaves a learner unmarked for today');
   await principal.post('/learner-attendance/register', { records: [{ learnerId: free.id, status: 'present' }] });
   // Link a collector directly in the DB so the gate scan can be created.
@@ -313,11 +324,21 @@ test('gate endpoints are rate limited against PIN guessing', async () => {
 
 test('bulk register skips already-checked-in children and preserves their bringer', async () => {
   // Check a child in through the normal flow first.
-  const free = await db.one(
+  let free = await db.one(
     `SELECT l.id, l.first_name FROM learners l
      LEFT JOIN learner_attendance a ON a.learner_id = l.id AND a.attendance_date = CURRENT_DATE
      WHERE l.organisation_id = $1 AND l.status = 'enrolled' AND a.id IS NULL LIMIT 1`, [orgId]
   );
+  if (!free) {
+    free = await db.one(
+      `SELECT l.id, l.first_name FROM learners l
+       WHERE l.organisation_id = $1 AND l.status = 'enrolled' AND l.id <> $2 LIMIT 1`, [orgId, amelia]
+    );
+    if (free) {
+      await db.query("DELETE FROM gate_scans WHERE learner_id = $1 AND confirmed_at::date = CURRENT_DATE", [free.id]);
+      await db.query("DELETE FROM learner_attendance WHERE learner_id = $1 AND attendance_date = CURRENT_DATE", [free.id]);
+    }
+  }
   assert.ok(free, 'seed leaves a learner unmarked for today');
   const checkIn = await principal.post('/learner-attendance/register', {
     records: [{ learnerId: free.id, status: 'present' }]
@@ -343,11 +364,21 @@ test('bulk register skips already-checked-in children and preserves their bringe
 });
 
 test('manual release: full custody evidence, code verification, hold block, permission gate', async () => {
-  const free = await db.one(
+  let free = await db.one(
     `SELECT l.id FROM learners l
      LEFT JOIN learner_attendance a ON a.learner_id = l.id AND a.attendance_date = CURRENT_DATE
      WHERE l.organisation_id = $1 AND l.status = 'enrolled' AND a.id IS NULL LIMIT 1`, [orgId]
   );
+  if (!free) {
+    free = await db.one(
+      `SELECT l.id FROM learners l
+       WHERE l.organisation_id = $1 AND l.status = 'enrolled' AND l.id <> $2 LIMIT 1`, [orgId, amelia]
+    );
+    if (free) {
+      await db.query("DELETE FROM gate_scans WHERE learner_id = $1 AND confirmed_at::date = CURRENT_DATE", [free.id]);
+      await db.query("DELETE FROM learner_attendance WHERE learner_id = $1 AND attendance_date = CURRENT_DATE", [free.id]);
+    }
+  }
   assert.ok(free);
   await principal.post('/learner-attendance/register', { records: [{ learnerId: free.id, status: 'present' }] });
   const row = (await principal.get('/learner-attendance')).data.rows.find((r) => r.learner_id === free.id);
@@ -425,12 +456,22 @@ test('manual release: full custody evidence, code verification, hold block, perm
   assert.equal(audit.metadata.collectorVerifiedByCode, true);
 
   // Custody hold blocks the manual release too — no path around a hold.
-  const held = await db.one(
+  let held = await db.one(
     `SELECT l.id FROM learners l
      LEFT JOIN learner_attendance a ON a.learner_id = l.id AND a.attendance_date = CURRENT_DATE
      WHERE l.organisation_id = $1 AND l.status = 'enrolled' AND a.id IS NULL AND l.id <> $2 LIMIT 1`,
     [orgId, free.id]
   );
+  if (!held) {
+    held = await db.one(
+      `SELECT l.id FROM learners l WHERE l.organisation_id = $1 AND l.status = 'enrolled' AND l.id NOT IN ($2, $3) LIMIT 1`,
+      [orgId, free.id, amelia]
+    );
+    if (held) {
+      await db.query("DELETE FROM gate_scans WHERE learner_id = $1 AND confirmed_at::date = CURRENT_DATE", [held.id]);
+      await db.query("DELETE FROM learner_attendance WHERE learner_id = $1 AND attendance_date = CURRENT_DATE", [held.id]);
+    }
+  }
   assert.ok(held);
   await db.query('UPDATE learners SET collection_hold_reason = $2 WHERE id = $1', [held.id, 'Family court order — test']);
   try {
