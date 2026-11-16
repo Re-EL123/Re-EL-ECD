@@ -1794,3 +1794,23 @@ img, video, canvas, svg { max-width: 100%; }
     animation: none !important; transition: none !important; opacity: 1 !important; transform: none !important;
   }
 }
+
+/* --- Signup screen background ------------------------------------------- */
+.signup-page-bg {
+  min-height: calc(100vh - 72px);
+  padding: 32px 16px 40px;
+  background:
+    linear-gradient(180deg, rgba(250,249,245,0.88) 0%, rgba(250,249,245,0.92) 40%, rgba(250,249,245,0.96) 100%),
+    url("branding/home-hero.jpg") center/cover no-repeat fixed;
+}
+[data-theme="dark"] .signup-page-bg {
+  background:
+    linear-gradient(180deg, rgba(21,31,23,0.88) 0%, rgba(21,31,23,0.92) 40%, rgba(21,31,23,0.96) 100%),
+    url("branding/home-hero.jpg") center/cover no-repeat fixed;
+}
+.signup-page-bg .signup-section { position: relative; z-index: 1; }
+.signup-page-bg .signup-card { backdrop-filter: blur(14px) saturate(140%); -webkit-backdrop-filter: blur(14px) saturate(140%); }
+.signup-page-bg .signup-backlink { background: var(--surface-glass); padding: 6px 12px; border-radius: 999px; }
+@media (max-width: 640px) {
+  .signup-page-bg { padding: 20px 12px 28px; background-attachment: scroll; }
+}

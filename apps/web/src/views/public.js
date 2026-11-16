@@ -1092,10 +1092,13 @@
           '<a class="btn btn-primary" href="#/login">Back to sign in</a>';
 
       return platformShell(ctx, platformNav(ctx) +
-        '<section class="public-section" style="max-width:640px;margin:40px auto"><h1>Create your centre</h1><p class="lede">Set up your Re-EL ECD workspace in a few simple steps. Start a 30-day trial — you’ll be the owner and can invite your team.</p>' +
-        '<div class="card glass signup-card" style="margin-top:16px">' + body + '</div>' +
-        '<div class="row" style="margin-top:12px;justify-content:center"><a class="muted small" href="#/login">Already have an account? Sign in</a></div>' +
-        '</section>');
+        '<div class="signup-page-bg">' +
+          '<section class="public-section signup-section" style="max-width:640px;margin:0 auto">' +
+            '<h1>Create your centre</h1><p class="lede">Set up your Re-EL ECD workspace in a few simple steps. Start a 30-day trial — you’ll be the owner and can invite your team.</p>' +
+            '<div class="card glass signup-card" style="margin-top:16px">' + body + '</div>' +
+            '<div class="row" style="margin-top:12px;justify-content:center"><a class="muted small signup-backlink" href="#/login">Already have an account? Sign in</a></div>' +
+          '</section>' +
+        '</div>');
     }
   };
 
