@@ -1106,7 +1106,7 @@
       const startLabel = 'Start your 30-day trial';
 
       const hero = '' +
-        '<section class="home-hero">' +
+        '<section class="home-hero home-hero-bg">' +
           '<div class="home-hero-copy">' +
             '<span class="badge badge-green">Built for South African ECD centres</span>' +
             '<h1>Run your ECD centre with calm, clarity and care.</h1>' +
@@ -1160,10 +1160,13 @@
           '<div class="home-section-head"><span class="badge badge-sun">Once-off launch package</span><h2>Get set up properly for R700</h2><p class="lede">A once-off <strong>R700 setup fee</strong> covers everything you need to launch with confidence — training, configuration and ready-to-use content — so your centre is up and running from day one.</p></div>' +
           '<div class="home-setup card glass">' +
             '<div class="home-setup-price">' +
-              '<div class="home-price-tag"><span class="home-currency">R</span><span class="home-amount">700</span></div>' +
-              '<div class="muted">once-off setup fee</div>' +
-              '<div class="home-price-note">Everything included to launch your centre on Re-EL ECD</div>' +
-              '<a class="btn btn-primary btn-block" style="margin-top:14px" href="' + startHref + '">' + R.icon('arrow-right') + ' ' + startLabel + '</a>' +
+              '<div class="home-setup-price-bg" aria-hidden="true"></div>' +
+              '<div class="home-setup-price-content">' +
+                '<div class="home-price-tag"><span class="home-currency">R</span><span class="home-amount">700</span></div>' +
+                '<div class="muted">once-off setup fee</div>' +
+                '<div class="home-price-note">Everything included to launch your centre on Re-EL ECD</div>' +
+                '<a class="btn btn-primary btn-block" style="margin-top:14px" href="' + startHref + '">' + R.icon('arrow-right') + ' ' + startLabel + '</a>' +
+              '</div>' +
             '</div>' +
             '<div class="home-setup-list">' +
               '<div class="strong" style="margin-bottom:10px">What’s included</div>' +

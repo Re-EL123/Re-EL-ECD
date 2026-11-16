@@ -1601,3 +1601,44 @@ img, video, canvas, svg { max-width: 100%; }
   .home-cta { flex-direction: column; align-items: flex-start; }
   .home-page { padding: 8px 14px 28px; }
 }
+
+/* --- Homepage imagery --------------------------------------------------- */
+.home-hero-bg {
+  position: relative;
+  border-radius: 24px;
+  padding: 28px 24px;
+  margin-top: 10px;
+  overflow: hidden;
+  background:
+    linear-gradient(90deg, rgba(250,249,245,0.96) 0%, rgba(250,249,245,0.90) 45%, rgba(250,249,245,0.55) 100%),
+    url("branding/home-hero.jpg") center/cover no-repeat;
+  box-shadow: 0 12px 40px rgba(31,50,35,0.08);
+}
+[data-theme="dark"] .home-hero-bg {
+  background:
+    linear-gradient(90deg, rgba(21,31,23,0.94) 0%, rgba(21,31,23,0.88) 45%, rgba(21,31,23,0.55) 100%),
+    url("branding/home-hero.jpg") center/cover no-repeat;
+}
+.home-hero-bg .home-hero-art { background: var(--surface-glass-strong); }
+.home-setup-price { position: relative; overflow: hidden; }
+.home-setup-price-bg {
+  position: absolute; inset: 0;
+  background:
+    linear-gradient(160deg, rgba(30,66,36,0.82), rgba(58,125,68,0.72)),
+    url("branding/home-setup.jpg") center/cover no-repeat;
+  transform: scale(1.02);
+}
+.home-setup-price-content { position: relative; z-index: 1; display: flex; flex-direction: column; justify-content: center; height: 100%; }
+@media (max-width: 980px) {
+  .home-hero-bg {
+    padding: 22px 16px;
+    background:
+      linear-gradient(180deg, rgba(250,249,245,0.96) 0%, rgba(250,249,245,0.86) 60%, rgba(250,249,245,0.70) 100%),
+      url("branding/home-hero.jpg") center/cover no-repeat;
+  }
+  [data-theme="dark"] .home-hero-bg {
+    background:
+      linear-gradient(180deg, rgba(21,31,23,0.95) 0%, rgba(21,31,23,0.86) 60%, rgba(21,31,23,0.70) 100%),
+      url("branding/home-hero.jpg") center/cover no-repeat;
+  }
+}
