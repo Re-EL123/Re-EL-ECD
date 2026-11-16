@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **443 routes** across 27 modules.
+Generated from the router: **447 routes** across 27 modules.
 
 ## Access
 
@@ -208,8 +208,12 @@ Generated from the router: **443 routes** across 27 modules.
 | POST | `/curriculum/adopt` | curriculum.create.daycare |
 | GET | `/curriculum/calendar` | curriculum.read.daycare |
 | POST | `/curriculum/calendar/events` | curriculum.create.daycare |
+| DELETE | `/curriculum/calendar/events/:id` | curriculum.create.daycare |
+| GET | `/curriculum/calendar/events/:id` | curriculum.read.daycare |
+| PATCH | `/curriculum/calendar/events/:id` | curriculum.create.daycare |
 | POST | `/curriculum/calendar/events/:id/cancel` | curriculum.create.daycare |
 | POST | `/curriculum/calendar/events/:id/complete` | curriculum.create.daycare |
+| POST | `/curriculum/calendar/events/:id/duplicate` | curriculum.create.daycare |
 | GET | `/curriculum/calendar/events/:id/participation` | curriculum.read.daycare |
 | POST | `/curriculum/calendar/events/:id/start` | curriculum.create.daycare |
 | GET | `/curriculum/domains` | curriculum.read.assigned OR curriculum.read.daycare OR assessments.read.assigned OR assessments.create.assigned |

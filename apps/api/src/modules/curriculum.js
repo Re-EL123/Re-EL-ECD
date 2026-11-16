@@ -698,11 +698,36 @@ function register(router) {
     const from = ctx.query.from || new Date().toISOString().slice(0, 10);
     const to = ctx.query.to || new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
     return ctx.db.many(
-      `SELECT sa.*, c.name AS classroom_name, u.display_name AS staff_name, lp.title AS lesson_plan_title
+      `SELECT sa.*,
+              c.name AS classroom_name,
+              u.display_name AS staff_name,
+              lp.title AS lesson_plan_title,
+              lp.theme AS lesson_plan_theme,
+              lp.module_id AS lesson_plan_module_id,
+              lm.title AS module_title,
+              a.title AS activity_title,
+              a.activity_type,
+              a.duration_minutes AS activity_duration_minutes,
+              a.materials AS activity_materials,
+              a.safety_notes AS activity_safety_notes,
+              a.description AS activity_description,
+              a.age_group AS activity_age_group,
+              COALESCE(pc.participation_count, 0)::int AS participation_count,
+              COALESCE(pc.participated_count, 0)::int AS participated_count
        FROM scheduled_activities sa
        LEFT JOIN classrooms c ON c.id = sa.classroom_id
        LEFT JOIN users u ON u.id = sa.assigned_staff_id
        LEFT JOIN lesson_plans lp ON lp.id = sa.lesson_plan_id
+       LEFT JOIN learning_modules lm ON lm.id = lp.module_id
+       LEFT JOIN activities a ON a.id = sa.activity_id
+       LEFT JOIN (
+         SELECT scheduled_activity_id,
+                COUNT(*)::int AS participation_count,
+                COUNT(*) FILTER (WHERE participation_status IN ('participated','partial'))::int AS participated_count
+         FROM activity_participation
+         WHERE organisation_id = $1
+         GROUP BY scheduled_activity_id
+       ) pc ON pc.scheduled_activity_id = sa.id
        WHERE sa.organisation_id = $1 AND sa.starts_at >= $2::timestamptz AND sa.starts_at < ($3::date + 1)
        ORDER BY sa.starts_at`,
       [ctx.organisationId, `${from}T00:00:00Z`, to]
@@ -816,6 +841,128 @@ function register(router) {
     await ctx.db.query(`UPDATE scheduled_activities SET status = 'cancelled' WHERE id = $1`, [event.id]);
     await recordAudit(ctx.db, ctx, { action: 'curriculum.activity_cancelled', resourceType: 'scheduled_activity', resourceId: event.id });
     return ctx.db.one('SELECT * FROM scheduled_activities WHERE id = $1', [event.id]);
+  }, { permission: 'curriculum.create.daycare' });
+
+  router.get('/curriculum/calendar/events/:id', async (ctx) => {
+    const event = await ctx.db.one(
+      `SELECT sa.*,
+              c.name AS classroom_name,
+              u.display_name AS staff_name,
+              lp.title AS lesson_plan_title,
+              lp.theme AS lesson_plan_theme,
+              lp.module_id AS lesson_plan_module_id,
+              lm.title AS module_title,
+              a.title AS activity_title,
+              a.activity_type,
+              a.duration_minutes AS activity_duration_minutes,
+              a.materials AS activity_materials,
+              a.safety_notes AS activity_safety_notes,
+              a.description AS activity_description,
+              a.age_group AS activity_age_group
+       FROM scheduled_activities sa
+       LEFT JOIN classrooms c ON c.id = sa.classroom_id
+       LEFT JOIN users u ON u.id = sa.assigned_staff_id
+       LEFT JOIN lesson_plans lp ON lp.id = sa.lesson_plan_id
+       LEFT JOIN learning_modules lm ON lm.id = lp.module_id
+       LEFT JOIN activities a ON a.id = sa.activity_id
+       WHERE sa.id = $1 AND sa.organisation_id = $2`,
+      [ctx.params.id, ctx.organisationId]
+    );
+    if (!event) throw new AppError('NOT_FOUND');
+    event.participation = await ctx.db.many(
+      `SELECT ap.*, l.first_name, l.last_name FROM activity_participation ap
+       JOIN learners l ON l.id = ap.learner_id WHERE ap.scheduled_activity_id = $1 ORDER BY l.last_name`, [event.id]
+    );
+    return event;
+  }, { permission: 'curriculum.read.daycare' });
+
+  router.patch('/curriculum/calendar/events/:id', async (ctx) => {
+    const body = validate(ctx.body, {
+      title: { type: 'string', min: 2, max: 200, optional: true },
+      branchId: { type: 'string', uuid: true, optional: true },
+      classroomId: { type: 'string', uuid: true, optional: true, nullable: true },
+      lessonPlanId: { type: 'string', uuid: true, optional: true, nullable: true },
+      activityId: { type: 'string', uuid: true, optional: true, nullable: true },
+      assignedStaffId: { type: 'string', uuid: true, optional: true, nullable: true },
+      startsAt: { type: 'string', datetime: true, optional: true },
+      endsAt: { type: 'string', datetime: true, optional: true, nullable: true },
+      notes: { type: 'string', max: 2000, optional: true, nullable: true }
+    });
+    const event = await ctx.db.one('SELECT * FROM scheduled_activities WHERE id = $1 AND organisation_id = $2',
+      [ctx.params.id, ctx.organisationId]);
+    if (!event) throw new AppError('NOT_FOUND');
+    if (body.branchId) {
+      const branch = await ctx.db.one('SELECT id FROM branches WHERE id = $1 AND organisation_id = $2', [body.branchId, ctx.organisationId]);
+      if (!branch) throw new AppError('NOT_FOUND');
+    }
+    const startsAt = body.startsAt || event.starts_at;
+    const endsAt = Object.prototype.hasOwnProperty.call(body, 'endsAt') ? body.endsAt : event.ends_at;
+    if (endsAt && new Date(endsAt).getTime() < new Date(startsAt).getTime()) {
+      fail('VALIDATION', [{ field: 'endsAt', message: 'The end time must be after the start time.' }]);
+    }
+    const updated = await ctx.db.one(
+      `UPDATE scheduled_activities SET
+         title = COALESCE($1, title),
+         branch_id = COALESCE($2, branch_id),
+         classroom_id = CASE WHEN $3::boolean THEN $4 ELSE classroom_id END,
+         lesson_plan_id = CASE WHEN $5::boolean THEN $6 ELSE lesson_plan_id END,
+         activity_id = CASE WHEN $7::boolean THEN $8 ELSE activity_id END,
+         assigned_staff_id = CASE WHEN $9::boolean THEN $10 ELSE assigned_staff_id END,
+         starts_at = $11,
+         ends_at = $12,
+         notes = CASE WHEN $13::boolean THEN $14 ELSE notes END
+       WHERE id = $15 AND organisation_id = $16
+       RETURNING *`,
+      [
+        body.title || null,
+        body.branchId || null,
+        Object.prototype.hasOwnProperty.call(body, 'classroomId'), body.classroomId || null,
+        Object.prototype.hasOwnProperty.call(body, 'lessonPlanId'), body.lessonPlanId || null,
+        Object.prototype.hasOwnProperty.call(body, 'activityId'), body.activityId || null,
+        Object.prototype.hasOwnProperty.call(body, 'assignedStaffId'), body.assignedStaffId || null,
+        startsAt, endsAt || null,
+        Object.prototype.hasOwnProperty.call(body, 'notes'), body.notes || null,
+        event.id, ctx.organisationId
+      ]
+    );
+    await recordAudit(ctx.db, ctx, { action: 'curriculum.activity_updated', resourceType: 'scheduled_activity', resourceId: event.id });
+    return updated;
+  }, { permission: 'curriculum.create.daycare' });
+
+  router.delete('/curriculum/calendar/events/:id', async (ctx) => {
+    const event = await ctx.db.one('SELECT id, status FROM scheduled_activities WHERE id = $1 AND organisation_id = $2',
+      [ctx.params.id, ctx.organisationId]);
+    if (!event) throw new AppError('NOT_FOUND');
+    await ctx.db.query('DELETE FROM scheduled_activities WHERE id = $1 AND organisation_id = $2', [event.id, ctx.organisationId]);
+    await recordAudit(ctx.db, ctx, { action: 'curriculum.activity_deleted', resourceType: 'scheduled_activity', resourceId: event.id, metadata: { previousStatus: event.status } });
+    ctx.status = 204;
+    return null;
+  }, { permission: 'curriculum.create.daycare' });
+
+  router.post('/curriculum/calendar/events/:id/duplicate', async (ctx) => {
+    const event = await ctx.db.one('SELECT * FROM scheduled_activities WHERE id = $1 AND organisation_id = $2',
+      [ctx.params.id, ctx.organisationId]);
+    if (!event) throw new AppError('NOT_FOUND');
+    const body = validate(ctx.body || {}, {
+      startsAt: { type: 'string', datetime: true, optional: true },
+      endsAt: { type: 'string', datetime: true, optional: true, nullable: true },
+      title: { type: 'string', min: 2, max: 200, optional: true }
+    });
+    const duration = event.ends_at && event.starts_at ? (new Date(event.ends_at).getTime() - new Date(event.starts_at).getTime()) : null;
+    const startsAt = body.startsAt || (event.starts_at ? new Date(new Date(event.starts_at).getTime() + 86400000).toISOString() : new Date().toISOString());
+    const endsAt = Object.prototype.hasOwnProperty.call(body, 'endsAt')
+      ? body.endsAt
+      : (duration !== null ? new Date(new Date(startsAt).getTime() + duration).toISOString() : event.ends_at);
+    const copy = await ctx.db.one(
+      `INSERT INTO scheduled_activities (organisation_id, branch_id, classroom_id, lesson_plan_id, activity_id, title,
+        starts_at, ends_at, assigned_staff_id, notes, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'scheduled') RETURNING *`,
+      [ctx.organisationId, event.branch_id, event.classroom_id, event.lesson_plan_id, event.activity_id,
+        body.title || event.title, startsAt, endsAt || null, event.assigned_staff_id, event.notes || null]
+    );
+    await recordAudit(ctx.db, ctx, { action: 'curriculum.activity_duplicated', resourceType: 'scheduled_activity', resourceId: copy.id, metadata: { sourceId: event.id } });
+    ctx.status = 201;
+    return copy;
   }, { permission: 'curriculum.create.daycare' });
 
   router.get('/curriculum/calendar/events/:id/participation', async (ctx) => {

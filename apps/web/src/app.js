@@ -340,6 +340,7 @@
       },
 
       async boot() {
+        window.ReelApp = this;
         this.refreshVoices();
         if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
           window.speechSynthesis.onvoiceschanged = () => this.refreshVoices();
