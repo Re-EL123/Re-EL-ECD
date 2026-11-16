@@ -1655,10 +1655,6 @@
           }
           const data = payload.data || {};
           const steps = (data.steps || []).slice().sort((a, b) => (a.position || 0) - (b.position || 0));
-          if (!steps.length) {
-            this.toast('This plan does not have a lesson guide yet.', 'warn');
-            return;
-          }
           let downloaded = false;
           try {
             const saved = JSON.parse(localStorage.getItem('reel.guidesDownloaded') || '[]');
@@ -1677,6 +1673,9 @@
             placementsByStep: {}
           };
           this._guidePoll = null;
+          if (!steps.length && !this.guide.canEdit) {
+            this.toast('This plan does not have a lesson guide yet.', 'info');
+          }
           this.renderIconsNow();
         } catch (error) {
           this.toast(error.message || 'The lesson guide could not be opened.', 'error');
@@ -1966,8 +1965,8 @@
         const voice = this.selectedVoice();
         if (voice) utterance.voice = voice;
         utterance.lang = (voice && voice.lang) || 'en-ZA';
-        // Songs, rhymes and stories land better slightly slower than instructions.
-        utterance.rate = /song|rhyme|story|book/.test(String(step.step_type || '')) ? 0.85 : 0.92;
+        // Songs, rhymes and stories land better clearly and slower than instructions.
+        utterance.rate = /song|rhyme|story|book/.test(String(step.step_type || '')) ? 0.75 : 0.82;
         utterance.pitch = 1;
         utterance.volume = 1;
         window.speechSynthesis.speak(utterance);
