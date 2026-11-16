@@ -685,6 +685,156 @@
     return '<div class="' + cls.join(' ') + '"' + tipAttrs + style + '>' + esc(initials(name)) + '</div>';
   }
 
+  // ---------------------------------------------------------------------------
+  // Weather (Today day scene)
+  //
+  // Live conditions and a short outlook for the centre's location, via the
+  // keyless Open-Meteo APIs. Location comes from organisation settings
+  // (`weather.city` or `weather.lat/lon`); when nothing is configured it falls
+  // back to a sensible default for the centre's timezone. Responses are cached
+  // in localStorage for 30 minutes and every failure degrades silently to null,
+  // so the day scene simply renders without weather when offline.
+  // ---------------------------------------------------------------------------
+
+  const WEATHER_CACHE_KEY = 'reel.weather.v1';
+  const WEATHER_GEO_KEY = 'reel.geo.v1';
+
+  const WEATHER_CODES = {
+    0: { label: 'Clear sky', icon: 'sun', night: 'moon' },
+    1: { label: 'Mostly clear', icon: 'sun', night: 'moon' },
+    2: { label: 'Partly cloudy', icon: 'cloud-sun', night: 'cloud-moon' },
+    3: { label: 'Overcast', icon: 'cloud' },
+    45: { label: 'Fog', icon: 'cloud-fog' },
+    48: { label: 'Icy fog', icon: 'cloud-fog' },
+    51: { label: 'Light drizzle', icon: 'cloud-drizzle' },
+    53: { label: 'Drizzle', icon: 'cloud-drizzle' },
+    55: { label: 'Heavy drizzle', icon: 'cloud-drizzle' },
+    56: { label: 'Freezing drizzle', icon: 'cloud-drizzle' },
+    57: { label: 'Freezing drizzle', icon: 'cloud-drizzle' },
+    61: { label: 'Light rain', icon: 'cloud-rain' },
+    63: { label: 'Rain', icon: 'cloud-rain' },
+    65: { label: 'Heavy rain', icon: 'cloud-rain' },
+    66: { label: 'Freezing rain', icon: 'cloud-rain' },
+    67: { label: 'Freezing rain', icon: 'cloud-rain' },
+    71: { label: 'Light snow', icon: 'cloud-snow' },
+    73: { label: 'Snow', icon: 'cloud-snow' },
+    75: { label: 'Heavy snow', icon: 'cloud-snow' },
+    77: { label: 'Snow grains', icon: 'cloud-snow' },
+    80: { label: 'Light showers', icon: 'cloud-rain' },
+    81: { label: 'Showers', icon: 'cloud-rain' },
+    82: { label: 'Heavy showers', icon: 'cloud-rain' },
+    85: { label: 'Snow showers', icon: 'cloud-snow' },
+    86: { label: 'Snow showers', icon: 'cloud-snow' },
+    95: { label: 'Thunderstorm', icon: 'cloud-lightning' },
+    96: { label: 'Thunderstorm', icon: 'cloud-lightning' },
+    99: { label: 'Thunderstorm', icon: 'cloud-lightning' }
+  };
+
+  function readLocalJson(key, fallback) {
+    try {
+      const raw = window.localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch { return fallback; }
+  }
+
+  function writeLocalJson(key, value) {
+    try { window.localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage full or blocked */ }
+  }
+
+  function weatherFetchJson(url, timeoutMs) {
+    return new Promise((resolve, reject) => {
+      if (typeof AbortController === 'function') {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs || 5000);
+        fetch(url, { signal: controller.signal })
+          .then((response) => { clearTimeout(timer); return response.ok ? response.json() : Promise.reject(new Error('weather ' + response.status)); })
+          .then(resolve, (error) => { clearTimeout(timer); reject(error); });
+      } else {
+        fetch(url).then((response) => response.ok ? response.json() : Promise.reject(new Error('weather ' + response.status))).then(resolve, reject);
+      }
+    });
+  }
+
+  function weatherDefaultCoords() {
+    let tz = '';
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { /* no Intl */ }
+    const table = {
+      'africa/johannesburg': { lat: -26.2041, lon: 28.0473, city: 'Johannesburg' },
+      'africa/cape_town': { lat: -33.9249, lon: 18.4241, city: 'Cape Town' },
+      'africa/harare': { lat: -17.8252, lon: 31.0335, city: 'Harare' },
+      'africa/windhoek': { lat: -22.5597, lon: 17.0832, city: 'Windhoek' },
+      'europe/london': { lat: 51.5074, lon: -0.1278, city: 'London' },
+      'america/new_york': { lat: 40.7128, lon: -74.006, city: 'New York' }
+    };
+    return table[String(tz).toLowerCase()] || table['africa/johannesburg'];
+  }
+
+  async function weatherLoad(options) {
+    try {
+      if (typeof fetch !== 'function') return null;
+      const opts = options || {};
+      const loc = (opts.location && typeof opts.location === 'object') ? opts.location : {};
+      let city = String(loc.city || '').trim() || null;
+      const lat = Number(loc.lat !== undefined ? loc.lat : loc.latitude);
+      const lon = Number(loc.lon !== undefined ? loc.lon : loc.longitude);
+      let coords = Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null;
+      if (!coords && city) {
+        const geoCache = readLocalJson(WEATHER_GEO_KEY, {});
+        const hit = geoCache[city.toLowerCase()];
+        if (hit && Number.isFinite(hit.lat)) coords = hit;
+      }
+      if (!coords && city) {
+        const geo = await weatherFetchJson('https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(city) + '&count=1&language=en&format=json', 4500);
+        const first = geo && geo.results && geo.results[0];
+        if (first && Number.isFinite(first.latitude)) {
+          coords = { lat: first.latitude, lon: first.longitude };
+          const geoCache = readLocalJson(WEATHER_GEO_KEY, {});
+          geoCache[city.toLowerCase()] = coords;
+          writeLocalJson(WEATHER_GEO_KEY, geoCache);
+        }
+      }
+      if (!coords) {
+        coords = weatherDefaultCoords();
+        city = city || coords.city;
+      }
+      const cache = readLocalJson(WEATHER_CACHE_KEY, null);
+      if (cache && cache.coords && cache.data && cache.coords.lat === coords.lat && cache.coords.lon === coords.lon
+        && Date.now() - cache.t < 30 * 60000) {
+        return Object.assign({}, cache.data, { city: cache.data.city || city });
+      }
+      const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + coords.lat + '&longitude=' + coords.lon +
+        '&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,is_day' +
+        '&daily=temperature_2m_max,temperature_2m_min,weather_code,uv_index_max,precipitation_probability_max,sunrise,sunset' +
+        '&forecast_days=1&timezone=auto';
+      const raw = await weatherFetchJson(url, 5000);
+      if (!raw || !raw.current || !raw.daily) return null;
+      const code = WEATHER_CODES[raw.current.weather_code] || { label: 'Weather', icon: 'cloud' };
+      const isDay = raw.current.is_day !== 0;
+      const data = {
+        city: city || coords.city || null,
+        temp: Math.round(raw.current.temperature_2m),
+        feels: Math.round(raw.current.apparent_temperature),
+        humidity: raw.current.relative_humidity_2m,
+        wind: Math.round(raw.current.wind_speed_10m),
+        isDay,
+        label: code.label,
+        icon: isDay ? (code.icon || 'cloud') : (code.night || code.icon || 'cloud-moon'),
+        uv: Number.isFinite(raw.daily.uv_index_max && raw.daily.uv_index_max[0]) ? Math.round(raw.daily.uv_index_max[0]) : null,
+        pop: raw.daily.precipitation_probability_max && raw.daily.precipitation_probability_max[0],
+        maxTemp: raw.daily.temperature_2m_max ? Math.round(raw.daily.temperature_2m_max[0]) : null,
+        minTemp: raw.daily.temperature_2m_min ? Math.round(raw.daily.temperature_2m_min[0]) : null,
+        sunrise: raw.daily.sunrise ? raw.daily.sunrise[0] : null,
+        sunset: raw.daily.sunset ? raw.daily.sunset[0] : null
+      };
+      writeLocalJson(WEATHER_CACHE_KEY, { t: Date.now(), coords, data });
+      return data;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  Reel.weather = { load: weatherLoad, defaultCoords: weatherDefaultCoords };
+
   function mediaList(value) {
     if (Array.isArray(value)) return value.filter(Boolean);
     if (!value) return [];

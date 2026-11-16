@@ -59,9 +59,18 @@
 
   function timeOfDay(now) {
     const h = (now instanceof Date ? now : new Date()).getHours();
-    if (h < 12) return { greeting: 'Good morning', label: 'Morning', icon: 'sunrise', tone: 'A calm start to the day.' };
-    if (h < 17) return { greeting: 'Good afternoon', label: 'Afternoon', icon: 'sun', tone: 'Keep the momentum going.' };
-    return { greeting: 'Good evening', label: 'Evening', icon: 'sunset', tone: 'A good moment to wrap up.' };
+    if (h < 5) return { greeting: 'Good evening', label: 'Night', icon: 'moon', tone: 'A quiet close to the day.', phase: 'night' };
+    if (h < 8) return { greeting: 'Good morning', label: 'Early morning', icon: 'sunrise', tone: 'A calm start to the day.', phase: 'dawn' };
+    if (h < 12) return { greeting: 'Good morning', label: 'Morning', icon: 'sunrise', tone: 'A calm start to the day.', phase: 'morning' };
+    if (h < 15) return { greeting: 'Good afternoon', label: 'Midday', icon: 'sun', tone: 'Keep the momentum going.', phase: 'midday' };
+    if (h < 18) return { greeting: 'Good afternoon', label: 'Afternoon', icon: 'sun', tone: 'Keep the momentum going.', phase: 'afternoon' };
+    if (h < 20) return { greeting: 'Good evening', label: 'Sunset', icon: 'sunset', tone: 'A good moment to wrap up.', phase: 'dusk' };
+    return { greeting: 'Good evening', label: 'Night', icon: 'moon', tone: 'A quiet close to the day.', phase: 'night' };
+  }
+
+  function clockDisplay(now) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return pad(now.getHours()) + ':' + pad(now.getMinutes());
   }
 
   V.today = {
@@ -83,17 +92,26 @@
         R.api('GET', '/notifications?pageSize=6').catch(captureBillingLock),
         ctx.has('curriculum.read.daycare')
           ? R.api('GET', '/curriculum/calendar?from=' + R.today() + '&to=' + R.today()).catch(captureBillingLock) : Promise.resolve(null),
-        R.api('GET', '/curriculum/domains').catch(captureBillingLock)
+        R.api('GET', '/curriculum/domains').catch(captureBillingLock),
+        ctx.has('organisation.read.daycare')
+          ? R.api('GET', '/organisations/current/settings').catch(captureBillingLock) : Promise.resolve(null)
       ]);
       // A billing lock must stop the page, not degrade it into empty numbers.
       if (billingLockError) throw billingLockError;
-      const [todayRes, dashRes, tasksRes, notifRes, calRes, domainsRes] = settled;
+      const [todayRes, dashRes, tasksRes, notifRes, calRes, domainsRes, settingsRes] = settled;
       const today = todayRes.status === 'fulfilled' && todayRes.value ? todayRes.value.data : null;
       const dashboard = dashRes.status === 'fulfilled' && dashRes.value ? dashRes.value.data : null;
       const tasks = tasksRes.status === 'fulfilled' && tasksRes.value ? tasksRes.value.data : [];
       const notifications = notifRes.status === 'fulfilled' && notifRes.value ? notifRes.value.data : [];
       const calendarToday = calRes.status === 'fulfilled' && calRes.value ? calRes.value.data : [];
       const domains = domainsRes.status === 'fulfilled' && domainsRes.value ? domainsRes.value.data : [];
+      const orgSettings = settingsRes.status === 'fulfilled' && settingsRes.value ? settingsRes.value.data : {};
+      // Day-scene weather: never blocks Today — races a short timeout so a slow
+      // network still renders instantly, and a failure simply omits the widget.
+      const weather = await Promise.race([
+        Reel.weather.load({ location: orgSettings.weather }).catch(() => null),
+        new Promise((resolve) => setTimeout(() => resolve(null), 2500))
+      ]);
       const now = new Date();
       return {
         today: today || { expected: 0, present: 0, recorded: 0, children: [], timeline: [], absentees: [], focusChildren: [], unverifiedDropoffs: [], gateScans: [], unopened: [], unfinished: {}, dailyReports: { children: [], missing: 0, draft: 0, presentCount: 0 }, wrapUp: { unfinishedBlocks: [], unfinishedCount: 0 }, unmarkedIds: [] },
@@ -104,6 +122,7 @@
         domains: domains || [],
         canDashboard,
         teachingPerms,
+        weather,
         nowIso: now.toISOString(),
         date: R.today()
       };
@@ -178,6 +197,7 @@
       );
 
       // Manager dashboard (alerts, KPIs, charts, lists) — merged from Overview
+      html += this.renderDayScene(ctx, page);
       html += this.renderSuggestions(ctx, page);
       if (page.canDashboard) {
         html += this.renderDashboard(ctx, page);
@@ -192,6 +212,97 @@
       html += this.renderWrapUp(ctx, page);
       html += this.renderPrepList(page);
 
+      html += '</div>';
+      return html;
+    },
+
+    /**
+     * The day scene: a neon-glass landscape card that breathes with the time
+     * of day — dawn, morning, midday, afternoon, dusk or night — with a
+     * travelling sun (or moon), drifting clouds, hills and trees, live weather
+     * for the centre's location and the day's most valuable numbers beneath.
+     */
+    renderDayScene(ctx, page) {
+      const t = page.today || {};
+      const now = new Date(page.nowIso || Date.now());
+      const tod = timeOfDay(now);
+      const w = page.weather || null;
+      const timeline = t.timeline || [];
+      const next = timeline.find((b) => b.status === 'scheduled' || b.status === 'in_progress') || null;
+      const dr = t.dailyReports || { missing: 0, draft: 0 };
+      const tasksDue = ((t.unfinished || {}).tasksDueToday) || 0;
+      const orgName = (ctx.activeOrganisation && ctx.activeOrganisation.name) || '';
+      const place = (w && w.city) || orgName || 'Your centre';
+      const h = now.getHours() + now.getMinutes() / 60;
+
+      // Sun (or moon) position: when the forecast gives us sunrise/sunset, ride
+      // the real arc; otherwise fall back to a 06:00–19:00 sweep.
+      let frac = Math.max(0, Math.min(1, (h - 6) / 13));
+      if (w && w.sunrise && w.sunset) {
+        const rise = w.sunrise.slice(-5).split(':');
+        const set = w.sunset.slice(-5).split(':');
+        const riseMin = Number(rise[0]) * 60 + Number(rise[1]);
+        const setMin = Number(set[0]) * 60 + Number(set[1]);
+        const nowMin = now.getHours() * 60 + now.getMinutes();
+        if (setMin > riseMin) frac = Math.max(0, Math.min(1, (nowMin - riseMin) / (setMin - riseMin)));
+      }
+      const orbLeft = (6 + frac * 82).toFixed(1);
+      const orbBottom = (14 + Math.sin(frac * Math.PI) * 46).toFixed(1);
+      const isNight = tod.phase === 'night';
+
+      const info = [];
+      info.push({
+        icon: 'user-check', tone: 'green', label: 'Register',
+        value: R.number(t.present || 0) + ' / ' + R.number(t.expected || 0) + ' present' + (t.registerPct ? ' · ' + R.percent(t.registerPct) + ' recorded' : '')
+      });
+      if (next) info.push({ icon: 'clock', tone: 'sky', label: 'Next block', value: esc(next.title) + ' at ' + time(next.startsAt) });
+      else info.push({ icon: 'check-circle', tone: 'green', label: 'Schedule', value: timeline.length ? 'All planned blocks complete' : 'Nothing scheduled yet' });
+      if (w) {
+        if (!isNight && w.sunset) {
+          info.push({
+            icon: 'sun', tone: 'sun', label: 'Outdoor play window',
+            value: 'until ' + esc(String(w.sunset).slice(-5)) + ' · UV ' + (w.uv === null ? '—' : R.number(w.uv)) + ' · ' + R.number(w.wind || 0) + ' km/h wind'
+          });
+        } else {
+          info.push({
+            icon: 'moon', tone: 'sky', label: 'Evening conditions',
+            value: (w.sunrise ? 'Sunrise ' + esc(String(w.sunrise).slice(-5)) + ' · ' : '') + 'feels like ' + R.number(w.feels !== null ? w.feels : w.temp) + '°C'
+          });
+        }
+      }
+      if (dr.missing || tasksDue) {
+        info.push({ icon: 'list-checks', tone: 'clay', label: 'Wrap-up', value: (dr.missing ? R.number(dr.missing) + ' report' + (dr.missing === 1 ? '' : 's') + ' to write' : '') + (dr.missing && tasksDue ? ' · ' : '') + (tasksDue ? R.number(tasksDue) + ' task' + (tasksDue === 1 ? '' : 's') + ' due' : '') });
+      }
+
+      let html = '<div class="card day-card" data-phase="' + esc(tod.phase) + '">';
+      html += '<div class="day-scene" role="img" aria-label="' + R.attr(tod.label + ' — ' + (w ? w.label : place)) + '">';
+      html += '<div class="scene-sky"></div>';
+      if (isNight) html += '<div class="scene-stars"></div>';
+      html += '<div class="scene-orb ' + (isNight ? 'scene-moon' : 'scene-sun') + '" style="left:' + orbLeft + '%;bottom:' + orbBottom + '%"></div>';
+      html += '<div class="scene-cloud c1"></div><div class="scene-cloud c2"></div>';
+      html += '<div class="scene-hill h1"></div><div class="scene-hill h2"></div><div class="scene-hill h3"></div>';
+      html += '<div class="scene-tree t1"></div><div class="scene-tree t2"></div><div class="scene-tree t3"></div>';
+      html += '<div class="scene-meadow"><i class="shimmer s1"></i><i class="shimmer s2"></i><i class="shimmer s3"></i></div>';
+      html += '<div class="scene-veil"></div>';
+      html += '<div class="scene-overlay">' +
+        '<div class="scene-left">' +
+          '<div class="scene-clock">' + esc(clockDisplay(now)) + '</div>' +
+          '<div class="scene-phase">' + R.icon(tod.icon) + ' ' + esc(tod.label) + '<span class="scene-tone">' + esc(tod.tone) + '</span></div>' +
+        '</div>' +
+        '<div class="scene-right">' +
+          (w
+            ? '<div class="scene-temp">' + R.number(w.temp) + '°</div>' +
+              '<div class="scene-cond">' + R.icon(w.icon) + ' ' + esc(w.label) + '</div>' +
+              '<div class="scene-place">' + R.icon('map-pin') + ' ' + esc(place) + '</div>'
+            : '<div class="scene-place" style="margin-top:auto">' + R.icon('map-pin') + ' ' + esc(place) + '</div>') +
+        '</div>' +
+      '</div>';
+      html += '</div>';
+      html += '<div class="day-info">' + info.map((row, index) =>
+        (index ? '<div class="day-info-sep" aria-hidden="true"></div>' : '') +
+        '<div class="day-info-row"><span class="day-info-ico tone-' + esc(row.tone) + '">' + R.icon(row.icon) + '</span>' +
+        '<div style="min-width:0"><div class="day-info-label">' + esc(row.label) + '</div>' +
+        '<div class="day-info-value">' + row.value + '</div></div></div>').join('') + '</div>';
       html += '</div>';
       return html;
     },

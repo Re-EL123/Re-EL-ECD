@@ -577,7 +577,8 @@ window.Reel.renderGateQr = function (targetId) {
             { name: 'smsIncidents', label: 'SMS incidents', type: 'checkbox', value: notifications.smsIncidents === true },
             { name: 'showFees', label: 'Show fees publicly', type: 'checkbox', value: (settings.publicWebsite || {}).showFees === true },
             { name: 'learnerRecordsYears', label: 'Learner record retention (years)', type: 'number', value: retention.learnerRecordsYears || 7 },
-            { name: 'financeYears', label: 'Financial record retention (years)', type: 'number', value: retention.financeYears || 7 }
+            { name: 'financeYears', label: 'Financial record retention (years)', type: 'number', value: retention.financeYears || 7 },
+            { name: 'weatherCity', label: 'Weather location (city or town)', value: ((settings.weather || {}).city) || '', placeholder: 'e.g. Durbanville', span: 2, hint: 'Feeds the live weather on the Today day scene.' }
           ],
           transform: (data) => ({
             settings: {
@@ -586,7 +587,8 @@ window.Reel.renderGateQr = function (targetId) {
               attendancePolicy: { lateAfter: data.lateAfter, autoAbsentAfter: data.autoAbsentAfter, allowExcusedAbsence: data.allowExcusedAbsence === true },
               notificationPreferences: { emailAnnouncements: data.emailAnnouncements === true, emailInvoices: data.emailInvoices === true, smsIncidents: data.smsIncidents === true },
               publicWebsite: { enabled: true, showFees: data.showFees === true },
-              dataRetention: { learnerRecordsYears: Number(data.learnerRecordsYears), financeYears: Number(data.financeYears) }
+              dataRetention: { learnerRecordsYears: Number(data.learnerRecordsYears), financeYears: Number(data.financeYears) },
+              weather: { city: String(data.weatherCity || '').trim() }
             }
           })
         });

@@ -1401,21 +1401,8 @@ img, video, canvas, svg { max-width: 100%; }
   backdrop-filter: blur(10px) saturate(130%); -webkit-backdrop-filter: blur(10px) saturate(130%);
 }
 .today-wrap .card.glass, .today-insights .card, .card.glass.today-strip, .card.glass.today-next, .card.glass.today-wrapup, .card.glass.today-prep, .card.glass.today-block {
-  background: var(--surface-glass-strong);
   backdrop-filter: blur(18px) saturate(150%);
   -webkit-backdrop-filter: blur(18px) saturate(150%);
-  border: 1px solid rgba(255,255,255,0.55);
-  box-shadow: 0 10px 30px rgba(31,50,35,0.08), 0 1px 0 rgba(255,255,255,0.6) inset;
-}
-[data-theme="dark"] .today-wrap .card.glass,
-[data-theme="dark"] .today-insights .card,
-[data-theme="dark"] .card.glass.today-strip,
-[data-theme="dark"] .card.glass.today-next,
-[data-theme="dark"] .card.glass.today-wrapup,
-[data-theme="dark"] .card.glass.today-prep,
-[data-theme="dark"] .card.glass.today-block {
-  border: 1px solid var(--border-subtle);
-  box-shadow: 0 10px 30px rgba(0,0,0,0.25), 0 1px 0 rgba(255,255,255,0.03) inset;
 }
 .today-block { background: var(--block-bg, var(--surface-glass-strong)); }
 .today-timeline { display: flex; flex-direction: column; gap: 14px; }
@@ -2147,4 +2134,232 @@ a.crumb:hover { color: var(--text-strong); background: var(--surface-2); text-de
 @media (prefers-reduced-motion: reduce) {
   .suggest-row { transition: none !important; }
   .suggest-row:hover { transform: none; }
+}
+
+/* --- Neon glass cards (all through the platform) --------------------------
+   Every card becomes a pane of tinted glass: a soft diagonal sheen, a lime
+   neon hairline along the top edge and a low green glow. Dark theme raises
+   the neon edges; print reverts to plain paper. */
+:root {
+  --neon-edge: rgba(141, 226, 160, 0.62);
+  --neon-glow: rgba(92, 214, 116, 0.16);
+  --neon-glow-strong: rgba(92, 214, 116, 0.30);
+  --neon-border: rgba(92, 214, 116, 0.24);
+  --neon-border-strong: rgba(141, 226, 160, 0.45);
+}
+.card {
+  isolation: isolate;
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, 0.66), rgba(255, 255, 255, 0.20) 42%, rgba(141, 226, 160, 0.10) 100%),
+    var(--surface-1);
+  border-color: var(--neon-border);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.34),
+    var(--shadow-xs),
+    0 12px 38px -18px var(--neon-glow);
+  transition: box-shadow 0.45s cubic-bezier(0.3, 0.7, 0.3, 1), border-color 0.35s cubic-bezier(0.3, 0.7, 0.3, 1);
+}
+.card::before {
+  content: ''; position: absolute; inset: 0; border-radius: inherit;
+  z-index: -1; pointer-events: none;
+  background:
+    linear-gradient(115deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0) 30%),
+    radial-gradient(120% 90% at 85% -10%, rgba(141, 226, 160, 0.14), rgba(141, 226, 160, 0) 60%);
+}
+.card::after {
+  content: ''; position: absolute; top: 0; left: 10%; right: 10%; height: 1px;
+  border-radius: 1px; z-index: -1; pointer-events: none;
+  background: linear-gradient(90deg, rgba(141, 226, 160, 0), var(--neon-edge) 30%, var(--neon-edge) 70%, rgba(141, 226, 160, 0));
+  opacity: 0.55;
+}
+.card:hover {
+  border-color: var(--neon-border-strong);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.4),
+    var(--shadow-sm),
+    0 16px 46px -16px var(--neon-glow-strong);
+}
+.card.glass {
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.14) 42%, rgba(141, 226, 160, 0.08) 100%),
+    var(--surface-glass-strong);
+}
+.modal {
+  position: relative;
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.24) 42%, rgba(141, 226, 160, 0.10) 100%),
+    var(--surface-1);
+  border-color: var(--neon-border);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.34), var(--shadow-lg), 0 18px 52px -20px var(--neon-glow);
+}
+.modal::after {
+  content: ''; position: absolute; top: 0; left: 12%; right: 12%; height: 1px; z-index: 3; pointer-events: none;
+  background: linear-gradient(90deg, rgba(141, 226, 160, 0), var(--neon-edge) 30%, var(--neon-edge) 70%, rgba(141, 226, 160, 0));
+  opacity: 0.6;
+}
+[data-theme="dark"] .card {
+  background:
+    linear-gradient(150deg, rgba(230, 244, 232, 0.07), rgba(230, 244, 232, 0.02) 42%, rgba(141, 226, 160, 0.05) 100%),
+    var(--surface-1);
+  box-shadow: inset 0 0 0 1px rgba(230, 244, 232, 0.05), var(--shadow-xs), 0 12px 38px -18px var(--neon-glow);
+}
+[data-theme="dark"] .card:hover {
+  border-color: var(--neon-border-strong);
+  box-shadow: inset 0 0 0 1px rgba(141, 226, 160, 0.12), var(--shadow-sm), 0 16px 46px -16px var(--neon-glow-strong);
+}
+[data-theme="dark"] .card::after { opacity: 0.4; }
+@media (prefers-reduced-motion: reduce) {
+  .card, .modal { transition: none !important; }
+}
+@media print {
+  .card, .card.glass, .modal {
+    background: #fff !important; border-color: rgba(28, 42, 30, 0.2) !important;
+    box-shadow: none !important;
+  }
+  .card::before, .card::after, .modal::after { display: none !important; }
+}
+
+/* --- Day scene card (Today) ----------------------------------------------
+   A landscape that breathes with the time of day: the sky gradient, sun or
+   moon position, clouds, hills, trees and meadow shimmer all follow the
+   current phase (dawn / morning / midday / afternoon / dusk / night). */
+.day-card { padding: 0; overflow: hidden; }
+.day-scene {
+  position: relative; height: 236px; overflow: hidden;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+.scene-sky, .scene-stars, .scene-orb, .scene-cloud, .scene-hill, .scene-tree, .scene-meadow, .scene-veil {
+  position: absolute; pointer-events: none;
+}
+.scene-sky { inset: 0; transition: background 1.2s ease; }
+.day-card[data-phase="dawn"] .scene-sky {
+  background: linear-gradient(0deg, #ffd9a3 0%, #f9a88f 46%, #e98a9b 100%);
+}
+.day-card[data-phase="morning"] .scene-sky {
+  background: linear-gradient(0deg, #ffe7b8 0%, #9fd8f4 48%, #7cc4ec 100%);
+}
+.day-card[data-phase="midday"] .scene-sky {
+  background: linear-gradient(0deg, #c9ecfa 0%, #8fd2f2 55%, #5fb3e4 100%);
+}
+.day-card[data-phase="afternoon"] .scene-sky {
+  background: linear-gradient(0deg, #ffdfa8 0%, #f7b77e 48%, #6fa7cf 100%);
+}
+.day-card[data-phase="dusk"] .scene-sky {
+  background: linear-gradient(0deg, #ffb27a 0%, #e98a86 45%, #7b6a9b 100%);
+}
+.day-card[data-phase="night"] .scene-sky {
+  background: linear-gradient(0deg, #2a4152 0%, #1d2f44 55%, #14202f 100%);
+}
+/* Sun: layered glow rings; Moon: pale disc with a cool halo. */
+.scene-orb { border-radius: 50%; transition: left 2s ease, bottom 2s ease; }
+.scene-sun {
+  width: 42px; height: 42px; background: #fff;
+  display: grid; place-items: center;
+  box-shadow: 0 0 18px 6px rgba(255, 255, 255, 0.85);
+}
+.scene-sun::after {
+  content: ''; position: absolute; inset: -14%; border-radius: 50%; background: #fff; opacity: 0.45;
+}
+.scene-sun::before {
+  content: ''; position: absolute; inset: -32%; border-radius: 50%; background: #fff; opacity: 0.12;
+}
+.scene-moon {
+  width: 34px; height: 34px; background: #e9f2ef;
+  box-shadow: 0 0 16px 5px rgba(233, 242, 239, 0.55);
+}
+.scene-moon::before {
+  content: ''; position: absolute; inset: -30%; border-radius: 50%; background: #e9f2ef; opacity: 0.1;
+}
+.scene-moon::after {
+  content: ''; position: absolute; inset: 0; border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, rgba(29, 47, 68, 0.16) 0 26%, transparent 27%),
+    radial-gradient(circle at 62% 58%, rgba(29, 47, 68, 0.12) 0 16%, transparent 17%);
+}
+/* Night stars: tiny fixed dots via radial gradients. */
+.scene-stars { inset: 0; opacity: 0.9; background:
+  radial-gradient(1.5px 1.5px at 12% 22%, #fff 50%, transparent 55%),
+  radial-gradient(1.2px 1.2px at 28% 12%, #fff 50%, transparent 55%),
+  radial-gradient(1.6px 1.6px at 44% 26%, #dfeff5 50%, transparent 55%),
+  radial-gradient(1.2px 1.2px at 62% 14%, #fff 50%, transparent 55%),
+  radial-gradient(1.4px 1.4px at 78% 24%, #fff 50%, transparent 55%),
+  radial-gradient(1.1px 1.1px at 88% 10%, #dfeff5 50%, transparent 55%),
+  radial-gradient(1.3px 1.3px at 8% 44%, #fff 50%, transparent 55%),
+  radial-gradient(1.2px 1.2px at 70% 38%, #fff 50%, transparent 55%);
+}
+/* Clouds: soft drifting puffs. */
+.scene-cloud { height: 16px; border-radius: 999px; background: rgba(255, 255, 255, 0.75); filter: blur(2px); }
+.scene-cloud.c1 { width: 120px; top: 18%; left: 8%; opacity: 0.8; animation: scene-drift 64s linear infinite; }
+.scene-cloud.c2 { width: 88px; top: 34%; left: 55%; opacity: 0.55; animation: scene-drift 92s linear infinite reverse; }
+[data-phase="dusk"] .scene-cloud, .day-card[data-phase="dusk"] .scene-cloud { background: rgba(255, 236, 214, 0.8); }
+.day-card[data-phase="night"] .scene-cloud { background: rgba(210, 228, 240, 0.22); }
+@keyframes scene-drift {
+  from { transform: translateX(-140px); }
+  to { transform: translateX(calc(100vw + 140px)); }
+}
+/* Hills: layered silhouettes in the brand's deep greens. */
+.scene-hill { border-radius: 50%; }
+.scene-hill.h1 { right: -24%; bottom: 46px; width: 190px; height: 52px; background: #3d8a54; }
+.scene-hill.h2 { right: -38%; bottom: 30px; width: 210px; height: 92px; background: #2c5a33; }
+.scene-hill.h3 { left: -34%; bottom: -34px; width: 330px; height: 150px; background: #1f3d24; }
+/* Trees: simple pine silhouettes on the hills. */
+.scene-tree { width: 16px; background: #17301c; clip-path: polygon(50% 0%, 100% 38%, 78% 38%, 100% 68%, 72% 68%, 72% 100%, 28% 100%, 28% 68%, 0% 68%, 22% 38%, 0% 38%, 50% 38%); }
+.scene-tree.t1 { bottom: 74px; left: 6%; height: 42px; }
+.scene-tree.t2 { bottom: 64px; left: 13%; height: 30px; opacity: 0.9; }
+.scene-tree.t3 { bottom: 56px; right: 7%; height: 38px; }
+/* Meadow: the ground band with slow shimmer lines. */
+.scene-meadow { left: 0; right: 0; bottom: 0; height: 46px; overflow: hidden; background: linear-gradient(0deg, #24512c 0%, #357a42 100%); }
+.shimmer { position: absolute; background: rgba(255, 255, 255, 0.35); border-radius: 2px; }
+.shimmer.s1 { width: 34px; height: 3px; top: 12px; left: 30%; opacity: 0.7; animation: scene-shimmer 7s ease-in-out infinite; }
+.shimmer.s2 { width: 60px; height: 2px; top: 24px; left: 58%; opacity: 0.5; animation: scene-shimmer 9s ease-in-out infinite 1.2s; }
+.shimmer.s3 { width: 46px; height: 3px; top: 34px; left: 14%; opacity: 0.4; animation: scene-shimmer 11s ease-in-out infinite 2.4s; }
+@keyframes scene-shimmer {
+  0%, 100% { transform: translateX(0); opacity: 0.25; }
+  50% { transform: translateX(16px); opacity: 0.7; }
+}
+.scene-veil { inset: 0; background: linear-gradient(0deg, rgba(16, 28, 20, 0.5) 0%, rgba(16, 28, 20, 0.06) 45%, rgba(16, 28, 20, 0) 70%); }
+/* Overlay: clock + phase on the left, weather on the right. */
+.scene-overlay {
+  position: absolute; inset: auto 16px 12px 16px; display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 12px; color: #fff; z-index: 5; pointer-events: none;
+}
+.scene-clock { font-size: 2.1rem; font-weight: 700; line-height: 1; letter-spacing: 0.01em; text-shadow: 0 2px 14px rgba(10, 20, 14, 0.55); font-variant-numeric: tabular-nums; }
+.scene-phase { display: flex; align-items: center; gap: 6px; margin-top: 7px; font-size: 0.84rem; font-weight: 600; text-shadow: 0 1px 10px rgba(10, 20, 14, 0.5); }
+.scene-phase svg { width: 15px; height: 15px; }
+.scene-tone { margin-left: 8px; font-weight: 400; opacity: 0.85; font-size: 0.78rem; }
+.scene-right { display: flex; flex-direction: column; align-items: flex-end; text-shadow: 0 1px 10px rgba(10, 20, 14, 0.5); }
+.scene-temp { font-size: 1.9rem; font-weight: 700; line-height: 1; }
+.scene-cond { display: flex; align-items: center; gap: 6px; font-size: 0.84rem; font-weight: 600; margin-top: 5px; }
+.scene-cond svg { width: 16px; height: 16px; }
+.scene-place { display: flex; align-items: center; gap: 5px; font-size: 0.76rem; opacity: 0.9; margin-top: 3px; }
+.scene-place svg { width: 12px; height: 12px; }
+/* Valuable info rows under the scene. */
+.day-info { display: grid; grid-template-columns: 1fr; gap: 2px; padding: 14px 18px 16px; }
+.day-info-row { display: flex; align-items: center; gap: 11px; padding: 7px 2px; }
+.day-info-ico {
+  width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; flex: 0 0 30px;
+  background: var(--reel-green-100); color: var(--reel-green-700);
+}
+.day-info-ico svg { width: 15px; height: 15px; }
+.day-info-ico.tone-sun { background: var(--reel-sun-200); color: var(--reel-sun-700); }
+.day-info-ico.tone-sky { background: var(--reel-sky-100); color: var(--reel-sky-700); }
+.day-info-ico.tone-clay { background: var(--reel-clay-100); color: var(--reel-clay-700); }
+.day-info-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.day-info-value { font-size: 0.9rem; color: var(--text-strong); font-weight: 600; }
+.day-info-sep { height: 1px; background: linear-gradient(90deg, var(--neon-border) 0%, rgba(141, 226, 160, 0.06) 100%); }
+@media (min-width: 721px) {
+  .day-info { grid-template-columns: 1fr 1fr; column-gap: 26px; }
+  .day-info-sep { display: none; }
+  .day-info-row { padding: 6px 2px; }
+}
+@media (max-width: 480px) {
+  .day-scene { height: 210px; }
+  .scene-clock { font-size: 1.7rem; }
+  .scene-tone { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scene-cloud, .shimmer { animation: none !important; }
+  .scene-orb { transition: none !important; }
+}
+@media print {
+  .day-scene { display: none; }
 }
