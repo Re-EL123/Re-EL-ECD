@@ -876,22 +876,13 @@
         if (this.route && this.route.view === 'whiteboardDetail' && window.Reel && window.Reel.views && window.Reel.views._initWhiteboard) {
           try { window.Reel.views._initWhiteboard(this, this.page); } catch (e) { console.warn('whiteboard init failed', e); }
         }
-        if (window.gsap && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
           const root = document.getElementById('view-root');
-          if (root) {
-            // Bloom entrance: widgets grow out of a soft blur into place.
-            const targets = root.querySelectorAll('.card, .stat-card, .today-pill, .page-head, .table-wrap, .theme-card');
-            window.gsap.fromTo(targets, { opacity: 0, y: 14, scale: 0.955, filter: 'blur(7px)' },
-              { opacity: 1, y: 0, scale: 1, filter: 'blur(0px)', duration: 0.5, stagger: 0.045, ease: 'power2.out', overwrite: true, clearProps: 'filter,transform' });
-          }
-        } else {
-          const root = document.getElementById('view-root');
-          if (root && !window.gsap) {
-            const targets = root.querySelectorAll('.card, .stat-card, .today-pill, .page-head, .table-wrap, .theme-card');
-            targets.forEach((el, index) => {
-              el.classList.add('bloom-in');
-              el.style.animationDelay = Math.min(index * 45, 480) + 'ms';
-            });
+          if (root && window.Reel && window.Reel.anim) {
+            // Window transition: the new route zooms into place, then widgets
+            // bloom with spring physics, staggered across the page.
+            window.Reel.anim.routeZoom(root);
+            window.Reel.anim.bloomStagger(root.querySelectorAll('.card, .stat-card, .today-pill, .page-head, .table-wrap, .theme-card'));
           }
         }
         this.$nextTick(() => this.updateCrumbHighlight());
@@ -1192,7 +1183,21 @@
         setTimeout(() => this.dismissToast(id), 5200);
       },
 
-      dismissToast(id) { this.toasts = this.toasts.filter((t) => t.id !== id); },
+      dismissToast(id) {
+        const root = document.querySelector('.toast-root');
+        const el = root ? root.querySelector('[data-toast-id="' + id + '"]') : null;
+        if (el && window.Reel && window.Reel.anim && !Reel.anim.reduced()) {
+          // Phase exit: settle down, then fade the toast away before removal.
+          Reel.anim.phase(el, [
+            { frames: [{ transform: 'translateY(0) scale(1)' }, { transform: 'translateY(4px) scale(1.02)' }], duration: 90, easing: 'ease-out' },
+            { frames: [{ opacity: 1, transform: 'translateY(4px) scale(1.02)' }, { opacity: 0, transform: 'translateY(10px) scale(0.96)' }], duration: 140, easing: 'cubic-bezier(0.4, 0, 1, 1)' }
+          ]).finished.then(() => {
+            this.toasts = this.toasts.filter((t) => t.id !== id);
+          });
+          return;
+        }
+        this.toasts = this.toasts.filter((t) => t.id !== id);
+      },
 
       closeOverlays() {
         this.commandOpen = false;
@@ -1585,6 +1590,10 @@
 
       openModal(config) {
         this.signaturePads = {};
+        // Invalidate any pending window-out close so a modal opened during the
+        // exit animation is not removed by its predecessor's cleanup.
+        this._modalToken = (this._modalToken || 0) + 1;
+        this._modalClosing = false;
         const data = {};
         (config.fields || []).forEach((field) => {
           if (field.type === 'checkbox') {
@@ -1621,6 +1630,10 @@
           saving: false,
           error: null
         };
+        // Zoom-in window transition as the modal opens.
+        this.$nextTick(() => {
+          if (window.Reel && window.Reel.anim) window.Reel.anim.windowIn(document.querySelector('.modal-backdrop:not(.guide-backdrop) .modal'));
+        });
       },
 
       // -----------------------------------------------------------------------
@@ -1803,6 +1816,9 @@
             placementsByStep: {}
           };
           this._guidePoll = null;
+          this.$nextTick(() => {
+            if (window.Reel && window.Reel.anim) window.Reel.anim.windowIn(document.querySelector('.guide-backdrop .guide-modal'), { duration: 500 });
+          });
           if (!steps.length && !this.guide.canEdit) {
             this.toast('This plan does not have a lesson guide yet.', 'info');
           }
@@ -2180,6 +2196,22 @@
       closeModal() {
         if (this.modal && this.modal.saving) return;
         if (this.stopGateQrScan) this.stopGateQrScan();
+        // Window-out transition before the modal unmounts (kept snappy).
+        const el = document.querySelector('.modal-backdrop:not(.guide-backdrop) .modal');
+        const animatable = el && window.Reel && window.Reel.anim && !Reel.anim.reduced();
+        if (animatable && !this._modalClosing) {
+          this._modalClosing = true;
+          const token = (this._modalToken = (this._modalToken || 0) + 1);
+          window.Reel.anim.windowOut(el, { duration: 140 }).then(() => {
+            if (this._modalToken !== token) return; // a new modal opened meanwhile
+            this._modalClosing = false;
+            this.modal = null;
+            this.signaturePads = {};
+          });
+          return;
+        }
+        this._modalToken = (this._modalToken || 0) + 1;
+        this._modalClosing = false;
         this.modal = null;
         this.signaturePads = {};
       },
