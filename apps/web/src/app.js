@@ -2347,10 +2347,14 @@
             Reel.api('GET', '/learners?pageSize=200').then((p) => p.data).catch(() => []),
             Reel.api('GET', '/templates?kind=observation').then((p) => (p.data && p.data.data) || []).catch(() => [])
           ]).then(([objectives, learners, observationTemplates]) => {
-            if (V.assessments && V.assessments.observationModal) {
-              V.assessments.observationModal({ ...this, page: Object.assign({}, this.page || {}, { objectives, learners, observationTemplates }) }, id);
-            } else {
-              this.toast('The observation form is not available right now.', 'warn');
+            try {
+              if (V.assessments && V.assessments.observationModal) {
+                V.assessments.observationModal({ ...this, page: Object.assign({}, this.page || {}, { objectives, learners, observationTemplates }) }, id);
+              } else {
+                this.toast('The observation form is not available right now.', 'warn');
+              }
+            } catch (err) {
+              this.toast('Could not open the observation form: ' + (err && err.message ? err.message : 'unexpected error'), 'error');
             }
           }).catch(() => this.toast('Could not open the observation form.', 'error'));
           return;

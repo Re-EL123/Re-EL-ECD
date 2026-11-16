@@ -303,13 +303,24 @@
       const learners = page.learners || [];
       const objectives = page.objectives || [];
       const observationTemplates = page.observationTemplates || [];
+      const learnerOptions = (learners || []).map((l) => {
+        const name = l.name || ((l.first_name || l.firstName || '') + ' ' + (l.last_name || l.lastName || '')).trim() || 'Child';
+        const room = l.classroom_name || l.classroomName || l.classroom || '';
+        return { value: l.id, label: room ? (name + ' · ' + room) : name };
+      });
+      const objectiveOptions = (objectives || []).map((o) => {
+        const code = o.code || 'Objective';
+        const desc = o.description || '';
+        const dom = o.domain_name || o.domain || '';
+        return { value: o.id, label: code + (desc ? ' · ' + R.truncate(desc, 46) : ''), subtitle: desc || dom };
+      });
       ctx.openModal({ title: 'Record observation', endpoint: '/assessments/observations', submitLabel: 'Save observation', size: 'wide',
         fields: [
-        { name: 'learnerId', label: 'Child', type: 'select', required: true, value: learnerId || '', options: learners.map((l) => ({ value: l.id, label: l.first_name + ' ' + l.last_name + (l.classroom_name ? ' · ' + l.classroom_name : '') })) },
-        { name: 'objectiveId', label: 'Learning objective', type: 'searchselect', required: true, placeholder: 'Search by code or description…', options: objectives.map((o) => ({ value: o.id, label: o.code + ' · ' + R.truncate(o.description, 46), subtitle: o.description })) },
-        { name: 'template', label: 'Use a template', type: 'select', options: observationTemplates.map((t) => ({ value: t.id, label: t.name })), span: 2, help: 'Applying a template fills the observation text — you can still edit it.',
+        { name: 'learnerId', label: 'Child', type: 'select', required: true, value: learnerId || '', options: learnerOptions },
+        { name: 'objectiveId', label: 'Learning objective', type: 'searchselect', required: true, placeholder: 'Search by code or description…', options: objectiveOptions },
+        { name: 'template', label: 'Use a template', type: 'select', options: (observationTemplates || []).map((t) => ({ value: t.id, label: t.name || 'Template' })), span: 2, help: 'Applying a template fills the observation text — you can still edit it.',
           onChange: (event, data) => {
-            const tpl = observationTemplates.find((t) => t.id === event.target.value);
+            const tpl = (observationTemplates || []).find((t) => t.id === event.target.value);
             if (tpl && tpl.payload && tpl.payload.text) data.observationText = tpl.payload.text;
           } },
         { name: 'observationDate', label: 'Date', type: 'date', value: R.today(), required: true },
