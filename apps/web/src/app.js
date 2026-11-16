@@ -2349,7 +2349,12 @@
           ]).then(([objectives, learners, observationTemplates]) => {
             try {
               if (V.assessments && V.assessments.observationModal) {
-                V.assessments.observationModal({ ...this, page: Object.assign({}, this.page || {}, { objectives, learners, observationTemplates }) }, id);
+                V.assessments.observationModal({
+                  page: Object.assign({}, this.page || {}, { objectives, learners, observationTemplates }),
+                  openModal: (config) => this.openModal(config),
+                  toast: (msg, tone) => this.toast(msg, tone),
+                  has: (perm) => this.has(perm)
+                }, id);
               } else {
                 this.toast('The observation form is not available right now.', 'warn');
               }
