@@ -1832,6 +1832,7 @@
 
       closeModal() {
         if (this.modal && this.modal.saving) return;
+        if (this.stopGateQrScan) this.stopGateQrScan();
         this.modal = null;
         this.signaturePads = {};
       },
@@ -2445,7 +2446,9 @@
 
       // The guardian's own gate code: generated in the app, used at the
       // centre QR. Shown once in a modal with a copy button, stored hashed —
-      // generating a new one stops the old code immediately.
+      // generating a new one stops the old code immediately. While standing at
+      // the gate the parent can scan the printed QR from this modal — the camera
+      // reads the centre's QR only, it never opens the gate remotely.
       async parentGateCode() {
         try {
           const result = await Reel.api('POST', '/parent/my-gate-code', {});
@@ -2455,12 +2458,96 @@
             '<div style="text-align:center;padding:10px 0 4px">' +
               '<div class="mono" style="font-size:2.1rem;letter-spacing:0.35em;font-weight:800;color:var(--forest-700)">' + Reel.esc(pin.split('').join(' ')) + '</div>' +
               '<p class="muted small" style="margin:10px 0 14px">Shown once — this is <strong>your</strong> code. At the centre, scan the printed QR at the gate, type your first name and this code, and you will see your children with Arriving and Collecting taps. It covers every child you guard, it works only at the gate QR, and it stops working the moment you generate a new one.</p>' +
-              '<button type="button" class="btn btn-secondary" onclick="var b=this;navigator.clipboard.writeText(\'' + pin + '\').then(function(){b.innerText=\'✓ Copied\'});">Copy code</button>' +
+              '<div class="btn-group" style="justify-content:center;flex-wrap:wrap">' +
+                '<button type="button" class="btn btn-secondary" onclick="var b=this;navigator.clipboard.writeText(\'' + pin + '\').then(function(){b.innerText=\'✓ Copied\'});">Copy code</button>' +
+                '<button type="button" class="btn btn-primary" onclick="Alpine.$data(document.body).startGateQrScan(this)">' + Reel.icon('camera') + ' Scan gate QR</button>' +
+              '</div>' +
+              '<div id="gate-scan-box" style="display:none;margin-top:14px;text-align:left">' +
+                '<div class="alert alert-info" id="gate-scan-status" style="margin-bottom:10px"><i data-lucide="camera"></i><span>Point your camera at the printed QR at the gate.</span></div>' +
+                '<video id="gate-scan-video" autoplay playsinline muted style="width:100%;max-height:260px;border-radius:14px;background:#111;object-fit:cover"></video>' +
+                '<div class="btn-group" style="margin-top:10px;justify-content:center"><button type="button" class="btn btn-ghost btn-sm" onclick="Alpine.$data(document.body).stopGateQrScan()">Stop camera</button></div>' +
+              '</div>' +
             '</div>');
           await this.navigate(true);
         } catch (error) {
           this.toast(error.message || 'Could not generate your gate code.', 'error');
         }
+      },
+
+      async startGateQrScan(btn) {
+        const box = document.getElementById('gate-scan-box');
+        const video = document.getElementById('gate-scan-video');
+        const status = document.getElementById('gate-scan-status');
+        if (!box || !video) return;
+        this.stopGateQrScan();
+        box.style.display = 'block';
+        if (window.lucide) try { window.lucide.createIcons({ nodes: [box] }); } catch { /* best effort */ }
+        const setStatus = (msg, kind) => {
+          if (!status) return;
+          status.className = 'alert ' + (kind || 'alert-info');
+          status.innerHTML = '<span>' + Reel.esc(msg) + '</span>';
+        };
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          setStatus('Camera access is not available in this browser. Use your phone camera to scan the printed QR at the gate.', 'alert-warn');
+          return;
+        }
+        if (typeof BarcodeDetector === 'undefined') {
+          setStatus('This browser cannot read QR codes in-app. Use your phone camera to scan the printed QR at the gate.', 'alert-warn');
+          return;
+        }
+        let stream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+        } catch (err) {
+          setStatus('Camera permission was not granted. Allow camera access, or use your phone camera to scan the printed QR.', 'alert-warn');
+          return;
+        }
+        this._gateScan = { stream: stream, timer: null, stopped: false };
+        video.srcObject = stream;
+        try { await video.play(); } catch { /* autoplay policies */ }
+        const detector = new BarcodeDetector({ formats: ['qr_code'] });
+        const expectedSlug = (this.page && this.page.gateSlug) || 'little-sprouts';
+        const tick = async () => {
+          const scan = this._gateScan;
+          if (!scan || scan.stopped) return;
+          if (video.readyState >= 2) {
+            try {
+              const codes = await detector.detect(video);
+              for (const code of codes || []) {
+                const raw = String(code.rawValue || '');
+                const m = raw.match(/#\/gate\/([a-z0-9-]+)/i) || raw.match(/\/gate\/([a-z0-9-]+)/i);
+                if (m && m[1]) {
+                  const slug = m[1].toLowerCase();
+                  if (slug === String(expectedSlug).toLowerCase()) {
+                    setStatus('Gate QR recognised — opening…', 'alert-info');
+                    this.stopGateQrScan();
+                    this.closeModal();
+                    location.hash = '#/gate/' + slug;
+                    return;
+                  }
+                }
+              }
+            } catch { /* detector can throw on some frames */ }
+          }
+          if (this._gateScan && !this._gateScan.stopped) {
+            this._gateScan.timer = setTimeout(tick, 350);
+          }
+        };
+        this._gateScan.timer = setTimeout(tick, 350);
+      },
+
+      stopGateQrScan() {
+        const scan = this._gateScan;
+        if (scan) {
+          scan.stopped = true;
+          if (scan.timer) clearTimeout(scan.timer);
+          if (scan.stream) scan.stream.getTracks().forEach((t) => { try { t.stop(); } catch {} });
+        }
+        this._gateScan = null;
+        const video = document.getElementById('gate-scan-video');
+        if (video) { try { video.srcObject = null; } catch {} }
+        const box = document.getElementById('gate-scan-box');
+        if (box) box.style.display = 'none';
       },
 
       async revokeCollector(collectorId, name) {
