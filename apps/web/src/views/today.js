@@ -68,22 +68,25 @@
     async load(ctx) {
       const canDashboard = ctx.has('reports.read.daycare');
       const teachingPerms = ctx.has(['curriculum.create.daycare', 'assessments.create.assigned', 'attendance.record.assigned', 'attendance.record.own', 'staff_attendance.record.assigned', 'staff_attendance.record.own']);
-      function rethrowBillingLock(err) {
+      let billingLockError = null;
+      function captureBillingLock(err) {
         if (err && (err.code === 'FORBIDDEN' || err.status === 403) &&
           (err.details && err.details.billingLock || /subscription payment is overdue/i.test(err.message || ''))) {
-          throw err;
+          billingLockError = err;
         }
         return null;
       }
       const settled = await Promise.allSettled([
-        teachingPerms ? R.api('GET', '/staff/today').catch(rethrowBillingLock) : Promise.resolve(null),
-        canDashboard ? R.api('GET', '/dashboard').catch(rethrowBillingLock) : Promise.resolve(null),
-        R.api('GET', '/tasks?status=open').catch(rethrowBillingLock),
-        R.api('GET', '/notifications?pageSize=6').catch(rethrowBillingLock),
+        teachingPerms ? R.api('GET', '/staff/today').catch(captureBillingLock) : Promise.resolve(null),
+        canDashboard ? R.api('GET', '/dashboard').catch(captureBillingLock) : Promise.resolve(null),
+        R.api('GET', '/tasks?status=open').catch(captureBillingLock),
+        R.api('GET', '/notifications?pageSize=6').catch(captureBillingLock),
         ctx.has('curriculum.read.daycare')
-          ? R.api('GET', '/curriculum/calendar?from=' + R.today() + '&to=' + R.today()).catch(rethrowBillingLock) : Promise.resolve(null),
-        R.api('GET', '/curriculum/domains').catch(rethrowBillingLock)
+          ? R.api('GET', '/curriculum/calendar?from=' + R.today() + '&to=' + R.today()).catch(captureBillingLock) : Promise.resolve(null),
+        R.api('GET', '/curriculum/domains').catch(captureBillingLock)
       ]);
+      // A billing lock must stop the page, not degrade it into empty numbers.
+      if (billingLockError) throw billingLockError;
       const [todayRes, dashRes, tasksRes, notifRes, calRes, domainsRes] = settled;
       const today = todayRes.status === 'fulfilled' && todayRes.value ? todayRes.value.data : null;
       const dashboard = dashRes.status === 'fulfilled' && dashRes.value ? dashRes.value.data : null;
