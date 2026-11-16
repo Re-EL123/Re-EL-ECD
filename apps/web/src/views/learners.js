@@ -302,7 +302,7 @@
           { name: 'email', label: 'Email', type: 'email' },
           { name: 'phone', label: 'Phone' },
           { name: 'relationshipType', label: 'Relationship', type: 'select', options: ['mother', 'father', 'grandparent', 'guardian', 'other'], value: 'mother' },
-          { name: 'portalAccessStatus', label: 'Portal access', type: 'select', options: [{ value: 'invited', label: 'Invited' }, { value: 'active', label: 'Active' }, { value: 'none', label: 'No access' }], value: 'invited' },
+          { name: 'portalAccessStatus', label: 'Portal access', type: 'select', options: [{ value: 'pending', label: 'Invited (pending)' }, { value: 'active', label: 'Active' }, { value: 'suspended', label: 'Suspended' }, { value: 'revoked', label: 'No access' }], value: 'pending' },
           { name: 'isPrimaryContact', label: 'Primary contact', type: 'checkbox', value: true, help: 'Primary contact for the child' },
           { name: 'canCollect', label: 'Can collect', type: 'checkbox', value: true, help: 'Authorised to collect the child' },
           { name: 'canReceiveReports', label: 'Receives reports', type: 'checkbox', value: true, help: 'Can receive developmental reports' },
