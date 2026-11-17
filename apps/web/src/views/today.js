@@ -277,10 +277,10 @@
         '<svg class="scene-art" viewBox="0 0 900 220" preserveAspectRatio="xMidYMax slice" aria-hidden="true">' +
           '<defs>' +
             '<g id="acacia">' +
-              '<path class="trunk" stroke-width="4.4" d="M0 46 L0 26 M0 31 L-13 18.5 M0 31 L13 17.5"/>' +
-              '<path class="trunk" stroke-width="2.6" d="M0 26 L0 2"/>' +
-              '<path class="canopy" d="M-38 2 C-36.5 -5 -28 -9 -15 -8 C-11 -12.5 11 -12.5 15 -8 C28 -9 36.5 -5 38 2 C22 5.4 -22 5.4 -38 2 Z"/>' +
-              '<path class="canopy canopy-top" d="M-16.5 -7.2 C-14.5 -13 -8.5 -15.6 0 -15.6 C8.5 -15.6 14.5 -13 16.5 -7.2 C9 -4.9 -9 -4.9 -16.5 -7.2 Z"/>' +
+              '<path class="trunk" d="M-2.3 46 L-1.5 26 L-1.1 8 L1.1 8 L1.5 26 L2.3 46 Z"/>' +
+              '<path class="trunk" d="M-1.2 27 L-13.4 17.6 L-12.4 14.4 L-0.4 24.2 Z"/>' +
+              '<path class="trunk" d="M1.2 27 L13.4 16.6 L12.4 13.6 L0.4 24.2 Z"/>' +
+              '<path class="canopy" d="M-41 1 C-29 -7 -14.5 -10.5 0 -10.5 C14.5 -10.5 29 -7 41 1 C30.5 4.7 15.5 6 0 6 C-15.5 6 -30.5 4.7 -41 1 Z"/>' +
             '</g>' +
             '<g id="cloud">' +
               '<ellipse class="cl cl-1" cx="0" cy="2" rx="30" ry="8.6"/>' +

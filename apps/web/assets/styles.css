@@ -2280,9 +2280,7 @@ a.crumb:hover { color: var(--text-strong); background: var(--surface-2); text-de
 .ridge-far { fill: var(--ridge-far); }
 .ridge-near { fill: var(--ridge-near); }
 .meadow-band, .grass { fill: var(--meadow-bot); }
-.tree .trunk { stroke: var(--tree); fill: none; stroke-linecap: round; stroke-linejoin: round; }
-.tree .canopy { fill: var(--tree); }
-.tree .canopy-top { opacity: 0.92; }
+.tree .trunk, .tree .canopy { fill: var(--tree); stroke: none; }
 .tree-far { opacity: 0.72; }
 .flower { fill: var(--flower, #ffd98a); opacity: var(--flower-op, 0.95); }
 .flower.f2 { fill: #fdfdf4; }
