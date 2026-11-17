@@ -121,10 +121,10 @@ body::before {
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(900px 500px at 8% -10%, rgba(150, 225, 170, 0.42), transparent 65%),
-    radial-gradient(700px 500px at 100% 0%, rgba(251, 227, 189, 0.38), transparent 60%),
-    radial-gradient(700px 600px at 50% 110%, rgba(148, 210, 235, 0.36), transparent 65%),
-    radial-gradient(620px 460px at 86% 74%, rgba(150, 235, 170, 0.20), transparent 66%);
+    radial-gradient(900px 500px at 8% -10%, var(--ambient-1, rgba(150, 225, 170, 0.42)), transparent 65%),
+    radial-gradient(700px 500px at 100% 0%, var(--ambient-2, rgba(251, 227, 189, 0.38)), transparent 60%),
+    radial-gradient(700px 600px at 50% 110%, var(--ambient-3, rgba(148, 210, 235, 0.36)), transparent 65%),
+    radial-gradient(620px 460px at 86% 74%, var(--ambient-4, rgba(150, 235, 170, 0.20)), transparent 66%);
   z-index: 0;
 }
 [data-theme="dark"] body::before { opacity: 0.35; }
@@ -2149,6 +2149,10 @@ a.crumb:hover { color: var(--text-strong); background: var(--surface-2); text-de
   --neon-glow-strong: rgba(92, 214, 116, 0.55);
   --neon-border: rgba(122, 214, 140, 0.42);
   --neon-border-strong: rgba(122, 214, 140, 0.68);
+  --ambient-1: rgba(150, 225, 170, 0.42);
+  --ambient-2: rgba(251, 227, 189, 0.38);
+  --ambient-3: rgba(148, 210, 235, 0.36);
+  --ambient-4: rgba(150, 235, 170, 0.20);
 }
 .card {
   isolation: isolate;
@@ -2408,3 +2412,62 @@ a.crumb:hover { color: var(--text-strong); background: var(--surface-2); text-de
 @media print {
   .day-scene { display: none; }
 }
+
+/* ---- Skeleton shimmer (route loads) ---- */
+.skel-wrap { min-height: 40vh; }
+.skel { position: relative; overflow: hidden; background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 37%, var(--surface-2) 63%); background-size: 400% 100%; animation: shimmer 1.4s ease infinite; border-radius: 10px; }
+.skel-title { height: 26px; width: 42%; margin-bottom: 10px; }
+.skel-line { height: 12px; margin: 8px 0; }
+.skel-badge { height: 20px; width: 96px; border-radius: 999px; }
+.skel-big { height: 34px; width: 58%; margin: 10px 0; }
+.skel-block { height: 120px; margin: 10px 0; }
+@media (prefers-reduced-motion: reduce) {
+  .skel { animation: none; }
+}
+
+/* ---- Progress rings (conic, brand-coloured) ---- */
+.ring-row { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+.ring { position: relative; width: var(--ring-size, 112px); height: var(--ring-size, 112px); border-radius: 50%;
+  background: conic-gradient(var(--ring-colour, var(--reel-green-500)) calc(var(--ring-pct, 0) * 1%), var(--surface-3) 0);
+  display: grid; place-items: center; }
+.ring::before { content: ''; position: absolute; inset: 0; border-radius: 50%;
+  box-shadow: 0 0 18px var(--neon-glow, rgba(92, 214, 116, 0.38)); }
+.ring-hole { position: relative; width: calc(100% - 20px); height: calc(100% - 20px); border-radius: 50%;
+  background: var(--surface-1); display: grid; place-items: center; }
+.ring-value { font-weight: 800; font-size: 1.05rem; color: var(--text-strong); }
+.ring-side { flex: 1; min-width: 150px; }
+
+/* ---- Density: compact spacing on phones ---- */
+[data-density="compact"] { font-size: 0.955rem; }
+[data-density="compact"] .page-head { margin-bottom: 14px; }
+[data-density="compact"] .section { margin: 14px 0; }
+[data-density="compact"] .card { padding: 12px 14px; }
+[data-density="compact"] .stat-card { padding: 10px 12px; }
+[data-density="compact"] .stat-value { font-size: 1.5rem; }
+[data-density="compact"] .table-wrap table { font-size: 0.82rem; }
+[data-density="compact"] .table-wrap td, [data-density="compact"] .table-wrap th { padding: 6px 8px; }
+[data-density="compact"] .stack { gap: 8px; }
+[data-density="compact"] .modal { padding: 14px 16px; }
+
+/* ---- Guide player: scrubber pills with titles ---- */
+.guide-pills .guide-pill { width: auto; min-width: 34px; max-width: 190px; display: inline-flex; align-items: center; gap: 7px;
+  padding: 0 10px; height: 34px; border-radius: 999px; overflow: hidden; }
+.guide-pill-num { font-weight: 800; font-size: 0.8rem; opacity: 0.85; }
+.guide-pill-title { font-size: 0.78rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.guide-pill.active { box-shadow: 0 0 14px var(--neon-glow, rgba(92, 214, 116, 0.38)); }
+
+/* ---- Guide narration + co-presence ---- */
+.guide-autoplay-on { color: var(--reel-green-600); }
+.guide-others { display: inline-flex; gap: 0; padding-left: 6px; }
+.guide-other-avatar { width: 26px; height: 26px; border-radius: 50%; margin-left: -7px; display: inline-grid; place-items: center;
+  font-size: 0.62rem; font-weight: 800; color: var(--text-inverse); background: var(--reel-green-600);
+  border: 2px solid var(--surface-1); box-shadow: 0 0 10px var(--neon-glow, rgba(92, 214, 116, 0.38)); cursor: default; }
+
+/* ---- Drag-and-drop with spring settle ---- */
+.drag-ghost { position: fixed; z-index: 9999; pointer-events: none; opacity: 0.92; transform: rotate(1.5deg);
+  border-radius: 14px; border: 1px solid var(--neon-border-strong, rgba(122, 214, 140, 0.68));
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28), 0 0 18px var(--neon-glow, rgba(92, 214, 116, 0.38));
+  background: var(--surface-1); padding: 10px 12px; }
+.drag-source { opacity: 0.4; }
+.drop-target.drop-active { outline: 2px dashed var(--reel-green-600); outline-offset: 3px;
+  box-shadow: 0 0 16px var(--neon-glow-strong, rgba(92, 214, 116, 0.55)); background: color-mix(in srgb, var(--reel-green-500) 10%, var(--surface-1)); }

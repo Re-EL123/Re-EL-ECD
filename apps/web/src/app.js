@@ -214,6 +214,25 @@
     { label: 'Report absence', icon: 'calendar-x', permission: 'parent.absence.report.own', route: '/parent/attendance', modal: 'parentAbsence' }
   ];
 
+  /**
+   * Skeleton shimmer: the page's rough shape painted instantly while data
+   * loads. Dashboards get a stat grid plus card columns; every other screen
+   * gets a title block and stacked card outlines.
+   */
+  function skeletonHtml(loadedRoute) {
+    const isDashboard = loadedRoute && loadedRoute.path === '/app/today';
+    let html = '<div class="skel-wrap" aria-hidden="true"><div class="page-head"><div>' +
+      '<div class="skel skel-title"></div><div class="skel skel-line" style="width:64%"></div></div></div>';
+    if (isDashboard) {
+      html += '<div class="grid grid-4">' + Array(4).fill('<div class="card stat-card"><div class="skel skel-badge"></div><div class="skel skel-big"></div><div class="skel skel-line" style="width:70%"></div></div>').join('') + '</div>';
+      html += '<div class="split"><div class="stack">' + Array(2).fill('<div class="card"><div class="skel skel-badge" style="width:34%"></div><div class="skel skel-block"></div><div class="skel skel-line"></div><div class="skel skel-line" style="width:80%"></div></div>').join('') + '</div><div class="stack">' + Array(2).fill('<div class="card"><div class="skel skel-badge" style="width:28%"></div><div class="skel skel-line"></div><div class="skel skel-line" style="width:88%"></div><div class="skel skel-line" style="width:60%"></div></div>').join('') + '</div></div>';
+    } else {
+      html += '<div class="stack">' + Array(3).fill('<div class="card"><div class="skel skel-badge" style="width:30%"></div><div class="skel skel-line"></div><div class="skel skel-line" style="width:76%"></div><div class="skel skel-block" style="height:64px"></div></div>').join('') + '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
   function reelApp() {
     return {
       mode: 'loading',
@@ -240,6 +259,7 @@
       notifications: [],
       notifLoading: false,
       theme: 'light',
+      density: 'comfortable',
       commandOpen: false,
       guide: null,
       voices: [],
@@ -349,6 +369,10 @@
         }
         // Default to light for a consistent first impression; honour an explicit choice.
         try { this.theme = localStorage.getItem('reel.theme') || 'light'; } catch { this.theme = 'light'; }
+        try {
+          this.density = localStorage.getItem('reel.density') === 'compact' ? 'compact' : 'comfortable';
+          document.documentElement.dataset.density = this.density;
+        } catch { this.density = 'comfortable'; }
         try { this.sidebarCollapsed = localStorage.getItem('reel.sidebar') !== 'expanded'; } catch { this.sidebarCollapsed = true; }
         this.viewportWidth = window.innerWidth;
         window.addEventListener('resize', () => {
@@ -792,6 +816,9 @@
         try {
           const view = V[matched.route.view];
           if (!view) throw new Error('This screen has not been implemented.');
+          // Skeleton shimmer: paint the page's shape immediately so the frame
+          // feels instant, then swap in real content when the data arrives.
+          if (seq === this._navSeq) this.renderHtml(skeletonHtml(matched.route));
           const page = (view.load ? await view.load(this, matched.params) : {}) || {};
           if (seq !== this._navSeq) return;
           this.page = page;
@@ -883,10 +910,37 @@
             // bloom with spring physics, staggered across the page.
             window.Reel.anim.routeZoom(root);
             window.Reel.anim.bloomStagger(root.querySelectorAll('.card, .stat-card, .today-pill, .page-head, .table-wrap, .theme-card'));
+            window.Reel.anim.countUp(root.querySelectorAll('.stat-value'));
+            this.animateRings(root);
           }
         }
         this.$nextTick(() => this.updateCrumbHighlight());
         this.refreshUnread();
+      },
+
+      /**
+       * Spring-fill conic rings: every [data-ring] carries its target percent;
+       * the ring sweeps from 0 to the value on a spring, with the number
+       * counting up in the centre.
+       */
+      animateRings(root) {
+        if (!root || !window.Reel || !window.Reel.anim || Reel.anim.reduced()) return;
+        root.querySelectorAll('[data-ring]').forEach((el) => {
+          const target = Number(el.getAttribute('data-ring')) || 0;
+          const label = el.querySelector('.ring-value');
+          const start = performance.now();
+          const duration = 950;
+          const ease = Reel.anim.springEase({ stiffness: 130, damping: 15, duration: 0.95 });
+          const tick = (now) => {
+            const progress = Math.min(1, (now - start) / duration);
+            const value = target * ease(progress);
+            el.style.setProperty('--ring-pct', value.toFixed(2));
+            if (label) label.textContent = Math.round(value) + '%';
+            if (progress < 1) requestAnimationFrame(tick);
+            else el.style.setProperty('--ring-pct', String(target));
+          };
+          requestAnimationFrame(tick);
+        });
       },
 
       chart(id, type, data, options) {
@@ -1110,6 +1164,17 @@
         this.mountCharts();
       },
 
+      /**
+       * Density toggle: compact spacing for the small screens teachers carry.
+       * Persists per device and re-applies on boot.
+       */
+      toggleDensity() {
+        this.density = this.density === 'compact' ? 'comfortable' : 'compact';
+        document.documentElement.dataset.density = this.density;
+        try { localStorage.setItem('reel.density', this.density); } catch { /* ignore */ }
+        this.toast(this.density === 'compact' ? 'Compact spacing on.' : 'Comfortable spacing on.');
+      },
+
       async refreshUnread(force) {
         if (!this.session) return;
         const now = Date.now();
@@ -1177,10 +1242,19 @@
 
       reload() { return this.navigate(true); },
 
-      toast(message, type) {
+      toast(message, type, action) {
         const id = 'toast_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-        this.toasts.push({ id, message, type: type || 'success' });
-        setTimeout(() => this.dismissToast(id), 5200);
+        this.toasts.push({ id, message, type: type || 'success', action: action || null });
+        this._toastTimers = this._toastTimers || {};
+        if (this._toastTimers[id]) clearTimeout(this._toastTimers[id]);
+        this._toastTimers[id] = setTimeout(() => this.dismissToast(id), action ? 8000 : 5200);
+      },
+
+      /** Runs a toast's inline action (e.g. Undo) and dismisses the toast. */
+      runToastAction(id) {
+        const t = this.toasts.find((x) => x.id === id);
+        this.dismissToast(id);
+        if (t && t.action && t.action.run) t.action.run();
       },
 
       dismissToast(id) {
@@ -1234,6 +1308,85 @@
 
       act(method, path, body, options) {
         return this.apiAction(method, path, body, options);
+      },
+
+      /**
+       * Undo-able mutation: after a successful PATCH, the toast offers Undo,
+       * which re-applies the row's previous values for the fields that were
+       * just changed. `row` is the pre-mutation object from page data.
+       */
+      actUndoable(method, path, body, options, row) {
+        const opts = Object.assign({}, options || {});
+        const undo = (method === 'PATCH' && row && body && Object.keys(body).length)
+          ? Object.keys(body).reduce((acc, key) => { if (key in row) acc[key] = row[key]; return acc; }, {})
+          : null;
+        if (undo && Object.keys(undo).length) {
+          opts.successMessage = opts.successMessage || 'Saved.';
+          const prevReload = opts.reload;
+          opts.reload = false;
+          return this.apiAction(method, path, body, opts).then((result) => {
+            this.toast(opts.successMessage, undefined, {
+              label: 'Undo',
+              run: () => {
+                this.apiAction('PATCH', path, undo, { successMessage: 'Change reversed.', reload: prevReload === undefined ? true : prevReload })
+                  .catch(() => {});
+              }
+            });
+            const follow = () => this.navigate(true);
+            if (prevReload === false) return result;
+            setTimeout(follow, 350);
+            return result;
+          });
+        }
+        return this.apiAction(method, path, body, options);
+      },
+
+      /**
+       * Optimistic register tap: patch the row in local page data, repaint the
+       * view immediately (so the tap feels instant), then reconcile with the
+       * API in the background — reverting the row if the server refuses.
+       */
+      optimisticRow(viewName, rowFinder, patch, apiCall, successMessage) {
+        const view = Reel.views[viewName];
+        if (!view || !this.page) return apiCall().then(() => this.navigate(true));
+        const rows = ((this.page.register || {}).rows) || [];
+        const row = rows.find(rowFinder);
+        const prev = row ? Object.assign({}, row) : null;
+        if (row) Object.assign(row, patch);
+        this.renderHtml(view.render(this, this.params, this.page));
+        this.$nextTick(() => this.afterRender());
+        return apiCall().then(() => {
+          this.toast(successMessage || 'Saved.');
+          setTimeout(() => { if (this.route && this.route.path === '/app/learner-attendance') this.navigate(true); }, 500);
+        }).catch((error) => {
+          if (prev && row) Object.keys(patch).forEach((key) => { row[key] = prev[key]; });
+          this.renderHtml(view.render(this, this.params, this.page));
+          this.$nextTick(() => this.afterRender());
+          this.toast(error.message || 'Could not save.', 'error');
+        });
+      },
+
+      /**
+       * Register: mark a child present on a past date, optimistically. The row
+       * flips to "present" instantly, then the server reconciles.
+       */
+      registerMarkPresent(learnerId, date, firstName) {
+        return this.optimisticRow('attendance',
+          (row) => row.learner_id === learnerId,
+          { attendance_id: 'pending', status: 'present' },
+          () => Reel.api('POST', '/learner-attendance/register', { date, records: [{ learnerId, status: 'present' }] }),
+          (firstName || 'Learner') + ' marked present');
+      },
+
+      /**
+       * Register: confirm a check-in (with the chosen bringer) optimistically.
+       */
+      registerConfirmIn(learnerId, payload, firstName) {
+        return this.optimisticRow('attendance',
+          (row) => row.learner_id === learnerId,
+          { attendance_id: 'pending', status: 'present', check_in_at: new Date().toISOString() },
+          () => Reel.api('POST', '/learner-attendance/check-in', payload),
+          (firstName || 'Learner') + ' in.');
       },
 
       async downloadParentProgress(learnerId) {
@@ -1813,11 +1966,18 @@
             interactiveResults: {},
             participantName: (this.session && this.session.user && this.session.user.displayName) || '',
             answerByStep: {},
-            placementsByStep: {}
+            placementsByStep: {},
+            others: [],
+            audioStep: null,
+            autoplay: (() => { try { return localStorage.getItem('reel.guideAutoplay') === '1'; } catch { return false; } })()
           };
           this._guidePoll = null;
           this.$nextTick(() => {
             if (window.Reel && window.Reel.anim) window.Reel.anim.windowIn(document.querySelector('.guide-backdrop .guide-modal'), { duration: 500 });
+            this.guideBindSwipe();
+            this.guideBindDragDrop();
+            this.guideStartPresence();
+            this.guideAutoplayStep();
           });
           if (!steps.length && !this.guide.canEdit) {
             this.toast('This plan does not have a lesson guide yet.', 'info');
@@ -1830,6 +1990,10 @@
 
       closeGuide() {
         if (this._guidePoll) { clearInterval(this._guidePoll); this._guidePoll = null; }
+        this.guideStopPresence();
+        this.guideStopNarration();
+        if (this._guideSwipeCleanup) { this._guideSwipeCleanup(); }
+        if (this._guideDragCleanup) { this._guideDragCleanup(); }
         this.guide = null;
       },
 
@@ -1852,20 +2016,57 @@
 
       guideNext() {
         if (!this.guide) return;
-        this.guide.index = Math.min(this.guide.steps.length - 1, this.guide.index + 1);
-        this.scrollGuideToTop();
+        const from = this.guide.index;
+        const to = Math.min(this.guide.steps.length - 1, from + 1);
+        if (to !== from) this.guideStepTransition(from, to, -1);
       },
 
       guideBack() {
         if (!this.guide) return;
-        this.guide.index = Math.max(0, this.guide.index - 1);
-        this.scrollGuideToTop();
+        const from = this.guide.index;
+        const to = Math.max(0, from - 1);
+        if (to !== from) this.guideStepTransition(from, to, 1);
       },
 
       guideGoTo(index) {
         if (!this.guide) return;
-        this.guide.index = Math.max(0, Math.min(this.guide.steps.length - 1, index));
-        this.scrollGuideToTop();
+        const from = this.guide.index;
+        const to = Math.max(0, Math.min(this.guide.steps.length - 1, index));
+        if (to === from) return;
+        this.guideStepTransition(from, to, to > from ? -1 : 1);
+      },
+
+      /**
+       * Spring step transition: the outgoing step windows out (~110ms), the
+       * index flips, then the incoming step windows in and its content blooms.
+       * A token guards against rapid taps racing ahead of the animation.
+       */
+      guideStepTransition(from, to) {
+        const anim = window.Reel && window.Reel.anim;
+        const seq = (this._guideStepSeq = (this._guideStepSeq || 0) + 1);
+        const finish = () => {
+          if (this._guideStepSeq !== seq || !this.guide) return;
+          this.guide.index = to;
+          this.scrollGuideToTop();
+          this.$nextTick(() => {
+            if (this._guideStepSeq !== seq || !this.guide) return;
+            const next = document.querySelector('.guide-backdrop .guide-step[data-step-index="' + to + '"]');
+            if (next && anim && !anim.reduced()) {
+              anim.windowIn(next, { duration: 340 });
+              anim.bloomStagger(next.querySelectorAll('.interactive-block, .guide-interactive, .guide-body, .guide-step-title'));
+            }
+            this.guideBindDragDrop();
+            this.guideAutoplayStep();
+          });
+        };
+        if (anim && !anim.reduced()) {
+          const current = document.querySelector('.guide-backdrop .guide-step[data-step-index="' + from + '"]');
+          if (current) {
+            anim.windowOut(current, { duration: 110 }).then(finish);
+            return;
+          }
+        }
+        finish();
       },
 
       scrollGuideToTop() {
@@ -1873,6 +2074,168 @@
           const body = document.querySelector('.guide-modal .modal-body');
           if (body) body.scrollTop = 0;
         });
+      },
+
+      /* ---- Narration: per-step audio, with optional autoplay ---- */
+
+      guidePlayNarration(step) {
+        if (!this.guide || !step || !step.narration_url) return;
+        try {
+          if (!this._guideAudio) this._guideAudio = new Audio();
+          const src = new URL(step.narration_url, window.location.href).href;
+          if (this._guideAudio.src !== src) {
+            this._guideAudio.pause();
+            this._guideAudio.src = step.narration_url;
+          }
+          this._guideAudio.loop = false;
+          this.guide.audioStep = step.id;
+          this._guideAudio.onended = () => { if (this.guide) this.guide.audioStep = null; };
+          this._guideAudio.play().catch(() => {
+            this.guide.audioStep = null;
+            this.toast('Narration could not play on this device.', 'warn');
+          });
+        } catch {
+          this.toast('Narration could not play on this device.', 'warn');
+        }
+      },
+
+      guideStopNarration() {
+        if (this._guideAudio) {
+          try { this._guideAudio.pause(); this._guideAudio.onended = null; } catch { /* ignore */ }
+        }
+        this._guideAudio = null;
+        if (this.guide) this.guide.audioStep = null;
+      },
+
+      toggleGuideAutoplay() {
+        if (!this.guide) return;
+        this.guide.autoplay = !this.guide.autoplay;
+        try { localStorage.setItem('reel.guideAutoplay', this.guide.autoplay ? '1' : '0'); } catch { /* ignore */ }
+        if (this.guide.autoplay) this.guideAutoplayStep();
+        else this.guideStopNarration();
+        this.toast(this.guide.autoplay ? 'Narration will play automatically on each step.' : 'Narration autoplay off.');
+      },
+
+      guideAutoplayStep() {
+        if (!this.guide || !this.guide.autoplay) return;
+        const step = this.guide.steps[this.guide.index];
+        if (step && step.narration_url) this.guidePlayNarration(step);
+        else this.guideStopNarration();
+      },
+
+      /* ---- Swipe left / right between steps (phones & tablets) ---- */
+
+      guideBindSwipe() {
+        const body = document.querySelector('.guide-modal .modal-body');
+        if (!body) return;
+        let sx = 0, sy = 0, tracking = false;
+        const start = (e) => {
+          if (e.touches.length !== 1) return;
+          if (e.target.closest('select, input, textarea, button, .drag-item, .drop-target')) return;
+          tracking = true;
+          sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+        };
+        const end = (e) => {
+          if (!tracking) return;
+          tracking = false;
+          const t = e.changedTouches[0];
+          const dx = t.clientX - sx;
+          const dy = t.clientY - sy;
+          if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+            if (dx < 0) this.guideNext(); else this.guideBack();
+          }
+        };
+        body.addEventListener('touchstart', start, { passive: true });
+        body.addEventListener('touchend', end, { passive: true });
+        this._guideSwipeCleanup = () => {
+          body.removeEventListener('touchstart', start);
+          body.removeEventListener('touchend', end);
+          this._guideSwipeCleanup = null;
+        };
+      },
+
+      /* ---- Pointer drag-and-drop with spring settle (dragdrop steps) ---- */
+
+      guideBindDragDrop() {
+        const body = document.querySelector('.guide-modal .modal-body');
+        if (!body) return;
+        if (this._guideDragCleanup) { this._guideDragCleanup(); this._guideDragCleanup = null; }
+        const anim = window.Reel && window.Reel.anim;
+        const down = (e) => {
+          const item = e.target.closest('.drag-item');
+          if (!item || e.target.closest('select, input, textarea, button')) return;
+          const stepEl = item.closest('.guide-step');
+          const stepIndex = Number(stepEl && stepEl.dataset.stepIndex);
+          const step = this.guide && this.guide.steps[stepIndex];
+          if (!step || step.step_type !== 'dragdrop') return;
+          e.preventDefault();
+          const rect = item.getBoundingClientRect();
+          const ghost = item.cloneNode(true);
+          ghost.classList.add('drag-ghost');
+          ghost.style.width = rect.width + 'px';
+          document.body.appendChild(ghost);
+          item.classList.add('drag-source');
+          const targets = Array.from(stepEl.querySelectorAll('.drop-target'));
+          const ii = Array.prototype.indexOf.call(stepEl.querySelectorAll('.drag-item'), item);
+          const hitIndex = (ev) => targets.findIndex((t) => {
+            const r = t.getBoundingClientRect();
+            return ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+          });
+          const move = (ev) => {
+            ghost.style.left = (ev.clientX - rect.width / 2) + 'px';
+            ghost.style.top = (ev.clientY - 18) + 'px';
+            const over = hitIndex(ev);
+            targets.forEach((t, i) => t.classList.toggle('drop-active', i === over));
+          };
+          const up = (ev) => {
+            document.removeEventListener('pointermove', move);
+            document.removeEventListener('pointerup', up);
+            ghost.remove();
+            item.classList.remove('drag-source');
+            const over = hitIndex(ev);
+            targets.forEach((t) => t.classList.remove('drop-active'));
+            if (over === -1) return;
+            if (anim && !anim.reduced()) {
+              // Spring settle on the receiving target.
+              anim.keyframes(targets[over], [
+                { transform: 'scale(1)' },
+                { transform: 'scale(1.05)' },
+                { transform: 'scale(1)' }
+              ], { duration: 420, spring: { stiffness: 260, damping: 12, duration: 0.42 } });
+            }
+            this.guideSetPlacement(step.id, ii, over);
+          };
+          document.addEventListener('pointermove', move);
+          document.addEventListener('pointerup', up);
+        };
+        body.addEventListener('pointerdown', down);
+        this._guideDragCleanup = () => {
+          body.removeEventListener('pointerdown', down);
+          this._guideDragCleanup = null;
+        };
+      },
+
+      /* ---- Live co-presence: who else is on this guide right now ---- */
+
+      guideStartPresence() {
+        this.guideStopPresence();
+        if (!navigator.onLine) return;
+        const beat = () => {
+          if (!this.guide) return;
+          Reel.api('POST', '/curriculum/lesson-plans/' + encodeURIComponent(this.guide.planId) + '/presence', { stepIndex: this.guide.index })
+            .then((payload) => {
+              const data = (payload && payload.data) || {};
+              if (this.guide) this.guide.others = data.others || [];
+            })
+            .catch(() => { /* best-effort */ });
+        };
+        beat();
+        this._guidePresence = setInterval(beat, 15000);
+      },
+
+      guideStopPresence() {
+        if (this._guidePresence) { clearInterval(this._guidePresence); this._guidePresence = null; }
+        if (this.guide) this.guide.others = [];
       },
 
       guideIsInteractive(step) {
@@ -2004,6 +2367,9 @@
               { value: 'whiteboard', label: 'Whiteboard — draw, sketch & collaborate' }
             ], help: 'The form below updates to show the right fields for the selected type.' },
             { name: 'title', label: 'Slide title', required: true, span: 2, placeholder: 'e.g. Quick check: Shapes around us' },
+            { name: 'narrationUrl', label: 'Narration audio (URL, optional)', span: 2, type: 'url',
+              placeholder: 'https://…/story.mp3',
+              help: 'Paste an audio link — the player can play it per step or automatically. MP3, M4A, WAV and OGG work.', },
             { name: 'question', label: 'Question / prompt', type: 'textarea', span: 2,
               placeholder: 'What should learners answer, think about, or explore?',
               showIf: (d) => !isWhiteboard(d),
@@ -2054,7 +2420,7 @@
               interactive.note = String(data.whiteboardNote || data.question || '').trim() || 'Draw, annotate and solve together on the whiteboard.';
             }
             const body = type === 'whiteboard' ? interactive.note : (question || interactive.question || '');
-            return { stepType: type, title, body, interactive };
+            return { stepType: type, title, body, narrationUrl: String(data.narrationUrl || '').trim() || null, interactive };
           },
           onSuccess: async () => {
             self.toast('Interactive slide added to the presentation.');
@@ -2700,8 +3066,40 @@
           } catch { apiResults = []; }
         }
         const pages = (this.area === 'app' && this.has(['learners.create.daycare'])) ? [{ key: 'action-learner', label: 'Add a learner', route: '/app/learners', kind: 'Action', icon: 'user-plus', action: 'learner' }] : [];
-        this.commandResults = [...apiResults, ...navResults, ...pages].slice(0, 18);
+        // Context-aware: the current page's own actions rank right under search.
+        const contextual = (query ? [] : this.contextActions().map((action, index) =>
+          Object.assign({ key: 'ctx-' + index, kind: 'On this page', icon: action.icon || 'zap' }, action)));
+        this.commandResults = [...contextual, ...apiResults, ...navResults, ...pages].slice(0, 18);
         this.commandIndex = 0;
+      },
+
+      /**
+       * Context-aware palette actions: what you can do right here, on the
+       * page you're standing on. Each maps to an existing quick-add modal or
+       * a direct command, so there is no duplicated form logic.
+       */
+      contextActions() {
+        if (this.area !== 'app' || !this.route) return [];
+        const can = (perm) => this.has(perm);
+        const path = this.route.path;
+        const actions = [];
+        if (path === '/app/today') {
+          if (can(['assessments.create.assigned', 'curriculum.create.daycare'])) actions.push({ label: 'Capture a quick moment', modal: 'quickMoment', icon: 'camera' });
+          if (can('curriculum.create.daycare')) actions.push({ label: 'Plan the day on the calendar', route: '/app/calendar', icon: 'calendar-days' });
+        }
+        if (path === '/app/learner-attendance' && can(['attendance.record.daycare', 'attendance.record.assigned'])) {
+          actions.push({ label: 'Open live presence', route: '/app/learner-attendance?tab=presence', icon: 'radio' });
+          actions.push({ label: 'View attendance reports', route: '/app/learner-attendance?tab=reports', icon: 'bar-chart-3' });
+        }
+        if (path === '/app/learners' && can('learners.create.daycare')) actions.push({ label: 'Enrol a new learner', modal: 'learner', icon: 'user-plus' });
+        if (path === '/app/tasks' && can(['tasks.read.own', 'tasks.manage.daycare'])) actions.push({ label: 'Create a task', modal: 'task', icon: 'list-plus' });
+        if (path === '/app/communications' && can('announcements.manage.daycare')) actions.push({ label: 'Write an announcement', modal: 'announcement', icon: 'megaphone' });
+        if (path === '/app/admissions' && can('admissions.manage.daycare')) actions.push({ label: 'Log an enquiry', modal: 'enquiry', icon: 'inbox' });
+        if (path === '/app/safety' && can(['safety.report.daycare', 'safety.manage.daycare'])) actions.push({ label: 'Log an incident', modal: 'incident', icon: 'shield-alert' });
+        if (path === '/app/finance' && can('finance.payment.record.daycare')) actions.push({ label: 'Record a payment', modal: 'payment', icon: 'banknote' });
+        if (path === '/app/calendar' && can('curriculum.create.daycare')) actions.push({ label: 'Schedule an event', modal: 'event', icon: 'calendar-plus' });
+        if (path === '/app/staff' && can('staff.manage.daycare')) actions.push({ label: 'Add a staff member', modal: 'staff', icon: 'user-plus' });
+        return actions.slice(0, 4);
       },
 
       selectCommand(result) {

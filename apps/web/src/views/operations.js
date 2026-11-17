@@ -66,7 +66,7 @@
             : '<span class="muted small">—</span>' },
           { label: 'Due', render: (t) => '<span class="' + (t.due_at && new Date(t.due_at) < new Date() && !['done', 'cancelled'].includes(t.status) ? 'badge badge-danger' : '') + '">' + R.date(t.due_at) + '</span>' },
           { label: '', align: 'right', render: (t) => '<div class="btn-group">' +
-            (['open', 'in_progress', 'blocked'].includes(t.status) ? '<button class="btn btn-sm btn-secondary" @click="act(\'PATCH\',\'/tasks/' + R.attr(t.id) + '\',{status:\'done\'},{successMessage:\'Task completed\'})">Done</button>' : '') +
+            (['open', 'in_progress', 'blocked'].includes(t.status) ? '<button class="btn btn-sm btn-secondary" @click="actUndoable(\'PATCH\',\'/tasks/' + R.attr(t.id) + '\',{status:\'done\'},{successMessage:\'Task completed\'},{status:\'' + R.attr(t.status) + '\'})">Done</button>' : '') +
             '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'editTask\',\'' + R.attr(t.id) + '\')">Edit</button></div>' }
         ], emptyTitle: 'No tasks', emptyMessage: 'Create a task so nothing is forgotten.', emptyAction: '<button class="btn btn-primary" @click="openNamedModal(\'task\')">New task</button>' });
     },
@@ -146,7 +146,7 @@
             '<div class="section"></div><h3>Comments</h3>' +
             (comments.length ? '<div class="stack">' + comments.map((c) => '<div class="detail-item"><div class="d-label">' + R.esc(c.author_name || 'Unknown') + ' · ' + R.relative(c.created_at) + '</div><div style="white-space:pre-wrap">' + R.esc(c.body) + '</div></div>').join('') + '</div>' : '<p class="muted small">No comments yet.</p>') +
             '<div class="row" style="margin-top:12px"><button class="btn btn-secondary btn-sm" @click="closeModal(); openNamedModal(\'taskComment\',\'' + R.attr(t.id) + '\')">' + R.icon('message-plus') + ' Add comment</button>' +
-            (['open', 'in_progress', 'blocked'].includes(t.status) ? '<button class="btn btn-primary btn-sm" @click="closeModal(); act(\'PATCH\',\'/tasks/' + R.attr(t.id) + '\',{status:\'done\'},{successMessage:\'Task completed\'})">Mark done</button>' : '') +
+            (['open', 'in_progress', 'blocked'].includes(t.status) ? '<button class="btn btn-primary btn-sm" @click="closeModal(); actUndoable(\'PATCH\',\'/tasks/' + R.attr(t.id) + '\',{status:\'done\'},{successMessage:\'Task completed\'},{status:\'' + R.attr(t.status) + '\'})">Mark done</button>' : '') +
             '</div>';
           ctx.openDetail('Task · ' + t.title, html, 'wide');
         } catch (error) {

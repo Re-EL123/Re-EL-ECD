@@ -153,7 +153,7 @@
               // instead of running the today-only check-in + bringer flow.
               if (!isToday) {
                 return '<div class="btn-group">' +
-                  '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/learner-attendance/register\',{date:\'' + R.attr(page.date) + '\',records:[{learnerId:\'' + R.attr(r.learner_id) + '\',status:\'present\'}]},{successMessage:\'' + R.attr(r.first_name) + ' marked present\'})">Mark present</button>' +
+                  '<button class="btn btn-sm btn-primary" @click="registerMarkPresent(\'' + R.attr(r.learner_id) + '\',\'' + R.attr(page.date) + '\',\'' + R.attr(r.first_name) + '\')">Mark present</button>' +
                   '<button class="btn btn-sm btn-secondary" @click="openViewModal(\'absence\',\'' + R.attr(r.learner_id) + '\')">Absent</button>' +
                   '</div>';
               }
@@ -184,7 +184,7 @@
                     '<input class="input" type="text" placeholder="Someone else (unverified)" x-model="name">' +
                     '<div class="row" style="gap:6px;justify-content:flex-end">' +
                       '<button class="btn btn-ghost btn-sm" @click="open = false">Cancel</button>' +
-                      '<button class="btn btn-primary btn-sm" :disabled="busy || (!sel && !name.trim())" @click="busy = true; const p = { learnerId: \'' + R.attr(r.learner_id) + '\' }; if (sel && sel.startsWith(\'g:\')) p.broughtByGuardianId = sel.slice(2); else if (sel && sel.startsWith(\'c:\')) p.broughtByCollectorId = sel.slice(2); else p.broughtByName = name.trim(); window.Reel.api(\'POST\',\'/learner-attendance/check-in\', p).then(() => { toast(\'' + R.attr(r.first_name) + ' in.\'); navigate(true); }).catch((e) => { busy = false; toast(e.message || \'Could not check in.\', \'error\'); })">Confirm</button>' +
+                      '<button class="btn btn-primary btn-sm" :disabled="busy || (!sel && !name.trim())" @click="busy = true; const p = { learnerId: \'' + R.attr(r.learner_id) + '\' }; if (sel && sel.startsWith(\'g:\')) p.broughtByGuardianId = sel.slice(2); else if (sel && sel.startsWith(\'c:\')) p.broughtByCollectorId = sel.slice(2); else p.broughtByName = name.trim(); open = false; registerConfirmIn(\'' + R.attr(r.learner_id) + '\', p, \'' + R.attr(r.first_name) + '\')">Confirm</button>' +
                     '</div>' +
                   '</div></template>' +
                 '</div>' +

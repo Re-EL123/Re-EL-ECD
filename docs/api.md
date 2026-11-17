@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **447 routes** across 27 modules.
+Generated from the router: **448 routes** across 27 modules.
 
 ## Access
 
@@ -227,6 +227,7 @@ Generated from the router: **447 routes** across 27 modules.
 | PATCH | `/curriculum/lesson-plans/:id` | curriculum.create.daycare |
 | GET | `/curriculum/lesson-plans/:id/guide` | curriculum.read.daycare |
 | GET | `/curriculum/lesson-plans/:id/interactions` | curriculum.read.daycare |
+| POST | `/curriculum/lesson-plans/:id/presence` | curriculum.read.daycare |
 | POST | `/curriculum/lesson-plans/:id/steps` | curriculum.create.daycare |
 | POST | `/curriculum/lesson-plans/:id/transition` | curriculum.create.daycare |
 | POST | `/curriculum/lesson-plans/bulk` | curriculum.create.daycare |

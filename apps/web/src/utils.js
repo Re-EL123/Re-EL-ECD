@@ -532,6 +532,19 @@
       vars['--text-muted'] = '#9AAE9D';
       vars['--text-inverse'] = '#121A14';
     }
+    // Neon glass + ambient light follow the centre's branding: the neon hair
+    // lines, glows, glass borders and the page's ambient colour wash all
+    // derive from the organisation's primary/secondary/accent palette.
+    const neonBase = mix(primary, accent, 0.35);
+    vars['--neon-edge'] = rgba(mix(neonBase, dark ? '#1f3d24' : '#ffffff', 0.3), dark ? 0.9 : 0.95);
+    vars['--neon-glow'] = rgba(primary, dark ? 0.3 : 0.38);
+    vars['--neon-glow-strong'] = rgba(primary, dark ? 0.45 : 0.55);
+    vars['--neon-border'] = rgba(mix(primary, dark ? '#2c5a33' : '#ffffff', 0.4), dark ? 0.5 : 0.42);
+    vars['--neon-border-strong'] = rgba(mix(neonBase, dark ? '#2c5a33' : '#ffffff', 0.25), dark ? 0.7 : 0.68);
+    vars['--ambient-1'] = rgba(mix(primary, surface, 0.4), dark ? 0.26 : 0.42);
+    vars['--ambient-2'] = rgba(mix(secondary, surface, 0.42), dark ? 0.22 : 0.38);
+    vars['--ambient-3'] = rgba(mix(accent, surface, 0.42), dark ? 0.22 : 0.36);
+    vars['--ambient-4'] = rgba(mix(primary, secondary, 0.5), dark ? 0.14 : 0.2);
     return vars;
   }
 

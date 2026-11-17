@@ -209,9 +209,47 @@
     });
   }
 
+  /**
+   * Count-up: animates the number inside each element with the spring easing
+   * while preserving any prefix/suffix text (R1 250, 82%, "3 / 12"). Runs on
+   * the elements given (usually .stat-value nodes) right after a render.
+   */
+  function countUp(elements, options) {
+    if (!elements || !elements.length || reduced()) return;
+    const o = options || {};
+    const duration = o.duration === undefined ? 850 : o.duration;
+    const ease = springEase({ stiffness: 150, damping: 16, duration: 0.85 });
+    elements.forEach((el) => {
+      if (!el || el._counted) return;
+      const text = el.textContent || '';
+      const match = text.match(/-?\d[\d\s,.']*/);
+      const target = match ? Number(match[0].replace(/[\s,']/g, '')) : NaN;
+      if (!Number.isFinite(target)) return;
+      el._counted = true;
+      const start = performance.now();
+      const pad = match[0].startsWith('-') ? '-' : '';
+      const digits = match[0].replace(/^-/, '').replace(/[\s,']/g, '');
+      const width = digits.length;
+      const format = (value) => {
+        let out = String(Math.round(Math.abs(value)));
+        if (out.length > width) out = out.slice(0, width); // never overflow the layout
+        while (out.length < width) out = '0' + out;
+        return pad + out;
+      };
+      const tick = (now) => {
+        const progress = Math.min(1, (now - start) / duration);
+        const value = target * ease(progress);
+        el.textContent = text.replace(match[0], format(value));
+        if (progress < 1) requestAnimationFrame(tick);
+        else el.textContent = text;
+      };
+      requestAnimationFrame(tick);
+    });
+  }
+
   const anim = {
     reduced, springSamples, springEase, springLinear, keyframes, phase,
-    windowIn, windowOut, routeZoom, bloomStagger
+    windowIn, windowOut, routeZoom, bloomStagger, countUp
   };
 
   if (typeof window !== 'undefined') {

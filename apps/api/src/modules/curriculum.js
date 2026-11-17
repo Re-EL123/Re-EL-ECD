@@ -17,9 +17,9 @@ async function copySteps(db, fromPlanId, toPlanId, organisationId) {
   const steps = await db.many('SELECT * FROM lesson_steps WHERE lesson_plan_id = $1 ORDER BY position', [fromPlanId]);
   for (const step of steps) {
     await db.query(
-      `INSERT INTO lesson_steps (organisation_id, lesson_plan_id, position, step_type, title, body, media_url, duration_minutes, interactive_data)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
-      [organisationId, toPlanId, step.position, step.step_type, step.title, step.body, step.media_url || null, step.duration_minutes || null, step.interactive_data ? JSON.stringify(step.interactive_data) : null]
+      `INSERT INTO lesson_steps (organisation_id, lesson_plan_id, position, step_type, title, body, media_url, narration_url, duration_minutes, interactive_data)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)`,
+      [organisationId, toPlanId, step.position, step.step_type, step.title, step.body, step.media_url || null, step.narration_url || null, step.duration_minutes || null, step.interactive_data ? JSON.stringify(step.interactive_data) : null]
     );
   }
   return steps.length;
@@ -290,7 +290,7 @@ function register(router) {
     if (!plan) plan = await findOfficialPlan(ctx, ctx.params.id);
     if (!plan) throw new AppError('NOT_FOUND');
     const steps = await ctx.db.many(
-      `SELECT id, position, step_type, title, body, media_url, duration_minutes, interactive_data FROM lesson_steps
+      `SELECT id, position, step_type, title, body, media_url, narration_url, duration_minutes, interactive_data FROM lesson_steps
        WHERE lesson_plan_id = $1 ORDER BY position`,
       [plan.id]
     );
@@ -511,6 +511,7 @@ function register(router) {
       title: { type: 'string', max: 200, optional: true },
       body: { type: 'string', max: 8000, optional: true },
       mediaUrl: { type: 'string', max: 2000, optional: true },
+      narrationUrl: { type: 'string', max: 2000, optional: true },
       durationMinutes: { type: 'integer', min: 0, max: 600, optional: true },
       interactive: { type: 'object', optional: true },
       position: { type: 'integer', min: 1, optional: true }
@@ -519,13 +520,38 @@ function register(router) {
     const pos = body.position || (maxPos.max + 1);
     const interactive = body.interactive && typeof body.interactive === 'object' ? JSON.stringify(body.interactive) : null;
     const row = await ctx.db.one(
-      `INSERT INTO lesson_steps (organisation_id, lesson_plan_id, position, step_type, title, body, media_url, duration_minutes, interactive_data)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb) RETURNING *`,
-      [ctx.organisationId, plan.id, pos, body.stepType, body.title || null, body.body || null, body.mediaUrl || null, body.durationMinutes || null, interactive]
+      `INSERT INTO lesson_steps (organisation_id, lesson_plan_id, position, step_type, title, body, media_url, narration_url, duration_minutes, interactive_data)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb) RETURNING *`,
+      [ctx.organisationId, plan.id, pos, body.stepType, body.title || null, body.body || null, body.mediaUrl || null, body.narrationUrl || null, body.durationMinutes || null, interactive]
     );
     ctx.status = 201;
     return row;
   }, { permission: 'curriculum.create.daycare' });
+
+  // Live co-presence for the lesson guide player: every open guide posts a
+  // heartbeat every 15s; the response lists who else is on the guide (≤75s).
+  router.post('/curriculum/lesson-plans/:id/presence', async (ctx) => {
+    const plan = await ctx.db.one('SELECT * FROM lesson_plans WHERE id = $1 AND (organisation_id = $2 OR organisation_id IS NULL)', [ctx.params.id, ctx.organisationId]);
+    if (!plan) throw new AppError('NOT_FOUND');
+    const stepIndex = Math.max(0, Math.min(500, Number(ctx.body && ctx.body.stepIndex) || 0));
+    await ctx.db.query(
+      `INSERT INTO guide_presence (organisation_id, lesson_plan_id, user_id, step_index, seen_at)
+       VALUES ($1,$2,$3,$4,now())
+       ON CONFLICT (lesson_plan_id, user_id)
+       DO UPDATE SET step_index = EXCLUDED.step_index, seen_at = now()`,
+      [ctx.organisationId, plan.id, ctx.user.id, stepIndex]
+    );
+    const others = await ctx.db.many(
+      `SELECT gp.step_index, gp.seen_at, u.id AS user_id, u.display_name, u.email
+       FROM guide_presence gp JOIN users u ON u.id = gp.user_id
+       WHERE gp.lesson_plan_id = $1 AND gp.user_id <> $2 AND gp.seen_at > now() - interval '75 seconds'
+       ORDER BY gp.seen_at DESC`,
+      [plan.id, ctx.user.id]
+    );
+    return {
+      others: others.map((o) => ({ userId: o.user_id, displayName: o.display_name, stepIndex: o.step_index, seenAt: o.seen_at }))
+    };
+  }, { permission: 'curriculum.read.daycare' });
 
   router.patch('/curriculum/lesson-steps/:id', async (ctx) => {
     const step = await ctx.db.one(
@@ -539,6 +565,7 @@ function register(router) {
       title: { type: 'string', max: 200, optional: true },
       body: { type: 'string', max: 8000, optional: true },
       mediaUrl: { type: 'string', max: 2000, optional: true },
+      narrationUrl: { type: 'string', max: 2000, optional: true },
       durationMinutes: { type: 'integer', min: 0, max: 600, optional: true },
       interactive: { type: 'object', optional: true },
       position: { type: 'integer', min: 1, optional: true }
@@ -550,11 +577,12 @@ function register(router) {
          title = COALESCE($2, title),
          body = COALESCE($3, body),
          media_url = COALESCE($4, media_url),
-         duration_minutes = COALESCE($5, duration_minutes),
-         position = COALESCE($6, position),
-         interactive_data = CASE WHEN $7::boolean THEN $8::jsonb ELSE interactive_data END
-       WHERE id = $9 RETURNING *`,
-      [body.stepType || null, body.title || null, body.body || null, body.mediaUrl || null, body.durationMinutes == null ? null : body.durationMinutes, body.position || null, body.interactive !== undefined, interactive, step.id]
+         narration_url = COALESCE($5, narration_url),
+         duration_minutes = COALESCE($6, duration_minutes),
+         position = COALESCE($7, position),
+         interactive_data = CASE WHEN $8::boolean THEN $9::jsonb ELSE interactive_data END
+       WHERE id = $10 RETURNING *`,
+      [body.stepType || null, body.title || null, body.body || null, body.mediaUrl || null, body.narrationUrl || null, body.durationMinutes == null ? null : body.durationMinutes, body.position || null, body.interactive !== undefined, interactive, step.id]
     );
     return row;
   }, { permission: 'curriculum.create.daycare' });

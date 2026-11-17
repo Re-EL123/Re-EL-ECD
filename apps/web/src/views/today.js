@@ -163,12 +163,6 @@
       const rings = t.rings || {};
       const hasDayData = (t.expected || 0) > 0 || page.teachingPerms;
       if (hasDayData) {
-        const present = Number(t.present || 0);
-        const away = Math.max(0, Number(t.expected || 0) - present);
-        ctx.chart('today-register', 'doughnut', {
-          labels: ['Present', 'Away / not in yet'],
-          datasets: [{ data: [present, away || (present ? 0 : 1)], backgroundColor: ['#3A7D44', '#E8E3D8'], borderWidth: 0 }]
-        }, { cutout: '70%' });
         ctx.chart('today-progress', 'bar', {
           labels: ['Register', 'Observations', 'Daily reports'],
           datasets: [{ label: 'Progress %', data: [Number(rings.registerPct || 0), Number(rings.observationsPublishedPct || 0), Number(rings.dailyReportsPct || 0)], backgroundColor: ['#3D8FAE', '#81599B', '#E89A2B'], borderRadius: 8, barThickness: 22 }]
@@ -370,7 +364,7 @@
       html += '<div class="split section"><div class="stack">' +
         R.card('Attendance trend', '<div style="position:relative;height:270px"><canvas id="attendance-trend"></canvas></div>', '<a class="btn btn-sm btn-ghost" href="#/app/learner-attendance">Open register ' + R.icon('arrow-right') + '</a>') +
         R.card('Revenue and collections', '<div style="position:relative;height:250px"><canvas id="revenue-chart"></canvas></div>', '<a class="btn btn-sm btn-ghost" href="#/app/finance">Finance ' + R.icon('arrow-right') + '</a>') +
-        R.card('Tasks needing attention', tasks.length ? '<div class="stack">' + tasks.map((t) => '<div class="row" style="gap:10px;align-items:flex-start"><span class="badge ' + R.priorityTone(t.priority) + '">' + esc(t.priority) + '</span><div style="flex:1;min-width:0"><div class="strong" style="font-size:0.88rem">' + esc(t.title) + '</div><div class="muted small">' + esc(t.assignee_name || 'Unassigned') + ' · due ' + R.date(t.due_at) + '</div></div><button class="btn btn-sm btn-secondary" @click="act(\'PATCH\',\'/tasks/' + R.attr(t.id) + '\',{status:\'done\'},{successMessage:\'Task completed\'})">Done</button></div>').join('') + '</div>' : R.emptyState('No open tasks', 'Everything assigned is complete.', '', 'check-circle'), '<a class="btn btn-sm btn-ghost" href="#/app/tasks">All tasks ' + R.icon('arrow-right') + '</a>') +
+        R.card('Tasks needing attention', tasks.length ? '<div class="stack">' + tasks.map((t) => '<div class="row" style="gap:10px;align-items:flex-start"><span class="badge ' + R.priorityTone(t.priority) + '">' + esc(t.priority) + '</span><div style="flex:1;min-width:0"><div class="strong" style="font-size:0.88rem">' + esc(t.title) + '</div><div class="muted small">' + esc(t.assignee_name || 'Unassigned') + ' · due ' + R.date(t.due_at) + '</div></div><button class="btn btn-sm btn-secondary" @click="actUndoable(\'PATCH\',\'/tasks/' + R.attr(t.id) + '\',{status:\'done\'},{successMessage:\'Task completed\'},{status:\'' + R.attr(t.status) + '\'})">Done</button></div>').join('') + '</div>' : R.emptyState('No open tasks', 'Everything assigned is complete.', '', 'check-circle'), '<a class="btn btn-sm btn-ghost" href="#/app/tasks">All tasks ' + R.icon('arrow-right') + '</a>') +
         '</div><div class="stack">' +
         R.card('Coming up', upcoming.length ? '<div class="timeline">' + upcoming.map((event) => '<div class="timeline-item"><div class="t-time">' + R.time(event.starts_at) + ' · ' + esc(event.classroom_name || '') + '</div><div class="t-title">' + esc(event.title) + '</div><div class="t-body">' + esc(R.titleCase(event.status || 'scheduled')) + '</div></div>').join('') + '</div>' : R.emptyState('Nothing scheduled', 'The calendar is clear for now.', '<a class="btn btn-sm btn-secondary" href="#/app/calendar">Open calendar</a>', 'calendar'), '<a class="btn btn-sm btn-ghost" href="#/app/calendar">Calendar ' + R.icon('arrow-right') + '</a>') +
         R.card('At a glance', '<div class="kpi-list">' +
@@ -424,12 +418,21 @@
       const moments = t.moments || { children: [], streak: 0 };
       const momentsDone = (moments.children || []).filter((c) => c.done).length;
       if (!(t.expected || 0) && !page.teachingPerms && !timeline.length) return '';
-      return '<div class="grid grid-3 section today-insights">' +
-        R.card('Classroom now', '<div style="position:relative;height:190px"><canvas id="today-register"></canvas></div>' +
-          '<div class="kpi-list" style="margin-top:8px">' +
-            '<div class="kpi-row"><span class="kpi-label">Present</span><span class="kpi-value">' + R.number(t.present || 0) + ' / ' + R.number(t.expected || 0) + '</span></div>' +
+      const present = Number(t.present || 0);
+      const expected = Number(t.expected || 0);
+      const registerPct = expected ? Math.min(100, Math.round((present / expected) * 100)) : Number(t.registerPct || 0);
+      return '<div class="card glass section anim-in"><div class="card-head"><h3>' + R.icon('sun') + ' Classroom now</h3><span class="muted small">' + esc(R.date(page.date)) + '</span></div>' +
+        '<div class="ring-row">' +
+          '<div class="ring" data-ring="' + R.attr(String(registerPct)) + '" style="--ring-size:128px;--ring-colour:var(--reel-green-500)">' +
+            '<div class="ring-hole"><span class="ring-value">0%</span></div>' +
+          '</div>' +
+          '<div class="ring-side kpi-list">' +
+            '<div class="kpi-row"><span class="kpi-label">Present</span><span class="kpi-value">' + R.number(present) + '</span></div>' +
+            '<div class="kpi-row"><span class="kpi-label">Expected</span><span class="kpi-value">' + R.number(expected) + '</span></div>' +
             '<div class="kpi-row"><span class="kpi-label">Recorded</span><span class="kpi-value">' + R.percent(t.registerPct || 0) + '</span></div>' +
-          '</div>') +
+          '</div>' +
+        '</div>' +
+        '</div>' +
         R.card('Today’s progress', '<div style="position:relative;height:190px"><canvas id="today-progress"></canvas></div>' +
           '<div class="muted small" style="margin-top:8px">' + esc(rings.label || 'This month') + ' · observations ' + R.percent(rings.observationsPublishedPct || 0) + ' · reports ' + R.percent(rings.dailyReportsPct || 0) + '</div>') +
         R.card('Blocks & moments', '<div style="position:relative;height:190px"><canvas id="today-blocks"></canvas></div>' +
