@@ -25,6 +25,7 @@ function register(router) {
               (SELECT COUNT(*)::int FROM lesson_plans p WHERE p.module_id = m.id) AS plan_count,
               (SELECT COUNT(*)::int FROM lesson_plans p WHERE p.module_id = m.id AND p.status IN ('published','in_progress','completed','evaluated')) AS live_count,
               (SELECT COUNT(*)::int FROM lesson_plans p WHERE p.module_id = m.id AND p.status IN ('completed','evaluated')) AS done_count,
+              (SELECT COUNT(DISTINCT ts.lesson_plan_id)::int FROM teaching_sessions ts JOIN lesson_plans lp ON lp.id = ts.lesson_plan_id WHERE lp.module_id = m.id AND ts.organisation_id = $1 AND ts.mode = 'complete') AS taught_count,
               (SELECT lp.title FROM lesson_plans lp WHERE lp.module_id = m.id AND lp.status NOT IN ('completed','evaluated','cancelled')
                 ORDER BY COALESCE(lp.module_position, 9999), lp.created_at LIMIT 1) AS resume_plan_title,
               (SELECT lp.id FROM lesson_plans lp WHERE lp.module_id = m.id AND lp.status NOT IN ('completed','evaluated','cancelled')

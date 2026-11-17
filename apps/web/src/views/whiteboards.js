@@ -423,15 +423,27 @@
           '</div>' +
           '<p class="muted small" style="margin-top:14px;text-align:center">Boards auto-save and stay editable by the whole team — open one and start drawing.</p>';
       } else {
+        const wbFilter = String((ctx.filters || {}).linked || 'all');
+        const shown = wbFilter === 'linked'
+          ? boards.filter((b) => !!b.lessonPlanId)
+          : wbFilter === 'unlinked'
+            ? boards.filter((b) => !b.lessonPlanId)
+            : boards;
+        html += R.filterBar('<select class="select" @change="setFilter(\'linked\',$event.target.value)" aria-label="Filter boards by plan link">' +
+          '<option value="all"' + (wbFilter === 'all' ? ' selected' : '') + '>All boards</option>' +
+          '<option value="linked"' + (wbFilter === 'linked' ? ' selected' : '') + '>Linked to lesson plans</option>' +
+          '<option value="unlinked"' + (wbFilter === 'unlinked' ? ' selected' : '') + '>Not linked</option>' +
+        '</select>');
         html += '<div class="grid grid-3 section">';
-        boards.forEach((b) => {
+        shown.forEach((b) => {
           html += '<a class="card glass" href="#/app/whiteboards/' + R.attr(b.id) + '" style="text-decoration:none;color:inherit;display:block">' +
             '<div class="row" style="justify-content:space-between;gap:8px;align-items:flex-start"><div><div class="strong">' + esc(b.title) + '</div>' +
             '<div class="muted small">' + (b.classroomName ? esc(b.classroomName) + ' · ' : '') + 'Updated ' + R.relative(b.updatedAt) + '</div></div>' +
             '<span class="badge badge-muted">' + R.number(b.objectCount || 0) + ' items</span></div>' +
             (b.description ? '<p class="muted small" style="margin-top:8px">' + esc(R.truncate(b.description, 100)) + '</p>' : '') +
+            (b.lessonPlanTitle ? '<div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap"><span class="badge badge-green" title="Belongs to this lesson plan">' + R.icon('book-open') + ' ' + esc(R.truncate(b.lessonPlanTitle, 40)) + '</span></div>' : '') +
             '<div class="row" style="margin-top:10px;gap:8px;align-items:center">' + (b.createdByName ? R.avatar({ display_name: b.createdByName }, b.createdByName, { size: 30 }) + '<span class="muted small">' + esc(b.createdByName) + '</span>' : '') +
-              '<span class="row-end row" style="gap:6px">' + R.icon('pen-tool') + '<span class="muted small">Open board</span></span></div></a>';
+              '<span class="row-end row" style="gap:6px">' + R.icon('pen-tool') + '<span class="muted small">' + (b.lessonPlanTitle ? 'Open for this plan' : 'Open board') + '</span></span></div></a>';
         });
         html += '</div>';
       }
@@ -503,6 +515,7 @@
       let html = '<div class="wb-shell" data-board-id="' + R.attr(b.id) + '">';
       html += R.pageHead(esc(b.title || 'Whiteboard'), (b.description ? esc(b.description) + ' · ' : '') + 'Infinite canvas · collaborative (auto-saves)',
         '<a class="btn btn-secondary btn-sm" href="#/app/whiteboards">' + R.icon('arrow-left') + ' All boards</a>' +
+        (b.lessonPlanTitle ? '<a class="btn btn-sm btn-ghost" href="#/app/curriculum?tab=plans" title="This board was created from the lesson guide — the lesson guide will reopen it automatically.">' + R.icon('book-open') + ' ' + R.esc(R.truncate(b.lessonPlanTitle, 44)) + '</a>' : '') +
         (canEdit ? '<button class="btn btn-secondary btn-sm" id="wb-save-btn">' + R.icon('save') + ' Save</button>' : '') +
         '<span class="badge badge-muted" id="wb-status">Ready</span>');
 

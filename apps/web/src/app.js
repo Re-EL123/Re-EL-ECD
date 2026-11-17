@@ -2103,10 +2103,14 @@
             const saved = JSON.parse(localStorage.getItem('reel.guidesDownloaded') || '[]');
             downloaded = saved.some((entry) => entry && entry.id === planId);
           } catch { downloaded = false; }
+          // Resume where the teacher left off
+          const savedPosition = (data.guidePosition && typeof data.guidePosition.step_index === 'number') ? data.guidePosition.step_index : 0;
+          const clampedPosition = Math.max(0, Math.min(steps.length - 1, savedPosition || 0));
+          const isResumed = clampedPosition > 0;
           this.guide = {
             planId, title: (data.plan && data.plan.title) || 'Lesson guide',
             theme: (data.plan && data.plan.theme) || '', moduleTitle: (data.module && data.module.title) || '',
-            steps, index: 0, downloaded,
+            steps, index: clampedPosition, downloaded,
             isOfficial: Boolean(data.plan && data.plan.isOfficial),
             canEdit: !Boolean(data.plan && data.plan.isOfficial) && this.has('curriculum.create.daycare'),
             session: null,
@@ -2119,9 +2123,16 @@
             placementsByStep: {},
             others: [],
             audioStep: null,
-            autoplay: (() => { try { return localStorage.getItem('reel.guideAutoplay') === '1'; } catch { return false; } })()
+            autoplay: (() => { try { return localStorage.getItem('reel.guideAutoplay') === '1'; } catch { return false; } })(),
+            resumed: isResumed,
+            stepIndex: clampedPosition
           };
           this._guidePoll = null;
+          // Tell the server this teacher opened the guide (and where they left off).
+          Reel.api('PATCH', '/curriculum/lesson-plans/' + encodeURIComponent(planId) + '/guide-position', {
+            stepIndex: clampedPosition, mode: 'open'
+          }).catch(() => { /* offline — not critical */ });
+          if (isResumed) this.toast('Picking up from step ' + (clampedPosition + 1) + ' of ' + steps.length + '.');
           this.$nextTick(() => {
             if (window.Reel && window.Reel.anim) window.Reel.anim.windowIn(document.querySelector('.guide-backdrop .guide-modal'), { duration: 500 });
             this.guideBindSwipe();
@@ -2197,6 +2208,12 @@
         const finish = () => {
           if (this._guideStepSeq !== seq || !this.guide) return;
           this.guide.index = to;
+          this.guide.stepIndex = to;
+          this.guide.resumed = to > 0;
+          // Persist the position so the teacher can resume later. Silent — non-critical.
+          Reel.api('PATCH', '/curriculum/lesson-plans/' + encodeURIComponent(this.guide.planId) + '/guide-position', { stepIndex: to, mode: 'step' })
+            .then((p) => { if (p && p.data && p.data.completed) this.toast('Lesson complete — well done.'); })
+            .catch(() => {});
           this.scrollGuideToTop();
           this.$nextTick(() => {
             if (this._guideStepSeq !== seq || !this.guide) return;
@@ -2541,10 +2558,41 @@
       },
 
       async openWhiteboardForStep(step) {
-        // open linked whiteboard if configured, else whiteboards list
-        const wbId = step && step.interactive_data && step.interactive_data.whiteboardId;
-        if (wbId) { location.hash = '#/app/whiteboards/' + wbId; this.closeGuide(); }
-        else { location.hash = '#/app/whiteboards'; this.closeGuide(); }
+        // Resolve the board linked to this exact step, if any.
+        const planId = this.guide && this.guide.planId;
+        try {
+          const payload = await Reel.api('GET', '/whiteboards');
+          const boards = Array.isArray(payload.data) ? payload.data : (payload.data && payload.data.data) || [];
+          const match = boards.find((b) => !b.isArchived &&
+            (b.lessonStepId === (step && step.id) || (planId && b.lessonPlanId === planId)));
+          if (match) {
+            this.closeGuide();
+            location.hash = '#/app/whiteboards/' + match.id;
+            return;
+          }
+          // No board yet — ask for a name (default: lesson — step) then create it.
+          const planTitle = this.guide && this.guide.title ? this.guide.title : 'Lesson';
+          const stepTitle = (step && step.title) ? step.title : 'Whiteboard';
+          this.openModal({
+            title: 'Create the board for this step',
+            description: 'One board per step — it stays linked to the plan and reopens here next time.',
+            submitLabel: 'Create board',
+            successMessage: 'Board created — opening canvas.',
+            fields: [
+              { name: 'title', label: 'Board name', required: true, value: planTitle + ' — ' + stepTitle, span: 2, placeholder: 'e.g. Nature Detectives — Insect traffic stop' },
+              { name: 'description', label: 'Description (optional)', type: 'textarea', placeholder: 'What will children explore on this board?' }
+            ],
+            transform: (data) => Object.assign({}, data, { lessonPlanId: planId, lessonStepId: step && step.id ? step.id : undefined }),
+            onSuccess: (data) => {
+              if (data && data.id) {
+                this.closeGuide();
+                location.hash = '#/app/whiteboards/' + data.id;
+              }
+            }
+          });
+        } catch (e) {
+          this.toast(e.message || 'Could not open the whiteboard for this step.', 'error');
+        }
       },
 
       async guideAddInteractive() {

@@ -513,11 +513,16 @@
       else if (mins <= 10) nudge = 'Starting in ' + mins + ' min — time for a smooth transition.';
       else nudge = 'Up next at ' + time(next.startsAt) + '.';
       const nextMod = next.module || null;
+      const nextPosition = next.position || null;
+      const nextSteps = (next.guide && next.guide.stepCount) || null;
+      const nextResume = nextPosition && nextPosition.step_index > 0 && nextSteps && nextPosition.step_index < nextSteps
+        ? 'Step ' + (nextPosition.step_index + 1) + ' of ' + nextSteps + ' — Resume'
+        : (nextPosition && nextPosition.completed_at ? 'Taught ✓' : null);
       return '<div class="card glass today-next section anim-in pulse-now" style="border-left:4px solid var(--reel-green-500)"><div class="row" style="justify-content:space-between;gap:12px;align-items:flex-start">' +
         '<div><div class="muted small">Up next</div><div class="strong" style="font-size:1.05rem">' + esc(next.title) + '</div>' +
         '<div class="muted small">' + esc(nudge) + (next.classroom ? ' · ' + esc(next.classroom) : '') + (nextMod && nextMod.title ? ' · ' + esc(nextMod.title) : '') + '</div></div>' +
         '<div class="btn-group">' +
-          (next.lessonPlanId ? '<button class="btn btn-sm btn-secondary" @click="openGuide(\'' + R.attr(next.lessonPlanId) + '\')">' + R.icon('book-open') + ' Teach / Guide</button>' : '') +
+          (next.lessonPlanId ? '<button class="btn btn-sm btn-secondary" @click="openGuide(\'' + R.attr(next.lessonPlanId) + '\')">' + R.icon('book-open') + ' ' + (nextResume || 'Teach / Guide') + '</button>' : '') +
           (nextMod && nextMod.id ? '<button class="btn btn-sm btn-ghost" @click="downloadExport(\'/learning-modules/' + R.attr(nextMod.id) + '/teacher-guide\')">' + R.icon('file-down') + ' Teacher guide</button>' : '') +
           (next.status === 'scheduled' ? '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/curriculum/calendar/events/' + R.attr(next.id) + '/start\',{},{successMessage:\'Block started — enjoy teaching.\'})">' + R.icon('play') + ' Start</button>' : '') +
           (next.status === 'in_progress' ? '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'completeBlock\',\'' + R.attr(next.id) + '\')">' + R.icon('check') + ' Complete</button>' : '') +
@@ -556,6 +561,11 @@
       const absentInScope = learners.filter((l) => !l.present);
       const materials = materialList(act && act.materials);
       const safety = act && act.safetyNotes ? String(act.safetyNotes).trim() : '';
+      const position = b.position || null;
+      const positionSteps = (b.guide && b.guide.stepCount) || (position ? null : 0);
+      const resumedLabel = position && position.step_index > 0 && position.step_index < (positionSteps || Infinity)
+        ? 'Step ' + (position.step_index + 1) + ' of ' + (positionSteps || '?') + ' — Resume'
+        : (position && position.completed_at ? 'Taught ✓' : null);
       const border = b.status === 'completed' ? 'var(--reel-green-500)' : b.status === 'in_progress' ? 'var(--reel-sun-500)' : (isNext ? 'var(--reel-sky-500)' : 'var(--border-subtle)');
       const bg = b.status === 'completed' ? 'rgba(58,125,68,0.04)' : (current ? 'rgba(232,154,43,0.06)' : 'var(--surface-1)');
 
@@ -572,7 +582,7 @@
           '<div class="muted small">' + esc(b.classroom || 'Whole centre') + (b.staffName ? ' · ' + esc(b.staffName) : '') + '</div>' +
         '</div>' +
         '<div class="btn-group" style="flex-wrap:wrap">' +
-          (b.lessonPlanId ? '<button class="btn btn-sm btn-secondary" @click="openGuide(\'' + R.attr(b.lessonPlanId) + '\')">' + R.icon('book-open') + ' ' + (b.guide && b.guide.available ? 'Teach / Guide' : 'Guide') + '</button>' : '') +
+          (b.lessonPlanId ? '<button class="btn btn-sm btn-secondary" @click="openGuide(\'' + R.attr(b.lessonPlanId) + '\')">' + R.icon('book-open') + ' ' + (resumedLabel || (b.guide && b.guide.available ? 'Teach / Guide' : 'Guide')) + '</button>' : '') +
           (mod && mod.id ? '<button class="btn btn-sm btn-ghost" @click="downloadExport(\'/learning-modules/' + R.attr(mod.id) + '/teacher-guide\')" title="Download module teacher guide (PDF)">' + R.icon('file-down') + ' Teacher guide</button>' : '') +
           (b.status === 'scheduled' ? '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/curriculum/calendar/events/' + R.attr(b.id) + '/start\',{},{successMessage:\'Block started — enjoy teaching.\'})">' + R.icon('play') + ' Start</button>' : '') +
           (b.status === 'in_progress' ? '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'completeBlock\',\'' + R.attr(b.id) + '\')">' + R.icon('check-circle') + ' Complete</button>' : '') +
@@ -658,6 +668,21 @@
             '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'completeBlock\',\'' + R.attr(u.id) + '\')">Complete</button></div>').join('') + '</div>';
       }
 
+      const taughtBlocks = (t.timeline || []).filter((b) => b.status === 'completed' && b.lessonPlanId);
+      if (taughtBlocks.length) {
+        html += '<div class="muted small" style="margin-bottom:6px">What you taught today:</div><div class="stack" style="margin-bottom:14px">' +
+          taughtBlocks.map((b) => {
+            const mc = b.momentsCaptured || { captured: 0, total: 0 };
+            const pct = mc.total ? Math.round((mc.captured / mc.total) * 100) : 0;
+            const tone = pct >= 50 ? 'badge-green' : 'badge-sun';
+            const stepsTotal = b.guide && b.guide.stepCount ? R.number(b.guide.stepCount) : '?';
+            return '<div class="row" style="gap:10px;justify-content:space-between;padding:8px 10px;background:var(--surface-2);border-radius:12px">' +
+              '<div><span class="strong" style="font-size:0.88rem">' + R.icon('check-circle') + ' ' + esc(b.lessonPlanTitle || b.title) + '</span>' +
+              '<div class="muted small">Step 1–' + esc(stepsTotal) + ' · ' + R.number(mc.captured) + ' of ' + R.number(mc.total) + ' children had a moment captured</div></div>' +
+              '<span class="badge ' + tone + '">' + R.percent(pct) + '</span></div>';
+          }).join('') + '</div>';
+      }
+
       if (dr.presentCount) {
         html += '<div class="muted small" style="margin-bottom:6px">Daily reports for children present today (prefilled from today’s participation):</div><div class="stack">' +
           (dr.children || []).map((c) => {
@@ -717,29 +742,33 @@
     openModal(ctx, name, id) {
       const page = ctx.page || {};
       const t = page.today || {};
-      if (name === 'completeBlock' || name === 'blockObserve') {
-        const b = findBlock(t, id);
-        if (name === 'blockObserve') {
+      if (name === 'completeBlock' || name === 'blockObserve' || name === 'blockObserveFor') {
+        const parts = name === 'blockObserveFor' ? String(id || '').split(':') : [];
+        const blockId = name === 'blockObserveFor' ? parts[0] : id;
+        const presetLearnerId = name === 'blockObserveFor' ? parts[1] : undefined;
+        if (name === 'blockObserve' || name === 'blockObserveFor') {
           // fall through to quick capture with block context
-          const learners = blockClassroomLearners(t, b || {});
+          const b2 = findBlock(t, blockId);
+          const learners = blockClassroomLearners(t, b2 || {});
           const options = learners.map((c) => ({ value: c.id, label: c.name + (c.classroom ? ' · ' + c.classroom : '') }));
           const domains = page.domains || [];
           ctx.openModal({
-            title: b ? 'Capture a moment — ' + b.title : 'Capture a moment',
-            description: 'One photo, one tag, one sentence — shared with the family in moments.' + (b && b.plan && b.plan.objectives && b.plan.objectives.length ? ' This block works towards: ' + b.plan.objectives.map((o) => o.code).filter(Boolean).join(', ') + '.' : ''),
+            title: b2 ? 'Capture a moment — ' + b2.title : 'Capture a moment',
+            description: 'One photo, one tag, one sentence — shared with the family in moments.' + (b2 && b2.plan && b2.plan.objectives && b2.plan.objectives.length ? ' This block works towards: ' + b2.plan.objectives.map((o) => o.code).filter(Boolean).join(', ') + '.' : ''),
             endpoint: '/assessments/quick-moments',
             submitLabel: 'Share with the family',
             successMessage: 'Moment shared — the family will see it shortly.',
             fields: [
-              { name: 'learnerId', label: 'Child', type: 'select', required: true, options, value: options.length === 1 ? options[0].value : undefined },
+              { name: 'learnerId', label: 'Child', type: 'select', required: true, options, value: presetLearnerId || (options.length === 1 ? options[0].value : undefined) },
               { name: 'domainId', label: 'What was it about? (optional)', type: 'select', options: domains.map((d) => ({ value: d.id, label: d.name })), placeholder: 'Pick the domain it showed' },
               { name: 'photoUrls', label: 'Photo', type: 'media', multiple: true, accept: 'image/*', capture: 'environment', scope: 'observation', ownerType: 'learner' },
-              { name: 'note', label: 'One sentence', type: 'textarea', span: 2, placeholder: b ? ('During ' + b.title + ', …') : 'A lovely moment from today…' }
+              { name: 'note', label: 'One sentence', type: 'textarea', span: 2, placeholder: b2 ? ('During ' + b2.title + ', …') : 'A lovely moment from today…' }
             ]
           });
           return;
         }
-        if (!b) return;
+        const b = findBlock(t, id);
+        if (!b) { ctx.toast('That block has changed — refresh and try again.', 'warn'); return; }
         const learners = participationLearners(t, b);
         const existing = new Map((b.participation || []).map((p) => [p.learnerId, p]));
         const rows = learners.map((l) => {
@@ -768,7 +797,13 @@
                 { key: 'summary', label: 'Notes', type: 'textarea', span: 2 }
               ],
               value: rows }
-          ]
+          ],
+          // Complete → offer capture now, not as a separate step somewhere else.
+          onSuccess: () => {
+            const block = b;
+            const first = (rows.find((r) => r.status === 'participated' || r.status === 'partial') || {}).learnerId || (rows[0] || {}).learnerId;
+            if (first) ctx.openNamedModal('blockObserveFor', block.id + ':' + first);
+          }
         });
         return;
       }

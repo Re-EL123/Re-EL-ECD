@@ -38,6 +38,8 @@ function present(row) {
     createdBy: row.created_by,
     createdByName: row.created_by_name || null,
     lessonPlanId: row.lesson_plan_id,
+    lessonStepId: row.lesson_step_id || null,
+    lessonPlanTitle: row.lesson_plan_title || null,
     classroomId: row.classroom_id,
     classroomName: row.classroom_name || null,
     version: row.version,
@@ -52,10 +54,12 @@ function register(router) {
   router.get('/whiteboards', async (ctx) => {
     const includeArchived = ctx.query.archived === 'true';
     const rows = await ctx.db.many(
-      `SELECT w.*, u.display_name AS created_by_name, c.name AS classroom_name
+      `SELECT w.*, u.display_name AS created_by_name, c.name AS classroom_name, lp.title AS lesson_plan_title
        FROM whiteboards w
        LEFT JOIN users u ON u.id = w.created_by
        LEFT JOIN classrooms c ON c.id = w.classroom_id
+       LEFT JOIN lesson_steps ls ON ls.id = w.lesson_step_id
+       LEFT JOIN lesson_plans lp ON lp.id = w.lesson_plan_id
        WHERE w.organisation_id = $1 AND ($2::boolean OR w.is_archived = false)
        ORDER BY w.updated_at DESC LIMIT 200`,
       [ctx.organisationId, includeArchived]
@@ -64,7 +68,7 @@ function register(router) {
     return rows.map((r) => {
       const p = present(r);
       const count = Array.isArray((r.state || {}).objects) ? r.state.objects.length : 0;
-      return { id: p.id, title: p.title, description: p.description, createdByName: p.createdByName, classroomName: p.classroomName, lessonPlanId: p.lessonPlanId, version: p.version, isArchived: p.isArchived, objectCount: count, createdAt: p.createdAt, updatedAt: p.updatedAt };
+      return { id: p.id, title: p.title, description: p.description, createdByName: p.createdByName, classroomName: p.classroomName, lessonPlanId: p.lessonPlanId, lessonStepId: p.lessonStepId, lessonPlanTitle: p.lessonPlanTitle, version: p.version, isArchived: p.isArchived, objectCount: count, createdAt: p.createdAt, updatedAt: p.updatedAt };
     });
   }, { permission: ['curriculum.read.daycare', 'curriculum.create.daycare'], permissionMode: 'any' });
 
@@ -73,14 +77,25 @@ function register(router) {
       title: { type: 'string', min: 1, max: 200 },
       description: { type: 'string', max: 2000, optional: true },
       lessonPlanId: { type: 'string', uuid: true, optional: true },
+      lessonStepId: { type: 'string', uuid: true, optional: true },
       classroomId: { type: 'string', uuid: true, optional: true },
       state: { type: 'object', optional: true }
     });
+    if (body.lessonPlanId) {
+      const plan = await ctx.db.one('SELECT id FROM lesson_plans WHERE id = $1 AND (organisation_id = $2 OR organisation_id IS NULL)', [body.lessonPlanId, ctx.organisationId]).catch(() => null);
+      if (!plan) throw new AppError('NOT_FOUND');
+    }
+    if (body.lessonStepId) {
+      const step = await ctx.db.one('SELECT id, lesson_plan_id FROM lesson_steps WHERE id = $1 AND (organisation_id = $2 OR organisation_id IS NULL)', [body.lessonStepId, ctx.organisationId]).catch(() => null);
+      if (!step) throw new AppError('NOT_FOUND');
+      if (body.lessonPlanId && step.lesson_plan_id !== body.lessonPlanId) throw new AppError('VALIDATION', [{ field: 'lessonStepId', message: 'This step does not belong to the selected plan.' }]);
+      if (!body.lessonPlanId) body.lessonPlanId = step.lesson_plan_id;
+    }
     const state = cleanState(body.state || DEFAULT_STATE);
     const row = await ctx.db.one(
-      `INSERT INTO whiteboards (organisation_id, title, description, created_by, lesson_plan_id, classroom_id, state, version)
-       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,1) RETURNING *`,
-      [ctx.organisationId, body.title, body.description || null, ctx.user.id, body.lessonPlanId || null, body.classroomId || null, JSON.stringify(state)]
+      `INSERT INTO whiteboards (organisation_id, title, description, created_by, lesson_plan_id, lesson_step_id, classroom_id, state, version)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,1) RETURNING *`,
+      [ctx.organisationId, body.title, body.description || null, ctx.user.id, body.lessonPlanId || null, body.lessonStepId || null, body.classroomId || null, JSON.stringify(state)]
     );
     await recordAudit(ctx.db, ctx, { action: 'whiteboard.created', resourceType: 'whiteboard', resourceId: row.id });
     ctx.status = 201;
@@ -89,10 +104,12 @@ function register(router) {
 
   router.get('/whiteboards/:id', async (ctx) => {
     const row = await ctx.db.one(
-      `SELECT w.*, u.display_name AS created_by_name, c.name AS classroom_name
+      `SELECT w.*, u.display_name AS created_by_name, c.name AS classroom_name, lp.title AS lesson_plan_title
        FROM whiteboards w
        LEFT JOIN users u ON u.id = w.created_by
        LEFT JOIN classrooms c ON c.id = w.classroom_id
+       LEFT JOIN lesson_steps ls ON ls.id = w.lesson_step_id
+       LEFT JOIN lesson_plans lp ON lp.id = w.lesson_plan_id
        WHERE w.id = $1 AND w.organisation_id = $2`,
       [ctx.params.id, ctx.organisationId]
     );

@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **453 routes** across 27 modules.
+Generated from the router: **455 routes** across 27 modules.
 
 ## Access
 
@@ -221,11 +221,13 @@ Generated from the router: **453 routes** across 27 modules.
 | GET | `/curriculum/frameworks` | curriculum.read.daycare |
 | POST | `/curriculum/frameworks` | curriculum.create.daycare |
 | POST | `/curriculum/frameworks/from-template` | curriculum.create.daycare |
+| GET | `/curriculum/guide-positions` | curriculum.read.daycare |
 | GET | `/curriculum/lesson-plans` | curriculum.read.daycare |
 | POST | `/curriculum/lesson-plans` | curriculum.create.daycare |
 | GET | `/curriculum/lesson-plans/:id` | curriculum.read.daycare |
 | PATCH | `/curriculum/lesson-plans/:id` | curriculum.create.daycare |
 | GET | `/curriculum/lesson-plans/:id/guide` | curriculum.read.daycare |
+| PATCH | `/curriculum/lesson-plans/:id/guide-position` | curriculum.read.daycare |
 | GET | `/curriculum/lesson-plans/:id/interactions` | curriculum.read.daycare |
 | POST | `/curriculum/lesson-plans/:id/presence` | curriculum.read.daycare |
 | POST | `/curriculum/lesson-plans/:id/steps` | curriculum.create.daycare |

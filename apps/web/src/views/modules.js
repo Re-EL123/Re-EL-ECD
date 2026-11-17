@@ -95,11 +95,11 @@
               '<div class="kpi-list">' +
                 '<div class="kpi-row"><span class="kpi-label">Duration</span><span class="kpi-value">' + (module.duration_weeks ? R.number(module.duration_weeks) + ' weeks' : 'Open-ended') + '</span></div>' +
                 '<div class="kpi-row"><span class="kpi-label">Lesson plans</span><span class="kpi-value">' + R.number(module.plan_count) + '</span></div>' +
-                '<div class="kpi-row"><span class="kpi-label">Progress</span><span class="kpi-value">' + R.number(Number(module.done_count) || 0) + ' of ' + R.number(module.plan_count) + ' done</span></div>' +
+                '<div class="kpi-row"><span class="kpi-label">Progress</span><span class="kpi-value">' + R.number(Number(module.taught_count != null ? module.taught_count : module.done_count) || 0) + ' of ' + R.number(module.plan_count) + ' taught</span></div>' +
                 '<div class="kpi-row"><span class="kpi-label">Created</span><span class="kpi-value">' + R.date(module.created_at) + '</span></div>' +
               '</div>' +
               (Number(module.plan_count) > 0
-                ? '<div class="metric-bar" style="margin-top:8px"><div class="bar"><span style="width:' + Math.min(100, Math.round((Number(module.done_count) || 0) / Number(module.plan_count) * 100)) + '%"></span></div><span class="val">' + Math.min(100, Math.round((Number(module.done_count) || 0) / Number(module.plan_count) * 100)) + '%</span></div>'
+                ? '<div class="metric-bar" style="margin-top:8px"><div class="bar"><span style="width:' + Math.min(100, Math.round((Number((module.taught_count != null ? module.taught_count : Number(module.done_count)) || 0) / Number(module.plan_count)) * 100)) + '%"></span></div><span class="val">' + Math.min(100, Math.round((Number((module.taught_count != null ? module.taught_count : Number(module.done_count)) || 0) / Number(module.plan_count)) * 100)) + '%</span></div>'
                 : '') +
               (module.resume_plan_id
                 ? '<button class="btn btn-sm btn-ghost" style="margin-top:8px" @click="openGuide(\'' + R.attr(module.resume_plan_id) + '\')" title="Resume: ' + R.attr(module.resume_plan_title || 'next plan') + '">' + R.icon('play-circle') + ' Resume: ' + R.esc(R.truncate(module.resume_plan_title || ' next plan', 34)) + '</button>'

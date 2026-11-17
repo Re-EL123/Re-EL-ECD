@@ -297,6 +297,12 @@ function register(router) {
     const module = plan.module_id
       ? await ctx.db.one('SELECT id, title, theme FROM learning_modules WHERE id = $1', [plan.module_id])
       : null;
+    // Saved guide progress for this teacher — used to resume and to know what they finished.
+    const guidePosition = await ctx.db.one(
+      `SELECT step_index, completed_at, updated_at FROM guide_positions
+       WHERE organisation_id = $1 AND user_id = $2 AND lesson_plan_id = $3`,
+      [ctx.organisationId, ctx.user.id, plan.id]
+    );
     ctx.meta = { steps: steps.length };
     return {
       plan: {
@@ -306,8 +312,112 @@ function register(router) {
         isOfficial: Boolean(plan.organisation_id === null)
       },
       module,
-      steps
+      steps,
+      guidePosition: guidePosition || null
     };
+  }, { permission: 'curriculum.read.daycare' });
+
+  // Persist where this teacher is in the guide, and record the teaching ledger.
+  // stepIndex must be 0..steps.length-1 (validated by steps count).
+  router.patch('/curriculum/lesson-plans/:id/guide-position', async (ctx) => {
+    const plan = await ctx.db.one('SELECT * FROM lesson_plans WHERE id = $1 AND (organisation_id = $2 OR organisation_id IS NULL)',
+      [ctx.params.id, ctx.organisationId]);
+    if (!plan) throw new AppError('NOT_FOUND');
+    const body = validate(ctx.body, {
+      stepIndex: { type: 'number', integer: true, min: 0, max: 500 },
+      classroomId: { type: 'string', uuid: true, optional: true },
+      scheduledActivityId: { type: 'string', uuid: true, optional: true },
+      mode: { type: 'string', enum: ['open', 'step'], optional: true }
+    });
+    const lastStep = await ctx.db.one('SELECT COALESCE(MAX(position), 1)::int AS max FROM lesson_steps WHERE lesson_plan_id = $1', [plan.id]);
+    // Client indices are 0-based; the final slide is at max position − 1.
+    // 'complete' only on a real slide move (mode 'step'); opening at a saved
+    // position is a resume, not a completion.
+    if (body.mode !== 'open' && body.stepIndex >= lastStep.max - 1) {
+      // Reached the final slide: mark the plan complete for this teacher.
+      const row = await ctx.db.one(
+        `INSERT INTO guide_positions (organisation_id, user_id, lesson_plan_id, step_index, completed_at, updated_at)
+         VALUES ($1,$2,$3,$4, now(), now())
+         ON CONFLICT (organisation_id, user_id, lesson_plan_id)
+         DO UPDATE SET step_index = EXCLUDED.step_index, completed_at = COALESCE(guide_positions.completed_at, now()), updated_at = now()
+         RETURNING *`,
+        [ctx.organisationId, ctx.user.id, plan.id, body.stepIndex]
+      );
+      const already = await ctx.db.one(
+        `SELECT id FROM teaching_sessions
+         WHERE organisation_id = $1 AND lesson_plan_id = $2 AND mode = 'complete' AND user_id = $3
+           AND occurred_at > now() - interval '24 hours' LIMIT 1`,
+        [ctx.organisationId, plan.id, ctx.user.id]
+      );
+      if (!already) {
+        await ctx.db.query(
+          `INSERT INTO teaching_sessions (organisation_id, lesson_plan_id, user_id, classroom_id, scheduled_activity_id, mode, step_index)
+           VALUES ($1,$2,$3,$4,$5,'complete',$6)`,
+          [ctx.organisationId, plan.id, ctx.user.id, body.classroomId || null, body.scheduledActivityId || null, body.stepIndex]
+        );
+      }
+      return { position: row, completed: true };
+    }
+    const existing = await ctx.db.one(
+      `SELECT step_index, completed_at FROM guide_positions WHERE organisation_id = $1 AND user_id = $2 AND lesson_plan_id = $3`,
+      [ctx.organisationId, ctx.user.id, plan.id]
+    );
+    if (body.mode === 'open') {
+      // First ever open = 'start'; opening with a saved position = 'resume'.
+      const mode = existing ? 'resume' : 'start';
+      const recent = await ctx.db.one(
+        `SELECT id FROM teaching_sessions
+         WHERE organisation_id = $1 AND user_id = $2 AND lesson_plan_id = $3 AND mode = $4
+           AND occurred_at > now() - interval '2 minutes' LIMIT 1`,
+        [ctx.organisationId, ctx.user.id, plan.id, mode]
+      );
+      if (!recent) {
+        await ctx.db.query(
+          `INSERT INTO teaching_sessions (organisation_id, lesson_plan_id, user_id, classroom_id, scheduled_activity_id, mode, step_index)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+          [ctx.organisationId, plan.id, ctx.user.id, body.classroomId || null, body.scheduledActivityId || null, mode, body.stepIndex]
+        );
+      }
+      if (existing && existing.step_index !== body.stepIndex) {
+        // No-op move: position stays where the teacher left it.
+        return { position: existing, completed: existing.completed_at != null };
+      }
+      if (!existing) {
+        const row = await ctx.db.one(
+          `INSERT INTO guide_positions (organisation_id, user_id, lesson_plan_id, step_index, updated_at)
+           VALUES ($1,$2,$3,$4, now()) RETURNING *`,
+          [ctx.organisationId, ctx.user.id, plan.id, body.stepIndex]
+        );
+        return { position: row, completed: false };
+      }
+      return { position: existing, completed: existing.completed_at != null };
+    }
+    const row = await ctx.db.one(
+      `INSERT INTO guide_positions (organisation_id, user_id, lesson_plan_id, step_index, updated_at)
+       VALUES ($1,$2,$3,$4, now())
+       ON CONFLICT (organisation_id, user_id, lesson_plan_id)
+       DO UPDATE SET step_index = EXCLUDED.step_index, updated_at = now()
+       RETURNING *`,
+      [ctx.organisationId, ctx.user.id, plan.id, body.stepIndex]
+    );
+    return { position: row, completed: false };
+  }, { permission: 'curriculum.read.daycare' });
+
+  // Which plans has this organisation already taught? Used for progress + wrap-up.
+  router.get('/curriculum/guide-positions', async (ctx) => {
+    const planIds = String(ctx.query.planIds || '').split(',').map((s) => s.trim()).filter(Boolean).slice(0, 500);
+    const params = [ctx.organisationId, ctx.user.id];
+    let extra = '';
+    if (planIds.length) {
+      params.push(planIds);
+      extra = ' AND lesson_plan_id = ANY($3::uuid[])';
+    }
+    const rows = await ctx.db.many(
+      `SELECT lesson_plan_id, step_index, completed_at, updated_at FROM guide_positions
+       WHERE organisation_id = $1 AND user_id = $2${extra}`,
+      params
+    );
+    return { positions: rows };
   }, { permission: 'curriculum.read.daycare' });
 
   router.patch('/curriculum/lesson-plans/:id', async (ctx) => {

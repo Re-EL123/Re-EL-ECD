@@ -397,6 +397,27 @@ async function buildToday(ctx) {
     : [];
   const stepsByPlan = new Map(steps.map((s) => [s.lesson_plan_id, s]));
 
+  // Per-user guide positions for every plan in today's blocks (resume labels),
+  // and today's captured quick moments per classroom (wrap-up "N of M").
+  const positions = planIds.length
+    ? await ctx.db.many(
+        `SELECT lesson_plan_id, step_index, completed_at, updated_at FROM guide_positions
+         WHERE organisation_id = $1 AND user_id = $2 AND lesson_plan_id = ANY($3::uuid[])`,
+        [ctx.organisationId, ctx.user.id, planIds]
+      )
+    : [];
+  const positionByPlan = new Map(positions.map((p) => [p.lesson_plan_id, p]));
+
+  const momentsToday = presentIds.size
+    ? await ctx.db.many(
+        `SELECT o.learner_id, COUNT(*)::int AS count FROM learner_observations o
+         WHERE o.organisation_id = $1 AND o.observation_date = CURRENT_DATE
+         GROUP BY o.learner_id`,
+        [ctx.organisationId]
+      )
+    : [];
+  const momentsByChild = new Map(momentsToday.map((m) => [m.learner_id, m.count]));
+
   const participation = eventIds.length
     ? await ctx.db.many(
         `SELECT ap.*, l.first_name, l.last_name FROM activity_participation ap
@@ -471,6 +492,13 @@ async function buildToday(ctx) {
       } : null,
       module: moduleCtx,
       guide: plan ? { available: stepMeta.count > 0, stepCount: stepMeta.count, totalMinutes: stepMeta.total_minutes } : null,
+      position: e.lesson_plan_id ? (positionByPlan.get(e.lesson_plan_id) || null) : null,
+      momentsCaptured: (() => {
+        const scope = e.classroom_id
+          ? (morning.children || []).filter((c) => c.classroomId === e.classroom_id)
+          : (morning.children || []);
+        return { captured: scope.filter((c) => momentsByChild.has(c.id)).length, total: scope.length };
+      })(),
       participation: participationByEvent.get(e.id) || []
     };
   });
