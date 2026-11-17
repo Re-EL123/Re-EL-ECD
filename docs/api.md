@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **448 routes** across 27 modules.
+Generated from the router: **453 routes** across 27 modules.
 
 ## Access
 
@@ -420,6 +420,7 @@ Generated from the router: **448 routes** across 27 modules.
 | GET | `/learners/:id/guardians` | guardians.read.daycare OR guardians.read.assigned |
 | POST | `/learners/:id/guardians` | guardians.manage.daycare |
 | PATCH | `/learners/:id/guardians/:linkId` | guardians.manage.daycare |
+| GET | `/learners/:id/live-checks` | assessments.read.daycare OR assessments.read.assigned OR learners.read.daycare OR learners.read.assigned |
 | GET | `/learners/:id/medical` | medical.read.daycare |
 | POST | `/learners/:id/medical` | medical.manage.daycare |
 | GET | `/learners/:id/portfolio` | portfolio.read.assigned OR learners.read.daycare |
@@ -553,6 +554,7 @@ Generated from the router: **448 routes** across 27 modules.
 | GET | `/platform/features` | Platform only · platform.organisations.read |
 | PATCH | `/platform/features/:key` | Platform only · platform.features.manage |
 | GET | `/platform/health` | Platform only · platform.health.read |
+| GET | `/platform/item-analysis` | Platform only · platform.organisations.read |
 | GET | `/platform/organisations` | Platform only · platform.organisations.read |
 | POST | `/platform/organisations` | Platform only · platform.organisations.manage |
 | GET | `/platform/organisations/:id` | Platform only · platform.organisations.read |
@@ -595,12 +597,15 @@ Generated from the router: **448 routes** across 27 modules.
 
 | Method | Path | Access |
 | --- | --- | --- |
+| DELETE | `/presentations/responses/learner/:learnerId` | organisation.settings.manage |
 | GET | `/presentations/sessions` | curriculum.read.daycare |
 | POST | `/presentations/sessions` | curriculum.create.daycare |
 | GET | `/presentations/sessions/:id` | curriculum.read.daycare |
 | POST | `/presentations/sessions/:id/close` | curriculum.create.daycare |
+| GET | `/presentations/sessions/:id/export.csv` | curriculum.read.daycare |
 | POST | `/presentations/sessions/:id/responses` | curriculum.read.daycare OR curriculum.create.daycare |
 | GET | `/presentations/sessions/:id/results` | curriculum.read.daycare |
+| GET | `/presentations/sessions/:id/roster` | curriculum.read.daycare |
 
 ## Public
 
