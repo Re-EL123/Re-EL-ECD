@@ -2416,7 +2416,7 @@
               { value: 'anonymous', label: 'Anonymous — votes only, never names' },
               { value: 'class_roster', label: 'Named — this classroom’s roster' }
             ], help: 'Named sessions store which child chose what — assessment evidence, handled as such.' },
-            { name: 'classroomId', label: 'Classroom', type: 'select', options: R.classroomOptions({ classrooms }), help: 'Required for named answers — the roster comes from this class.', showIf: (d) => d.participantMode === 'class_roster' },
+            { name: 'classroomId', label: 'Classroom', type: 'select', options: window.Reel.classroomOptions({ classrooms }), help: 'Required for named answers — the roster comes from this class.', showIf: (d) => d.participantMode === 'class_roster' },
             { name: 'title', label: 'Session name (optional)', placeholder: 'e.g. Butterflies — shapes check' }
           ],
           transform: (data) => ({
