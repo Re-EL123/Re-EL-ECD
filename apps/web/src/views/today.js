@@ -292,17 +292,17 @@
 
           '</defs>' +
           '<path class="ridge ridge-far" d="M0 132 L60 124 C110 114 150 124 205 116 C258 108 285 118 330 110 C346 106 353 98 373 98 C393 98 399 106 415 110 C480 120 520 104 585 108 C650 112 692 126 762 118 C822 111 862 120 900 114 L900 220 L0 220 Z"/>' +
-          '<use href="#acacia" transform="translate(60 119) scale(0.4)" class="tree tree-far"/>' +
-          '<use href="#acacia" transform="translate(118 117) scale(0.52)" class="tree tree-far"/>' +
-          '<use href="#acacia" transform="translate(392 97) scale(0.64)" class="tree tree-far"/>' +
-          '<use href="#acacia" transform="translate(585 104) scale(0.46)" class="tree tree-far"/>' +
-          '<use href="#acacia" transform="translate(836 113) scale(0.4)" class="tree tree-far"/>' +
+          '<use href="#acacia" transform="translate(60 112) scale(0.4)" class="tree tree-far"/>' +
+          '<use href="#acacia" transform="translate(118 100) scale(0.52)" class="tree tree-far"/>' +
+          '<use href="#acacia" transform="translate(392 73) scale(0.64)" class="tree tree-far"/>' +
+          '<use href="#acacia" transform="translate(585 91) scale(0.46)" class="tree tree-far"/>' +
+          '<use href="#acacia" transform="translate(836 101) scale(0.4)" class="tree tree-far"/>' +
           '<path class="ridge ridge-near" d="M0 158 C110 146 200 164 320 152 C430 141 520 166 640 154 C750 144 830 160 900 152 L900 220 L0 220 Z"/>' +
-          '<use href="#acacia" transform="translate(105 143) scale(0.82)" class="tree tree-near"/>' +
-          '<use href="#acacia" transform="translate(208 152) scale(1.0)" class="tree tree-near"/>' +
-          '<use href="#acacia" transform="translate(322 143) scale(1.18)" class="tree tree-near"/>' +
-          '<use href="#acacia" transform="translate(700 143) scale(0.9)" class="tree tree-near"/>' +
-          '<use href="#acacia" transform="translate(852 150) scale(0.76)" class="tree tree-near"/>' +
+          '<use href="#acacia" transform="translate(105 116) scale(0.82)" class="tree tree-near"/>' +
+          '<use href="#acacia" transform="translate(208 122) scale(1.0)" class="tree tree-near"/>' +
+          '<use href="#acacia" transform="translate(322 103) scale(1.18)" class="tree tree-near"/>' +
+          '<use href="#acacia" transform="translate(700 115) scale(0.9)" class="tree tree-near"/>' +
+          '<use href="#acacia" transform="translate(852 128) scale(0.76)" class="tree tree-near"/>' +
           '<path class="meadow-band" d="M0 184 C150 174 280 190 430 180 C580 171 700 188 900 179 L900 220 L0 220 Z"/>' +
           '<circle class="flower f1" cx="150" cy="206" r="2.1"/><circle class="flower f2" cx="235" cy="213" r="1.9"/>' +
           '<circle class="flower f1" cx="340" cy="201" r="2.0"/><circle class="flower f2" cx="470" cy="209" r="2.2"/>' +
