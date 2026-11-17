@@ -18,6 +18,9 @@ CREATE TABLE IF NOT EXISTS guide_presence (
   UNIQUE (lesson_plan_id, user_id)
 );
 
+CREATE INDEX IF NOT EXISTS idx_guide_presence_org
+  ON guide_presence (organisation_id, seen_at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_guide_presence_plan
   ON guide_presence (lesson_plan_id, seen_at DESC);
 
