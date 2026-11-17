@@ -93,7 +93,7 @@
         '<label class="small muted">Date</label><input class="input" type="date" value="' + R.attr(page.date) + '" @change="setFilter(\'date\',$event.target.value)">' +
         R.selectFilter(ctx, 'classroomId', (page.classrooms || []).map((c) => ({ value: c.id, label: c.name })), 'All classrooms') +
         R.selectFilter(ctx, 'branchId', R.branchOptions(ctx), 'All branches')) +
-        R.table({ rows: reg.rows || [], columns: [
+        R.table({ rows: reg.rows || [], pinFirst: true, columns: [
           { label: 'Child', render: (r) => '<a class="cell-strong" href="#/app/learners/' + R.attr(r.learner_id) + '">' + R.esc(r.first_name + ' ' + r.last_name) + '</a><span class="cell-sub mono">' + R.esc(r.learner_reference) + '</span>' },
           { label: 'Classroom', render: (r) => R.esc(r.classroom_name || '—') },
           { label: 'In by', render: (r) => {

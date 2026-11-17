@@ -15,6 +15,15 @@
     approved: ['published', 'cancelled'], published: ['in_progress', 'cancelled'],
     in_progress: ['completed', 'cancelled'], completed: ['evaluated'], evaluated: [], cancelled: []
   };
+  const STATUS_CTA = {
+    submitted: 'Send for review', approved: 'Approve', published: 'Publish',
+    in_progress: 'Start lesson', completed: 'Complete lesson', evaluated: 'Evaluate', draft: 'Send back to draft'
+  };
+  function nextAction(status) {
+    const targets = NEXT_STATUS[status] || [];
+    const positive = targets.find((t) => t !== 'cancelled');
+    return positive ? { target: positive, label: STATUS_CTA[positive] || ('Next: ' + positive) } : null;
+  }
 
   V.curriculum = {
     async load(ctx) {
@@ -73,11 +82,11 @@
         { label: '', align: 'right', render: (p) => '<div class="btn-group">' +
           (isOfficialRow(p)
             ? '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/curriculum/adopt\',{kind:\'lesson_plan\',id:\'' + R.attr(p.id) + '\'},{successMessage:\'Adopted to your workspace as a draft plan\'})">' + R.icon('copy') + ' Adapt</button>' +
-              '<button class="btn btn-sm btn-secondary" @click="openNamedDetail(\'plan\',\'' + R.attr(p.id) + '\')">View</button>'
+              '<button class="btn btn-sm btn-ghost" @click="openNamedDetail(\'plan\',\'' + R.attr(p.id) + '\')">Open</button>'
             : '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'duplicatePlan\',\'' + R.attr(p.id) + '\')">Duplicate</button>' +
               (ctx.has('curriculum.create.daycare') ? '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'savePlanTemplate\',\'' + R.attr(p.id) + '\')">Save template</button>' : '') +
-              '<button class="btn btn-sm btn-secondary" @click="openNamedDetail(\'plan\',\'' + R.attr(p.id) + '\')">View</button>' +
-              ((NEXT_STATUS[p.status] || []).length ? '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'transition\',\'' + R.attr(p.id) + '\')">Move on</button>' : '')) +
+              '<button class="btn btn-sm btn-ghost" @click="openNamedDetail(\'plan\',\'' + R.attr(p.id) + '\')">Open</button>' +
+              (() => { const next = nextAction(p.status); return next ? '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'transition\',\'' + R.attr(p.id) + '\')">' + R.esc(next.label) + '</button>' : ''; })()) +
           '</div>' }
       ], emptyTitle: 'No lesson plans', emptyMessage: 'Plan the week around your children\'s interests and the framework.' });
     },
@@ -324,8 +333,9 @@
         });
       } else if (name === 'transition' && id) {
         const plan = (page.plans || []).find((p) => p.id === id) || {};
-        ctx.openModal({ title: 'Move lesson plan', endpoint: '/curriculum/lesson-plans/' + id + '/transition', submitLabel: 'Update status', fields: [
-          { name: 'status', label: 'New status', type: 'select', required: true, options: NEXT_STATUS[plan.status] || [] },
+        const next = nextAction(plan.status);
+        ctx.openModal({ title: 'Advance plan — ' + (next ? next.label : 'update status'), endpoint: '/curriculum/lesson-plans/' + id + '/transition', submitLabel: 'Confirm', fields: [
+          { name: 'status', label: 'New status', type: 'select', required: true, value: next ? next.target : undefined, options: NEXT_STATUS[plan.status] || [] },
           { name: 'notes', label: 'Notes', type: 'textarea', span: 2 }
         ] });
       } else if (name === 'period') {
@@ -371,7 +381,7 @@
     },
     render(ctx, params, page) {
       return R.pageHead('Activities', 'The experiences that fill the day — from sensory play to early literacy.',
-        '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'activity\')">' + R.icon('plus') + ' New activity</button>') +
+        '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'activity\')">' + R.icon('plus') + ' New activity</button>' + R.exportButtons('/exports/activities')) +
         '<div class="grid grid-3">' + (page.rows || []).map((a) => R.card(a.title,
           '<div class="row" style="margin-bottom:8px"><span class="badge badge-sun">' + R.esc(a.age_group || 'All ages') + '</span><span class="badge badge-muted">' + R.esc(R.titleCase(a.activity_type || 'activity')) + '</span><span class="badge badge-sky">' + R.number(a.duration_minutes) + ' min</span></div>' +
           '<p class="muted small">' + R.esc(a.description || '') + '</p>' +

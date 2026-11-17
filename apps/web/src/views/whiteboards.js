@@ -316,10 +316,68 @@
     };
   }
 
+  /* Ready-made board templates — each seeds a valid canvas state. */
+  const TEMPLATES = {
+    math: {
+      label: 'Maths canvas',
+      hint: 'Counting, number lines and problem-solving frames.',
+      icon: 'sigma',
+      title: 'Maths canvas',
+      state: { viewport: { x: 0, y: 0, zoom: 1 }, version: 1, objects: [
+        { type: 'text', x: 60, y: 46, text: 'Counting to 20', size: 34, color: '#17281c' },
+        { type: 'arrow', x1: 60, y1: 152, x2: 840, y2: 152, color: '#2f5c3c', width: 3 },
+        { type: 'sticky', x: 60, y: 196, w: 175, h: 132, text: '1–5\nCount out loud\ntogether.' },
+        { type: 'sticky', x: 262, y: 196, w: 175, h: 132, text: '6–10\nPoint at each\nnumber.' },
+        { type: 'sticky', x: 464, y: 196, w: 175, h: 132, text: '11–15\nCount backwards\nfrom 15.' },
+        { type: 'sticky', x: 666, y: 196, w: 175, h: 132, text: '16–20\nWhat comes\nnext?' }
+      ] }
+    },
+    story: {
+      label: 'Story retell',
+      hint: 'Beginning, middle and end — the shape of every tale.',
+      icon: 'book-open',
+      title: 'Story retell',
+      state: { viewport: { x: 0, y: 0, zoom: 1 }, version: 1, objects: [
+        { type: 'text', x: 60, y: 46, text: 'Story retell', size: 34, color: '#17281c' },
+        { type: 'sticky', x: 60, y: 150, w: 230, h: 176, text: 'Beginning\nWho is in the\nstory? Where?' },
+        { type: 'arrow', x1: 312, y1: 238, x2: 380, y2: 238, color: '#2f5c3c', width: 3 },
+        { type: 'sticky', x: 400, y: 150, w: 230, h: 176, text: 'Middle\nWhat happens?\nWhat changes?' },
+        { type: 'arrow', x1: 652, y1: 238, x2: 720, y2: 238, color: '#2f5c3c', width: 3 },
+        { type: 'sticky', x: 740, y: 150, w: 230, h: 176, text: 'End\nHow does it\nfinish?' }
+      ] }
+    },
+    rhyme: {
+      label: 'Rhyme / song board',
+      hint: 'Verse-by-verse with space to add movement cues.',
+      icon: 'music',
+      title: 'Rhyme of the day',
+      state: { viewport: { x: 0, y: 0, zoom: 1 }, version: 1, objects: [
+        { type: 'text', x: 60, y: 46, text: 'Rhyme of the day', size: 34, color: '#17281c' },
+        { type: 'sticky', x: 80, y: 150, w: 780, h: 210, text: 'Sing it together:\n\nLine one…\nLine two…\nLine three…\nLine four…\n\nClap on every third word.' }
+      ] }
+    },
+    shape: {
+      label: 'Shape sorter',
+      hint: 'Sort, match and name — geometry for little hands.',
+      icon: 'shapes',
+      title: 'Shape sorter',
+      state: { viewport: { x: 0, y: 0, zoom: 1 }, version: 1, objects: [
+        { type: 'text', x: 60, y: 46, text: 'Shape sorter', size: 34, color: '#17281c' },
+        { type: 'sticky', x: 80, y: 150, w: 170, h: 120, text: 'Circles\nRound like\na ball?' },
+        { type: 'sticky', x: 280, y: 150, w: 170, h: 120, text: 'Squares\nFour equal\nsides?' },
+        { type: 'sticky', x: 480, y: 150, w: 170, h: 120, text: 'Triangles\nThree\nsides?' },
+        { type: 'sticky', x: 680, y: 150, w: 170, h: 120, text: 'Rectangles\nTwo long,\ntwo short?' }
+      ] }
+    }
+  };
+
   V.whiteboards = {
     async load() {
-      const boards = await R.api('GET', '/whiteboards').then((p) => p.data || []).catch(() => []);
-      return { boards };
+      const [boards, plans] = await Promise.all([
+        R.api('GET', '/whiteboards').then((p) => p.data || []).catch(() => []),
+        R.api('GET', '/curriculum/lesson-plans?pageSize=100').then((p) => (Array.isArray(p.data) ? p.data : (p.data && p.data.data) || [])).catch(() => [])
+      ]);
+      return { boards, plans };
     },
 
     render(ctx, params, page) {
@@ -327,6 +385,7 @@
       const canEdit = ctx.has('curriculum.create.daycare');
       let html = R.pageHead('Whiteboards', 'Infinite digital canvases for teaching, annotation, math/science sketching and collaborative problem-solving.',
         (canEdit ? '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'whiteboard\')">' + R.icon('plus') + ' New whiteboard</button>' : '') +
+        R.exportButtons('/exports/whiteboards') +
         '<button class="btn btn-secondary btn-sm" @click="navigate(true)">' + R.icon('refresh-cw') + ' Refresh</button>');
 
       html += '<div class="grid grid-3 section">' +
@@ -336,7 +395,33 @@
         '</div>';
 
       if (!boards.length) {
-        html += R.emptyState('No whiteboards yet', 'Create an infinite canvas to sketch ideas, annotate together and work through problems in real time.', canEdit ? '<button class="btn btn-primary" @click="openNamedModal(\'whiteboard\')">Create a whiteboard</button>' : '', 'presentation');
+        const plans = (page.plans || []).slice(0, 100);
+        const templateButton = (kind) => {
+          const t = TEMPLATES[kind];
+          return '<button type="button" class="wb-template" @click="openNamedModal(\'whiteboardTemplate\',\'' + kind + '\')">' +
+            '<span class="empty-icon">' + R.icon(t.icon) + '</span>' +
+            '<span class="wb-template-title">' + esc(t.label) + '</span>' +
+            '<span class="muted small">' + esc(t.hint) + '</span>' +
+            '<span class="wb-template-cta">Use template ' + R.icon('arrow-right') + '</span>' +
+          '</button>';
+        };
+        html += '<div class="section"></div><h3 style="margin-bottom:10px">Start from a template</h3>' +
+          '<div class="wb-gallery">' +
+            templateButton('math') + templateButton('story') + templateButton('rhyme') + templateButton('shape') +
+            '<button type="button" class="wb-template wb-template-blank" @click="openNamedModal(\'whiteboard\')">' +
+              '<span class="empty-icon">' + R.icon('pen-tool') + '</span>' +
+              '<span class="wb-template-title">Blank canvas</span>' +
+              '<span class="muted small">An empty infinite canvas — draw, write and annotate.</span>' +
+              '<span class="wb-template-cta">Start blank ' + R.icon('arrow-right') + '</span>' +
+            '</button>' +
+            (plans.length ? '<button type="button" class="wb-template" @click="openNamedModal(\'whiteboardFromPlan\')">' +
+              '<span class="empty-icon">' + R.icon('graduation-cap') + '</span>' +
+              '<span class="wb-template-title">From a lesson plan</span>' +
+              '<span class="muted small">Create the board for a plan — the guide links to it.</span>' +
+              '<span class="wb-template-cta">Choose a plan ' + R.icon('arrow-right') + '</span>' +
+            '</button>' : '') +
+          '</div>' +
+          '<p class="muted small" style="margin-top:14px;text-align:center">Boards auto-save and stay editable by the whole team — open one and start drawing.</p>';
       } else {
         html += '<div class="grid grid-3 section">';
         boards.forEach((b) => {
@@ -345,14 +430,16 @@
             '<div class="muted small">' + (b.classroomName ? esc(b.classroomName) + ' · ' : '') + 'Updated ' + R.relative(b.updatedAt) + '</div></div>' +
             '<span class="badge badge-muted">' + R.number(b.objectCount || 0) + ' items</span></div>' +
             (b.description ? '<p class="muted small" style="margin-top:8px">' + esc(R.truncate(b.description, 100)) + '</p>' : '') +
-            '<div class="row" style="margin-top:10px;gap:6px;flex-wrap:wrap">' + R.icon('pen-tool') + '<span class="muted small">Open canvas</span>' + (b.createdByName ? '<span class="muted small row-end">by ' + esc(b.createdByName) + '</span>' : '') + '</div></a>';
+            '<div class="row" style="margin-top:10px;gap:8px;align-items:center">' + (b.createdByName ? R.avatar({ display_name: b.createdByName }, b.createdByName, { size: 30 }) + '<span class="muted small">' + esc(b.createdByName) + '</span>' : '') +
+              '<span class="row-end row" style="gap:6px">' + R.icon('pen-tool') + '<span class="muted small">Open board</span></span></div></a>';
         });
         html += '</div>';
       }
       return html;
     },
 
-    openModal(ctx, name) {
+    openModal(ctx, name, id) {
+      const page = ctx.page || {};
       if (name === 'whiteboard') {
         ctx.openModal({
           title: 'New whiteboard',
@@ -365,6 +452,40 @@
           ],
           onSuccess: (data) => { if (data && data.id) location.hash = '#/app/whiteboards/' + data.id; }
         });
+        return;
+      }
+      if (name === 'whiteboardTemplate' && TEMPLATES[id]) {
+        const template = TEMPLATES[id];
+        ctx.openModal({
+          title: 'Use template: ' + template.label,
+          endpoint: '/whiteboards',
+          submitLabel: 'Create board',
+          successMessage: 'Board created — opening canvas.',
+          fields: [
+            { name: 'title', label: 'Title', required: true, value: template.title },
+            { name: 'description', label: 'Description (optional)' }
+          ],
+          transform: (data) => Object.assign({}, data, { state: JSON.parse(JSON.stringify(template.state)) }),
+          onSuccess: (data) => { if (data && data.id) location.hash = '#/app/whiteboards/' + data.id; }
+        });
+        return;
+      }
+      if (name === 'whiteboardFromPlan') {
+        const plans = page.plans || [];
+        ctx.openModal({
+          title: 'Board from a lesson plan',
+          endpoint: '/whiteboards',
+          submitLabel: 'Create board',
+          description: 'The board is created with the lesson plan linked — the guide opens it directly from the plan’s whiteboard step.',
+          fields: [
+            { name: 'lessonPlanId', label: 'Lesson plan', type: 'select', required: true, options: plans.map((p) => ({ value: p.id, label: p.title })) },
+            { name: 'title', label: 'Board title', required: true, placeholder: 'e.g. Nature Detectives — canvas' },
+            { name: 'description', label: 'Description (optional)' }
+          ],
+          transform: (data) => Object.assign({}, data, { title: String(data.title || '').trim() || 'Lesson board' }),
+          onSuccess: (data) => { if (data && data.id) location.hash = '#/app/whiteboards/' + data.id; }
+        });
+        return;
       }
     }
   };

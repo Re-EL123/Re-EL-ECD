@@ -49,7 +49,7 @@
           { label: 'Classroom', render: (l) => R.esc(l.classroom_name || 'Unassigned') + '<span class="cell-sub">' + R.esc(l.branch_name || '') + '</span>' },
           { label: 'Guardian', render: (l) => l.primary_guardian ? R.esc(l.primary_guardian.first_name + ' ' + l.primary_guardian.last_name) + '<span class="cell-sub">' + R.esc(l.primary_guardian.phone || l.primary_guardian.email || '') + '</span>' : '<span class="muted">Not linked</span>' },
           { label: 'Status', render: (l) => R.badge(l.status) },
-          { label: '', align: 'right', render: (l) => '<a class="btn btn-sm btn-secondary" href="#/app/learners/' + R.attr(l.id) + '">Open profile</a>' }
+          { label: '', align: 'right', render: (l) => '<a class="btn btn-sm btn-ghost" href="#/app/learners/' + R.attr(l.id) + '" title="Open the learner profile">Open</a>' }
         ], emptyTitle: 'No learners found', emptyMessage: 'Try a different filter, or add your first learner.',
           emptyAction: canCreate ? '<button class="btn btn-primary" @click="openNamedModal(\'learner\')">Add learner</button>' : '' }) +
         R.pager(page.meta, "setFilter('page', " + Math.max(1, (page.meta.page || 1) - 1) + ")", "setFilter('page', " + Math.min(page.meta.totalPages || 1, (page.meta.page || 1) + 1) + ")");

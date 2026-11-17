@@ -2488,3 +2488,31 @@ a.crumb:hover { color: var(--text-strong); background: var(--surface-2); text-de
 .drag-source { opacity: 0.4; }
 .drop-target.drop-active { outline: 2px dashed var(--reel-green-600); outline-offset: 3px;
   box-shadow: 0 0 16px var(--neon-glow-strong, rgba(92, 214, 116, 0.55)); background: color-mix(in srgb, var(--reel-green-500) 10%, var(--surface-1)); }
+
+/* ---- Unified filter bars: labels never wrap, date inputs keep width ---- */
+.filter-bar > label, .label-nowrap { white-space: nowrap; margin: 0; }
+.filter-bar input[type="date"], .filter-bar input[type="datetime-local"] { min-width: 145px; max-width: 160px; }
+.filter-bar .input, .filter-bar .select { white-space: nowrap; }
+
+/* ---- Unified empty states: icon in a soft disc ---- */
+.empty-state .empty-icon { width: 64px; height: 64px; border-radius: 20px; background: var(--surface-2);
+  border: 1px solid var(--neon-border); box-shadow: 0 0 22px color-mix(in srgb, var(--neon-glow) 55%, transparent);
+  display: grid; place-items: center; margin: 0 auto 14px; color: var(--text-muted); }
+.empty-state .empty-icon svg { width: 27px; height: 27px; }
+
+/* ---- Whiteboards template gallery ---- */
+.wb-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.wb-template { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; cursor: pointer;
+  background: var(--surface-1); border: 1px solid var(--neon-border); border-radius: var(--radius-lg); padding: 16px 16px 14px;
+  box-shadow: var(--shadow-xs); transition: transform 0.18s cubic-bezier(0.2, 0.7, 0.3, 1.2), box-shadow 0.3s ease, border-color 0.25s ease; }
+.wb-template:hover { transform: translateY(-3px); border-color: var(--neon-border-strong); box-shadow: var(--shadow-md), 0 14px 34px -12px var(--neon-glow-strong); }
+.wb-template .empty-icon { margin: 0 0 8px; }
+.wb-template-title { font-weight: 750; font-size: 0.92rem; color: var(--text-strong); }
+.wb-template-cta { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; font-size: 0.76rem; font-weight: 700; color: var(--reel-green-700); }
+.wb-template-cta svg { width: 12px; height: 12px; }
+.wb-template-blank { border-style: dashed; }
+
+/* ---- Density: compact rows + pinned first column for wide registers ---- */
+[data-density="compact"] .table td, [data-density="compact"] .table th { padding: 5px 8px; font-size: 0.82rem; }
+.table-wrap.pin-first .table td:first-child, .table-wrap.pin-first .table th:first-child { position: sticky; left: 0; background: var(--surface-1); z-index: 2; box-shadow: 1px 0 0 var(--border-subtle); }
+.table-wrap.pin-first .table th:first-child { background: var(--surface-2); }

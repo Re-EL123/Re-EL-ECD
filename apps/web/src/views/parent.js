@@ -105,7 +105,7 @@
           R.detailItem('Balance', R.money(c.outstandingBalance)) +
           R.detailItem('Latest observation', c.latestObservation ? R.date(c.latestObservation.observation_date) : 'None yet') +
           '</div>',
-          '<a class="btn btn-sm btn-secondary" href="#/parent/children/' + R.attr(c.id) + '">Open profile</a>')).join('') +
+          '<a class="btn btn-sm btn-ghost" href="#/parent/children/' + R.attr(c.id) + '" title="Open this child">Open</a>')).join('') +
         (children.length ? '' : R.emptyState('No children linked', 'Ask the centre to link your account to your child.', '', 'users')) +
         '</div><div class="stack">' +
         R.card('Latest news', announcements.length ? '<div class="stack">' + announcements.map((a) => '<div><div class="strong" style="font-size:0.9rem">' + R.esc(a.title) + '</div><div class="muted small">' + R.relative(a.published_at) + '</div><p class="muted small" style="white-space:pre-wrap;margin-top:4px">' + R.esc(R.truncate(a.body, 160)) + '</p></div>').join('') + '</div>' : '<p class="muted small">No announcements right now.</p>', '<a class="btn btn-sm btn-ghost" href="#/parent/activities">All updates ' + R.icon('arrow-right') + '</a>') +
@@ -131,7 +131,7 @@
           R.detailItem('Age', R.esc(R.ageYears(c.dateOfBirth))) +
           R.detailItem('Relationship', R.esc(c.relationship || '—')) +
           '</div>',
-          '<a class="btn btn-sm btn-primary" href="#/parent/children/' + R.attr(c.id) + '">Open profile</a>')).join('') + '</div>' +
+          '<a class="btn btn-sm btn-primary" href="#/parent/children/' + R.attr(c.id) + '" title="Open this child">Open</a>')).join('') + '</div>' +
         (children.length ? '' : R.emptyState('No children linked', 'Contact the centre if a child is missing.', '', 'users'));
     }
   };

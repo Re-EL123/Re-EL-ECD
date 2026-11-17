@@ -339,7 +339,7 @@
               : '<span class="badge badge-muted">Free</span>' },
         { label: 'Status', render: (s) => R.badge(s.status) },
         { label: '', align: 'right', render: (s) => '<div class="btn-group" style="flex-wrap:nowrap;white-space:nowrap">' +
-          '<button class="btn btn-sm btn-secondary" @click="openNamedDetail(\'submission\',\'' + R.attr(s.id) + '\')">View</button>' +
+          '<button class="btn btn-sm btn-ghost" @click="openNamedDetail(\'submission\',\'' + R.attr(s.id) + '\')">Open</button>' +
           (s.status === 'received' ? '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'review\',\'' + R.attr(s.id) + '\')">Review</button>' : '') +
           '</div>' }
       ], emptyTitle: 'No submissions', emptyMessage: 'Share the public link to start collecting responses.' }), '<a class="btn btn-sm btn-ghost" href="#/app/forms">Change form</a>');

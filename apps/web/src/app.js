@@ -633,7 +633,7 @@
           }
         }
         const crumbs = [];
-        if (home && (!match || match.item.path !== home.path)) crumbs.push(home);
+        if (home) crumbs.push(home);
         if (match) {
           const landing = match.group.items[0].path;
           if (match.item.path !== landing) crumbs.push({ label: match.group.label, path: landing });

@@ -115,7 +115,7 @@
           { label: 'Outstanding', align: 'right', render: (i) => R.money(Number(i.total_amount) - Number(i.amount_paid), i.currency) },
           { label: 'Status', render: (i) => R.badge(i.status) },
           { label: '', align: 'right', render: (i) => '<div class="btn-group">' +
-            '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'invoiceView\',\'' + R.attr(i.id) + '\')">View</button>' +
+            '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'invoiceView\',\'' + R.attr(i.id) + '\')">Open</button>' +
             (i.status === 'draft' ? '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/invoices/' + R.attr(i.id) + '/issue\',{},{successMessage:\'Invoice issued\'})">Issue</button>' : '') +
             (['issued', 'partially_paid', 'overdue'].includes(i.status) && Number(i.total_amount) > Number(i.amount_paid) ? '<button class="btn btn-sm btn-secondary" @click="paymentLink(\'' + R.attr(i.id) + '\')">Payment link</button>' : '') +
             (!['paid', 'void', 'cancelled', 'written_off'].includes(i.status) ? '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'writeOff\',\'' + R.attr(i.id) + '\')">Write off</button>' : '') +

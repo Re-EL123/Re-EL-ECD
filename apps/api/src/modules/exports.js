@@ -524,6 +524,108 @@ const tenantResources = {
     }
   },
 
+  admissions: {
+    permission: 'admissions.read.daycare',
+    title: 'Admission enquiries',
+    filename: 'admissions',
+    sheet: 'Admissions',
+    subtitle: 'Enquiries and where they stand',
+    columns: [
+      { key: 'guardian_name', label: 'Guardian', width: 24 },
+      { key: 'guardian_email', label: 'Email', width: 28 },
+      { key: 'guardian_phone', label: 'Phone', width: 16 },
+      { key: 'child_name', label: 'Child', width: 20 },
+      { key: 'requested_age_group', label: 'Age group', width: 14 },
+      { key: 'source', label: 'Source', width: 12 },
+      { key: 'branch', label: 'Branch', width: 16 },
+      { key: 'status', label: 'Status', width: 12 },
+      { key: 'created_at', label: 'Received', format: 'datetime', width: 18 }
+    ],
+    query(ctx) {
+      return ctx.db.many(
+        `SELECT e.guardian_name, e.guardian_email, e.guardian_phone, e.child_name,
+                e.requested_age_group, e.source, b.name AS branch, e.status, e.created_at
+         FROM admission_enquiries e LEFT JOIN branches b ON b.id = e.branch_id
+         WHERE e.organisation_id = $1
+         ORDER BY e.created_at DESC LIMIT $2`,
+        [ctx.organisationId, MAX_ROWS]
+      );
+    }
+  },
+
+  activities: {
+    permission: 'curriculum.read.daycare',
+    title: 'Activities',
+    filename: 'activities',
+    sheet: 'Activities',
+    subtitle: 'The activity library',
+    columns: [
+      { key: 'title', label: 'Activity', width: 30 },
+      { key: 'activity_type', label: 'Domain', width: 16 },
+      { key: 'age_group', label: 'Age group', width: 14 },
+      { key: 'duration_minutes', label: 'Minutes', format: 'number', align: 'right', width: 10 },
+      { key: 'materials', label: 'Materials', width: 40 },
+      { key: 'status', label: 'Status', width: 12 }
+    ],
+    query(ctx) {
+      return ctx.db.many(
+        `SELECT title, activity_type, age_group, duration_minutes, materials, status
+         FROM activities WHERE organisation_id = $1
+         ORDER BY title LIMIT $2`,
+        [ctx.organisationId, MAX_ROWS]
+      );
+    }
+  },
+
+  modules: {
+    permission: 'curriculum.read.daycare',
+    title: 'Learning modules',
+    filename: 'modules',
+    sheet: 'Modules',
+    subtitle: 'Modules and the lesson plans inside them',
+    columns: [
+      { key: 'title', label: 'Module', width: 30 },
+      { key: 'theme', label: 'Theme', width: 22 },
+      { key: 'age_group', label: 'Age group', width: 14 },
+      { key: 'duration_weeks', label: 'Weeks', format: 'number', align: 'right', width: 8 },
+      { key: 'status', label: 'Status', width: 12 },
+      { key: 'plan_count', label: 'Plans', format: 'number', align: 'right', width: 8 }
+    ],
+    query(ctx) {
+      return ctx.db.many(
+        `SELECT m.title, m.theme, m.age_group, m.duration_weeks, m.status,
+                (SELECT COUNT(*)::int FROM lesson_plans p WHERE p.module_id = m.id) AS plan_count
+         FROM learning_modules m WHERE m.organisation_id = $1
+         ORDER BY m.title LIMIT $2`,
+        [ctx.organisationId, MAX_ROWS]
+      );
+    }
+  },
+
+  whiteboards: {
+    permission: 'curriculum.read.daycare',
+    title: 'Whiteboards',
+    filename: 'whiteboards',
+    sheet: 'Whiteboards',
+    subtitle: 'Canvas boards in the workspace',
+    columns: [
+      { key: 'title', label: 'Board', width: 30 },
+      { key: 'description', label: 'Description', width: 40 },
+      { key: 'item_count', label: 'Items', format: 'number', align: 'right', width: 8 },
+      { key: 'updated_at', label: 'Last edited', format: 'datetime', width: 18 }
+    ],
+    query(ctx) {
+      return ctx.db.many(
+        `SELECT title, COALESCE(description, '') AS description,
+                COALESCE(jsonb_array_length(state -> 'objects'), 0)::int AS item_count,
+                updated_at
+         FROM whiteboards WHERE organisation_id = $1 AND NOT is_archived
+         ORDER BY updated_at DESC LIMIT $2`,
+        [ctx.organisationId, MAX_ROWS]
+      );
+    }
+  },
+
   'subscription-invoices': {
     permission: 'organisation.settings.manage',
     title: 'Subscription invoices',

@@ -45,9 +45,9 @@
       const modules = page.modules || [];
       const published = modules.filter((module) => module.status === 'published').length;
       const plans = modules.reduce((sum, module) => sum + Number(module.plan_count || 0), 0);
-      const newButton = canCreate
+      const newButton = (canCreate
         ? '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'module\')">' + R.icon('plus') + ' New module</button>'
-        : '';
+        : '') + R.exportButtons('/exports/modules');
       return R.pageHead('Learning modules', 'Group lesson plans into a themed journey — everything the children will live, in the order they will live it.', newButton) +
         '<div class="grid grid-3 section">' +
         R.statCard({ label: 'Modules', value: R.number(modules.length), icon: 'blocks', foot: R.number(published) + ' published' }) +
@@ -65,7 +65,7 @@
                 '<button class="btn btn-sm btn-ghost" @click="downloadExport(\'/learning-modules/' + R.attr(module.id) + '/teacher-guide\')">' + R.icon('file-down') + ' Teacher guide</button>'
               : (canCreate ? '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'moduleEdit\',\'' + R.attr(module.id) + '\')">' + R.icon('pencil') + ' Edit</button>' : '') +
                 '<button class="btn btn-sm btn-secondary" @click="openModuleGuide(\'' + R.attr(module.id) + '\')">' + R.icon('book-open') + ' Teach / Guide</button>' +
-                '<a class="btn btn-sm btn-primary" href="' + href + '">Open module ' + R.icon('arrow-right') + '</a>';
+                '<a class="btn btn-sm btn-primary" href="' + href + '" title="Open this module">Open ' + R.icon('arrow-right') + '</a>';
             return R.card(module.title,
               '<div class="row" style="gap:8px;margin-bottom:10px;flex-wrap:wrap">' +
                 R.badge(module.status) +

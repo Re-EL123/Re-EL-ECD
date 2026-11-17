@@ -36,7 +36,7 @@
       const applications = page.applications || [];
       return R.pageHead('Admissions', 'From the first enquiry to the first day — one clear pipeline.',
         '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'enquiry\')">' + R.icon('inbox') + ' Log enquiry</button>' +
-        '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'application\')">' + R.icon('user-plus') + ' New application</button>') +
+        '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'application\')">' + R.icon('user-plus') + ' New application</button>' + R.exportButtons('/exports/admissions')) +
         '<div class="grid grid-4 section">' +
         R.statCard({ label: 'New enquiries', value: R.number(o.new_enquiries), icon: 'inbox', tone: 'sky', foot: 'Awaiting first contact' }) +
         R.statCard({ label: 'Pending review', value: R.number(o.pending_applications), icon: 'clipboard-list', tone: 'sun', foot: 'Applications to assess' }) +
@@ -65,7 +65,7 @@
           { label: 'Status', render: (e) => R.badge(e.status) },
           { label: 'Received', render: (e) => R.date(e.created_at) },
           { label: '', align: 'right', render: (e) => '<div class="btn-group">' +
-            '<button class="btn btn-sm btn-secondary" @click="openNamedDetail(\'enquiry\',\'' + R.attr(e.id) + '\')">View</button>' +
+            '<button class="btn btn-sm btn-ghost" @click="openNamedDetail(\'enquiry\',\'' + R.attr(e.id) + '\')">Open</button>' +
             (['converted', 'closed', 'spam'].includes(e.status) ? '' : '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'convert\',\'' + R.attr(e.id) + '\')">Convert</button>') +
             '</div>' }
         ], emptyTitle: 'No enquiries', emptyMessage: 'Enquiries from your public website and phone calls appear here.' });
