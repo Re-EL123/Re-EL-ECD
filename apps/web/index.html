@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/styles.css?v=202611180">
+  <link rel="stylesheet" href="assets/styles.css?v=202611181">
   <link rel="icon" href="assets/branding/favicon-32.png" sizes="32x32" type="image/png">
   <link rel="icon" href="assets/branding/favicon-64.png" sizes="64x64" type="image/png">
   <link rel="manifest" href="manifest.webmanifest">
@@ -20,39 +20,39 @@
   <meta property="og:type" content="website">
   <!-- Vendor libraries are self-hosted: a blocked CDN must not stop the app booting. -->
   <!-- Icons are cosmetic: load them async so a slow request never delays boot. -->
-  <script src="vendor/lucide.min.js?v=202611180" async onload="if (window.lucide) window.lucide.createIcons()"></script>
-  <script src="vendor/gsap.min.js?v=202611180" defer></script>
-  <script src="vendor/chart.umd.min.js?v=202611180" defer></script>
+  <script src="vendor/lucide.min.js?v=202611181" async onload="if (window.lucide) window.lucide.createIcons()"></script>
+  <script src="vendor/gsap.min.js?v=202611181" defer></script>
+  <script src="vendor/chart.umd.min.js?v=202611181" defer></script>
   <!-- qr-code-styling 1.9.2 (MIT) - QR codes are generated locally in the browser -->
-  <script src="vendor/qr-code-styling.min.js?v=202611180" defer></script>
-  <script src="config.js?v=202611180"></script>
-  <script src="src/utils.js?v=202611180" defer></script>
-  <script src="src/anim.js?v=202611180" defer></script>
-  <script src="src/views/public.js?v=202611180" defer></script>
-  <script src="src/views/platform.js?v=202611180" defer></script>
-  <script src="src/views/overview.js?v=202611180" defer></script>
-  <script src="src/views/pkid-drivers.js?v=202611180" defer></script>
-  <script src="src/views/gate.js?v=202611180" defer></script>
-  <script src="src/views/learners.js?v=202611180" defer></script>
-  <script src="src/views/admissions.js?v=202611180" defer></script>
-  <script src="src/views/curriculum.js?v=202611180" defer></script>
-  <script src="src/views/whiteboards.js?v=202611180" defer></script>
-  <script src="src/views/modules.js?v=202611180" defer></script>
-  <script src="src/views/assessments.js?v=202611180" defer></script>
-  <script src="src/views/attendance.js?v=202611180" defer></script>
-  <script src="src/views/staff.js?v=202611180" defer></script>
-  <script src="src/views/activity.js?v=202611180" defer></script>
-  <script src="src/views/forms.js?v=202611180" defer></script>
-  <script src="src/views/communications.js?v=202611180" defer></script>
-  <script src="src/views/finance.js?v=202611180" defer></script>
-  <script src="src/views/safety.js?v=202611180" defer></script>
-  <script src="src/views/operations.js?v=202611180" defer></script>
-  <script src="src/views/settings.js?v=202611180" defer></script>
-  <script src="src/views/parent.js?v=202611180" defer></script>
-  <script src="src/views/manuals.js?v=202611180" defer></script>
-  <script src="src/views/today.js?v=202611180" defer></script>
-  <script src="src/app.js?v=202611180" defer></script>
-  <script src="vendor/alpine.min.js?v=202611180" defer></script>
+  <script src="vendor/qr-code-styling.min.js?v=202611181" defer></script>
+  <script src="config.js?v=202611181"></script>
+  <script src="src/utils.js?v=202611181" defer></script>
+  <script src="src/anim.js?v=202611181" defer></script>
+  <script src="src/views/public.js?v=202611181" defer></script>
+  <script src="src/views/platform.js?v=202611181" defer></script>
+  <script src="src/views/overview.js?v=202611181" defer></script>
+  <script src="src/views/pkid-drivers.js?v=202611181" defer></script>
+  <script src="src/views/gate.js?v=202611181" defer></script>
+  <script src="src/views/learners.js?v=202611181" defer></script>
+  <script src="src/views/admissions.js?v=202611181" defer></script>
+  <script src="src/views/curriculum.js?v=202611181" defer></script>
+  <script src="src/views/whiteboards.js?v=202611181" defer></script>
+  <script src="src/views/modules.js?v=202611181" defer></script>
+  <script src="src/views/assessments.js?v=202611181" defer></script>
+  <script src="src/views/attendance.js?v=202611181" defer></script>
+  <script src="src/views/staff.js?v=202611181" defer></script>
+  <script src="src/views/activity.js?v=202611181" defer></script>
+  <script src="src/views/forms.js?v=202611181" defer></script>
+  <script src="src/views/communications.js?v=202611181" defer></script>
+  <script src="src/views/finance.js?v=202611181" defer></script>
+  <script src="src/views/safety.js?v=202611181" defer></script>
+  <script src="src/views/operations.js?v=202611181" defer></script>
+  <script src="src/views/settings.js?v=202611181" defer></script>
+  <script src="src/views/parent.js?v=202611181" defer></script>
+  <script src="src/views/manuals.js?v=202611181" defer></script>
+  <script src="src/views/today.js?v=202611181" defer></script>
+  <script src="src/app.js?v=202611181" defer></script>
+  <script src="vendor/alpine.min.js?v=202611181" defer></script>
 </head>
 <body x-data="reelApp()" x-init="boot()" @keydown.window.escape="closeOverlays()" @keydown.window.k="if (($event.metaKey || $event.ctrlKey) && !$event.shiftKey) { $event.preventDefault(); openCommand(); }">
 
@@ -583,7 +583,7 @@
                   <h5 style="margin:6px 0 0" x-text="step.step_type === 'whiteboard' ? (step.title || 'Interactive whiteboard') : (guideInteractive(step).question || step.title || 'Live activity')"></h5>
                 </div>
                 <div class="btn-group" x-show="step.step_type !== 'whiteboard'">
-                  <button type="button" class="btn btn-sm btn-ghost" x-show="guide.session" @click="downloadExport('/presentations/sessions/' + guide.session.id + '/export.csv')" title="Download this session as CSV (aggregate-safe for anonymous sessions)"><i data-lucide="file-text"></i> CSV</button>
+                  <button type="button" class="btn btn-sm btn-ghost" x-show="guide.session || guide.lastSessionId" @click="downloadExport('/presentations/sessions/' + (guide.session ? guide.session.id : guide.lastSessionId) + '/export.csv')" title="Download this session as CSV (aggregate-safe for anonymous sessions)"><i data-lucide="file-text"></i> CSV</button>
                   <button type="button" class="btn btn-sm btn-primary" x-show="!guide.session" @click="guideStartSession()"><i data-lucide="radio"></i> Start live session</button>
                   <button type="button" class="btn btn-sm btn-secondary" x-show="guide.session && guide.session.status !== 'closed'" @click="guideLoadResults()"><i data-lucide="refresh-cw"></i> Refresh</button>
                   <button type="button" class="btn btn-sm btn-secondary" x-show="guide.session && guide.session.status !== 'closed'" @click="guideCloseSession()">Close session</button>

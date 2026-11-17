@@ -2112,6 +2112,7 @@
             session: null,
             roster: null,
             answerLearner: {},
+            lastSessionId: null,
             interactiveResults: {},
             participantName: (this.session && this.session.user && this.session.user.displayName) || '',
             answerByStep: {},
@@ -2445,10 +2446,11 @@
 
       async guideCloseSession() {
         if (!this.guide || !this.guide.session) return;
+        const sessionId = this.guide.session.id;
         try {
-          const payload = await Reel.api('POST', '/presentations/sessions/' + this.guide.session.id + '/close', {});
+          const payload = await Reel.api('POST', '/presentations/sessions/' + sessionId + '/close', {});
           const data = payload.data || payload;
-          if (this.guide.session) this.guide.session.status = 'closed';
+          if (this.guide) { this.guide.lastSessionId = sessionId; this.guide.session = null; this.guide.roster = null; this.guide.answerLearner = {}; }
           const drafts = data && data.evidence ? Number(data.evidence.drafts) : 0;
           this.toast(drafts > 0
             ? 'Session closed — ' + drafts + ' draft observation' + (drafts === 1 ? '' : 's') + ' ready for review.'
