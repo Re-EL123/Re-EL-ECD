@@ -2283,6 +2283,7 @@ a.crumb:hover { color: var(--text-strong); background: var(--surface-2); text-de
 .tree .trunk { stroke: var(--tree); fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .tree .canopy { fill: var(--tree); }
 .tree .canopy-top { opacity: 0.92; }
+.tree-far { opacity: 0.72; }
 .flower { fill: var(--flower, #ffd98a); opacity: var(--flower-op, 0.95); }
 .flower.f2 { fill: #fdfdf4; }
 .bird-stroke { stroke: var(--bird, #2c2c28); stroke-width: 1.7; fill: none; stroke-linecap: round; }
