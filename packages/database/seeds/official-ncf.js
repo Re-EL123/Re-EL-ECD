@@ -19,7 +19,7 @@
 
 const STEP_DEFS = require('./official-ncf-steps.json');
 const SOURCE = 'ncf';
-const VERSION = '1.0';
+const VERSION = '1.1';
 const BANDS = { infant: '0-18 months', toddler: '18-36 months', preschool: '3-4 years' };
 const ELDA = {
   WELLBEING: 'Well-being',
@@ -402,10 +402,18 @@ async function seedOfficialNcf(pool) {
     if (!planId) continue;
     await db.query('DELETE FROM lesson_steps WHERE lesson_plan_id = $1', [planId]);
     for (const step of steps) {
+      let interactive = null;
+      if (step.interactive && typeof step.interactive === 'object') {
+        const codes = Array.isArray(step.interactive.objectiveCodes) ? step.interactive.objectiveCodes : [];
+        interactive = Object.assign({}, step.interactive, {
+          objectiveIds: codes.map((code) => objectiveIdsByCode[code]).filter(Boolean)
+        });
+        delete interactive.objectiveCodes;
+      }
       await db.query(
-        `INSERT INTO lesson_steps (organisation_id, lesson_plan_id, position, step_type, title, body, duration_minutes)
-         VALUES (NULL,$1,$2,$3,$4,$5,$6)`,
-        [planId, step.position, step.type, step.title, step.body, step.durationMinutes || null]
+        `INSERT INTO lesson_steps (organisation_id, lesson_plan_id, position, step_type, title, body, duration_minutes, interactive_data)
+         VALUES (NULL,$1,$2,$3,$4,$5,$6,$7::jsonb)`,
+        [planId, step.position, step.type, step.title, step.body, step.durationMinutes || null, interactive ? JSON.stringify(interactive) : null]
       );
       stepCount += 1;
     }
