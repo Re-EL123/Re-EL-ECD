@@ -42,6 +42,7 @@
     route('/platform/subscriptions', 'platform', 'platformSubscriptions', 'platform.subscriptions.read', 'Subscriptions'),
     route('/platform/settlements', 'platform', 'platformSettlements', 'platform.subscriptions.manage', 'Settlements'),
     route('/platform/access', 'platform', 'platformAccess', 'platform.organisations.read', 'Platform access'),
+    route('/platform/item-analysis', 'platform', 'platformItemAnalysis', 'platform.organisations.read', 'Item analysis'),
     route('/platform/audit', 'platform', 'platformAudit', 'platform.audit.read', 'Platform audit'),
     route('/platform/health', 'platform', 'platformHealth', 'platform.health.read', 'System health'),
     route('/platform/settings', 'platform', 'platformSettings', 'platform.organisations.read', 'Platform settings'),
@@ -130,7 +131,8 @@
         { path: '/platform/users', label: 'Users', icon: 'users', permission: 'platform.organisations.read' },
         { path: '/platform/subscriptions', label: 'Subscriptions', icon: 'credit-card', permission: 'platform.subscriptions.read' },
         { path: '/platform/settlements', label: 'Settlements', icon: 'hand-coins', permission: 'platform.subscriptions.manage' },
-        { path: '/platform/access', label: 'Platform access', icon: 'shield-check', permission: 'platform.organisations.read' }
+        { path: '/platform/access', label: 'Platform access', icon: 'shield-check', permission: 'platform.organisations.read' },
+        { path: '/platform/item-analysis', label: 'Item analysis', icon: 'target', permission: 'platform.organisations.read' }
       ] },
       { label: 'Governance', items: [
         { path: '/platform/audit', label: 'Audit explorer', icon: 'scroll-text', permission: 'platform.audit.read' },
@@ -2108,6 +2110,8 @@
             isOfficial: Boolean(data.plan && data.plan.isOfficial),
             canEdit: !Boolean(data.plan && data.plan.isOfficial) && this.has('curriculum.create.daycare'),
             session: null,
+            roster: null,
+            answerLearner: {},
             interactiveResults: {},
             participantName: (this.session && this.session.user && this.session.user.displayName) || '',
             answerByStep: {},
@@ -2393,23 +2397,62 @@
 
       async guideStartSession() {
         if (!this.guide) return;
+        // The classroom roster doubles as the "who answered" picker in named mode.
+        let classrooms = [];
         try {
-          const payload = await Reel.api('POST', '/presentations/sessions', { lessonPlanId: this.guide.planId, title: this.guide.title });
-          this.guide.session = payload.data || payload;
-          this.toast('Live session started — responses will appear here.');
-          this.guideLoadResults();
-          this.guideStartPolling();
-        } catch (e) {
-          this.toast(e.message || 'Could not start the live session.', 'error');
-        }
+          const payload = await Reel.api('GET', '/classrooms');
+          classrooms = (Array.isArray(payload.data) ? payload.data : []) || [];
+        } catch { classrooms = []; }
+        const self = this;
+        this.openModal({
+          title: 'Start live session',
+          description: 'Anonymous is the safest default for a whole class. Named sessions build per-child evidence instead.',
+          submitLabel: 'Start session',
+          successMessage: 'Live session started — answers will appear here.',
+          size: 'wide',
+          fields: [
+            { name: 'participantMode', label: 'Who answers?', type: 'select', required: true, value: 'anonymous', options: [
+              { value: 'anonymous', label: 'Anonymous — votes only, never names' },
+              { value: 'class_roster', label: 'Named — this classroom’s roster' }
+            ], help: 'Named sessions store which child chose what — assessment evidence, handled as such.' },
+            { name: 'classroomId', label: 'Classroom', type: 'select', options: R.classroomOptions({ classrooms }), help: 'Required for named answers — the roster comes from this class.', showIf: (d) => d.participantMode === 'class_roster' },
+            { name: 'title', label: 'Session name (optional)', placeholder: 'e.g. Butterflies — shapes check' }
+          ],
+          transform: (data) => ({
+            lessonPlanId: self.guide.planId,
+            title: String(data.title || '').trim() || self.guide.title,
+            classroomId: data.participantMode === 'class_roster' ? data.classroomId : null,
+            participantMode: data.participantMode || 'anonymous'
+          }),
+          onSubmit: async (data) => {
+            const payload = await Reel.api('POST', '/presentations/sessions', data);
+            self.guide.session = payload.data || payload;
+            self.guide.roster = [];
+            self.guide.answerLearner = {};
+            if (self.guide.session.participant_mode === 'class_roster') {
+              try {
+                const r = await Reel.api('GET', '/presentations/sessions/' + self.guide.session.id + '/roster');
+                self.guide.roster = (r.data && r.data.learners) || r.learners || [];
+              } catch { self.guide.roster = []; }
+            }
+            self.guideLoadResults();
+            self.guideStartPolling();
+            return payload;
+          },
+          onSuccess: () => {}
+        });
       },
 
       async guideCloseSession() {
         if (!this.guide || !this.guide.session) return;
         try {
-          await Reel.api('POST', '/presentations/sessions/' + this.guide.session.id + '/close', {});
-          this.guide.session.status = 'closed';
-          this.toast('Live session closed.');
+          const payload = await Reel.api('POST', '/presentations/sessions/' + this.guide.session.id + '/close', {});
+          const data = payload.data || payload;
+          if (this.guide.session) this.guide.session.status = 'closed';
+          const drafts = data && data.evidence ? Number(data.evidence.drafts) : 0;
+          this.toast(drafts > 0
+            ? 'Session closed — ' + drafts + ' draft observation' + (drafts === 1 ? '' : 's') + ' ready for review.'
+            : 'Live session closed.');
           this.guideStopPolling();
         } catch (e) {
           this.toast(e.message || 'Could not close the session.', 'error');
@@ -2466,7 +2509,7 @@
 
       async guideSubmitResponse(step) {
         if (!this.guide || !this.guide.session || !step) return;
-        const name = String(this.guide.participantName || '').trim() || 'Participant';
+        const rosterMode = this.guide.session.participant_mode === 'class_roster';
         let response = {};
         if (step.step_type === 'poll' || step.step_type === 'mcq') {
           const choice = this.guidePicked(step.id);
@@ -2477,8 +2520,17 @@
         } else {
           return;
         }
+        const body = { stepId: step.id, response };
+        if (rosterMode) {
+          const learnerId = (this.guide.answerLearner || {})[step.id];
+          if (!learnerId) { this.toast('Pick the child answering first — named evidence is per child.', 'warn'); return; }
+          body.learnerId = learnerId;
+        } else {
+          const name = String(this.guide.participantName || '').trim();
+          body.participantName = name || 'Participant';
+        }
         try {
-          await Reel.api('POST', '/presentations/sessions/' + this.guide.session.id + '/responses', { stepId: step.id, participantName: name, response });
+          await Reel.api('POST', '/presentations/sessions/' + this.guide.session.id + '/responses', body);
           this.toast('Response recorded.');
           this.guideLoadResults();
         } catch (e) {
@@ -2493,10 +2545,16 @@
         else { location.hash = '#/app/whiteboards'; this.closeGuide(); }
       },
 
-      guideAddInteractive() {
+      async guideAddInteractive() {
         if (!this.guide) return;
         const planId = this.guide.planId;
         const self = this;
+        let objectiveOptions = [];
+        try {
+          const payload = await Reel.api('GET', '/curriculum/objectives');
+          const list = (payload.data && Array.isArray(payload.data)) ? payload.data : (payload.data && payload.data.data) || [];
+          objectiveOptions = list.slice(0, 150).map((o) => ({ value: o.id, label: (o.code ? o.code + ' — ' : '') + String(o.description || '').slice(0, 90) }));
+        } catch { objectiveOptions = []; }
         const isChoice = (d) => d && (d.stepType === 'poll' || d.stepType === 'mcq');
         const isMcq = (d) => d && d.stepType === 'mcq';
         const isDrag = (d) => d && d.stepType === 'dragdrop';
@@ -2519,6 +2577,10 @@
               placeholder: 'What should learners answer, think about, or explore?',
               showIf: (d) => !isWhiteboard(d),
               help: 'Shown at the top of the slide to guide learners.' },
+            { name: 'objectiveIds', label: 'Linked objectives', type: 'multiselect', span: 2,
+              options: objectiveOptions,
+              placeholder: 'Search objectives by code or description…',
+              help: 'Link this slide to what it teaches — answers become evidence against these objectives.', showIf: (d) => !isWhiteboard(d) },
             { name: 'options', label: 'Answer options', type: 'textarea', span: 2,
               placeholder: 'Circle\nSquare\nTriangle\nRectangle',
               help: 'Enter one option per line (2 or more recommended).',
@@ -2547,6 +2609,8 @@
             const title = String(data.title || '').trim() || (type === 'whiteboard' ? 'Whiteboard activity' : 'Interactive slide');
             const question = String(data.question || '').trim();
             if (question && type !== 'whiteboard') interactive.question = question;
+            const objectiveIds = Array.isArray(data.objectiveIds) ? data.objectiveIds.filter(Boolean) : [];
+            if (objectiveIds.length && type !== 'whiteboard') interactive.objectiveIds = objectiveIds;
             if (type === 'poll' || type === 'mcq') {
               const options = String(data.options || '').split('\n').map(s => s.trim()).filter(Boolean);
               interactive.options = options.length ? options : ['Option 1', 'Option 2'];

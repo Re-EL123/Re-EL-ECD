@@ -1149,4 +1149,49 @@
     }
   };
 
+  V.platformItemAnalysis = {
+    async load(ctx) {
+      const payload = await R.api('GET', '/platform/item-analysis').then((p) => p.data).catch(() => ({ steps: [] }));
+      return { analysis: payload || { steps: [] } };
+    },
+
+    render(ctx, params, page) {
+      const analysis = page.analysis || { steps: [] };
+      const steps = (analysis.steps || []).filter((s) => !s.lowData);
+      const lowData = (analysis.steps || []).filter((s) => s.lowData).length;
+      const tone = (rate) => rate == null ? 'var(--text-muted)' : rate < 40 ? 'var(--reel-danger-500)' : rate < 65 ? 'var(--reel-warn-500)' : 'var(--reel-green-600)';
+      const worst = steps.slice(0, 5);
+      return R.pageHead('Item analysis', 'Which interactive slides trip children up across every centre — aggregate only, no child ever identifiable.',
+          '<span class="badge badge-muted">Official NCF content · aggregate only</span>') +
+        '<div class="section"></div>' +
+        (steps.length
+          ? '<div class="split"><div class="stack">' +
+              R.card('Needs work first (weakest slides)', '<div class="stack">' + worst.map((s) => {
+                const width = s.successRate == null ? 100 : Math.max(2, s.successRate);
+                return '<div class="metric-bar"><span title="' + R.attr(s.planTitle + ' · ' + s.stepTitle) + '">' + R.esc(s.planTitle) + ' — ' + R.esc(R.truncate(s.stepTitle, 34)) + '</span><div class="bar"><span style="width:' + width + '%;background:' + tone(s.successRate) + '"></span></div><span class="val">' + (s.successRate == null ? '—' : R.percent(s.successRate)) + '</span></div>';
+              }).join('') + '</div>', '<span class="muted small">Sorted weakest first · ' + R.number(steps.length) + ' scored slides</span>') +
+              '<div class="section"></div>' +
+              R.card('All scored slides', R.table({ rows: steps, columns: [
+                { label: 'Plan', render: (s) => '<span class="cell-strong">' + R.esc(s.planTitle) + '</span>' },
+                { label: 'Slide', render: (s) => R.esc(s.stepTitle) + '<span class="cell-sub">' + R.esc(R.titleCase(s.type)) + '</span>' },
+                { label: 'Attempts', align: 'right', render: (s) => R.number(s.attempts) },
+                { label: 'Success rate', render: (s) => '<span style="font-variant-numeric:tabular-nums;font-weight:700;color:' + tone(s.successRate) + '">' + (s.successRate == null ? '—' : R.percent(s.successRate)) + '</span>' }
+              ], emptyTitle: 'No scored slides yet' })) +
+            '</div><div class="stack">' +
+              R.card('How to read this', '<ol class="stack" style="gap:8px;padding-left:18px;margin:0">' +
+                '<li>Slides under <strong>40%</strong> are costing learning time — re-teach, re-word, or re-order the step.</li>' +
+                '<li>Slides between <strong>40–65%</strong> are worth watching before the next term.</li>' +
+                '<li>Every number here is an aggregate across centres. No child appears, no centre is named.</li>' +
+                '<li>Fixes feed <em>official</em> content — centres keep their own adaptations.</li>' +
+              '</ol>') +
+              R.card('Data quality', '<div class="kpi-list">' +
+                '<div class="kpi-row"><span class="kpi-label">Success rate</span><span class="kpi-value">share of fully correct answers (MCQ needs the exact option; matches need every pair right)</span></div>' +
+                '<div class="kpi-row"><span class="kpi-label">Low data</span><span class="kpi-value">' + R.number(lowData) + ' slide(s) hidden — fewer than 5 attempts</span></div>' +
+                '<div class="kpi-row"><span class="kpi-label">POPIA</span><span class="kpi-value">aggregate only · official NCF content only · no identifying data leaves the centre</span></div>' +
+              '</div>') +
+            '</div></div>'
+          : R.emptyState('No attempts yet', 'Interactive slides in official lesson plans will appear here once centres run them with learners.', '', 'target'));
+    }
+  };
+
 })();

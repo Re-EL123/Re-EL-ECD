@@ -131,7 +131,7 @@
     async load(ctx, params) {
       const id = params.id;
       const safe = (path) => R.api('GET', path).then((p) => p.data).catch(() => null);
-      const [learner, timeline, portfolio, medical, collections, documents, dailyReports, consents, finance, progress] = await Promise.all([
+      const [learner, timeline, portfolio, medical, collections, documents, dailyReports, consents, finance, progress, liveChecks] = await Promise.all([
         R.api('GET', '/learners/' + id).then((p) => p.data),
         safe('/learners/' + id + '/timeline'),
         safe('/learners/' + id + '/portfolio'),
@@ -141,7 +141,8 @@
         safe('/learners/' + id + '/daily-reports'),
         safe('/learners/' + id + '/consents'),
         safe('/learners/' + id + '/finance'),
-        safe('/learners/' + id + '/progress')
+        safe('/learners/' + id + '/progress'),
+        safe('/learners/' + id + '/live-checks')
       ]);
       const classrooms = ctx.has('classrooms.read.daycare')
         ? await R.api('GET', '/classrooms').catch(() => ({ data: [] })) : { data: [] };
@@ -151,7 +152,8 @@
         learner, timeline: timeline || [], portfolio: portfolio || [], medical: medical || [],
         collections: collections || [], documents: documents || [], dailyReports: dailyReports || [],
         consents: consents || [], finance: finance || { invoices: [], balance: 0 }, progress: progress || {},
-        classrooms: classrooms.data || [], periods, frameworks
+        classrooms: classrooms.data || [], periods, frameworks,
+        liveChecks: liveChecks || []
       };
     },
 
@@ -250,7 +252,14 @@
             { label: 'Observation', render: (o) => R.esc(R.truncate(o.observation_text, 100)) },
             { label: 'Media', render: (o) => { const media = R.mediaList(o.photo_urls); return media.length ? '<div class="row" style="gap:4px;flex-wrap:wrap">' + media.slice(0, 3).map((url) => R.mediaThumb(url, 'Observation media')).join('') + (media.length > 3 ? ' <span class="muted small">+' + (media.length - 3) + '</span>' : '') + '</div>' : '<span class="muted">—</span>'; } },
             { label: 'Status', render: (o) => R.badge(o.assessment_status) }
-          ], emptyTitle: 'No observations' }), '<a class="btn btn-sm btn-ghost" href="#/app/assessments">Assessments ' + R.icon('arrow-right') + '</a>');
+          ], emptyTitle: 'No observations' }), '<a class="btn btn-sm btn-ghost" href="#/app/assessments">Assessments ' + R.icon('arrow-right') + '</a>') +
+          '<div class="section"></div>' +
+          R.card('Live checks', (page.liveChecks || []).length ? '<div class="timeline">' + page.liveChecks.slice(0, 12).map((c) =>
+            '<div class="timeline-item"><div class="t-time">' + R.dateTime(c.answeredAt) + ' · ' + R.esc(R.titleCase(c.stepType)) + '</div>' +
+            '<div class="t-title">' + R.esc(c.stepTitle || 'Live check') + '</div>' +
+            '<div class="t-body">' + R.esc(c.planTitle || '') + (c.correct === true ? ' · <span class="badge badge-green">Correct</span>' : c.correct === false ? ' · <span class="badge badge-danger">Missed</span>' : '') + '</div></div>').join('') + '</div>'
+            : R.emptyState('No live checks yet', 'Interactive slides answered by this child in the lesson guide appear here — and feed observation drafts for review.', '', 'check-circle-2'),
+            ctx.has('organisation.settings.manage') ? '<button class="btn btn-sm btn-ghost" @click="confirmAction(\'Erase live-check history\',\'Permanently delete this child’s raw live-check answers. The anonymous aggregates stay; the identifiable answers do not.\',\'/presentations/responses/learner/' + R.attr(l.id) + '\',{method:\'DELETE\',submitLabel:\'Erase history\',successMessage:\'Live-check history erased\'})">Erase history</button>' : '');
       } else if (tab === 'daily') {
         body = R.card('Daily reports', R.table({ rows: page.dailyReports || [], columns: [
           { label: 'Date', render: (d) => R.date(d.report_date) },

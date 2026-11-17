@@ -576,11 +576,14 @@
                   <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap">
                     <span class="badge" :class="step.step_type === 'mcq' ? 'badge-sky' : (step.step_type === 'poll' ? 'badge-sun' : (step.step_type === 'dragdrop' ? 'badge-green' : 'badge-plum'))" x-text="step.step_type === 'poll' ? 'Live poll' : (step.step_type === 'mcq' ? 'Multiple choice' : (step.step_type === 'dragdrop' ? 'Match activity' : 'Whiteboard'))"></span>
                     <span class="badge badge-green" x-show="guide.session && guide.session.status !== 'closed' && step.step_type !== 'whiteboard'"><i data-lucide="radio" style="width:12px;height:12px"></i> Live</span>
+                    <span class="badge badge-sky" x-show="guide.session && guide.session.participant_mode === 'class_roster'" title="Named session — every answer is a POPIA record of a child in this classroom">Named · roster</span>
+                    <span class="badge badge-muted" x-show="guide.session && guide.session.participant_mode === 'anonymous'" title="Counts only — no child is ever identifiable">Anonymous</span>
                     <span class="badge badge-muted" x-show="guide.session && guide.session.status === 'closed' && step.step_type !== 'whiteboard'">Session closed</span>
                   </div>
                   <h5 style="margin:6px 0 0" x-text="step.step_type === 'whiteboard' ? (step.title || 'Interactive whiteboard') : (guideInteractive(step).question || step.title || 'Live activity')"></h5>
                 </div>
                 <div class="btn-group" x-show="step.step_type !== 'whiteboard'">
+                  <button type="button" class="btn btn-sm btn-ghost" x-show="guide.session" @click="downloadExport('/presentations/sessions/' + guide.session.id + '/export.csv')" title="Download this session as CSV (aggregate-safe for anonymous sessions)"><i data-lucide="file-text"></i> CSV</button>
                   <button type="button" class="btn btn-sm btn-primary" x-show="!guide.session" @click="guideStartSession()"><i data-lucide="radio"></i> Start live session</button>
                   <button type="button" class="btn btn-sm btn-secondary" x-show="guide.session && guide.session.status !== 'closed'" @click="guideLoadResults()"><i data-lucide="refresh-cw"></i> Refresh</button>
                   <button type="button" class="btn btn-sm btn-secondary" x-show="guide.session && guide.session.status !== 'closed'" @click="guideCloseSession()">Close session</button>
@@ -603,7 +606,13 @@
                     </template>
                   </div>
                   <div class="interactive-submit-row" x-show="guide.session && guide.session.status !== 'closed'">
-                    <input class="input" style="max-width:240px" placeholder="Your name (optional)" x-model="guide.participantName">
+                    <select class="select" style="max-width:240px;min-height:34px;font-size:0.85rem" aria-label="Who is answering?" x-show="guide.session && guide.session.participant_mode === 'class_roster'" @change="guide.answerLearner = Object.assign({}, guide.answerLearner, { [step.id]: $event.target.value })">
+                      <option value="">Who is answering?…</option>
+                      <template x-for="kid in (guide.roster || [])" :key="kid.id">
+                        <option :value="kid.id" x-text="kid.name"></option>
+                      </template>
+                    </select>
+                    <input class="input" style="max-width:240px" placeholder="Your name (optional)" x-model="guide.participantName" x-show="!(guide.session && guide.session.participant_mode === 'class_roster')">
                     <button type="button" class="btn btn-primary" @click="guideSubmitResponse(step)" :disabled="Boolean(guidePicked(step.id) === undefined || guidePicked(step.id) === null || guidePicked(step.id) === '')"><i data-lucide="send"></i> Submit answer</button>
                   </div>
                   <div class="muted small" style="margin-top:8px" x-show="!guide.session">Pick an answer now — start a live session when you’re ready to collect and show responses.</div>
@@ -619,6 +628,12 @@
                         <span class="muted small result-count" x-text="((guideResultFor(step).aggregate.counts || [])[oi] || 0) + ' (' + Math.round((((guideResultFor(step).aggregate.counts || [])[oi] || 0) / Math.max(1, guideResultFor(step).aggregate.total || 1)) * 100) + '%)' "></span>
                       </div>
                     </template>
+                    <div class="stack" x-cloak x-show="guide.session && guide.session.participant_mode === 'class_roster'" style="gap:4px;margin-top:10px">
+                      <div class="muted small" style="font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:0.68rem">Who answered</div>
+                      <template x-for="kid in ((guideResultFor(step) || {}).responses || [])" :key="kid.learnerId || kid.participantName">
+                        <div class="kpi-row" style="padding:2px 0"><span class="kpi-label" x-text="kid.participantName"></span><span :class="kid.correct === true ? 'badge badge-green' : (kid.correct === false ? 'badge badge-danger' : 'badge badge-muted')" x-text="kid.correct === true ? 'Correct' : (kid.correct === false ? 'Missed' : '—')"></span></div>
+                      </template>
+                    </div>
                   </div>
                 </div>
               </template>
@@ -651,7 +666,13 @@
                     </div>
                   </div>
                   <div class="interactive-submit-row" x-show="guide.session && guide.session.status !== 'closed'">
-                    <input class="input" style="max-width:240px" placeholder="Your name (optional)" x-model="guide.participantName">
+                    <select class="select" style="max-width:240px;min-height:34px;font-size:0.85rem" aria-label="Who is matching?" x-show="guide.session && guide.session.participant_mode === 'class_roster'" @change="guide.answerLearner = Object.assign({}, guide.answerLearner, { [step.id]: $event.target.value })">
+                      <option value="">Who is matching?…</option>
+                      <template x-for="kid in (guide.roster || [])" :key="kid.id">
+                        <option :value="kid.id" x-text="kid.name"></option>
+                      </template>
+                    </select>
+                    <input class="input" style="max-width:240px" placeholder="Your name (optional)" x-model="guide.participantName" x-show="!(guide.session && guide.session.participant_mode === 'class_roster')">
                     <button type="button" class="btn btn-primary" @click="guideSubmitResponse(step)"><i data-lucide="send"></i> Submit matches</button>
                   </div>
                   <div class="muted small" style="margin-top:8px" x-show="!guide.session">Make your matches — start a live session when you’re ready to collect and see results.</div>
@@ -662,6 +683,12 @@
                         <span class="badge badge-muted" x-text="(guideResultFor(step).aggregate.total || 0) + ' response' + ((guideResultFor(step).aggregate.total || 0) === 1 ? '' : 's')"></span>
                         <span class="badge badge-green" x-text="(guideResultFor(step).aggregate.correctCount || 0) + ' fully correct'"></span>
                       </div>
+                    </div>
+                    <div class="stack" x-cloak x-show="guide.session && guide.session.participant_mode === 'class_roster'" style="gap:4px;margin-top:8px">
+                      <div class="muted small" style="font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:0.68rem">Who matched</div>
+                      <template x-for="kid in ((guideResultFor(step) || {}).responses || [])" :key="kid.learnerId || kid.participantName">
+                        <div class="kpi-row" style="padding:2px 0"><span class="kpi-label" x-text="kid.participantName"></span><span :class="kid.correct === true ? 'badge badge-green' : (kid.correct === false ? 'badge badge-danger' : 'badge badge-muted')" x-text="kid.correct === true ? 'Correct' : (kid.correct === false ? 'Missed' : '—')"></span></div>
+                      </template>
                     </div>
                   </div>
                 </div>
