@@ -26,16 +26,32 @@
     render(ctx, params, page) {
       const rows = page.rows || [];
       const classrooms = page.classrooms || [];
+      const sortKey = String((ctx.filters || {}).sort || 'name');
+      const sortedRows = rows.slice().sort((a, b) => {
+        if (sortKey === 'reference') return String(a.learner_reference || '').localeCompare(String(b.learner_reference || ''));
+        if (sortKey === 'age') return String(a.date_of_birth || '').localeCompare(String(b.date_of_birth || ''));
+        if (sortKey === 'classroom') return String(a.classroom_name || '').localeCompare(String(b.classroom_name || ''));
+        if (sortKey === 'status') return String(a.status || '').localeCompare(String(b.status || ''));
+        return String(a.last_name || '').localeCompare(String(b.last_name || '')) || String(a.first_name || '').localeCompare(String(b.first_name || ''));
+      });
       const canCreate = ctx.has('learners.create.daycare');
+      const unlinked = rows.filter((l) => !l.primary_guardian).length;
       return R.pageHead('Learners', 'Every child in your care, with the details their teachers need.',
         (canCreate ? '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'learner\')">' + R.icon('user-plus') + ' Add learner</button>' : '') +
         R.exportButtons('/exports/learners')) +
+        (unlinked
+          ? '<div class="alert alert-warn section">' + R.icon('user-x') + '<span><strong>' + R.number(unlinked) + ' child' + (unlinked === 1 ? '' : 'ren') + ' on this page aren’t linked to a guardian.</strong> Daily reports and messages won’t reach those families — open each profile and add the guardian.</span></div>'
+          : '') +
         R.filterBar(
           R.searchFilter(ctx, 'q', 'Search name or reference…') +
           R.selectFilter(ctx, 'status', STATUSES.map((s) => ({ value: s, label: R.titleCase(s) })), 'All statuses') +
           R.selectFilter(ctx, 'classroomId', classrooms.map((c) => ({ value: c.id, label: c.name })), 'All classrooms') +
-          R.selectFilter(ctx, 'branchId', R.branchOptions(ctx), 'All branches')
+          R.selectFilter(ctx, 'branchId', R.branchOptions(ctx), 'All branches') +
+          '<select class="select" @change="setFilter(\'sort\',$event.target.value)" aria-label="Sort learners"><option value="name"' + (sortKey === 'name' ? ' selected' : '') + '>Surname A–Z</option><option value="reference"' + (sortKey === 'reference' ? ' selected' : '') + '>Reference</option><option value="age"' + (sortKey === 'age' ? ' selected' : '') + '>Age (oldest first)</option><option value="classroom"' + (sortKey === 'classroom' ? ' selected' : '') + '>Classroom</option><option value="status"' + (sortKey === 'status' ? ' selected' : '') + '>Status</option></select>'
         ) +
+        (ctx.selectedIds && ctx.selectedIds.length ? '<div class="bulk-bar" style="justify-content:flex-start">' +
+          '<span class="bulk-count"><strong x-text="selectedCount"></strong> selected</span>' +
+          '<button class="btn btn-sm btn-secondary" @click="downloadExport(\'/exports/learners?format=csv&ids=\' + encodeURIComponent((selectedIds || []).join(\',\')))">' + R.icon('file-spreadsheet') + ' Export selection (CSV)</button></div>' : '') +
         (ctx.has('learners.archive.daycare') || ctx.has('learners.update.daycare') ? R.bulkBar([
           { label: 'Move classroom', icon: 'arrow-right-circle', modal: 'moveClassroom' },
           ...(ctx.has('learners.archive.daycare') ? [
@@ -43,15 +59,28 @@
             { label: 'Restore selected', icon: 'rotate-ccw', path: '/learners/bulk', action: 'restore' }
           ] : [])
         ], { hint: 'Archiving withdraws the learner from active enrolments.' }) : '') +
-        R.table({ rows, selectable: ctx.has('learners.archive.daycare') || ctx.has('learners.update.daycare'), columns: [
-          { label: 'Learner', render: (l) => '<div class="row" style="gap:10px">' + R.mediaThumb(l.profile_image_url, l.first_name + ' ' + l.last_name) + '<div><a class="cell-strong" href="#/app/learners/' + R.attr(l.id) + '">' + R.esc(l.first_name) + ' ' + R.esc(l.last_name) + '</a><span class="cell-sub mono">' + R.esc(l.learner_reference) + '</span></div></div>' },
+        R.table({ rows: sortedRows, className: 'overflow-visible', selectable: ctx.has('learners.archive.daycare') || ctx.has('learners.update.daycare'), columns: [
+          { label: 'Learner', render: (l) => '<div class="row" style="gap:10px;align-items:center"><details class="peek"><summary class="peek-trigger" aria-label="Peek at ' + R.attr(l.first_name + ' ' + l.last_name) + '">' + R.mediaThumb(l.profile_image_url, l.first_name + ' ' + l.last_name) + '</summary>' +
+            '<div class="peek-card">' +
+              '<div class="peek-head">' + R.avatar(l, l.first_name + ' ' + l.last_name, { size: 40 }) + '<div><div class="strong">' + R.esc(l.first_name + ' ' + l.last_name) + '</div><div class="muted small mono">' + R.esc(l.learner_reference || '') + '</div></div></div>' +
+              '<div class="kpi-list">' +
+                '<div class="kpi-row"><span class="kpi-label">Age</span><span class="kpi-value">' + R.esc(l.age_years) + ' yrs</span></div>' +
+                '<div class="kpi-row"><span class="kpi-label">DOB</span><span class="kpi-value">' + R.date(l.date_of_birth) + '</span></div>' +
+                '<div class="kpi-row"><span class="kpi-label">Classroom</span><span class="kpi-value">' + R.esc(l.classroom_name || 'Unassigned') + '</span></div>' +
+                '<div class="kpi-row"><span class="kpi-label">Branch</span><span class="kpi-value">' + R.esc(l.branch_name || '—') + '</span></div>' +
+                '<div class="kpi-row"><span class="kpi-label">Guardian</span><span class="kpi-value">' + (l.primary_guardian ? R.esc(l.primary_guardian.first_name + ' ' + l.primary_guardian.last_name) : '<span class="badge badge-sun">Not linked</span>') + '</span></div>' +
+                (l.primary_guardian && (l.primary_guardian.phone || l.primary_guardian.email) ? '<div class="kpi-row"><span class="kpi-label">Guardian contact</span><span class="kpi-value">' + R.esc(l.primary_guardian.phone || l.primary_guardian.email) + '</span></div>' : '') +
+                '<div class="kpi-row"><span class="kpi-label">Status</span><span class="kpi-value">' + R.badge(l.status) + '</span></div>' +
+              '</div>' +
+              '<div class="row" style="justify-content:flex-end;margin-top:10px"><a class="btn btn-sm btn-primary" href="#/app/learners/' + R.attr(l.id) + '">Open profile ' + R.icon('arrow-right') + '</a></div>' +
+            '</div></details><div><a class="cell-strong" href="#/app/learners/' + R.attr(l.id) + '">' + R.esc(l.first_name) + ' ' + R.esc(l.last_name) + '</a><span class="cell-sub mono">' + R.esc(l.learner_reference) + '</span></div></div>' },
           { label: 'Age', render: (l) => R.esc(l.age_years) + ' yrs<span class="cell-sub">' + R.date(l.date_of_birth) + '</span>' },
           { label: 'Classroom', render: (l) => R.esc(l.classroom_name || 'Unassigned') + '<span class="cell-sub">' + R.esc(l.branch_name || '') + '</span>' },
           { label: 'Guardian', render: (l) => l.primary_guardian ? R.esc(l.primary_guardian.first_name + ' ' + l.primary_guardian.last_name) + '<span class="cell-sub">' + R.esc(l.primary_guardian.phone || l.primary_guardian.email || '') + '</span>' : '<span class="muted">Not linked</span>' },
           { label: 'Status', render: (l) => R.badge(l.status) },
           { label: '', align: 'right', render: (l) => '<a class="btn btn-sm btn-ghost" href="#/app/learners/' + R.attr(l.id) + '" title="Open the learner profile">Open</a>' }
         ], emptyTitle: 'No learners found', emptyMessage: 'Try a different filter, or add your first learner.',
-          emptyAction: canCreate ? '<button class="btn btn-primary" @click="openNamedModal(\'learner\')">Add learner</button>' : '' }) +
+          emptyAction: '<div class="btn-group" style="justify-content:center">' + (canCreate ? '<button class="btn btn-primary" @click="openNamedModal(\'learner\')">Add learner</button>' : '') + '<button class="btn btn-ghost" @click="loadSampleData(\'learners\')">Preview with sample data</button></div>' }) +
         R.pager(page.meta, "setFilter('page', " + Math.max(1, (page.meta.page || 1) - 1) + ")", "setFilter('page', " + Math.min(page.meta.totalPages || 1, (page.meta.page || 1) + 1) + ")");
     },
 

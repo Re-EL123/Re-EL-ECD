@@ -22,7 +22,13 @@ function register(router) {
     const includeOfficial = await officialEnabled(ctx);
     const rows = await ctx.db.many(
       `SELECT m.*, u.display_name AS created_by_name,
-              (SELECT COUNT(*)::int FROM lesson_plans p WHERE p.module_id = m.id) AS plan_count
+              (SELECT COUNT(*)::int FROM lesson_plans p WHERE p.module_id = m.id) AS plan_count,
+              (SELECT COUNT(*)::int FROM lesson_plans p WHERE p.module_id = m.id AND p.status IN ('published','in_progress','completed','evaluated')) AS live_count,
+              (SELECT COUNT(*)::int FROM lesson_plans p WHERE p.module_id = m.id AND p.status IN ('completed','evaluated')) AS done_count,
+              (SELECT lp.title FROM lesson_plans lp WHERE lp.module_id = m.id AND lp.status NOT IN ('completed','evaluated','cancelled')
+                ORDER BY COALESCE(lp.module_position, 9999), lp.created_at LIMIT 1) AS resume_plan_title,
+              (SELECT lp.id FROM lesson_plans lp WHERE lp.module_id = m.id AND lp.status NOT IN ('completed','evaluated','cancelled')
+                ORDER BY COALESCE(lp.module_position, 9999), lp.created_at LIMIT 1) AS resume_plan_id
        FROM learning_modules m
        LEFT JOIN users u ON u.id = m.created_by
        WHERE m.organisation_id = $1 OR ($2::boolean AND m.organisation_id IS NULL)

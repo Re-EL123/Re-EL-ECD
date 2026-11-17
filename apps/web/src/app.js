@@ -233,6 +233,36 @@
     return html;
   }
 
+  /**
+   * Sample data for empty workspaces. Every row is prefixed so it can never
+   * collide with real records, and apiAction blocks all writes while this is
+   * previewed. Real enough to teach the workflow, obviously fake.
+   */
+  const SAMPLE_DATA = {
+    activities: { rows: [
+      { id: 'smp-act-1', title: 'Rainbow finger painting', description: 'Mixing primary colours to make every colour in the rainbow.', age_group: '3-5 Years', activity_type: 'creative', duration_minutes: 40, materials: 'Poster paint, thick brushes, paper', status: 'active', safety_notes: 'Aprons on — this one is gloriously messy.' },
+      { id: 'smp-act-2', title: 'Counting with bottle caps', description: 'One-to-one correspondence up to ten, sitting in a circle.', age_group: '4-5 Years', activity_type: 'numeracy', duration_minutes: 20, materials: 'Bottle caps, number cards', status: 'active' },
+      { id: 'smp-act-3', title: 'Obstacle course', description: 'Big-muscle climbing, balancing and rolling.', age_group: '4-5 Years', activity_type: 'physical', duration_minutes: 35, materials: 'Cones, hoops, mats', status: 'active', safety_notes: 'Spotters for the climbing section.' }
+    ] },
+    modules: { modules: [
+      { id: 'smp-mod-1', title: 'Our Wonderful World', description: 'Nature, community helpers, weather and the rhythm of the seasons.', theme: 'Nature', age_group: '4-5 Years', duration_weeks: 4, plan_count: 5, done_count: 3, resume_plan_id: null, resume_plan_title: null, status: 'published', created_at: new Date(Date.now() - 86 * 86400000).toISOString() },
+      { id: 'smp-mod-2', title: 'Counting, Shapes and Play', description: 'Numbers, shapes and early geometry through play.', theme: 'Numbers', age_group: '4-5 Years', duration_weeks: 4, plan_count: 5, done_count: 1, resume_plan_id: null, resume_plan_title: null, status: 'draft', created_at: new Date(Date.now() - 12 * 86400000).toISOString() }
+    ] },
+    admissions: { overview: { new_enquiries: 2, pending_applications: 1, approved_applications: 1, waitlisted: 0, capacity: [{ configured_capacity: 65, enrolled: 12 }] },
+      enquiries: [
+        { id: 'smp-enq-1', guardian_name: 'Naledi Zulu', guardian_email: 'naledi@example.com', guardian_phone: '+27 82 555 0100', child_name: 'Ayanda Zulu', requested_age_group: '3-4 years', source: 'website', branch_name: 'Rosebank', status: 'new', created_at: new Date(Date.now() - 2 * 86400000).toISOString(), updated_at: new Date(Date.now() - 2 * 86400000).toISOString() },
+        { id: 'smp-enq-2', guardian_name: 'Pieter Botha', guardian_email: 'pieter.b@example.com', guardian_phone: '+27 83 555 0187', child_name: 'Zoe Botha', requested_age_group: '2-3 years', source: 'phone', branch_name: 'Rosebank', status: 'contacted', created_at: new Date(Date.now() - 9 * 86400000).toISOString(), updated_at: new Date(Date.now() - 4 * 86400000).toISOString() }
+      ],
+      applications: [
+        { id: 'smp-app-1', application_reference: 'APP-2026-0007', child_first_name: 'Ayanda', child_last_name: 'Zulu', guardian_name: 'Naledi Zulu', guardian_email: 'naledi@example.com', requested_classroom_name: 'Butterflies', branch_name: 'Rosebank', preferred_start_date: new Date(Date.now() + 21 * 86400000).toISOString().slice(0, 10), status: 'submitted', application_fee_amount: 0 }
+      ], classrooms: [], feePlans: [] },
+    learners: { rows: [
+      { id: 'smp-learn-1', first_name: 'Amara', last_name: 'Ncube', learner_reference: 'SAMPLE-2026-001', date_of_birth: new Date(Date.now() - 4 * 365 * 86400000).toISOString().slice(0, 10), age_years: 4, classroom_name: 'Sunflowers', branch_name: 'Rosebank', profile_image_url: null, status: 'enrolled', primary_guardian: { first_name: 'Duduzile', last_name: 'Ncube', phone: '+27 82 555 0111' } },
+      { id: 'smp-learn-2', first_name: 'Keano', last_name: 'Botha', learner_reference: 'SAMPLE-2026-002', date_of_birth: new Date(Date.now() - 5 * 365 * 86400000).toISOString().slice(0, 10), age_years: 5, classroom_name: 'Butterflies', branch_name: 'Rosebank', profile_image_url: null, status: 'enrolled', primary_guardian: { first_name: 'Pieter', last_name: 'Botha', email: 'pieter.b@example.com' } },
+      { id: 'smp-learn-3', first_name: 'Lia', last_name: 'De Villiers', learner_reference: 'SAMPLE-2026-003', date_of_birth: new Date(Date.now() - 3 * 365 * 86400000).toISOString().slice(0, 10), age_years: 3, classroom_name: 'Bunnies', branch_name: 'Rosebank', profile_image_url: null, status: 'enrolled', primary_guardian: null }
+    ], meta: {}, classrooms: [] }
+  };
+
   function reelApp() {
     return {
       mode: 'loading',
@@ -802,6 +832,8 @@
         if (!force) {
           this.tab = query.tab || null;
           this.filters = {};
+          if (query.unmarked) this.filters.unmarked = query.unmarked;
+        if (query.classroomId) this.filters.classroomId = query.classroomId;
         }
         this._charts = [];
         this.destroyCharts();
@@ -914,8 +946,31 @@
             this.animateRings(root);
           }
         }
+        // Sample-data banner: visible, unmissable, one click to exit.
+        const staleBanner = document.querySelector('.sample-banner');
+        if (this.page && this.page.sampleMode) {
+          if (staleBanner) staleBanner.remove();
+          const banner = document.createElement('div');
+          banner.className = 'sample-banner';
+          banner.innerHTML = '<strong>Sample data</strong><span>This preview is not saved — nothing you do here reaches the centre.</span><button type="button" class="btn btn-sm btn-secondary" data-sample-exit="1">Exit preview</button>';
+          banner.querySelector('[data-sample-exit]').addEventListener('click', () => this.exitSampleData());
+          const root = document.getElementById('view-root');
+          if (root) root.prepend(banner);
+        } else if (staleBanner) {
+          staleBanner.remove();
+        }
         this.$nextTick(() => this.updateCrumbHighlight());
         this.refreshUnread();
+        // Live presence tab: refresh every 10s while the app is visible so the
+        // gate/register feed never goes stale on a classroom tablet.
+        if (this.route && this.route.path === '/app/learner-attendance' && this.tab === 'presence') {
+          if (!this._presencePoll) {
+            this._presencePoll = setInterval(() => { if (document.visibilityState === 'visible') this.navigate(true); }, 10000);
+          }
+        } else if (this._presencePoll) {
+          clearInterval(this._presencePoll);
+          this._presencePoll = null;
+        }
       },
 
       /**
@@ -1282,6 +1337,11 @@
       },
 
       async apiAction(method, path, body, options) {
+        // Sample-data previews: stop mutations before they reach the API.
+        if (this.page && this.page.sampleMode) {
+          this.toast('You’re previewing sample data — nothing is saved.', 'info');
+          return {};
+        }
         const opts = options || {};
         try {
           const result = await Reel.api(method, path, body, opts);
@@ -1308,6 +1368,29 @@
 
       act(method, path, body, options) {
         return this.apiAction(method, path, body, options);
+      },
+
+      /* ---- Sample-data previews for empty workspaces ---- */
+
+      /**
+       * Render the current view with a small, clearly-labelled set of sample
+       * rows instead of the empty state — no API calls are made and nothing
+       * is written. Mutations are blocked at apiAction while this is on.
+       */
+      loadSampleData(viewName) {
+        const sample = SAMPLE_DATA[viewName];
+        if (!sample) return;
+        this.page = Object.assign({ sampleMode: true, sampleView: viewName }, typeof sample === 'function' ? sample() : sample);
+        const view = Reel.views[this.route.view] || Reel.views[viewName];
+        if (view && view.render) {
+          this.renderHtml(view.render(this, this.params, this.page));
+          this.$nextTick(() => this.afterRender());
+        }
+      },
+
+      exitSampleData() {
+        this.sampleExit = true; // navigate() below clears this
+        this.navigate(true);
       },
 
       /**
@@ -1342,40 +1425,79 @@
       },
 
       /**
-       * Optimistic register tap: patch the row in local page data, repaint the
-       * view immediately (so the tap feels instant), then reconcile with the
-       * API in the background — reverting the row if the server refuses.
+       * Optimistic register row(s): apply the local patch, repaint instantly,
+       * then reconcile with the API in the background — reverting if the
+       * server refuses. `undoAction` ({ label, run }) is offered on the
+       * success toast; the row patch is reversed there if provided.
        */
-      optimisticRow(viewName, rowFinder, patch, apiCall, successMessage) {
+      optimisticRows(viewName, applyLocal, apiCall, successMessage, undoAction, afterLocal) {
         const view = Reel.views[viewName];
         if (!view || !this.page) return apiCall().then(() => this.navigate(true));
-        const rows = ((this.page.register || {}).rows) || [];
-        const row = rows.find(rowFinder);
-        const prev = row ? Object.assign({}, row) : null;
-        if (row) Object.assign(row, patch);
+        const prevRegister = JSON.parse(JSON.stringify(this.page.register || {}));
+        applyLocal(this.page);
         this.renderHtml(view.render(this, this.params, this.page));
         this.$nextTick(() => this.afterRender());
         return apiCall().then(() => {
-          this.toast(successMessage || 'Saved.');
+          this.toast(successMessage || 'Saved.', undefined, undoAction || null);
           setTimeout(() => { if (this.route && this.route.path === '/app/learner-attendance') this.navigate(true); }, 500);
         }).catch((error) => {
-          if (prev && row) Object.keys(patch).forEach((key) => { row[key] = prev[key]; });
+          this.page.register = prevRegister;
           this.renderHtml(view.render(this, this.params, this.page));
           this.$nextTick(() => this.afterRender());
           this.toast(error.message || 'Could not save.', 'error');
         });
       },
+      /** Single-row convenience over optimisticRows. */
+      optimisticRow(viewName, rowFinder, patch, apiCall, successMessage) {
+        return this.optimisticRows(viewName, (page) => {
+          const rows = ((page.register || {}).rows) || [];
+          const row = rows.find(rowFinder);
+          if (row) Object.assign(row, patch);
+        }, apiCall, successMessage);
+      },
 
       /**
        * Register: mark a child present on a past date, optimistically. The row
-       * flips to "present" instantly, then the server reconciles.
+       * flips to "present" instantly, then the server reconciles. Undo reverts
+       * the row to expected.
        */
       registerMarkPresent(learnerId, date, firstName) {
-        return this.optimisticRow('attendance',
-          (row) => row.learner_id === learnerId,
-          { attendance_id: 'pending', status: 'present' },
-          () => Reel.api('POST', '/learner-attendance/register', { date, records: [{ learnerId, status: 'present' }] }),
-          (firstName || 'Learner') + ' marked present');
+        const patch = (page) => {
+          (((page.register || {}).rows) || []).forEach((r) => { if (r.learner_id === learnerId) { r.attendance_id = 'pending'; r.status = 'present'; } });
+        };
+        const apiCall = () => Reel.api('POST', '/learner-attendance/register', { date, records: [{ learnerId, status: 'present' }] });
+        const undo = {
+          label: 'Undo',
+          run: () => this.optimisticRows('attendance',
+            (page) => { (((page.register || {}).rows) || []).forEach((r) => { if (r.learner_id === learnerId) { r.attendance_id = null; r.status = 'expected'; } }); },
+            () => Reel.api('POST', '/learner-attendance/register', { date, records: [{ learnerId, status: 'expected' }] }),
+            'Marked expected again.')
+        };
+        return this.optimisticRows('attendance', patch, apiCall, (firstName || 'Learner') + ' marked present', undo);
+      },
+
+      /**
+       * Register: mark every expected-but-unrecorded child present, optimistically,
+       * with an Undo toast that reverts them all to expected.
+       */
+      markAllExpectedPresent() {
+        const page = this.page || {};
+        const date = page.date || Reel.today();
+        const rows = (((page.register || {}).rows) || []);
+        const targets = rows.filter((r) => !r.attendance_id).map((r) => r.learner_id);
+        if (!targets.length) { this.toast('Everyone is already marked.'); return Promise.resolve(); }
+        const apply = (p) => {
+          ((((p.register || {}).rows) || [])).forEach((r) => { if (targets.indexOf(r.learner_id) !== -1) { r.attendance_id = 'pending'; r.status = 'present'; } });
+        };
+        const apiCall = () => Reel.api('POST', '/learner-attendance/register', { date, records: targets.map((id) => ({ learnerId: id, status: 'present' })) });
+        const undo = {
+          label: 'Undo',
+          run: () => this.optimisticRows('attendance',
+            (p) => { ((((p.register || {}).rows) || [])).forEach((r) => { if (targets.indexOf(r.learner_id) !== -1) { r.attendance_id = null; r.status = 'expected'; } }); },
+            () => Reel.api('POST', '/learner-attendance/register', { date, records: targets.map((id) => ({ learnerId: id, status: 'expected' })) }),
+            'Everyone marked expected again.')
+        };
+        return this.optimisticRows('attendance', apply, apiCall, targets.length + ' marked present', undo);
       },
 
       /**

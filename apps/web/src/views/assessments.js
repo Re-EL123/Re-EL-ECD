@@ -93,17 +93,35 @@
     renderOverview(page) {
       const o = page.overview || {};
       return '<div class="split"><div class="stack">' +
-        R.card('Domain coverage', (o.domainCoverage || []).length ? '<div class="stack">' + o.domainCoverage.map((d) =>
-          '<div class="metric-bar"><span>' + R.esc(d.name) + '</span><div class="bar"><span style="width:' + Math.min(100, Number(d.observations) * 4) + '%"></span></div><span class="val">' + R.number(d.observations) + '</span></div>').join('') + '</div>' : '<p class="muted small">No observations recorded yet.</p>') +
+        R.card('Domain coverage', (o.domainCoverage || []).length ? '<div class="stack">' + o.domainCoverage.map((d) => {
+          const count = Number(d.observations) || 0;
+          const tone = count === 0 ? 'var(--reel-danger-500)' : count < 4 ? 'var(--reel-warn-500)' : 'var(--reel-green-600)';
+          return '<div class="metric-bar"><span title="' + R.attr(d.name) + '">' + R.esc(d.name) + '</span><div class="bar"><span style="width:' + Math.min(100, count * 4) + '%;background:' + tone + '"></span></div><span class="val">' + R.number(count) + '</span></div>';
+        }).join('') + '</div>' : '<p class="muted small">No observations recorded yet.</p>') +
         R.card('Children without recent observations', R.table({ rows: o.missingObservations || [], compact: true, columns: [
           { label: 'Child', render: (l) => '<a class="cell-strong" href="#/app/learners/' + R.attr(l.id) + '">' + R.esc(l.first_name + ' ' + l.last_name) + '</a>' },
           { label: 'Classroom', render: (l) => R.esc(l.classroom_name || '—') },
           { label: '', align: 'right', render: (l) => '<button class="btn btn-sm btn-secondary" @click="openViewModal(\'observationFor\',\'' + R.attr(l.id) + '\')">Observe</button>' }
         ], emptyTitle: 'Everyone has recent observations', emptyMessage: 'Great coverage across the centre.' })) +
+        (function overdueByClassroom() {
+          const groups = {};
+          (o.missingObservations || []).forEach((l) => { const key = l.classroom_name || 'Unassigned'; (groups[key] = groups[key] || []).push(l); });
+          const entries = Object.entries(groups).sort((a, b) => b[1].length - a[1].length);
+          if (!entries.length) return '';
+          return R.card('Overdue by classroom', '<div class="stack">' + entries.map(([name, list]) =>
+            '<div class="kpi-row"><span class="kpi-label" title="' + R.attr(name) + '">' + R.esc(name) + '</span><span class="kpi-value">' + R.number(list.length) + ' ' + (list.length === 1 ? 'child' : 'children') + '</span></div>').join('') + '</div>');
+        })() +
         '</div><div class="stack">' +
-        R.card('How assessment works here', '<p class="muted small">Observations are written against a learning objective, reviewed, then published to families. Each child should have at least one observation per domain every 60 days.</p>' +
-          '<div class="kpi-list"><div class="kpi-row"><span class="kpi-label">Review window</span><span class="kpi-value">60 days</span></div>' +
-          '<div class="kpi-row"><span class="kpi-label">Published</span><span class="kpi-value">' + R.number(o.published) + '</span></div></div>') +
+        R.card('How assessment works here', '<div x-data="{ howOpen: (() => { try { return localStorage.getItem(\'reel.howHelpSeen\') !== \'1\'; } catch { return true; } })() }">' +
+          '<button type="button" class="btn btn-ghost btn-sm" style="justify-content:space-between;width:100%" @click="howOpen = !howOpen; if (!howOpen) { try { localStorage.setItem(\'reel.howHelpSeen\', \'1\'); } catch {} }">' +
+            '<span class="muted small" style="font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:0.72rem">The 60-day review promise</span>' +
+            '<i data-lucide="chevron-down" style="width:15px;height:15px;transition:transform 0.2s" :style="howOpen ? \'transform:rotate(180deg)\' : \'\'"></i>' +
+          '</button>' +
+          '<div x-cloak x-show="howOpen">' +
+            '<p class="muted small" style="margin-top:6px">Observations are written against a learning objective, reviewed, then published to families. Each child should have at least one observation per domain every 60 days.</p>' +
+            '<div class="kpi-list"><div class="kpi-row"><span class="kpi-label">Review window</span><span class="kpi-value">60 days</span></div>' +
+            '<div class="kpi-row"><span class="kpi-label">Published</span><span class="kpi-value">' + R.number(o.published) + '</span></div></div>' +
+          '</div></div>') +
         R.card('Quick actions', '<div class="stack">' +
           '<button class="btn btn-secondary" style="justify-content:flex-start" @click="openNamedModal(\'observation\')">' + R.icon('eye') + ' Record an observation</button>' +
           '<button class="btn btn-secondary" style="justify-content:flex-start" @click="setTab(\'reports\')">' + R.icon('file-text') + ' Generate a progress report</button>' +

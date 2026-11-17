@@ -37,6 +37,17 @@ const tenantResources = {
       { key: 'status', label: 'Status', width: 12 }
     ],
     query(ctx) {
+      const ids = String(ctx.query.ids || '').split(',').map((s) => s.trim()).filter((s) => /^[0-9a-f-]{36}$/i.test(s)).slice(0, 1000);
+      if (ids.length) {
+        return ctx.db.many(
+          `SELECT l.learner_reference AS reference, l.last_name, l.first_name, l.date_of_birth,
+                  c.name AS classroom, l.status
+           FROM learners l LEFT JOIN classrooms c ON c.id = l.classroom_id
+           WHERE l.organisation_id = $1 AND l.id = ANY($2::uuid[])
+           ORDER BY l.last_name, l.first_name LIMIT $3`,
+          [ctx.organisationId, ids, MAX_ROWS]
+        );
+      }
       return ctx.db.many(
         `SELECT l.learner_reference AS reference, l.last_name, l.first_name, l.date_of_birth,
                 c.name AS classroom, l.status

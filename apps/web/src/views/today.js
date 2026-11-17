@@ -357,14 +357,14 @@
       const tasksDue = ((t.unfinished || {}).tasksDueToday) || 0;
 
       const suggestions = [];
-      if (gate.length) suggestions.push({ icon: 'door-open', tone: 'sun', text: R.number(gate.length) + (gate.length === 1 ? ' collector is' : ' collectors are') + ' waiting at the gate', foot: gate.slice(0, 2).map((g) => g.collectorName + ' for ' + g.childFirst).join(' · ') + (gate.length > 2 ? '…' : ''), href: '#/app/learner-attendance', action: 'Release' });
-      if (unverified.length) suggestions.push({ icon: 'user-plus', tone: 'clay', text: 'Verify ' + R.number(unverified.length) + ' unverified drop-off' + (unverified.length === 1 ? '' : 's'), foot: unverified.map((d) => d.childFirst + ' with ' + d.broughtByName).join(' · '), href: '#/app/learner-attendance', action: 'Fix' });
-      if (unmarked) suggestions.push({ icon: 'clipboard-check', tone: 'sun', text: 'Finish marking the register', foot: R.number(unmarked) + (unmarked === 1 ? ' child' : ' children') + ' not marked yet', href: '#/app/learner-attendance', action: 'Open register' });
-      if (dr.missing) suggestions.push({ icon: 'file-text', tone: 'clay', text: 'Write ' + R.number(dr.missing) + ' daily report' + (dr.missing === 1 ? '' : 's'), foot: 'Guardians are waiting for today’s news', go: 'today-wrapup', action: 'Wrap up' });
-      else if (dr.draft) suggestions.push({ icon: 'send', tone: 'sun', text: 'Share ' + R.number(dr.draft) + ' draft report' + (dr.draft === 1 ? '' : 's'), foot: 'Drafts don’t reach guardians until shared', go: 'today-wrapup', action: 'Wrap up' });
-      if (focus.length) suggestions.push({ icon: 'eye', tone: 'sky', text: 'Capture a moment for ' + esc(focus[0].firstName || focus[0].name), foot: 'No fresh observation in a while', click: 'openNamedModal(\'quickMomentFor\',\'' + R.attr(focus[0].id) + '\')', action: 'Quick moment' });
-      if (tasksDue) suggestions.push({ icon: 'list-checks', tone: 'clay', text: 'Complete ' + R.number(tasksDue) + (tasksDue === 1 ? ' task' : ' tasks') + ' due today', foot: 'Due by end of day', href: '#/app/tasks', action: 'Open tasks' });
-      if (!timeline.length && (page.teachingPerms || t.expected)) suggestions.push({ icon: 'calendar-days', tone: 'sky', text: 'Nothing is scheduled yet today', foot: 'Plan the day so the team knows what’s next', href: '#/app/calendar', action: 'Plan the day' });
+      if (gate.length) suggestions.push({ icon: 'door-open', tone: 'sun', text: R.number(gate.length) + (gate.length === 1 ? ' collector is' : ' collectors are') + ' waiting at the gate', foot: gate.slice(0, 2).map((g) => g.collectorName + ' for ' + g.childFirst).join(' · ') + (gate.length > 2 ? '…' : ''), href: '#/app/learner-attendance', action: 'Release', mins: 1 });
+      if (unverified.length) suggestions.push({ icon: 'user-plus', tone: 'clay', text: 'Verify ' + R.number(unverified.length) + ' unverified drop-off' + (unverified.length === 1 ? '' : 's'), foot: unverified.map((d) => d.childFirst + ' with ' + d.broughtByName).join(' · '), href: '#/app/learner-attendance', action: 'Fix', mins: 2 });
+      if (unmarked) suggestions.push({ icon: 'clipboard-check', tone: 'sun', text: 'Finish marking the register', foot: R.number(unmarked) + (unmarked === 1 ? ' child' : ' children') + ' not marked yet', href: '#/app/learner-attendance?unmarked=1', action: 'Open register', mins: 3 });
+      if (dr.missing) suggestions.push({ icon: 'file-text', tone: 'clay', text: 'Write ' + R.number(dr.missing) + ' daily report' + (dr.missing === 1 ? '' : 's'), foot: 'Guardians are waiting for today’s news', go: 'today-wrapup', action: 'Wrap up', mins: 5 });
+      else if (dr.draft) suggestions.push({ icon: 'send', tone: 'sun', text: 'Share ' + R.number(dr.draft) + ' draft report' + (dr.draft === 1 ? '' : 's'), foot: 'Drafts don’t reach guardians until shared', go: 'today-wrapup', action: 'Wrap up', mins: 5 });
+      if (focus.length) suggestions.push({ icon: 'eye', tone: 'sky', text: 'Capture a moment for ' + esc(focus[0].firstName || focus[0].name), foot: 'No fresh observation in a while', click: 'openNamedModal(\'quickMomentFor\',\'' + R.attr(focus[0].id) + '\')', action: 'Quick moment', mins: 2 });
+      if (tasksDue) suggestions.push({ icon: 'list-checks', tone: 'clay', text: 'Complete ' + R.number(tasksDue) + (tasksDue === 1 ? ' task' : ' tasks') + ' due today', foot: 'Due by end of day', href: '#/app/tasks', action: 'Open tasks', mins: 5 });
+      if (!timeline.length && (page.teachingPerms || t.expected)) suggestions.push({ icon: 'calendar-days', tone: 'sky', text: 'Nothing is scheduled yet today', foot: 'Plan the day so the team knows what’s next', href: '#/app/calendar', action: 'Plan the day', mins: 5 });
 
       if (!suggestions.length) {
         if (!(t.expected || page.teachingPerms)) return '';
@@ -377,7 +377,7 @@
         '<div class="stack" style="gap:8px">' + suggestions.slice(0, 5).map((s) =>
           '<div class="suggest-row">' +
             '<span class="suggest-ico suggest-' + esc(s.tone) + '">' + R.icon(s.icon) + '</span>' +
-            '<div style="flex:1;min-width:0"><div class="strong" style="font-size:0.9rem">' + esc(s.text) + '</div>' + (s.foot ? '<div class="muted small">' + esc(s.foot) + '</div>' : '') + '</div>' +
+            '<div style="flex:1;min-width:0"><div class="strong" style="font-size:0.9rem">' + esc(s.text) + '</div>' + (s.foot ? '<div class="muted small">' + esc(s.foot) + '</div>' : '') + '</div>' + (s.mins ? '<span class="suggest-mins"><i data-lucide="clock" style="width:11px;height:11px"></i> ≈ ' + s.mins + ' min</span>' : '') +
             (s.href
               ? '<a class="btn btn-sm btn-secondary" href="' + R.attr(s.href) + '">' + esc(s.action) + ' ' + R.icon('arrow-right') + '</a>'
               : '<button class="btn btn-sm btn-secondary" @click="' + R.attr(s.click) + '">' + esc(s.action) + '</button>') +
@@ -396,7 +396,11 @@
 
       let html = '';
       if (alerts.length) {
-        html += '<div class="stack section">' + alerts.map((a) => '<div class="alert ' + (a.severity === 'critical' || a.severity === 'warning' ? 'alert-warn' : 'alert-info') + '">' + R.icon('info') + '<span>' + esc(a.message) + '</span>' + (a.link ? '<a class="btn btn-sm btn-ghost row-end" href="' + R.attr(a.link) + '">Open</a>' : '') + '</div>').join('') + '</div>';
+        html += '<div class="stack section">' + alerts.map((a) => {
+          let link = a.link || '';
+          if (link.indexOf('learner-attendance') !== -1 && link.indexOf('unmarked') === -1) link += (link.includes('?') ? '&' : '?') + 'unmarked=1';
+          return '<div class="alert ' + (a.severity === 'critical' || a.severity === 'warning' ? 'alert-warn' : 'alert-info') + '">' + R.icon('info') + '<span>' + esc(a.message) + '</span>' + (link ? '<a class="btn btn-sm btn-ghost row-end" href="' + R.attr(link) + '">Open</a>' : '') + '</div>';
+        }).join('') + '</div>';
       }
 
       html += '<div class="grid grid-4 section">' +

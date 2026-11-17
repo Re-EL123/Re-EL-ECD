@@ -46,9 +46,11 @@
       if (ctx.has('attendance.correct.daycare')) tabs.push({ key: 'adjustments', label: 'Corrections' });
       const activeTab = tabs.some((t) => t.key === tab) ? tab : 'register';
       return R.pageHead('Learner attendance', 'The daily register, live presence and attendance patterns.',
-        '<a class="btn btn-secondary btn-sm" href="#/app/learners">' + R.icon('users') + ' Learners</a>' + R.exportButtons('/exports/attendance', 'from=' + encodeURIComponent(range.from) + '&to=' + encodeURIComponent(range.to)) +
+        '<a class="btn btn-secondary btn-sm" href="#/app/learners">' + R.icon('users') + ' Learners</a>' +
+        R.exportButtons('/exports/attendance', 'from=' + encodeURIComponent(range.from) + '&to=' + encodeURIComponent(range.to)) +
+        '<button class="btn btn-ghost btn-sm" @click="downloadExport(\'/exports/attendance?format=pdf&from=' + R.attr(page.date) + '&to=' + R.attr(page.date) + '\')" title="Download today’s register as a single printable PDF">' + R.icon('printer') + ' Print register</button>' +
         (canRecord ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'register\')">' + R.icon('clipboard-list') + ' Record register</button>' +
-          (Number(summary.unmarked) > 0 ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'markAllPresent\')">' + R.icon('check-check') + ' Mark all expected present</button>' : '') : '')) +
+          (Number(summary.unmarked) > 0 ? '<button class="btn btn-secondary btn-sm" @click="markAllExpectedPresent()" title="Mark every expected, unrecorded child present — you can undo for a few seconds">' + R.icon('check-check') + ' Mark all expected present</button>' : '') : '')) +
         '<div class="grid grid-4 section">' +
         R.statCard({ label: 'Expected', value: R.number(rows.length), icon: 'users', foot: R.date(page.date) }) +
         R.statCard({ label: 'Present', value: R.number(summary.present), icon: 'check-circle', foot: (() => { const marked = Number(summary.marked) || 0; return (marked ? R.percent(Math.round(((Number(summary.present) || 0) / marked) * 100)) + ' attendance' : 'Nothing marked yet'); })() }) +
@@ -89,11 +91,16 @@
 
     renderRegister(ctx, page, canRecord, canRelease, canManageRelease, isToday) {
       const reg = page.register || { rows: [] };
+      const unmarkedOnly = ctx.filters && ctx.filters.unmarked === '1';
+      const regRows = unmarkedOnly ? (reg.rows || []).filter((r) => !r.attendance_id) : (reg.rows || []);
       return R.filterBar(
         '<label class="small muted">Date</label><input class="input" type="date" value="' + R.attr(page.date) + '" @change="setFilter(\'date\',$event.target.value)">' +
         R.selectFilter(ctx, 'classroomId', (page.classrooms || []).map((c) => ({ value: c.id, label: c.name })), 'All classrooms') +
-        R.selectFilter(ctx, 'branchId', R.branchOptions(ctx), 'All branches')) +
-        R.table({ rows: reg.rows || [], pinFirst: true, columns: [
+        R.selectFilter(ctx, 'branchId', R.branchOptions(ctx), 'All branches') +
+        (unmarkedOnly
+          ? '<a class="btn btn-sm btn-primary" href="#/app/learner-attendance" title="Show every child again">× Unmarked only</a>'
+          : '<a class="btn btn-sm btn-secondary" href="#/app/learner-attendance?unmarked=1" title="Only the children still to record">Unmarked only</a>')) +
+        R.table({ rows: regRows, pinFirst: true, columns: [
           { label: 'Child', render: (r) => '<a class="cell-strong" href="#/app/learners/' + R.attr(r.learner_id) + '">' + R.esc(r.first_name + ' ' + r.last_name) + '</a><span class="cell-sub mono">' + R.esc(r.learner_reference) + '</span>' },
           { label: 'Classroom', render: (r) => R.esc(r.classroom_name || '—') },
           { label: 'In by', render: (r) => {
@@ -159,7 +166,7 @@
               }
               return '<div class="stack" style="gap:6px;max-width:340px" x-data="{ open: false, loading: false, options: null, sel: \'\', name: \'\', busy: false }">' +
                 '<div class="btn-group">' +
-                  '<button class="btn btn-sm btn-primary" @click="open = true; if (!options) { loading = true; window.Reel.api(\'GET\',\'/learner-attendance/bring-options/' + R.attr(r.learner_id) + '\').then(p => { options = p.data; loading = false; }); }">In</button>' +
+                  '<button class="btn btn-sm btn-ghost" @click="open = true; if (!options) { loading = true; window.Reel.api(\'GET\',\'/learner-attendance/bring-options/' + R.attr(r.learner_id) + '\').then(p => { options = p.data; loading = false; }); }">In</button>' +
                   '<button class="btn btn-sm btn-secondary" @click="openViewModal(\'absence\',\'' + R.attr(r.learner_id) + '\')">Absent</button>' +
                 '</div>' +
                 '<div x-cloak x-show="open" style="border:1px solid var(--border-subtle);border-radius:14px;padding:10px">' +

@@ -629,13 +629,20 @@ window.Reel.renderGateQr = function (targetId) {
     async load(ctx) {
       const query = new URLSearchParams();
       if (ctx.filters.branchId) query.set('branchId', ctx.filters.branchId);
-      const [classrooms, branches] = await Promise.all([
+      const [classrooms, branches, learners] = await Promise.all([
         R.api('GET', '/classrooms' + (query.toString() ? '?' + query : '')).then((p) => p.data).catch(() => []),
         ctx.has('organisation.read.daycare')
           ? R.api('GET', '/branches').then((p) => p.data).catch(() => [])
-          : Promise.resolve((ctx.branches || []).map((b) => Object.assign({}, b, { name: b.name })))
+          : Promise.resolve((ctx.branches || []).map((b) => Object.assign({}, b, { name: b.name }))),
+        ctx.has('learners.read.daycare')
+          ? R.api('GET', '/learners?pageSize=200').then((p) => p.data || []).catch(() => [])
+          : Promise.resolve([])
       ]);
-      return { rows: classrooms || [], branches: branches || [] };
+      const childrenByClassroom = {};
+      (learners || []).forEach((l) => {
+        if (l.classroom_id) (childrenByClassroom[l.classroom_id] = childrenByClassroom[l.classroom_id] || []).push(l);
+      });
+      return { rows: classrooms || [], branches: branches || [], childrenByClassroom };
     },
 
     render(ctx, params, page) {
@@ -652,16 +659,32 @@ window.Reel.renderGateQr = function (targetId) {
         R.statCard({ label: 'Utilisation', value: R.percent(capacity ? Math.round((enrolled / capacity) * 100) : 0), icon: 'gauge', tone: capacity && enrolled > capacity ? 'danger' : 'green', foot: 'Enrolled ÷ capacity' }) +
         '</div>' +
         R.filterBar(R.selectFilter(ctx, 'branchId', R.branchOptions(ctx), 'All branches')) +
-        '<div class="grid grid-3 section">' + rows.map((c) => R.card(c.name,
+        '<div class="grid grid-3 section">' + rows.map((c) => {
+          const children = (page.childrenByClassroom || {})[c.id] || [];
+          const utilisation = Number(c.utilisation || 0);
+          const capTone = utilisation >= 100 ? 'var(--reel-danger-500)' : utilisation >= 85 ? 'var(--reel-warn-500)' : 'var(--reel-green-600)';
+          const staffLow = Number(c.staff_count || 0) < 2;
+          const strip = children.slice(0, 6).map((l) => {
+            const nm = (l.first_name || '') + ' ' + (l.last_name || '');
+            return '<span title="' + R.attr(nm.trim()) + '">' + R.mediaThumb(l.profile_image_url, nm) + '</span>';
+          }).join('') + (children.length > 6 ? '<span class="avatar avatar-more" title="' + R.attr((children.length - 6) + ' more in this room') + '">+' + R.number(children.length - 6) + '</span>' : '');
+          return R.card(c.name,
           '<div class="row" style="margin-bottom:8px">' + R.badge(c.status || 'active') +
           '<span class="badge badge-muted">' + R.esc(c.branch_name || '') + '</span>' +
-          '<span class="badge badge-sky">' + R.esc(c.age_group || '') + '</span></div>' +
-          '<div class="metric-bar"><span>Filled</span><div class="bar"><span style="width:' + Math.min(100, Number(c.utilisation || 0)) + '%"></span></div><span class="val">' + R.number(c.enrolled) + '/' + R.number(c.configured_capacity) + '</span></div>' +
+          '<span class="badge badge-sky">' + R.esc(c.age_group || '') + '</span>' +
+          (utilisation >= 85 ? '<span class="badge ' + (utilisation >= 100 ? 'badge-danger' : 'badge-warn') + '">' + R.number(utilisation) + '% full</span>' : '') +
+          (staffLow ? '<span class="badge badge-warn" title="Fewer than two staff assigned — check your ratio">' + R.icon('alert-triangle') + ' ' + R.number(Number(c.staff_count || 0)) + ' staff</span>' : '') + '</div>' +
+          (children.length ? '<div class="avatar-strip" aria-label="Children in ' + R.attr(c.name) + '">' + strip + '</div>' : '') +
+          '<div class="metric-bar"><span>Filled</span><div class="bar"><span style="width:' + Math.min(100, utilisation) + '%;background:' + capTone + '"></span></div><span class="val">' + R.number(c.enrolled) + '/' + R.number(c.configured_capacity) + '</span></div>' +
           '<div class="detail-list" style="margin-top:12px">' +
           R.detailItem('Age range', R.number(c.min_age_months) + '–' + R.number(c.max_age_months) + ' months') +
           R.detailItem('Staff assigned', R.number(c.staff_count)) +
           '</div>',
-          canManage ? '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'editClassroom\',\'' + R.attr(c.id) + '\')">Edit</button>' : '')).join('') + '</div>' +
+          '<div class="btn-group">' +
+            '<a class="btn btn-sm btn-secondary" href="#/app/learner-attendance?classroomId=' + R.attr(c.id) + '" title="Open this room’s register">' + R.icon('calendar-check') + ' Register</a>' +
+            (canManage ? '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'editClassroom\',\'' + R.attr(c.id) + '\')">Edit</button>' : '') +
+          '</div>');
+        }).join('') + '</div>' +
         (rows.length ? '' : R.emptyState('No classrooms', 'A classroom groups children, staff and observations.', canManage ? '<button class="btn btn-primary" @click="openNamedModal(\'classroom\')">Add classroom</button>' : '', 'door-open'));
     },
 

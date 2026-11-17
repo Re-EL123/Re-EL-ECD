@@ -291,7 +291,7 @@
       const label = c.label ? ' data-label="' + attr(c.label) + '"' : ' data-label=""';
       return '<td' + label + (c.align ? ' class="' + (c.align === 'right' ? 'num' : '') + '"' : '') + '>' + (value === undefined || value === null || value === '' ? '<span class="muted">—</span>' : value) + '</td>';
     }).join('') + '</tr>').join('');
-    return '<div class="table-wrap' + (opts.pinFirst ? ' pin-first' : '') + '"><table class="table ' + (opts.compact ? 'compact' : '') + '"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+    return '<div class="table-wrap' + (opts.pinFirst ? ' pin-first' : '') + (opts.className ? ' ' + esc(opts.className) : '') + '"><table class="table ' + (opts.compact ? 'compact' : '') + '"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>';
   }
 
   /**

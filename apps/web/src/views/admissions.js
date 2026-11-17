@@ -5,7 +5,7 @@
   const R = window.Reel;
   const V = R.views;
 
-  const ENQUIRY_STATUSES = ['new', 'contacted', 'tour_scheduled', 'waitlisted', 'converted', 'closed', 'spam'];
+  const ENQUIRY_STATUSES = ['new', 'contacted', 'converted', 'closed', 'spam'];
   const APPLICATION_STATUSES = ['submitted', 'under_review', 'approved', 'waitlisted', 'rejected', 'enrolled', 'withdrawn'];
 
   V.admissions = {
@@ -34,11 +34,15 @@
       const tab = ctx.tab || 'enquiries';
       const enquiries = page.enquiries || [];
       const applications = page.applications || [];
+      const active = enquiries.filter((e) => !['closed', 'spam', 'converted'].includes(e.status));
+      const avgWaiting = active.length
+        ? Math.round(active.reduce((sum, e) => sum + Math.max(0, Date.now() - new Date(e.created_at || e.updated_at).getTime()), 0) / active.length / 86400000)
+        : 0;
       return R.pageHead('Admissions', 'From the first enquiry to the first day — one clear pipeline.',
         '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'enquiry\')">' + R.icon('inbox') + ' Log enquiry</button>' +
         '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'application\')">' + R.icon('user-plus') + ' New application</button>' + R.exportButtons('/exports/admissions')) +
         '<div class="grid grid-4 section">' +
-        R.statCard({ label: 'New enquiries', value: R.number(o.new_enquiries), icon: 'inbox', tone: 'sky', foot: 'Awaiting first contact' }) +
+        R.statCard({ label: 'New enquiries', value: R.number(o.new_enquiries), icon: 'inbox', tone: 'sky', foot: 'Avg ' + R.number(avgWaiting) + ' day' + (avgWaiting === 1 ? '' : 's') + ' waiting' }) +
         R.statCard({ label: 'Pending review', value: R.number(o.pending_applications), icon: 'clipboard-list', tone: 'sun', foot: 'Applications to assess' }) +
         R.statCard({ label: 'Approved', value: R.number(o.approved_applications), icon: 'check-circle', foot: 'Ready to enrol' }) +
         R.statCard({ label: 'Capacity', value: R.number(totalCapacity), icon: 'door-open', tone: 'clay', foot: (o.waitlisted || 0) + ' waitlisted · ' + totalEnrolled + ' enrolled' }) +
@@ -49,15 +53,26 @@
 
     renderEnquiries(ctx, page) {
       const canManage = ctx.has('admissions.manage.daycare');
+      const view = (ctx.filters || {}).view === 'board' ? 'board' : 'list';
+      const viewToggle = '<span class="cal-views" role="group" aria-label="Enquiry view">' +
+        '<button type="button" class="btn btn-sm ' + (view === 'list' ? 'btn-primary' : 'btn-secondary') + '" @click="setFilter(\'view\',\'list\')" title="Table view">' + R.icon('list') + ' List</button>' +
+        '<button type="button" class="btn btn-sm ' + (view === 'board' ? 'btn-primary' : 'btn-secondary') + '" @click="setFilter(\'view\',\'board\')" title="Pipeline board — drag cards between stages">' + R.icon('columns-3') + ' Board</button>' +
+        '</span>';
       return R.filterBar(R.searchFilter(ctx, 'q', 'Search guardian or child…') +
-        R.selectFilter(ctx, 'status', ENQUIRY_STATUSES.map((s) => ({ value: s, label: R.titleCase(s) })), 'All enquiry statuses')) +
+        R.selectFilter(ctx, 'status', ENQUIRY_STATUSES.map((s) => ({ value: s, label: R.titleCase(s) })), 'All enquiry statuses') +
+        viewToggle) +
         (canManage ? R.bulkBar([
           { label: 'Mark contacted', icon: 'phone', path: '/admissions/enquiries/bulk', action: 'contacted' },
           { label: 'Close', icon: 'check-circle', path: '/admissions/enquiries/bulk', action: 'close' },
           { label: 'Reopen', icon: 'rotate-ccw', path: '/admissions/enquiries/bulk', action: 'reopen' },
           { label: 'Mark spam', icon: 'shield', path: '/admissions/enquiries/bulk', action: 'spam', tone: 'danger' }
         ], { hint: 'Converted enquiries cannot be reopened.' }) : '') +
-        R.table({ rows: page.enquiries || [], selectable: canManage, columns: [
+        (view === 'board' ? this.renderEnquiryBoard(ctx, page) : this.renderEnquiryTable(ctx, page));
+    },
+
+    renderEnquiryTable(ctx, page) {
+      const canManage = ctx.has('admissions.manage.daycare');
+      return R.table({ rows: page.enquiries || [], selectable: canManage, columns: [
           { label: 'Enquiry', render: (e) => '<span class="cell-strong">' + R.esc(e.guardian_name) + '</span><span class="cell-sub">' + R.esc(e.guardian_email || e.guardian_phone || '') + '</span>' },
           { label: 'Child', render: (e) => R.esc(e.child_name || '—') + '<span class="cell-sub">' + (e.child_date_of_birth ? 'Born ' + R.date(e.child_date_of_birth) : '') + '</span>' },
           { label: 'Age group', render: (e) => R.esc(e.requested_age_group || '—') + '<span class="cell-sub">' + R.esc(e.branch_name || '') + '</span>' },
@@ -68,7 +83,46 @@
             '<button class="btn btn-sm btn-ghost" @click="openNamedDetail(\'enquiry\',\'' + R.attr(e.id) + '\')">Open</button>' +
             (['converted', 'closed', 'spam'].includes(e.status) ? '' : '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'convert\',\'' + R.attr(e.id) + '\')">Convert</button>') +
             '</div>' }
-        ], emptyTitle: 'No enquiries', emptyMessage: 'Enquiries from your public website and phone calls appear here.' });
+        ], emptyTitle: 'No enquiries yet',
+          emptyMessage: 'Website and phone enquiries land here automatically — or log one now and work the pipeline.',
+          emptyAction: '<div style="margin-bottom:4px"><button class="btn btn-ghost" @click="loadSampleData(\'admissions\')">Preview with sample data</button></div><ol class="admission-steps">' +
+            '<li><span class="admission-step-n">1</span><div><strong>Enquiry arrives</strong><br>From the website form, a phone call or a walk-in</div></li>' +
+            '<li><span class="admission-step-n">2</span><div><strong>Contact the family</strong><br>Log the call, tour or WhatsApp — the board moves left to right</div></li>' +
+            '<li><span class="admission-step-n">3</span><div><strong>Convert to an application</strong><br>Approve, then Enrol — the child joins the classroom register</div></li>' +
+          '</ol>' });
+    },
+
+    renderEnquiryBoard(ctx, page) {
+      const statuses = ENQUIRY_STATUSES;
+      const canManage = ctx.has('admissions.manage.daycare');
+      const daysIn = (e) => Math.max(0, Math.floor((Date.now() - new Date(e.updated_at || e.created_at).getTime()) / 86400000));
+      if (!page.enquiries || !page.enquiries.length) {
+        return R.emptyState('No enquiries yet', 'The pipeline will fill up as website and phone enquiries arrive — or log the first one now.', '<button class="btn btn-primary" @click="openNamedModal(\'enquiry\')">Log the first enquiry</button>', 'inbox');
+      }
+      const tone = (s) => (s === 'new' ? 'badge-sky' : s === 'contacted' ? 'badge-sun' : s === 'converted' ? 'badge-green' : s === 'spam' ? 'badge-danger' : 'badge-muted');
+      return '<div class="kanban" aria-label="Admissions pipeline">' + statuses.map((s) => {
+        const items = (page.enquiries || []).filter((e) => e.status === s);
+        const avg = items.length ? Math.round(items.reduce((sum, e) => sum + daysIn(e), 0) / items.length) : 0;
+        return '<div class="kanban-col" ondragover="event.preventDefault()" ondrop="window.Reel &amp;&amp; Reel._admDrop(event, \'' + R.attr(s) + '\')">' +
+          '<div class="kanban-head"><span class="badge ' + tone(s) + '">' + R.esc(R.titleCase(s)) + '</span><span class="kanban-count">' + items.length + '</span>' + (items.length ? '<span class="muted small" title="Average days sitting in this stage">≈ ' + avg + 'd</span>' : '') + '</div>' +
+          '<div class="kanban-cards">' + items.map((e) =>
+            '<div class="kanban-card" draggable="' + (canManage ? 'true' : 'false') + '" ondragstart="window.Reel &amp;&amp; Reel._admDragStart(event, \'' + R.attr(e.id) + '\')">' +
+              '<div class="row" style="justify-content:space-between;gap:8px;align-items:flex-start">' +
+                '<div style="min-width:0"><div class="strong" style="font-size:0.88rem">' + R.esc(e.guardian_name) + '</div>' +
+                '<div class="muted small">' + R.esc(e.child_name || 'Child not named yet') + (e.requested_age_group ? ' · ' + R.esc(e.requested_age_group) : '') + '</div></div>' +
+                '<span class="badge badge-muted" style="white-space:nowrap">' + R.number(daysIn(e)) + 'd</span>' +
+              '</div>' +
+              '<div class="kanban-card-foot">' +
+                (canManage
+                  ? '<select class="select select-xs" aria-label="Move this enquiry to…" onchange="if (this.value && window.ReelApp) window.ReelApp.act(\'PATCH\',\'/admissions/enquiries/' + R.attr(e.id) + '\',{status:this.value},{successMessage:\'Moved\'})">' +
+                      statuses.map((t) => '<option value="' + t + '"' + (t === e.status ? ' selected disabled' : '') + '>' + R.esc(R.titleCase(t)) + '</option>').join('') + '</select>'
+                  : '') +
+                (['converted', 'closed', 'spam'].includes(e.status) ? '' :
+                  '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'convert\',\'' + R.attr(e.id) + '\')">Convert</button>') +
+              '</div>' +
+            '</div>').join('') + '</div>' +
+        '</div>';
+      }).join('') + '</div>';
     },
 
     renderApplications(ctx, page) {
@@ -175,5 +229,20 @@
         R.detailItem('Received', R.dateTime(enquiry.created_at)) +
         '</div><div class="section"></div><h3>Message</h3><p class="muted">' + R.esc(enquiry.message || 'No message provided.') + '</p>'
     };
+  };
+
+  /* Drag-and-drop between pipeline stages (board view). */
+  window.Reel = window.Reel || {};
+  window.Reel._admDragStart = function (ev, id) {
+    try { ev.dataTransfer.setData('text/plain', id); ev.dataTransfer.effectAllowed = 'move'; } catch (_) { /* ignore */ }
+  };
+  window.Reel._admDrop = function (ev, status) {
+    ev.preventDefault();
+    try {
+      const id = ev.dataTransfer.getData('text/plain');
+      if (id && window.ReelApp) {
+        window.ReelApp.act('PATCH', '/admissions/enquiries/' + encodeURIComponent(id), { status }, { successMessage: 'Moved to ' + String(status).charAt(0).toUpperCase() + String(status).slice(1) });
+      }
+    } catch (_) { /* ignore */ }
   };
 })();

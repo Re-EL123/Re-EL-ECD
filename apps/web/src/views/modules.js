@@ -45,17 +45,35 @@
       const modules = page.modules || [];
       const published = modules.filter((module) => module.status === 'published').length;
       const plans = modules.reduce((sum, module) => sum + Number(module.plan_count || 0), 0);
+      const filters = ctx.filters || {};
+      const query = String(filters.q || '').trim().toLowerCase();
+      const theme = String(filters.theme || '');
+      const sort = String(filters.sort || 'recent');
+      const themes = Array.from(new Set(modules.map((m) => m.theme).filter(Boolean))).sort();
+      let shown = modules.filter((m) => (!theme || m.theme === theme) && (!query || (m.title + ' ' + (m.theme || '') + ' ' + (m.description || '')).toLowerCase().includes(query)));
+      shown = shown.slice().sort((a, b) => {
+        if (sort === 'az') return String(a.title).localeCompare(String(b.title));
+        if (sort === 'plans') return Number(b.plan_count || 0) - Number(a.plan_count || 0);
+        if (sort === 'age') return String(a.age_group || '').localeCompare(String(b.age_group || ''));
+        return new Date(b.created_at) - new Date(a.created_at);
+      });
       const newButton = (canCreate
         ? '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'module\')">' + R.icon('plus') + ' New module</button>'
         : '') + R.exportButtons('/exports/modules');
+      const emptyNote = modules.length && !shown.length ? '<p class="muted small" style="margin:18px 0;text-align:center">Nothing matches “' + esc(query || theme) + '”. <a href="#/app/modules">Clear filters</a></p>' : '';
       return R.pageHead('Learning modules', 'Group lesson plans into a themed journey — everything the children will live, in the order they will live it.', newButton) +
         '<div class="grid grid-3 section">' +
         R.statCard({ label: 'Modules', value: R.number(modules.length), icon: 'blocks', foot: R.number(published) + ' published' }) +
         R.statCard({ label: 'Plans inside', value: R.number(plans), icon: 'notebook-pen', tone: 'sky', foot: 'Across all modules' }) +
         R.statCard({ label: 'Drafts', value: R.number(modules.length - published), icon: 'pencil', tone: 'sun', foot: 'Not yet published' }) +
         '</div>' +
-        (modules.length
-          ? '<div class="grid grid-2">' + modules.map((module) => {
+        R.filterBar('<input class="input" type="search" placeholder="Search modules…" value="' + R.attr(query) + '" @change="setFilter(\'q\',$event.target.value)" style="max-width:240px" aria-label="Search modules">' +
+          R.selectFilter(ctx, 'theme', themes.map((t) => ({ value: t, label: t })), 'All themes') +
+          '<select class="select" @change="setFilter(\'sort\',$event.target.value)" aria-label="Sort modules"><option value="recent"' + (sort === 'recent' ? ' selected' : '') + '>Newest first</option><option value="az"' + (sort === 'az' ? ' selected' : '') + '>A–Z</option><option value="plans"' + (sort === 'plans' ? ' selected' : '') + '>Most plans</option><option value="age"' + (sort === 'age' ? ' selected' : '') + '>Age group</option></select>' +
+          (query || theme ? '<a class="btn btn-ghost btn-sm" href="#/app/modules">Clear</a>' : '')) +
+        emptyNote +
+        (shown.length
+          ? '<div class="grid grid-2">' + shown.map((module) => {
             const href = '#/app/modules/' + R.attr(module.id);
             const official = isOfficialRow(module);
             const actions = official
@@ -77,11 +95,18 @@
               '<div class="kpi-list">' +
                 '<div class="kpi-row"><span class="kpi-label">Duration</span><span class="kpi-value">' + (module.duration_weeks ? R.number(module.duration_weeks) + ' weeks' : 'Open-ended') + '</span></div>' +
                 '<div class="kpi-row"><span class="kpi-label">Lesson plans</span><span class="kpi-value">' + R.number(module.plan_count) + '</span></div>' +
+                '<div class="kpi-row"><span class="kpi-label">Progress</span><span class="kpi-value">' + R.number(Number(module.done_count) || 0) + ' of ' + R.number(module.plan_count) + ' done</span></div>' +
                 '<div class="kpi-row"><span class="kpi-label">Created</span><span class="kpi-value">' + R.date(module.created_at) + '</span></div>' +
-              '</div>',
+              '</div>' +
+              (Number(module.plan_count) > 0
+                ? '<div class="metric-bar" style="margin-top:8px"><div class="bar"><span style="width:' + Math.min(100, Math.round((Number(module.done_count) || 0) / Number(module.plan_count) * 100)) + '%"></span></div><span class="val">' + Math.min(100, Math.round((Number(module.done_count) || 0) / Number(module.plan_count) * 100)) + '%</span></div>'
+                : '') +
+              (module.resume_plan_id
+                ? '<button class="btn btn-sm btn-ghost" style="margin-top:8px" @click="openGuide(\'' + R.attr(module.resume_plan_id) + '\')" title="Resume: ' + R.attr(module.resume_plan_title || 'next plan') + '">' + R.icon('play-circle') + ' Resume: ' + R.esc(R.truncate(module.resume_plan_title || ' next plan', 34)) + '</button>'
+                : ''),
               actions);
           }).join('') + '</div>'
-          : R.emptyState('No modules yet', 'Create a module to sequence your lesson plans into a themed learning journey.', newButton, 'blocks'));
+          : (modules.length ? '' : R.emptyState('No modules yet', 'Create a module to sequence your lesson plans into a themed learning journey.', '<div class="btn-group" style="justify-content:center">' + newButton + '<button class="btn btn-ghost" @click="loadSampleData(\'modules\')">Preview with sample data</button></div>', 'blocks')));
     },
 
     openModal(ctx, name, id) {

@@ -71,8 +71,16 @@
       }
       if (canCreate && canPublish) actions.push({ label: 'Publish', icon: 'upload', path: '/curriculum/lesson-plans/bulk', action: 'publish' });
       if (canCreate) actions.push({ label: 'Cancel', icon: 'x', path: '/curriculum/lesson-plans/bulk', action: 'cancel', tone: 'danger' });
+      const sortKey = String((ctx.filters || {}).sort || 'created');
+      const plans = (page.plans || []).slice().sort((a, b) => {
+        if (sortKey === 'title') return String(a.title).localeCompare(String(b.title));
+        if (sortKey === 'status') return String(a.status).localeCompare(String(b.status));
+        if (sortKey === 'classroom') return String(a.classroom_name || '').localeCompare(String(b.classroom_name || ''));
+        return new Date(b.created_at) - new Date(a.created_at);
+      });
       return (actions.length ? R.bulkBar(actions, { hint: 'Plans that cannot make the move are skipped and reported.' }) : '') +
-        R.table({ rows: page.plans || [], selectable: actions.length > 0, columns: [
+        R.filterBar('<select class="select" @change="setFilter(\'sort\',$event.target.value)" aria-label="Sort plans"><option value="created"' + (sortKey === 'created' ? ' selected' : '') + '>Newest first</option><option value="title"' + (sortKey === 'title' ? ' selected' : '') + '>Title A–Z</option><option value="status"' + (sortKey === 'status' ? ' selected' : '') + '>Status</option><option value="classroom"' + (sortKey === 'classroom' ? ' selected' : '') + '>Classroom</option></select>') +
+        R.table({ rows: plans, selectable: actions.length > 0, columns: [
         { label: 'Plan', render: (p) => '<span class="cell-strong">' + R.esc(p.title) + '</span><span class="cell-sub">' + R.esc(p.theme || '') + (p.source === 'ncf' ? ' · ' : '') + '</span>' },
         { label: 'Classroom', render: (p) => (p.source === 'ncf' ? NCF : '') + ' ' + R.esc(p.classroom_name || (isOfficialRow(p) ? 'Official' : '—')) },
         { label: 'Module', render: (p) => p.module_id ? '<a href="#/app/modules/' + R.attr(p.module_id) + '">' + R.esc(p.module_title || 'Module') + '</a>' : '<span class="muted">—</span>' },
@@ -380,10 +388,28 @@
       return { rows: activities.data, plans: plans.data || [], classrooms: classrooms.data || [], activityTemplates };
     },
     render(ctx, params, page) {
+      const filters = ctx.filters || {};
+      const query = String(filters.q || '').trim().toLowerCase();
+      const type = String(filters.type || '');
+      const age = String(filters.age || '');
+      const materials = String(filters.materials || '');
+      const ageLabel = (a) => String(a.age_group || 'All ages').replace(/(\d+)\s*-\s*(\d+)\s*[Yy]ears?/i, '$1–$2 Years').replace(/(\d+)\s*months?\s*-\s*(\d+)\s*[Yy]ears?/i, '$1 months–$2 Years');
+      const all = page.rows || [];
+      const shown = all.filter((a) => (!type || a.activity_type === type) && (!age || a.age_group === age)
+        && (!materials || (materials === 'has' ? !!a.materials : !a.materials))
+        && (!query || (a.title + ' ' + (a.description || '') + ' ' + (a.materials || '') + ' ' + (a.activity_type || '')).toLowerCase().includes(query)));
+      const types = Array.from(new Set(all.map((a) => a.activity_type).filter(Boolean))).sort();
+      const ages = Array.from(new Set(all.map((a) => a.age_group).filter(Boolean))).sort();
       return R.pageHead('Activities', 'The experiences that fill the day — from sensory play to early literacy.',
         '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'activity\')">' + R.icon('plus') + ' New activity</button>' + R.exportButtons('/exports/activities')) +
-        '<div class="grid grid-3">' + (page.rows || []).map((a) => R.card(a.title,
-          '<div class="row" style="margin-bottom:8px"><span class="badge badge-sun">' + R.esc(a.age_group || 'All ages') + '</span><span class="badge badge-muted">' + R.esc(R.titleCase(a.activity_type || 'activity')) + '</span><span class="badge badge-sky">' + R.number(a.duration_minutes) + ' min</span></div>' +
+        R.filterBar('<input class="input" type="search" placeholder="Search activities…" value="' + R.attr(query) + '" @change="setFilter(\'q\',$event.target.value)" style="max-width:230px" aria-label="Search activities">' +
+          R.selectFilter(ctx, 'type', types.map((t) => ({ value: t, label: R.titleCase(t) })), 'All domains') +
+          R.selectFilter(ctx, 'age', ages.map((t) => ({ value: t, label: t })), 'All ages') +
+          '<select class="select" @change="setFilter(\'materials\',$event.target.value)" aria-label="Filter by materials"><option value="">Materials: any</option><option value="has"' + (materials === 'has' ? ' selected' : '') + '>Has materials</option><option value="missing"' + (materials === 'missing' ? ' selected' : '') + '>No materials listed</option></select>' +
+          (query || type || age || materials ? '<a class="btn btn-ghost btn-sm" href="#/app/activities">Clear</a>' : '')) +
+        ((query || type || age || materials) && !shown.length ? '<p class="muted small" style="margin:18px 0;text-align:center">Nothing matches those filters. <a href="#/app/activities">Clear filters</a></p>' : '') +
+        '<div class="grid grid-3">' + shown.map((a) => R.card(a.title,
+          '<div class="row" style="margin-bottom:8px"><span class="badge badge-sun">' + R.esc(ageLabel(a)) + '</span><span class="badge badge-muted">' + R.esc(R.titleCase(a.activity_type || 'activity')) + '</span><span class="badge badge-sky">' + R.number(a.duration_minutes) + ' min</span></div>' +
           '<p class="muted small">' + R.esc(a.description || '') + '</p>' +
           '<div class="muted small"><strong>Materials:</strong> ' + R.esc(a.materials || '—') + '</div>' +
           (a.safety_notes ? '<div class="alert alert-warn" style="margin-top:8px">' + R.icon('shield-alert') + '<span>' + R.esc(a.safety_notes) + '</span></div>' : ''),
@@ -391,11 +417,16 @@
             (isOfficialRow(a)
               ? ' ' + NCF +
                 '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/curriculum/adopt\',{kind:\'activity\',id:\'' + R.attr(a.id) + '\'},{successMessage:\'Adopted to your workspace\'})">' + R.icon('copy') + ' Adapt</button>'
-              : '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'saveActivityTemplate\',\'' + R.attr(a.id) + '\')">Save template</button>' +
-                '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'activityEdit\',\'' + R.attr(a.id) + '\')">Edit</button>' +
-                (a.status === 'active' ? '<button class="btn btn-sm btn-ghost" @click="act(\'POST\',\'/curriculum/activities/' + R.attr(a.id) + '/archive\',{},{successMessage:\'Activity archived\'})">Archive</button>' : '')) +
+              : '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'activityEdit\',\'' + R.attr(a.id) + '\')">Edit</button>' +
+                '<span class="menu-wrap" x-data="{ open: false }" @click.outside="open = false">' +
+                  '<button class="btn btn-sm btn-ghost btn-icon" @click="open = !open" aria-label="More actions" :aria-expanded="open"><i data-lucide="more-horizontal"></i></button>' +
+                  '<div class="menu" x-cloak x-show="open">' +
+                    '<button class="menu-item" @click="open = false; openNamedModal(\'saveActivityTemplate\',\'' + R.attr(a.id) + '\')"><i data-lucide="bookmark"></i> Save as template</button>' +
+                    (a.status === 'active' ? '<button class="menu-item" @click="open = false; act(\'POST\',\'/curriculum/activities/' + R.attr(a.id) + '/archive\',{},{successMessage:\'Activity archived\'})"><i data-lucide="archive"></i> Archive</button>' : '') +
+                  '</div>' +
+                '</span>') +
           '</div>')).join('') + '</div>' +
-        ((page.rows || []).length ? '' : R.emptyState('No activities yet', 'Build a library of activities your team can reuse.', '<button class="btn btn-primary" @click="openNamedModal(\'activity\')">New activity</button>', 'puzzle'));
+        ((page.rows || []).length ? '' : R.emptyState('No activities yet', 'Build a library of activities your team can reuse.', '<div class="btn-group" style="justify-content:center"><button class="btn btn-primary" @click="openNamedModal(\'activity\')">New activity</button>' + '<button class="btn btn-ghost" @click="loadSampleData(\'activities\')">Preview with sample data</button></div>', 'puzzle'));
     },
     openModal(ctx, name, id) {
       const page = ctx.page || {};
@@ -588,7 +619,7 @@
       ctx.filters.staffId = ctx.filters.staffId || '';
       ctx.filters.status = ctx.filters.status || '';
       ctx.filters.moduleId = ctx.filters.moduleId || '';
-      ctx.filters.density = ctx.filters.density || prefs.density || 'comfortable';
+      ctx.filters.density = ctx.filters.density || prefs.density || (typeof document !== 'undefined' && document.documentElement.dataset.density === 'compact' ? 'compact' : 'comfortable');
       if (ctx.calendarUi && ctx.calendarUi.drawerEventId) {
         // keep drawer state across reloads
       } else {
@@ -1218,11 +1249,10 @@
 
       if (name === 'calFocusDay' && id) {
         const view = ctx.filters.calendarView || 'agenda';
-        if (view === 'grid' || view === 'agenda') {
-          ctx.filters.from = id; ctx.filters.to = id; ctx.filters.calendarView = 'day'; ctx.filters.rangePreset = 'custom';
-        } else {
-          ctx.filters.from = id; ctx.filters.to = id; ctx.filters.rangePreset = 'custom';
-        }
+        // Mini-month and grid day cells both focus that day; the month grid
+        // lands on the agenda entries, other views keep their shape.
+        if (view === 'grid') ctx.filters.calendarView = 'agenda';
+        ctx.filters.from = id; ctx.filters.to = id; ctx.filters.rangePreset = 'custom';
         calSavePrefs({ from: id, to: id, calendarView: ctx.filters.calendarView, rangePreset: 'custom' });
         ctx.navigate(true);
         return;
