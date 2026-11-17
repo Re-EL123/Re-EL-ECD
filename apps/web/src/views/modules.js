@@ -61,8 +61,10 @@
             const actions = official
               ? '<a class="btn btn-sm btn-secondary" href="' + href + '">Preview ' + R.icon('arrow-right') + '</a>' +
                 '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/curriculum/adopt\',{kind:\'module\',id:\'' + R.attr(module.id) + '\'},{successMessage:\'Adopted to your workspace — the module and its plans are yours to edit\'})">' + R.icon('copy') + ' Adapt</button>' +
+                '<button class="btn btn-sm btn-ghost" @click="openModuleGuide(\'' + R.attr(module.id) + '\')">' + R.icon('book-open') + ' Teach / Guide</button>' +
                 '<button class="btn btn-sm btn-ghost" @click="downloadExport(\'/learning-modules/' + R.attr(module.id) + '/teacher-guide\')">' + R.icon('file-down') + ' Teacher guide</button>'
               : (canCreate ? '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'moduleEdit\',\'' + R.attr(module.id) + '\')">' + R.icon('pencil') + ' Edit</button>' : '') +
+                '<button class="btn btn-sm btn-secondary" @click="openModuleGuide(\'' + R.attr(module.id) + '\')">' + R.icon('book-open') + ' Teach / Guide</button>' +
                 '<a class="btn btn-sm btn-primary" href="' + href + '">Open module ' + R.icon('arrow-right') + '</a>';
             return R.card(module.title,
               '<div class="row" style="gap:8px;margin-bottom:10px;flex-wrap:wrap">' +

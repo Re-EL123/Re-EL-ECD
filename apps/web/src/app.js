@@ -1936,8 +1936,31 @@
         };
       },
 
-      async openGuide(planId) {
+      /**
+       * Unified guide access: open a module's lesson-guide sequence straight
+       * from anywhere modules are listed. Opens the first plan in the module;
+       * the guide player handles the rest (steps, interactive slides, narration).
+       */
+      async openModuleGuide(moduleId) {
         try {
+          const payload = await Reel.api('GET', '/learning-modules/' + encodeURIComponent(moduleId));
+          const data = payload.data || {};
+          const plans = (data.plans || []).slice().sort((a, b) => (a.position || 0) - (b.position || 0));
+          if (!plans.length) {
+            this.toast('This module has no lesson plans yet — open it to add one first.', 'info');
+            return;
+          }
+          const target = plans[0];
+          if (plans.length > 1) {
+            this.toast('Teaching “' + target.title + '” — plan 1 of ' + plans.length + ' in this module.');
+          }
+          this.openGuide(target.id);
+        } catch (error) {
+          this.toast(error.message || 'Could not open the module guide.', 'error');
+        }
+      },
+
+      async openGuide(planId) {        try {
           let payload;
           try {
             payload = await Reel.api('GET', '/curriculum/lesson-plans/' + encodeURIComponent(planId) + '/guide');

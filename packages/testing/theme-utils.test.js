@@ -65,6 +65,12 @@ test('dark mode overrides the surface and text tokens it set in light mode', () 
   assert.equal(dark['--surface-1'], '#323E37');
   assert.equal(dark['--surface-glass-strong'], 'rgba(50, 62, 55, 0.96)');
   assert.equal(dark['--text'], '#D3E2D5');
+  // Toggling dark -> light must restore every inline token dark mode writes;
+  // otherwise glass cards, modals and borders stay dark after the toggle.
+  assert.equal(light['--surface-glass'], 'rgba(255, 255, 255, 0.72)');
+  assert.equal(light['--surface-glass-strong'], 'rgba(255, 255, 255, 0.9)');
+  assert.equal(light['--border-subtle'], 'rgba(31, 61, 36, 0.12)');
+  assert.equal(light['--border-strong'], 'rgba(31, 61, 36, 0.24)');
   assert.notEqual(dark['--surface-0'], light['--surface-0']);
   assert.notEqual(dark['--text'], light['--text']);
   assert.equal(light['--text-muted'], '#6A776C');

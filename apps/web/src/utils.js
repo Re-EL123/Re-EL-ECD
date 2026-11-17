@@ -482,8 +482,8 @@
     const secondary = isHex(tokens.secondary) ? tokens.secondary : DEFAULT_THEME.secondary;
     const accent = isHex(tokens.accent) ? tokens.accent : DEFAULT_THEME.accent;
     const dark = mode === 'dark';
-    const surface = dark ? '#121A14' : (isHex(tokens.background) ? tokens.background : DEFAULT_THEME.background);
-    const card = dark ? '#18221A' : (isHex(tokens.surface) ? tokens.surface : DEFAULT_THEME.surface);
+    const surface = dark ? '#1B251E' : (isHex(tokens.background) ? tokens.background : DEFAULT_THEME.background);
+    const card = dark ? '#323E37' : (isHex(tokens.surface) ? tokens.surface : DEFAULT_THEME.surface);
     const vars = {
       '--reel-green-900': shade(primary, dark ? -0.30 : -0.42),
       '--reel-green-800': shade(primary, dark ? -0.16 : -0.26),
@@ -519,6 +519,13 @@
       // restore them or the first toggle back leaves muted text too pale.
       vars['--text-muted'] = '#6A776C';
       vars['--text-inverse'] = '#F7FBF7';
+      // Glass and border tokens are also written inline in dark mode; light
+      // mode must restore them or cards, modals and toasts stay dark glass
+      // after toggling back.
+      vars['--surface-glass'] = 'rgba(255, 255, 255, 0.72)';
+      vars['--surface-glass-strong'] = 'rgba(255, 255, 255, 0.9)';
+      vars['--border-subtle'] = 'rgba(31, 61, 36, 0.12)';
+      vars['--border-strong'] = 'rgba(31, 61, 36, 0.24)';
     } else {
       // Dark mode needs its own surface and text tokens. Without them the
       // inline light values set on :root win over the [data-theme="dark"]
