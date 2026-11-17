@@ -2261,63 +2261,105 @@ a.crumb:hover { color: var(--text-strong); background: var(--surface-2); text-de
 }
 
 /* --- Day scene card (Today) ----------------------------------------------
-   A landscape that breathes with the time of day: the sky gradient, sun or
-   moon position, clouds, hills, trees and meadow shimmer all follow the
-   current phase (dawn / morning / midday / afternoon / dusk / night). */
+   A layered vector landscape that breathes with the time of day: the sky,
+   horizon glow, sun or moon, ridges, flat-top acacia silhouettes, meadow
+   and bird flight all follow the current phase (dawn / morning / midday /
+   afternoon / dusk / night). */
 .day-card { padding: 0; overflow: hidden; }
 .day-scene {
   position: relative; height: 236px; overflow: hidden;
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
-.scene-sky, .scene-stars, .scene-orb, .scene-cloud, .scene-hill, .scene-tree, .scene-meadow, .scene-veil {
+/* Layered vector landscape: every colour comes from per-phase CSS variables. */
+.scene-sky, .scene-horizon, .scene-art, .scene-orb, .scene-stars, .scene-veil {
   position: absolute; pointer-events: none;
 }
-.scene-sky { inset: 0; transition: background 1.2s ease; }
-.day-card[data-phase="dawn"] .scene-sky {
-  background: linear-gradient(0deg, #ffd9a3 0%, #f9a88f 46%, #e98a9b 100%);
+.scene-sky { inset: 0; background: linear-gradient(0deg, var(--sky-low) 0%, var(--sky-mid) 52%, var(--sky-top) 100%); transition: background 1.2s ease; }
+.scene-horizon { inset: 0; background: radial-gradient(130% 90% at 50% 100%, var(--horizon), transparent 58%); opacity: var(--horizon-op, 0.9); transition: opacity 1.2s ease; }
+.scene-art { inset: 0; width: 100%; height: 100%; }
+.ridge-far { fill: var(--ridge-far); }
+.ridge-near { fill: var(--ridge-near); }
+.meadow-band, .grass { fill: var(--meadow-bot); }
+.tree .trunk { stroke: var(--tree); fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.tree .canopy { fill: var(--tree); }
+.tree .canopy-top { opacity: 0.92; }
+.flower { fill: var(--flower, #ffd98a); opacity: var(--flower-op, 0.95); }
+.flower.f2 { fill: #fdfdf4; }
+.bird-stroke { stroke: var(--bird, #2c2c28); stroke-width: 1.7; fill: none; stroke-linecap: round; }
+.birds { opacity: var(--birds-op, 0); transition: opacity 1.2s ease; animation: birds-bob 7s ease-in-out infinite; }
+@keyframes birds-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+/* Six-stop skies with a warm horizon glow, hazy koppies, flat-top acacias. */
+.day-card[data-phase="dawn"] {
+  --sky-top: #463a63; --sky-mid: #8a5470; --sky-low: #f0998a;
+  --horizon: #ffcf9a; --horizon-op: 0.95;
+  --sun-core: #fff3d0; --sun-rim: #ffc46b; --sun-halo: rgba(255, 200, 130, 0.55);
+  --ridge-far: #8a5f68; --ridge-near: #553c45; --tree: #261b21;
+  --meadow-bot: #2a3423; --cloud: #ffd9c2; --cloud-op: 0.85;
+  --bird: #3a2b30; --birds-op: 1; --flower-op: 0.85;
 }
-.day-card[data-phase="morning"] .scene-sky {
-  background: linear-gradient(0deg, #ffe7b8 0%, #9fd8f4 48%, #7cc4ec 100%);
+.day-card[data-phase="morning"] {
+  --sky-top: #79c6ec; --sky-mid: #a8ddf3; --sky-low: #fdeec0;
+  --horizon: #fff6cf; --horizon-op: 0.8;
+  --sun-core: #ffffff; --sun-rim: #ffe9a8; --sun-halo: rgba(255, 248, 200, 0.6);
+  --ridge-far: #6f97a6; --ridge-near: #3c6b47; --tree: #1d3a26;
+  --meadow-bot: #24482a; --cloud: #ffffff; --cloud-op: 0.95;
+  --bird: #2e3a42; --birds-op: 1; --flower-op: 1;
 }
-.day-card[data-phase="midday"] .scene-sky {
-  background: linear-gradient(0deg, #c9ecfa 0%, #8fd2f2 55%, #5fb3e4 100%);
+.day-card[data-phase="midday"] {
+  --sky-top: #2b93d8; --sky-mid: #6cc3ef; --sky-low: #c9ecfa;
+  --horizon: #eafaff; --horizon-op: 0.85;
+  --sun-core: #ffffff; --sun-rim: #fff3b0; --sun-halo: rgba(255, 255, 255, 0.65);
+  --ridge-far: #5b8a9c; --ridge-near: #2f5c3c; --tree: #16301d;
+  --meadow-bot: #1d4224; --cloud: #ffffff; --cloud-op: 1;
+  --bird: #1e2a33; --birds-op: 0; --flower-op: 1;
 }
-.day-card[data-phase="afternoon"] .scene-sky {
-  background: linear-gradient(0deg, #ffdfa8 0%, #f7b77e 48%, #6fa7cf 100%);
+.day-card[data-phase="afternoon"] {
+  --sky-top: #3f7fc0; --sky-mid: #7fb4d8; --sky-low: #ffd9a0;
+  --horizon: #ffe3a6; --horizon-op: 0.95;
+  --sun-core: #fffdf0; --sun-rim: #ffd27a; --sun-halo: rgba(255, 220, 150, 0.55);
+  --ridge-far: #6b7f8a; --ridge-near: #37513b; --tree: #1c3222;
+  --meadow-bot: #233d23; --cloud: #fff4e0; --cloud-op: 0.9;
+  --bird: #2c2c28; --birds-op: 0; --flower-op: 1;
 }
-.day-card[data-phase="dusk"] .scene-sky {
-  background: linear-gradient(0deg, #ffb27a 0%, #e98a86 45%, #7b6a9b 100%);
+.day-card[data-phase="dusk"] {
+  --sky-top: #2c2547; --sky-mid: #6e4460; --sky-low: #ff8f6b;
+  --horizon: #ffc06b; --horizon-op: 1;
+  --sun-core: #ffe1a8; --sun-rim: #ff9a4d; --sun-halo: rgba(255, 170, 110, 0.6);
+  --ridge-far: #553f52; --ridge-near: #332334; --tree: #1b1120;
+  --meadow-bot: #191d1a; --cloud: #f0b4a0; --cloud-op: 0.8;
+  --bird: #241a24; --birds-op: 1; --flower-op: 0.3;
+  --stars-opacity: 0.25;
 }
-.day-card[data-phase="night"] .scene-sky {
-  background: linear-gradient(0deg, #2a4152 0%, #1d2f44 55%, #14202f 100%);
+.day-card[data-phase="night"] {
+  --sky-top: #050d1d; --sky-mid: #0e1f38; --sky-low: #20374e;
+  --horizon: #3a4f68; --horizon-op: 0.55;
+  --sun-core: #ffe1a8; --sun-rim: #ff9a4d; --sun-halo: rgba(255, 170, 110, 0.4);
+  --ridge-far: #182a3c; --ridge-near: #0e1a28; --tree: #050b12;
+  --meadow-bot: #080f0c; --cloud: #3a4a5e; --cloud-op: 0.5;
+  --bird: #0a0f16; --birds-op: 0; --flower-op: 0;
 }
-/* Sun: layered glow rings; Moon: pale disc with a cool halo. */
+/* Sun: a proper sphere with limb darkening and a phase-tinted halo. */
 .scene-orb { border-radius: 50%; transition: left 2s ease, bottom 2s ease; }
 .scene-sun {
-  width: 42px; height: 42px; background: #fff;
-  display: grid; place-items: center;
-  box-shadow: 0 0 18px 6px rgba(255, 255, 255, 0.85);
-}
-.scene-sun::after {
-  content: ''; position: absolute; inset: -14%; border-radius: 50%; background: #fff; opacity: 0.45;
-}
-.scene-sun::before {
-  content: ''; position: absolute; inset: -32%; border-radius: 50%; background: #fff; opacity: 0.12;
+  width: 56px; height: 56px;
+  background: radial-gradient(circle at 50% 40%, var(--sun-core, #fff) 0 52%, var(--sun-rim, #ffe9a8) 88%, transparent 100%);
+  box-shadow:
+    0 0 0 9px color-mix(in srgb, var(--sun-halo, rgba(255, 240, 190, 0.5)) 38%, transparent),
+    0 0 55px 22px var(--sun-halo, rgba(255, 240, 190, 0.5));
 }
 .scene-moon {
-  width: 34px; height: 34px; background: #e9f2ef;
-  box-shadow: 0 0 16px 5px rgba(233, 242, 239, 0.55);
-}
-.scene-moon::before {
-  content: ''; position: absolute; inset: -30%; border-radius: 50%; background: #e9f2ef; opacity: 0.1;
+  width: 38px; height: 38px; background: #e9f2ef;
+  box-shadow: 0 0 18px 6px rgba(233, 242, 239, 0.55), 0 0 70px 26px rgba(190, 216, 230, 0.35);
 }
 .scene-moon::after {
   content: ''; position: absolute; inset: 0; border-radius: 50%;
-  background: radial-gradient(circle at 30% 30%, rgba(29, 47, 68, 0.16) 0 26%, transparent 27%),
-    radial-gradient(circle at 62% 58%, rgba(29, 47, 68, 0.12) 0 16%, transparent 17%);
+  background: radial-gradient(circle at 30% 30%, rgba(29, 47, 68, 0.22) 0 24%, transparent 25%),
+    radial-gradient(circle at 62% 58%, rgba(29, 47, 68, 0.16) 0 15%, transparent 16%),
+    radial-gradient(circle at 46% 72%, rgba(29, 47, 68, 0.14) 0 10%, transparent 11%),
+    radial-gradient(circle at 70% 26%, rgba(29, 47, 68, 0.12) 0 8%, transparent 9%);
 }
 /* Night stars: tiny fixed dots via radial gradients. */
-.scene-stars { inset: 0; opacity: 0.9; background:
+.scene-stars { inset: 0; opacity: var(--stars-opacity, 0.95); transition: opacity 1.2s ease; background:
   radial-gradient(1.5px 1.5px at 12% 22%, #fff 50%, transparent 55%),
   radial-gradient(1.2px 1.2px at 28% 12%, #fff 50%, transparent 55%),
   radial-gradient(1.6px 1.6px at 44% 26%, #dfeff5 50%, transparent 55%),
@@ -2327,37 +2369,21 @@ a.crumb:hover { color: var(--text-strong); background: var(--surface-2); text-de
   radial-gradient(1.3px 1.3px at 8% 44%, #fff 50%, transparent 55%),
   radial-gradient(1.2px 1.2px at 70% 38%, #fff 50%, transparent 55%);
 }
-/* Clouds: soft drifting puffs. */
-.scene-cloud { height: 16px; border-radius: 999px; background: rgba(255, 255, 255, 0.75); filter: blur(2px); }
-.scene-cloud.c1 { width: 120px; top: 18%; left: 8%; opacity: 0.8; animation: scene-drift 64s linear infinite; }
-.scene-cloud.c2 { width: 88px; top: 34%; left: 55%; opacity: 0.55; animation: scene-drift 92s linear infinite reverse; }
-[data-phase="dusk"] .scene-cloud, .day-card[data-phase="dusk"] .scene-cloud { background: rgba(255, 236, 214, 0.8); }
-.day-card[data-phase="night"] .scene-cloud { background: rgba(210, 228, 240, 0.22); }
+/* Clouds: sculpted puffs that genuinely drift across the sky. */
+.clouduse { opacity: var(--cloud-op, 0.9); animation: scene-drift 88s linear infinite; }
+.clouduse.cu2 { animation-duration: 118s; animation-delay: -38s; }
+.clouduse.cu3 { animation-duration: 102s; animation-delay: -72s; }
+.cl { fill: var(--cloud, #fff); }
+.cl-1 { opacity: 0.96; }
+.cl-2 { opacity: 0.86; }
+.cl-3 { opacity: 0.78; }
 @keyframes scene-drift {
-  from { transform: translateX(-140px); }
-  to { transform: translateX(calc(100vw + 140px)); }
+  from { transform: translateX(-240px); }
+  to { transform: translateX(1180px); }
 }
-/* Hills: layered silhouettes in the brand's deep greens. */
-.scene-hill { border-radius: 50%; }
-.scene-hill.h1 { right: -24%; bottom: 46px; width: 190px; height: 52px; background: #3d8a54; }
-.scene-hill.h2 { right: -38%; bottom: 30px; width: 210px; height: 92px; background: #2c5a33; }
-.scene-hill.h3 { left: -34%; bottom: -34px; width: 330px; height: 150px; background: #1f3d24; }
-/* Trees: simple pine silhouettes on the hills. */
-.scene-tree { width: 16px; background: #17301c; clip-path: polygon(50% 0%, 100% 38%, 78% 38%, 100% 68%, 72% 68%, 72% 100%, 28% 100%, 28% 68%, 0% 68%, 22% 38%, 0% 38%, 50% 38%); }
-.scene-tree.t1 { bottom: 74px; left: 6%; height: 42px; }
-.scene-tree.t2 { bottom: 64px; left: 13%; height: 30px; opacity: 0.9; }
-.scene-tree.t3 { bottom: 56px; right: 7%; height: 38px; }
-/* Meadow: the ground band with slow shimmer lines. */
-.scene-meadow { left: 0; right: 0; bottom: 0; height: 46px; overflow: hidden; background: linear-gradient(0deg, #24512c 0%, #357a42 100%); }
-.shimmer { position: absolute; background: rgba(255, 255, 255, 0.35); border-radius: 2px; }
-.shimmer.s1 { width: 34px; height: 3px; top: 12px; left: 30%; opacity: 0.7; animation: scene-shimmer 7s ease-in-out infinite; }
-.shimmer.s2 { width: 60px; height: 2px; top: 24px; left: 58%; opacity: 0.5; animation: scene-shimmer 9s ease-in-out infinite 1.2s; }
-.shimmer.s3 { width: 46px; height: 3px; top: 34px; left: 14%; opacity: 0.4; animation: scene-shimmer 11s ease-in-out infinite 2.4s; }
-@keyframes scene-shimmer {
-  0%, 100% { transform: translateX(0); opacity: 0.25; }
-  50% { transform: translateX(16px); opacity: 0.7; }
-}
-.scene-veil { inset: 0; background: linear-gradient(0deg, rgba(16, 28, 20, 0.5) 0%, rgba(16, 28, 20, 0.06) 45%, rgba(16, 28, 20, 0) 70%); }
+.scene-veil { inset: 0; background: linear-gradient(0deg, rgba(16, 28, 20, 0.52) 0%, rgba(16, 28, 20, 0.08) 45%, rgba(16, 28, 20, 0) 72%); }
+.day-card[data-phase="night"] .scene-veil { background: linear-gradient(0deg, rgba(2, 8, 6, 0.66) 0%, rgba(2, 8, 6, 0.14) 45%, rgba(2, 8, 6, 0) 72%); }
+.day-card[data-phase="dusk"] .scene-veil, .day-card[data-phase="dawn"] .scene-veil { background: linear-gradient(0deg, rgba(24, 12, 18, 0.55) 0%, rgba(24, 12, 18, 0.08) 45%, rgba(24, 12, 18, 0) 72%); }
 /* Overlay: clock + phase on the left, weather on the right. */
 .scene-overlay {
   position: absolute; inset: auto 16px 12px 16px; display: flex; align-items: flex-end; justify-content: space-between;
@@ -2398,7 +2424,7 @@ a.crumb:hover { color: var(--text-strong); background: var(--surface-2); text-de
   .scene-tone { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .scene-cloud, .shimmer { animation: none !important; }
+  .clouduse, .birds { animation: none !important; }
   .scene-orb { transition: none !important; }
 }
 @media print {

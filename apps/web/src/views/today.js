@@ -268,16 +268,58 @@
         info.push({ icon: 'list-checks', tone: 'clay', label: 'Wrap-up', value: (dr.missing ? R.number(dr.missing) + ' report' + (dr.missing === 1 ? '' : 's') + ' to write' : '') + (dr.missing && tasksDue ? ' · ' : '') + (tasksDue ? R.number(tasksDue) + ' task' + (tasksDue === 1 ? '' : 's') + ' due' : '') });
       }
 
+      // Layered vector landscape: hazy far koppies, a closer ridge, real
+      // flat-top acacia silhouettes, a grass-bladed meadow, shapes with real
+      // form instead of flat ellipses, and birds at dawn/dusk.
+      const scene =
+        '<div class="scene-sky"></div>' +
+        '<div class="scene-horizon"></div>' +
+        '<svg class="scene-art" viewBox="0 0 900 220" preserveAspectRatio="xMidYMax slice" aria-hidden="true">' +
+          '<defs>' +
+            '<g id="acacia">' +
+              '<path class="trunk" stroke-width="3.8" d="M0 46 L0 26 M0 31 L-13 18.5 M0 31 L13 17.5"/>' +
+              '<path class="trunk" stroke-width="2.1" d="M0 26 L0 2"/>' +
+              '<path class="canopy" d="M-35 2 C-34 -8.5 -25 -14.5 -13.5 -13.5 C-9.5 -20 9.5 -20 13.5 -13.5 C25 -14.5 34 -8.5 35 2 C21 7 -21 7 -35 2 Z"/>' +
+              '<path class="canopy canopy-top" d="M-15 -9.5 C-13 -15.5 -7.5 -18.5 0 -18.5 C7.5 -18.5 13 -15.5 15 -9.5 C8 -7 -8 -7 -15 -9.5 Z"/>' +
+            '</g>' +
+            '<g id="cloud">' +
+              '<ellipse class="cl cl-1" cx="0" cy="2" rx="30" ry="8.6"/>' +
+              '<ellipse class="cl cl-2" cx="-21" cy="6" rx="15" ry="6.4"/>' +
+              '<ellipse class="cl cl-3" cx="21" cy="6" rx="16" ry="7"/>' +
+              '<ellipse class="cl cl-1" cx="-8" cy="-4" rx="13" ry="7"/>' +
+              '<ellipse class="cl cl-2" cx="9" cy="-5" rx="12" ry="6.6"/>' +
+            '</g>' +
+
+          '</defs>' +
+          '<path class="ridge ridge-far" d="M0 132 L60 124 C110 114 150 124 205 116 C258 108 285 118 330 110 C346 106 353 98 373 98 C393 98 399 106 415 110 C480 120 520 104 585 108 C650 112 692 126 762 118 C822 111 862 120 900 114 L900 220 L0 220 Z"/>' +
+          '<use href="#acacia" transform="translate(118 124) scale(0.55)" class="tree"/>' +
+          '<use href="#acacia" transform="translate(392 114) scale(0.72)" class="tree"/>' +
+          '<use href="#acacia" transform="translate(662 120) scale(0.5)" class="tree"/>' +
+          '<use href="#acacia" transform="translate(828 130) scale(0.42)" class="tree"/>' +
+          '<path class="ridge ridge-near" d="M0 158 C110 146 200 164 320 152 C430 141 520 166 640 154 C750 144 830 160 900 152 L900 220 L0 220 Z"/>' +
+          '<use href="#acacia" transform="translate(72 168) scale(1.02)" class="tree tree-near"/>' +
+          '<use href="#acacia" transform="translate(842 172) scale(0.88)" class="tree tree-near"/>' +
+          '<path class="meadow-band" d="M0 184 C150 174 280 190 430 180 C580 171 700 188 900 179 L900 220 L0 220 Z"/>' +
+          '<circle class="flower f1" cx="150" cy="206" r="1.7"/><circle class="flower f2" cx="235" cy="213" r="1.5"/>' +
+          '<circle class="flower f1" cx="340" cy="201" r="1.6"/><circle class="flower f2" cx="470" cy="209" r="1.8"/>' +
+          '<circle class="flower f1" cx="640" cy="204" r="1.5"/><circle class="flower f2" cx="760" cy="213" r="1.7"/><circle class="flower f1" cx="392" cy="216" r="1.4"/>' +
+          '<path class="grass" d="M0 188 L7 176 L13 188 L20 178 L26 188 L33 174 L40 188 L47 179 L52 188 L60 173 L66 188 L74 178 L80 188 L88 175 L94 188 L101 179 L106 188 L114 172 L120 188 L128 179 L133 188 L141 174 L147 188 L154 178 L159 188 L167 173 L173 188 L181 179 L186 188 L194 175 L200 188 L207 179 L212 188 L220 172 L226 188 L234 179 L239 188 L247 174 L253 188 L260 178 L265 188 L273 173 L279 188 L287 179 L292 188 L300 175 L306 188 L313 179 L318 188 L326 172 L332 188 L340 179 L345 188 L353 174 L359 188 L366 178 L371 188 L379 173 L385 188 L393 179 L398 188 L406 175 L412 188 L419 179 L424 188 L432 172 L438 188 L446 179 L451 188 L459 174 L465 188 L472 178 L477 188 L485 173 L491 188 L499 179 L504 188 L512 175 L518 188 L525 179 L530 188 L538 172 L544 188 L552 179 L557 188 L565 174 L571 188 L578 178 L583 188 L591 173 L597 188 L605 179 L610 188 L618 175 L624 188 L631 179 L636 188 L644 172 L650 188 L658 179 L663 188 L671 174 L677 188 L684 178 L689 188 L697 173 L703 188 L711 179 L716 188 L724 175 L730 188 L737 179 L742 188 L750 172 L756 188 L764 179 L769 188 L777 174 L783 188 L790 178 L795 188 L803 173 L809 188 L817 179 L822 188 L830 175 L836 188 L843 179 L848 188 L856 172 L862 188 L870 179 L875 188 L883 174 L889 188 L900 177 L900 220 L0 220 Z"/>' +
+          '<use href="#acacia" transform="translate(560 176) scale(1.28)" class="tree tree-near"/>' +
+          '<g class="birds">' +
+            '<path class="bird-stroke" d="M292 62 Q297.5 56.5 303 62 Q308.5 56.5 314 62"/>' +
+            '<path class="bird-stroke" d="M346 46 Q350.6 41.8 355.2 46 Q359.8 41.8 364.4 46"/>' +
+            '<path class="bird-stroke" d="M254 50 Q258 46.4 262 50 Q266 46.4 270 50"/>' +
+          '</g>' +
+          '<use href="#cloud" class="clouduse cu1" x="150" y="46"/>' +
+          '<use href="#cloud" class="clouduse cu2" x="560" y="86"/>' +
+          '<use href="#cloud" class="clouduse cu3" x="770" y="30"/>' +
+        '</svg>' +
+        (isNight ? '<div class="scene-stars"></div>' : '') +
+        '<div class="scene-orb ' + (isNight ? 'scene-moon' : 'scene-sun') + '" style="left:' + orbLeft + '%;bottom:' + orbBottom + '%"></div>' +
+        '<div class="scene-veil"></div>';
       let html = '<div class="card day-card" data-phase="' + esc(tod.phase) + '">';
       html += '<div class="day-scene" role="img" aria-label="' + R.attr(tod.label + ' — ' + (w ? w.label : place)) + '">';
-      html += '<div class="scene-sky"></div>';
-      if (isNight) html += '<div class="scene-stars"></div>';
-      html += '<div class="scene-orb ' + (isNight ? 'scene-moon' : 'scene-sun') + '" style="left:' + orbLeft + '%;bottom:' + orbBottom + '%"></div>';
-      html += '<div class="scene-cloud c1"></div><div class="scene-cloud c2"></div>';
-      html += '<div class="scene-hill h1"></div><div class="scene-hill h2"></div><div class="scene-hill h3"></div>';
-      html += '<div class="scene-tree t1"></div><div class="scene-tree t2"></div><div class="scene-tree t3"></div>';
-      html += '<div class="scene-meadow"><i class="shimmer s1"></i><i class="shimmer s2"></i><i class="shimmer s3"></i></div>';
-      html += '<div class="scene-veil"></div>';
+      html += scene;
       html += '<div class="scene-overlay">' +
         '<div class="scene-left">' +
           '<div class="scene-clock">' + esc(clockDisplay(now)) + '</div>' +
