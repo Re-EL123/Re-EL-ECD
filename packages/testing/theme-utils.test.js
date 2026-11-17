@@ -61,8 +61,9 @@ test('dark mode overrides the surface and text tokens it set in light mode', () 
   // applyTheme writes these as inline custom properties. If dark omits them,
   // the light values win over the [data-theme="dark"] stylesheet and the
   // theme toggle looks broken.
-  assert.equal(dark['--surface-0'], '#121A14');
-  assert.equal(dark['--surface-1'], '#18221A');
+  assert.equal(dark['--surface-0'], '#1B251E');
+  assert.equal(dark['--surface-1'], '#323E37');
+  assert.equal(dark['--surface-glass-strong'], 'rgba(50, 62, 55, 0.96)');
   assert.equal(dark['--text'], '#D3E2D5');
   assert.notEqual(dark['--surface-0'], light['--surface-0']);
   assert.notEqual(dark['--text'], light['--text']);

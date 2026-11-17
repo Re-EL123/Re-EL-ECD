@@ -76,14 +76,14 @@
 
 [data-theme="dark"] {
   color-scheme: dark;
-  --surface-0: #121a14;
-  --surface-1: #18221a;
-  --surface-2: #1f2c21;
-  --surface-3: #28382a;
-  --surface-glass: rgba(24, 34, 26, 0.78);
-  --surface-glass-strong: rgba(24, 34, 26, 0.94);
-  --border-subtle: rgba(230, 244, 232, 0.12);
-  --border-strong: rgba(230, 244, 232, 0.24);
+  --surface-0: #1b251e;
+  --surface-1: #323e37;
+  --surface-2: #3e4a42;
+  --surface-3: #4b5750;
+  --surface-glass: rgba(50, 62, 55, 0.82);
+  --surface-glass-strong: rgba(50, 62, 55, 0.96);
+  --border-subtle: rgba(230, 244, 232, 0.16);
+  --border-strong: rgba(230, 244, 232, 0.3);
   --text-strong: #eef7ef;
   --text: #d3e2d5;
   --text-muted: #9aae9d;
@@ -1472,7 +1472,7 @@ img, video, canvas, svg { max-width: 100%; }
 .wb-mathbar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-subtle); }
 .wb-math { min-width: 34px; padding: 4px 8px; font-family: "Segoe UI", Arial, sans-serif; }
 .wb-canvas-wrap { background: #fafbf8; }
-[data-theme="dark"] .wb-canvas-wrap { background: #1a241c; }
+[data-theme="dark"] .wb-canvas-wrap { background: #26322a; }
 .wb-canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
 .wb-hint { position: absolute; left: 12px; bottom: 10px; background: var(--surface-glass-strong); padding: 4px 10px; border-radius: 999px; pointer-events: none; border: 1px solid var(--border-subtle); }
 @media (max-width: 700px) {

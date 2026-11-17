@@ -523,10 +523,14 @@
       // Dark mode needs its own surface and text tokens. Without them the
       // inline light values set on :root win over the [data-theme="dark"]
       // stylesheet rules, so toggling the theme appears to do nothing.
-      vars['--surface-0'] = '#121A14';
-      vars['--surface-1'] = '#18221A';
-      vars['--surface-2'] = '#1F2C21';
-      vars['--surface-3'] = '#28382A';
+      vars['--surface-0'] = '#1B251E';
+      vars['--surface-1'] = '#323E37';
+      vars['--surface-2'] = '#3E4A42';
+      vars['--surface-3'] = '#4B5750';
+      vars['--surface-glass'] = 'rgba(50, 62, 55, 0.82)';
+      vars['--surface-glass-strong'] = 'rgba(50, 62, 55, 0.96)';
+      vars['--border-subtle'] = 'rgba(230, 244, 232, 0.16)';
+      vars['--border-strong'] = 'rgba(230, 244, 232, 0.3)';
       vars['--text-strong'] = '#EEF7EF';
       vars['--text'] = '#D3E2D5';
       vars['--text-muted'] = '#9AAE9D';
