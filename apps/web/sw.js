@@ -31,6 +31,19 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return; // mutations need the network
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return; // leave R2/CDN alone (app-layer handles it)
+  // Navigation: network-first so a fresh deploy reaches users; fall back to cached shell offline.
+  if (request.mode === 'navigate') {
+    event.respondWith((async () => {
+      try {
+        return await fetch(request);
+      } catch {
+        const cached = await caches.match(request);
+        if (cached) return cached;
+        return caches.match('/');
+      }
+    })());
+    return;
+  }
   if (url.pathname.startsWith('/api/')) {
     // API GETs: network first, fall back to the last cached copy offline.
     event.respondWith((async () => {
