@@ -1057,28 +1057,41 @@
           else if (key === 'Home') { event.preventDefault(); goTo(0); }
           else if (key === 'End') { event.preventDefault(); goTo(total - 1); }
         });
-        // Horizontal drag / swipe anywhere on the stage (pointer capture keeps
-        // vertical scrolling alive via touch-action: pan-y in CSS).
+        // Horizontal drag / swipe. NO setPointerCapture here: capturing on
+        // pointerdown retargets the compatibility click to the stage, which
+        // silently killed every real mouse/touch click inside the cards.
+        // Move/up listeners live on document for the drag session instead.
         let dragX = null;
-        stage.addEventListener('pointerdown', (event) => {
-          if (event.button !== 0 && event.pointerType === 'mouse') return;
-          dragX = { x: event.clientX, y: event.clientY, moved: false };
-          try { stage.setPointerCapture(event.pointerId); } catch { /* not critical */ }
-        });
-        stage.addEventListener('pointermove', (event) => {
+        const onMove = (event) => {
           if (!dragX) return;
           const dx = event.clientX - dragX.x;
           const dy = event.clientY - dragX.y;
           if (Math.abs(dy) > Math.abs(dx) * 1.2) { dragX = null; return; } // vertical scroll wins
           if (Math.abs(dx) > 12) dragX.moved = true;
-        });
-        stage.addEventListener('pointerup', (event) => {
+        };
+        const onUp = (event) => {
           if (!dragX) return;
           const dx = event.clientX - dragX.x;
+          const wasDrag = dragX.moved;
           dragX = null;
-          if (Math.abs(dx) >= 48) goTo(current + (dx < 0 ? 1 : -1));
+          document.removeEventListener('pointermove', onMove);
+          document.removeEventListener('pointerup', onUp);
+          document.removeEventListener('pointercancel', onUp);
+          if (wasDrag && Math.abs(dx) >= 48) {
+            // A drag is not a click — suppress the click that follows so a
+            // side card isn't accidentally "tapped" into selection.
+            const suppress = (e) => { e.stopPropagation(); e.preventDefault(); document.removeEventListener('click', suppress, true); };
+            document.addEventListener('click', suppress, true);
+            goTo(current + (dx < 0 ? 1 : -1));
+          }
+        };
+        stage.addEventListener('pointerdown', (event) => {
+          if (event.button !== 0 && event.pointerType === 'mouse') return;
+          dragX = { x: event.clientX, y: event.clientY, moved: false };
+          document.addEventListener('pointermove', onMove);
+          document.addEventListener('pointerup', onUp);
+          document.addEventListener('pointercancel', onUp);
         });
-        stage.addEventListener('pointercancel', () => { dragX = null; });
         paint(false);
       },
 
