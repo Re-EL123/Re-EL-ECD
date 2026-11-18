@@ -513,9 +513,10 @@ async function seedDevelopment({ force = false } = {}) {
   for (const date of dates) {
     for (const learner of learnerRows.rows) {
       const roll = (learner.first_name.charCodeAt(0) + date.charCodeAt(9)) % 10;
-      const status = roll === 0 ? 'absent' : roll === 1 ? 'late' : 'present';
-      // Two children stay at the centre today so the gate demo has content.
+      // Amelia and Liam stay at the centre today for the gate demo — pin them present
+      // so both the seed and the gate tests are deterministic across calendar days.
       const staysIn = date === dates[0] && (learner.first_name === 'Amelia' || learner.first_name === 'Liam');
+      const status = staysIn ? 'present' : (roll === 0 ? 'absent' : roll === 1 ? 'late' : 'present');
       await pool.query(
         `INSERT INTO learner_attendance (organisation_id, branch_id, learner_id, attendance_date, check_in_at, check_out_at,
           attendance_status, absence_reason, recorded_by)

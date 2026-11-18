@@ -395,6 +395,16 @@
 
       async boot() {
         window.ReelApp = this;
+        this._pendingTick = [];
+        this.$nextTick = (fn) => {
+          const next = () => {
+            if (typeof fn === 'function') {
+              try { fn.call(this); } catch (err) { console.warn('$nextTick callback failed', err); }
+            }
+            return Promise.resolve();
+          };
+          return Promise.resolve().then(next);
+        };
         this.refreshVoices();
         if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
           window.speechSynthesis.onvoiceschanged = () => this.refreshVoices();
