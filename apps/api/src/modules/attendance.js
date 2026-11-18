@@ -1,9 +1,9 @@
 'use strict';
 
-const crypto = require('node:crypto');
 const { validate } = require('../../../../packages/contracts/validate');
 const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
+const { hashPin, verifyPin } = require('../../../../packages/auth/pin');
 const { has, assignedClassroomIds, getLearner, today } = require('./helpers');
 
 async function upsertAttendance(client, ctx, learner, data) {
@@ -216,20 +216,32 @@ function register(router) {
     let collectorName = body.collectorName.trim();
     let verifiedByCode = false;
     if (body.collectorPin) {
-      const hash = crypto.createHash('sha256')
-        .update(ctx.organisationId + '::collection-pin::' + body.collectorPin.trim().toLowerCase())
-        .digest('hex');
-      const collector = await ctx.db.one(
-        `SELECT id, name FROM authorised_collectors
+      const candidates = await ctx.db.many(
+        `SELECT id, name, pin_hash FROM authorised_collectors
          WHERE learner_id = $1 AND organisation_id = $2 AND status = 'active'
-           AND approval_status = 'approved' AND pin_hash = $3`,
-        [existing.learner_id, ctx.organisationId, hash]
+           AND approval_status = 'approved'`,
+        [existing.learner_id, ctx.organisationId]
       );
-      if (!collector) {
+      let matched = null;
+      for (const candidate of candidates) {
+        const result = await verifyPin(body.collectorPin, candidate.pin_hash, ctx.organisationId);
+        if (result.ok) {
+          matched = candidate;
+          // Transparent upgrade to scrypt on successful use.
+          if (result.needsRehash) {
+            try {
+              const upgraded = await hashPin(body.collectorPin);
+              await ctx.db.query('UPDATE authorised_collectors SET pin_hash = $1 WHERE id = $2', [upgraded, candidate.id]);
+            } catch (err) { /* non-fatal */ }
+          }
+          break;
+        }
+      }
+      if (!matched) {
         fail('VALIDATION', [{ field: 'collectorPin', message: 'That code does not match anyone on this child’s trusted list — check it with the parent, or release without the code.' }]);
       }
-      collectorId = collector.id;
-      collectorName = collector.name;
+      collectorId = matched.id;
+      collectorName = matched.name;
       verifiedByCode = true;
     }
     const updated = await ctx.db.withTransaction(async (client) => {

@@ -6,9 +6,25 @@ function requestId() {
   return `req_${crypto.randomUUID()}`;
 }
 
+/**
+ * Client IP for rate limiting and audit logs. A raw X-Forwarded-For first
+ * entry is attacker-controlled, so trust the edge instead: Vercel (and similar
+ * platforms) overwrite `x-real-ip` with the true client IP, and append the
+ * real peer LAST in the XFF chain — take the rightmost entry that looks like
+ * an IP. Never trust a client-supplied leftmost entry.
+ */
+const IP_RE = /^(\d{1,3}\.){3}\d{1,3}$|^[0-9a-fA-F:]{2,45}$/;
+function looksIp(value) {
+  return typeof value === 'string' && value.length <= 45 && IP_RE.test(value.trim());
+}
 function clientIp(req) {
+  const realIp = req.headers['x-real-ip'];
+  if (looksIp(Array.isArray(realIp) ? realIp[0] : realIp)) return String(Array.isArray(realIp) ? realIp[0] : realIp).trim();
   const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string' && forwarded.length) return forwarded.split(',')[0].trim();
+  if (typeof forwarded === 'string' && forwarded.length) {
+    const parts = forwarded.split(',').map((p) => p.trim()).filter(looksIp);
+    if (parts.length) return parts[parts.length - 1];
+  }
   return req.socket && req.socket.remoteAddress ? req.socket.remoteAddress : 'unknown';
 }
 
@@ -20,7 +36,7 @@ function parseCookies(header) {
     if (index === -1) continue;
     const key = part.slice(0, index).trim();
     const value = part.slice(index + 1).trim();
-    if (key) out[key] = decodeURIComponent(value);
+    if (key) { try { out[key] = decodeURIComponent(value); } catch { out[key] = value; } }
   }
   return out;
 }
@@ -98,6 +114,9 @@ function send(res, status, payload, headers = {}) {
 function sendText(res, status, body, headers = {}) {
   res.statusCode = status;
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Cache-Control', 'no-store');
   for (const [key, value] of Object.entries(headers)) res.setHeader(key, value);
   res.end(body);
 }

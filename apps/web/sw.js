@@ -1,7 +1,8 @@
-/* Re-EL ECD service worker: offline shell + guide reading.
-   Strategy: same-origin static assets and API GETs are cache-backed so a
-   downloaded centre pack stays usable with no network at all. */
-const CACHE = 'reel-shell-v70';
+/* Re-EL ECD service worker: offline shell.
+   Strategy: same-origin static assets are cache-backed so the app shell
+   loads offline. API GETs are network-only — children's data is never
+   written to Cache Storage, which persists after logout on shared devices. */
+const CACHE = 'reel-shell-v72';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(self.skipWaiting());
@@ -11,6 +12,12 @@ self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
     await Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)));
+    // Purge any cached API responses from earlier versions of this worker.
+    for (const key of keys) {
+      const cache = await caches.open(key);
+      const requests = await cache.keys();
+      await Promise.all(requests.filter((r) => new URL(r.url).pathname.startsWith('/api/')).map((r) => cache.delete(r)));
+    }
     await self.clients.claim();
   })());
 });
@@ -45,20 +52,14 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   if (url.pathname.startsWith('/api/')) {
-    // API GETs: network first, fall back to the last cached copy offline.
+    // API GETs are network-only. The client handles offline states itself;
+    // we never persist children's data in Cache Storage.
     event.respondWith((async () => {
       try {
-        const response = await fetch(request);
-        if (response && response.ok) {
-          const cache = await caches.open(CACHE);
-          cache.put(request, response.clone());
-        }
-        return response;
+        return await fetch(request);
       } catch {
-        const cached = await caches.match(request);
-        if (cached) return cached;
         return new Response(JSON.stringify({ error: { code: 'OFFLINE', message: 'You are offline and this data has not been downloaded yet.' } }),
-          { status: 503, headers: { 'Content-Type': 'application/json' } });
+          { status: 503, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
       }
     })());
     return;

@@ -20,6 +20,7 @@ const branding = require('../services/branding-service');
 const { provisionOrganisation } = require('../services/provision-service');
 const { rateLimit } = require('../middleware/rate-limit');
 const { parsePagination } = require('../utils/http');
+const { debugTokensEnabled } = require('../utils/debug');
 
 function roundMoney(value) {
   return Math.round(Number(value || 0) * 100) / 100;
@@ -585,7 +586,7 @@ function register(router) {
         data: { ownerName: body.ownerName, organisationName: result.organisation.name, token }
       });
     }
-    if (process.env.NODE_ENV !== 'production') ctx.meta.temporaryPassword = password;
+    if (debugTokensEnabled()) ctx.meta.temporaryPassword = password;
     ctx.status = 201;
     return result.organisation;
   }, { platformOnly: true, permission: 'platform.organisations.manage' });

@@ -7,6 +7,7 @@ const { send, readBody, parseCookies, requestId, clientIp } = require('./utils/h
 const { loadSession } = require('./services/session-service');
 const { resolveAccess } = require('./services/access-service');
 const { hasPermission } = require('../../../packages/auth/permissions');
+const { safeEqual } = require('../../../packages/auth/password');
 
 const router = new Router();
 require('./modules').register(router);
@@ -35,15 +36,19 @@ function applyCors(req, res) {
   // wildcard with a credentialed request, so when an origin is present it is
   // echoed back with credentials allowed; requests without an origin (curl,
   // server-to-server) still receive `*`.
+  // Public website endpoints are read by families on tenant-owned domains and
+  // never use the session cookie, so they must NOT get credentialed CORS —
+  // reflecting any origin with credentials would let any site ride a
+  // victim's session if a public route ever touches one. Origin is echoed
+  // without credentials; server-to-server gets `*`.
   if (isPublicRequest(req.url)) {
     if (origin) {
       res.setHeader('Access-Control-Allow-Origin', origin);
-      res.setHeader('Access-Control-Allow-Credentials', 'true');
       res.setHeader('Vary', 'Origin');
     } else {
       res.setHeader('Access-Control-Allow-Origin', '*');
     }
-  } else if (allowed.includes('*')) {
+  } else if (allowed.includes('*') && process.env.NODE_ENV !== 'production') {
     res.setHeader('Access-Control-Allow-Origin', origin || '*');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
   } else if (origin && allowed.includes(origin)) {
@@ -184,6 +189,9 @@ async function handle(req, res) {
     rawBody: ''
   };
   res.setHeader('X-Request-Id', ctx.requestId);
+  res.setHeader('Strict-Transport-Security', 'max-age=63072000');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
 
   try {
     req.cookies = parseCookies(req.headers.cookie);
@@ -218,7 +226,7 @@ async function handle(req, res) {
 
       if (ctx.fromCookie && !SAFE_METHODS.has(req.method) && !route.options.skipCsrf) {
         const supplied = req.headers['x-csrf-token'];
-        if (!supplied || supplied !== ctx.session.csrf_token) throw new AppError('CSRF');
+        if (!supplied || !safeEqual(supplied, ctx.session.csrf_token)) throw new AppError('CSRF');
       }
 
       await resolveOrganisation(ctx, route);

@@ -82,7 +82,7 @@
       ).join('');
       const intro = (doc.intro || []).map((p) => '<p>' + R.esc(p) + '</p>').join('');
       const back = (ctx.area === 'parent' ? '#/parent/manuals' : '#/app/manuals');
-      return R.pageHead(doc.title || 'Manual', doc.lede || '',
+      return R.pageHead(doc.title || 'Manual', R.esc(doc.lede || ''),
         '<a class="btn btn-secondary btn-sm" href="' + R.attr(back) + '">' + R.icon('arrow-left') + ' All manuals</a>' +
         '<button class="btn btn-primary btn-sm" @click="downloadExport(\'/documents/' + R.attr(doc.slug) + '/pdf\')">' + R.icon('download') + ' Download branded PDF</button>') +
         '<section class="section"><article class="legal-article">' +

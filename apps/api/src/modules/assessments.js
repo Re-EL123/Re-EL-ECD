@@ -59,7 +59,7 @@ function register(router) {
       publishNow: { type: 'boolean', optional: true }
     });
     const learner = await getLearner(ctx, body.learnerId);
-    if (!has(ctx, 'assessments.create.assigned') && !has(ctx, 'assessments.read.daycare')) throw new AppError('FORBIDDEN');
+    if (!has(ctx, 'assessments.create.assigned')) throw new AppError('FORBIDDEN');
     if (body.publishNow && !has(ctx, 'assessments.publish.daycare')) throw new AppError('FORBIDDEN');
     if (body.objectiveId) {
       const objective = await ctx.db.one('SELECT id FROM learning_objectives WHERE id = $1', [body.objectiveId]);
@@ -82,7 +82,7 @@ function register(router) {
     });
     ctx.status = 201;
     return observation;
-  }, { permission: ['assessments.create.assigned', 'assessments.read.daycare'], permissionMode: 'any' });
+  }, { permission: 'assessments.create.assigned' });
 
   router.patch('/assessments/observations/:id', async (ctx) => {
     const body = validate(ctx.body, {
@@ -97,7 +97,13 @@ function register(router) {
     if (!['draft', 'submitted'].includes(observation.assessment_status)) {
       fail('CONFLICT', null, 'Published observations cannot be edited. Record an amendment instead.');
     }
-    if (observation.recorded_by !== ctx.user.id && !has(ctx, 'assessments.read.daycare')) throw new AppError('FORBIDDEN');
+    // Only the author or a publisher may edit — a read-only reviewer cannot
+    // quietly rewrite the very evidence they are supposed to be checking.
+    if (observation.recorded_by !== ctx.user.id && !has(ctx, 'assessments.publish.daycare')) throw new AppError('FORBIDDEN');
+    if (body.objectiveId) {
+      const objective = await ctx.db.one('SELECT id FROM learning_objectives WHERE id = $1', [body.objectiveId]);
+      if (!objective) fail('VALIDATION', [{ field: 'objectiveId', message: 'Unknown learning objective.' }]);
+    }
     await ctx.db.query(
       `UPDATE learner_observations SET context = COALESCE($1,context), observation_text = COALESCE($2,observation_text),
         objective_id = COALESCE($3,objective_id), photo_urls = COALESCE($4,photo_urls), updated_at = now() WHERE id = $5`,
@@ -105,7 +111,7 @@ function register(router) {
         body.photoUrls ? JSON.stringify(body.photoUrls) : null, observation.id]
     );
     return ctx.db.one('SELECT * FROM learner_observations WHERE id = $1', [observation.id]);
-  }, { permission: ['assessments.create.assigned', 'assessments.read.daycare'], permissionMode: 'any' });
+  }, { permission: 'assessments.create.assigned' });
 
   router.get('/assessments/observations/:id/comments', async (ctx) => {
     const observation = await ctx.db.one('SELECT recorded_by FROM learner_observations WHERE id = $1 AND organisation_id = $2',
@@ -157,7 +163,7 @@ function register(router) {
     if (!['draft', 'submitted'].includes(observation.assessment_status)) {
       fail('CONFLICT', null, 'Only draft or submitted observations can be submitted for review.');
     }
-    if (observation.recorded_by !== ctx.user.id && !has(ctx, 'assessments.read.daycare')) throw new AppError('FORBIDDEN');
+    if (observation.recorded_by !== ctx.user.id && !has(ctx, 'assessments.publish.daycare')) throw new AppError('FORBIDDEN');
     await ctx.db.query(
       `UPDATE learner_observations SET assessment_status = 'submitted', updated_at = now() WHERE id = $1`,
       [observation.id]
@@ -166,7 +172,7 @@ function register(router) {
       action: 'assessment.observation_submitted', resourceType: 'learner_observation', resourceId: observation.id
     });
     return ctx.db.one('SELECT * FROM learner_observations WHERE id = $1', [observation.id]);
-  }, { permission: ['assessments.create.assigned', 'assessments.read.daycare'], permissionMode: 'any' });
+  }, { permission: 'assessments.create.assigned' });
 
   router.post('/assessments/observations/bulk', async (ctx) => {
     const body = validate(ctx.body, {
@@ -184,7 +190,7 @@ function register(router) {
         if (!observation) { skipped.push({ id, reason: 'not found' }); continue; }
         if (body.action === 'submit') {
           if (!['draft', 'submitted'].includes(observation.assessment_status)) { skipped.push({ id, reason: 'not draft' }); continue; }
-          if (observation.recorded_by !== ctx.user.id && !has(ctx, 'assessments.read.daycare')) { skipped.push({ id, reason: 'not yours' }); continue; }
+          if (observation.recorded_by !== ctx.user.id && !has(ctx, 'assessments.publish.daycare')) { skipped.push({ id, reason: 'not yours' }); continue; }
           await client.query(
             `UPDATE learner_observations SET assessment_status = 'submitted', updated_at = now() WHERE id = $1`,
             [id]
@@ -212,7 +218,7 @@ function register(router) {
       metadata: { updated: results.updated.length, skipped: results.skipped.length }
     });
     return { updated: results.updated.length, skipped: results.skipped };
-  }, { permission: ['assessments.create.assigned', 'assessments.read.daycare'], permissionMode: 'any' });
+  }, { permission: ['assessments.create.assigned', 'assessments.publish.daycare'], permissionMode: 'any' });
 
   router.post('/assessments/observations/:id/publish', async (ctx) => {
     const observation = await ctx.db.one('SELECT * FROM learner_observations WHERE id = $1 AND organisation_id = $2',
@@ -242,7 +248,7 @@ function register(router) {
       note: { type: 'string', max: 600, optional: true }
     });
     const learner = await getLearner(ctx, body.learnerId);
-    if (!has(ctx, 'assessments.create.daycare') && !has(ctx, 'assessments.publish.daycare')) {
+    if (!has(ctx, 'assessments.create.assigned') && !has(ctx, 'assessments.publish.daycare')) {
       const classrooms = await assignedClassroomIds(ctx);
       if (!learner.classroom_id || !classrooms.includes(learner.classroom_id)) throw new AppError('FORBIDDEN');
     }
@@ -268,33 +274,40 @@ function register(router) {
       );
       if (consent) publishedPhotos = photos; else photoWithheld = true;
     }
+    // 10-second share for publishers; everyone else's moment is held as
+    // submitted for the principal's review before a family sees anything.
+    const canPublish = has(ctx, 'assessments.publish.daycare');
     const observation = await ctx.db.one(
       `INSERT INTO learner_observations (organisation_id, branch_id, learner_id, objective_id, domain_id,
         observation_date, context, observation_text, assessment_status, visibility_status, recorded_by, reviewed_by, published_at, photo_urls)
-       VALUES ($1,$2,$3,NULL,$4,CURRENT_DATE,'Moment captured',$5,'published','published',$6,$6,now(),$7) RETURNING *`,
-      [ctx.organisationId, learner.branch_id, learner.id, domainId, text, ctx.user.id, JSON.stringify(publishedPhotos)]
+       VALUES ($1,$2,$3,NULL,$4,CURRENT_DATE,'Moment captured',$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [ctx.organisationId, learner.branch_id, learner.id, domainId, text,
+       canPublish ? 'published' : 'submitted', canPublish ? 'published' : 'internal', ctx.user.id,
+       canPublish ? ctx.user.id : null, canPublish ? new Date().toISOString() : null, JSON.stringify(publishedPhotos)]
     );
-    await notifyGuardians(ctx, learner.id, observation);
+    if (canPublish) await notifyGuardians(ctx, learner.id, observation);
     await recordAudit(ctx.db, ctx, {
-      action: 'assessment.quick_moment_published', resourceType: 'learner_observation', resourceId: observation.id,
+      action: canPublish ? 'assessment.quick_moment_published' : 'assessment.quick_moment_submitted', resourceType: 'learner_observation', resourceId: observation.id,
       branchId: learner.branch_id, metadata: { photosShared: publishedPhotos.length, photosWithheld: photoWithheld }
     });
     ctx.status = 201;
     return {
       ...observation,
       photosWithheld: photoWithheld,
-      message: photoWithheld
-        ? 'Moment shared without the photo — the centre does not yet hold photo consent for this child.'
-        : (publishedPhotos.length ? 'Moment shared with ' + publishedPhotos.length + ' photo' + (publishedPhotos.length === 1 ? '' : 's') + '.' : 'Moment shared without a photo.')
+      message: !canPublish
+        ? 'Moment saved — the principal will review it before the family sees it.'
+        : (photoWithheld
+          ? 'Moment shared without the photo — the centre does not yet hold photo consent for this child.'
+          : (publishedPhotos.length ? 'Moment shared with ' + publishedPhotos.length + ' photo' + (publishedPhotos.length === 1 ? '' : 's') + '.' : 'Moment shared without a photo.'))
     };
-  }, { permission: ['assessments.create.assigned', 'assessments.create.daycare'], permissionMode: 'any' });
+  }, { permission: ['assessments.create.assigned', 'assessments.create.assigned'], permissionMode: 'any' });
 
   // --- The month, in one paragraph -------------------------------------------
   // Teachers write the arc; the 15th portfolio digest carries it straight
   // into the family's inbox.
 
   async function assignedLearners(ctx) {
-    if (has(ctx, 'assessments.create.daycare') || has(ctx, 'learners.read.daycare')) {
+    if (has(ctx, 'assessments.create.assigned') || has(ctx, 'learners.read.daycare')) {
       return ctx.db.many(
         `SELECT l.id, l.first_name, l.last_name, l.classroom_id, c.name AS classroom_name
          FROM learners l LEFT JOIN classrooms c ON c.id = l.classroom_id
@@ -336,7 +349,7 @@ function register(router) {
         updatedAt: (byLearner.get(l.id) || {}).updated_at || null
       }))
     };
-  }, { permission: ['assessments.create.assigned', 'assessments.read.assigned', 'assessments.create.daycare', 'organisation.settings.manage'], permissionMode: 'any' });
+  }, { permission: ['assessments.create.assigned', 'assessments.read.assigned', 'assessments.create.assigned', 'organisation.settings.manage'], permissionMode: 'any' });
 
   router.put('/assessments/monthly-arcs', async (ctx) => {
     const body = validate(ctx.body, {
@@ -345,7 +358,7 @@ function register(router) {
       paragraph: { type: 'string', max: 1200 }
     });
     const learner = await getLearner(ctx, body.learnerId);
-    if (!has(ctx, 'assessments.create.daycare') && !has(ctx, 'organisation.settings.manage')) {
+    if (!has(ctx, 'assessments.create.assigned') && !has(ctx, 'organisation.settings.manage')) {
       const classrooms = await assignedClassroomIds(ctx);
       if (!learner.classroom_id || !classrooms.includes(learner.classroom_id)) throw new AppError('FORBIDDEN');
     }
@@ -367,7 +380,7 @@ function register(router) {
     );
     await recordAudit(ctx.db, ctx, { action: 'assessment.monthly_arc_saved', resourceType: 'learner', resourceId: learner.id, metadata: { month: body.month } });
     return { learnerId: learner.id, paragraph, saved: true };
-  }, { permission: ['assessments.create.assigned', 'assessments.create.daycare', 'organisation.settings.manage'], permissionMode: 'any' });
+  }, { permission: ['assessments.create.assigned', 'assessments.create.assigned', 'organisation.settings.manage'], permissionMode: 'any' });
 
   router.post('/assessments/observations/:id/amend', async (ctx) => {
     const body = validate(ctx.body, {
@@ -440,26 +453,51 @@ function register(router) {
       summary: { type: 'string', min: 5, max: 5000 }
     });
     const learner = await getLearner(ctx, body.learnerId);
+    // Links must belong to this organisation — never attach work to another
+    // tenant's term periods or to foreign curriculum content.
+    const period = await ctx.db.one('SELECT id FROM assessment_periods WHERE id = $1 AND organisation_id = $2',
+      [body.assessmentPeriodId, ctx.organisationId]);
+    if (!period) fail('VALIDATION', [{ field: 'assessmentPeriodId', message: 'Unknown assessment period.' }]);
+    const domain = await ctx.db.one(
+      `SELECT d.id FROM curriculum_domains d
+       JOIN curriculum_frameworks f ON f.id = d.framework_id
+       WHERE d.id = $1 AND (f.organisation_id = $2 OR f.organisation_id IS NULL)`,
+      [body.domainId, ctx.organisationId]);
+    if (!domain) fail('VALIDATION', [{ field: 'domainId', message: 'Unknown curriculum domain.' }]);
+    const canPublish = has(ctx, 'assessments.publish.daycare');
     const existing = await ctx.db.one(
-      `SELECT id FROM learner_assessments WHERE learner_id = $1 AND assessment_period_id = $2 AND domain_id = $3`,
+      `SELECT id, assessment_status FROM learner_assessments WHERE learner_id = $1 AND assessment_period_id = $2 AND domain_id = $3`,
       [learner.id, body.assessmentPeriodId, body.domainId]
     );
     if (existing) {
-      await ctx.db.query(
-        `UPDATE learner_assessments SET summary = $1, assessed_by = $2, assessment_status = 'published',
-          reviewed_by = $2, published_at = now(), updated_at = now() WHERE id = $3`,
-        [body.summary, ctx.user.id, existing.id]
-      );
+      // A published term assessment can only be re-written by a publisher —
+      // never silently overwritten by a create-only role.
+      if (existing.assessment_status === 'published' && !canPublish) throw new AppError('FORBIDDEN');
+      if (canPublish) {
+        await ctx.db.query(
+          `UPDATE learner_assessments SET summary = $1, assessed_by = $2, assessment_status = 'published',
+            reviewed_by = $2, published_at = now(), updated_at = now() WHERE id = $3`,
+          [body.summary, ctx.user.id, existing.id]
+        );
+      } else {
+        await ctx.db.query(
+          `UPDATE learner_assessments SET summary = $1, assessed_by = $2, assessment_status = 'submitted',
+            reviewed_by = NULL, published_at = NULL, updated_at = now() WHERE id = $3`,
+          [body.summary, ctx.user.id, existing.id]
+        );
+      }
       await recordAudit(ctx.db, ctx, { action: 'assessment.learner_updated', resourceType: 'learner_assessment', resourceId: existing.id });
       return ctx.db.one('SELECT * FROM learner_assessments WHERE id = $1', [existing.id]);
     }
     const assessment = await ctx.db.one(
       `INSERT INTO learner_assessments (organisation_id, learner_id, assessment_period_id, domain_id, assessment_status,
         summary, assessed_by, reviewed_by, published_at)
-       VALUES ($1,$2,$3,$4,'published',$5,$6,$6,now()) RETURNING *`,
-      [ctx.organisationId, learner.id, body.assessmentPeriodId, body.domainId, body.summary, ctx.user.id]
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      canPublish
+        ? [ctx.organisationId, learner.id, body.assessmentPeriodId, body.domainId, 'published', body.summary, ctx.user.id, ctx.user.id, new Date().toISOString()]
+        : [ctx.organisationId, learner.id, body.assessmentPeriodId, body.domainId, 'submitted', body.summary, ctx.user.id, null, null]
     );
-    await recordAudit(ctx.db, ctx, { action: 'assessment.learner_created', resourceType: 'learner_assessment', resourceId: assessment.id });
+    await recordAudit(ctx.db, ctx, { action: 'assessment.learner_created', resourceType: 'learner_assessment', resourceId: assessment.id, metadata: { submittedForReview: !canPublish } });
     ctx.status = 201;
     return assessment;
   }, { permission: ['assessments.create.assigned', 'assessments.publish.daycare'], permissionMode: 'any' });

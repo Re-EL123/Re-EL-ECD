@@ -3109,10 +3109,14 @@
           });
       },
 
-      addModalMediaUrl(field) {
+      async addModalMediaUrl(field) {
         if (!this.modal) return;
         const draft = ((this.modal.mediaDraft || {})[field.name] || '').trim();
         if (!draft) return;
+        if (!window.Reel || !window.Reel.safeUrl(draft)) {
+          this.toast('That link is not an http(s) address — links like javascript: are not allowed.', 'warn');
+          return;
+        }
         const list = Array.isArray(this.modal.data[field.name]) ? this.modal.data[field.name] : [];
         list.push(draft);
         this.modal.data[field.name] = list;
@@ -3812,6 +3816,26 @@
         }
       },
 
+      async submitMfaChallenge(event) {
+        const code = this.mfaCode;
+        const challengeId = this.mfaPending && this.mfaPending.challengeId;
+        this.loginError = null;
+        this.loginBusy = true;
+        try {
+          if (!challengeId) throw new Error('The sign-in attempt expired. Please start again.');
+          const payload = await Reel.api('POST', '/auth/mfa/challenge', { challengeId, code });
+          this.mfaPending = null;
+          this.mfaCode = '';
+          this.applySession(payload.data);
+          history.replaceState(null, '', '#' + this.defaultRoute());
+          await this.navigate(true);
+        } catch (error) {
+          this.loginError = error.message || 'That code is not right. Try again.';
+        } finally {
+          this.loginBusy = false;
+        }
+      },
+
       async login(event) {
         const form = event && event.target ? event.target : null;
         const email = form ? form.email.value.trim() : this.loginEmail;
@@ -3820,6 +3844,11 @@
         this.loginBusy = true;
         try {
           const payload = await Reel.api('POST', '/auth/login', { email, password });
+          if (payload && payload.data && payload.data.mfaRequired) {
+            this.mfaPending = { challengeId: payload.data.challengeId };
+            this.mfaCode = '';
+            return;
+          }
           this.applySession(payload.data);
           // replaceState keeps the hashchange handler from starting a second
           // navigation while this one is still loading the first screen.
@@ -4033,6 +4062,8 @@
       loginShowPassword: false,
       loginError: null,
       loginBusy: false,
+      mfaPending: null,
+      mfaCode: '',
       signingOut: false,
       forgotOpen: false,
       resetSent: null,

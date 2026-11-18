@@ -1,5 +1,7 @@
 'use strict';
 
+const { safeEqual } = require('../../../../packages/auth/password');
+
 /**
  * PayFast (South Africa) hosted checkout.
  *
@@ -215,7 +217,7 @@ function verifyItn(pairs, credentials, options) {
   const supplied = field(pairs, 'signature');
   if (!supplied) return { valid: false, reason: 'Missing signature' };
   const expected = itnSignature(pairs, creds.passphrase);
-  if (supplied.toLowerCase() !== expected.toLowerCase()) {
+  if (!safeEqual(String(supplied).toLowerCase(), String(expected).toLowerCase())) {
     return { valid: false, reason: 'Signature mismatch' };
   }
   const merchantId = field(pairs, 'merchant_id');

@@ -24,10 +24,11 @@ function envKeys() {
   return { publicKey, privateKey, subject, ephemeral: false };
 }
 
+const DEV_EPHEMERAL_PUSH_KEY = crypto.randomBytes(32);
 function sealKey() {
   const configured = String(process.env.PUSH_CREDENTIALS_KEY || process.env.PAYMENT_CREDENTIALS_KEY || '').trim();
   if (configured) return crypto.createHash('sha256').update(configured).digest();
-  if (process.env.NODE_ENV !== 'production') return crypto.createHash('sha256').update('re-el local development push key (not for production)').digest();
+  if (process.env.NODE_ENV !== 'production') return DEV_EPHEMERAL_PUSH_KEY;
   throw new AppError('CONFLICT', null, 'Push delivery is not configured. Set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY (or PUSH_CREDENTIALS_KEY for auto-generated keys) and redeploy.');
 }
 

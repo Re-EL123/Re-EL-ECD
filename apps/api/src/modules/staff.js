@@ -99,7 +99,7 @@ function register(router) {
       onBreakCount: onBreak.length,
       onSite: onSite.map((e) => ({ staffId: e.staff_id, name: e.display_name, jobTitle: e.job_title, since: e.recorded_at }))
     };
-  }, { permission: ['staff.read.daycare', 'tasks.read.own'], permissionMode: 'any' });
+  }, { permission: 'staff.read.daycare' });
 
   router.get('/staff', async (ctx) => {
     const { page, pageSize, offset } = parsePagination(ctx.query);
@@ -785,14 +785,16 @@ function register(router) {
       let totalMinutes = 0;
       let clockIn = null;
       let breakStart = null;
+      let breakMinutes = 0;
       for (const event of events) {
         const at = new Date(event.recorded_at).getTime();
-        if (event.event_type === 'clock_in') clockIn = at;
+        if (event.event_type === 'clock_in') { clockIn = at; breakMinutes = 0; }
         else if (event.event_type === 'break_start' && clockIn) breakStart = at;
-        else if (event.event_type === 'break_end' && breakStart) { totalMinutes += Math.round((at - breakStart) / 60000); breakStart = null; }
+        else if (event.event_type === 'break_end' && breakStart) { breakMinutes += Math.round((at - breakStart) / 60000); breakStart = null; }
         else if (event.event_type === 'clock_out' && clockIn) {
-          totalMinutes += Math.round((at - clockIn) / 60000);
-          if (breakStart) breakStart = null;
+          totalMinutes += Math.max(0, Math.round((at - clockIn) / 60000) - breakMinutes);
+          breakMinutes = 0;
+          breakStart = null;
           clockIn = null;
         }
       }

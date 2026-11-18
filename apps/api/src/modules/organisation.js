@@ -178,10 +178,41 @@ function register(router) {
     return row ? row.settings : {};
   }, { permission: 'organisation.read.daycare' });
 
+  // Settings are security-relevant (late-collection cutoff, retention,
+  // notification channels). Accept only known keys with known shapes — never
+  // a raw client object merged into the security config.
+  const ALLOWED_SETTINGS = new Set([
+    'academicYear', 'operatingHours', 'attendancePolicy', 'notificationPreferences',
+    'publicWebsite', 'dataRetention', 'weather', 'ncf', 'collection.lateCutoff'
+  ]);
+  const OBJECT_SETTINGS = new Set(['operatingHours', 'attendancePolicy', 'notificationPreferences', 'publicWebsite', 'dataRetention', 'weather', 'ncf']);
   router.patch('/organisations/current/settings', async (ctx) => {
     const body = validate(ctx.body, {
       settings: { type: 'object' }
     });
+    const incoming = (body && body.settings) || {};
+    const unknown = Object.keys(incoming).filter((key) => !ALLOWED_SETTINGS.has(key));
+    if (unknown.length) fail('VALIDATION', unknown.map((key) => ({ field: 'settings.' + key, message: 'Unknown setting.' })));
+    for (const [key, value] of Object.entries(incoming)) {
+      if (key === 'academicYear' && (typeof value !== 'number' || !Number.isInteger(value) || value < 2000 || value > 2100)) {
+        fail('VALIDATION', [{ field: 'settings.academicYear', message: 'Enter a valid year.' }]);
+      } else if (key === 'collection.lateCutoff' && !/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(String(value))) {
+        fail('VALIDATION', [{ field: 'settings.collection.lateCutoff', message: 'Use HH:MM, e.g. 17:30.' }]);
+      } else if (OBJECT_SETTINGS.has(key) && (typeof value !== 'object' || value === null || Array.isArray(value))) {
+        fail('VALIDATION', [{ field: 'settings.' + key, message: 'Expected an object.' }]);
+      } else if (OBJECT_SETTINGS.has(key)) {
+        for (const [nestedKey, nestedValue] of Object.entries(value)) {
+          const flat = typeof nestedValue;
+          if (nestedValue === null || !['string', 'number', 'boolean'].includes(flat)) {
+            fail('VALIDATION', [{ field: 'settings.' + key + '.' + nestedKey, message: 'Only plain values are allowed here.' }]);
+          } else if (flat === 'string' && nestedValue.length > 500) {
+            fail('VALIDATION', [{ field: 'settings.' + key + '.' + nestedKey, message: 'Value is too long.' }]);
+          }
+        }
+      } else if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
+        fail('VALIDATION', [{ field: 'settings.' + key, message: 'Expected a plain value.' }]);
+      }
+    }
     const existing = await ctx.db.one('SELECT settings FROM organisation_settings WHERE organisation_id = $1', [ctx.organisationId]);
     const merged = { ...(existing ? existing.settings : {}), ...body.settings };
     if (existing) {

@@ -2,6 +2,7 @@
 
 const { validate } = require('../../../../packages/contracts/validate');
 const { AppError, fail } = require('../../../../packages/contracts/errors');
+const { safeEqual } = require('../../../../packages/auth/password');
 const { recordAudit } = require('../services/audit-service');
 const { createNotification } = require('../services/notification-service');
 const { parsePagination } = require('../utils/http');
@@ -1055,7 +1056,7 @@ function register(router) {
     const secret = String(process.env.CRON_SECRET || '').trim();
     const header = String((ctx.req.headers['authorization'] || ctx.req.headers['x-cron-secret'] || '')).trim();
     const presented = header.replace(/^Bearer\s+/i, '');
-    if (!secret || presented !== secret) throw new AppError('FORBIDDEN');
+    if (!secret || !safeEqual(presented, secret)) throw new AppError('FORBIDDEN');
     return pickupAll(ctx, 'cron');
   }, { public: true });
 
@@ -1200,7 +1201,7 @@ function register(router) {
     const secret = String(process.env.CRON_SECRET || '').trim();
     const header = String((ctx.req.headers['authorization'] || ctx.req.headers['x-cron-secret'] || '')).trim();
     const presented = header.replace(/^Bearer\s+/i, '');
-    if (!secret || presented !== secret) throw new AppError('FORBIDDEN');
+    if (!secret || !safeEqual(presented, secret)) throw new AppError('FORBIDDEN');
     return onboardingAll(ctx, 'cron');
   }, { public: true });
 
@@ -1230,7 +1231,7 @@ function register(router) {
     const secret = String(process.env.CRON_SECRET || '').trim();
     const header = String((ctx.req.headers['authorization'] || ctx.req.headers['x-cron-secret'] || '')).trim();
     const presented = header.replace(/^Bearer\s+/i, '');
-    if (!secret || presented !== secret) throw new AppError('FORBIDDEN');
+    if (!secret || !safeEqual(presented, secret)) throw new AppError('FORBIDDEN');
     return digestAll(ctx, 'cron');
   }, { public: true });
 
@@ -1261,7 +1262,7 @@ function register(router) {
     const secret = String(process.env.CRON_SECRET || '').trim();
     const header = String((ctx.req.headers['authorization'] || ctx.req.headers['x-cron-secret'] || '')).trim();
     const presented = header.replace(/^Bearer\s+/i, '');
-    if (!secret || presented !== secret) throw new AppError('FORBIDDEN');
+    if (!secret || !safeEqual(presented, secret)) throw new AppError('FORBIDDEN');
     return portfolioAll(ctx, 'cron');
   }, { public: true });
 }

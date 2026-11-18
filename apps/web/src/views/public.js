@@ -43,12 +43,23 @@
         '<div class="auth-panel"><div class="auth-card">' +
         '<div class="row" style="margin-bottom:18px">' + logoMark + '<div><div class="brand-name">' + R.esc(name) + '</div><div class="brand-sub">Sign in to your workspace</div></div></div>' +
         '<h2>Welcome back</h2><div class="muted">Use your work email and password. Parents use the same sign-in.</div>' +
-        '<div class="alert alert-danger" x-show="loginError" style="margin-bottom:12px"><i data-lucide="alert-circle"></i><span x-text="loginError"></span></div>' +
-        '<form id="login-form" @submit.prevent="login($event)">' +
+        '<div class="alert alert-danger" x-show="loginError" x-cloak style="margin-bottom:12px"><i data-lucide="alert-circle"></i><span x-text="loginError"></span></div>' +
+        '<form id="login-form" @submit.prevent="login($event)" x-show="!mfaPending">' +
         '<div class="field"><label for="login-email">Email</label><div class="input-wrap"><span class="input-icon" aria-hidden="true"><i data-lucide="mail"></i></span><input class="input input-icon-left" id="login-email" name="email" type="email" autocomplete="username" required x-model="loginEmail" placeholder="you@centre.co.za"></div></div>' +
         '<div class="field"><label for="login-password">Password</label><div class="input-wrap"><span class="input-icon" aria-hidden="true"><i data-lucide="lock"></i></span><input class="input input-icon-left input-icon-right" id="login-password" name="password" :type="loginShowPassword ? \'text\' : \'password\'" autocomplete="current-password" required x-model="loginPassword" placeholder="Your password"><button type="button" class="password-toggle" @click.prevent="loginShowPassword = !loginShowPassword" :aria-label="loginShowPassword ? \'Hide password\' : \'Show password\'" :aria-pressed="loginShowPassword" :title="loginShowPassword ? \'Hide password\' : \'Show password\'"><i data-lucide="eye" x-show="!loginShowPassword" x-cloak></i><i data-lucide="eye-off" x-show="loginShowPassword" x-cloak></i></button></div></div>' +
         '<button class="btn btn-primary btn-block" type="submit" :disabled="loginBusy"><span class="spinner" x-show="loginBusy" style="width:15px;height:15px"></span><span x-text="loginBusy ? \'Signing in…\' : \'Sign in\'"></span></button>' +
         '</form>' +
+        '<div x-show="mfaPending" x-cloak>' +
+        '<h3 style="margin-top:0;font-size:1.05rem">Two-factor authentication</h3>' +
+        '<p class="muted small">Enter the 6-digit code from your authenticator app — or one of the recovery codes you saved.</p>' +
+        '<form @submit.prevent="submitMfaChallenge($event)">' +
+        '<div class="field"><label for="mfa-code">Authentication code</label>' +
+        '<input class="input" id="mfa-code" name="mfaCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="32" required x-model="mfaCode" placeholder="123456" autofocus>' +
+        '</div>' +
+        '<button class="btn btn-primary btn-block" type="submit" :disabled="loginBusy"><span class="spinner" x-show="loginBusy" style="width:15px;height:15px"></span><span x-text="loginBusy ? \'Verifying…\' : \'Verify and sign in\'"></span></button>' +
+        '</form>' +
+        '<div class="row" style="margin-top:10px;justify-content:center"><button type="button" class="link-strong small" @click="mfaPending = null; mfaCode = \'\'; loginError = null">← Back to sign in</button></div>' +
+        '</div>' +
         '<div class="row" style="margin-top:10px;justify-content:center"><button type="button" class="link-strong small" @click="forgotOpen = !forgotOpen">Forgot password?</button></div>' +
         ((brand && brand.allowTenantSignup) ? '<div class="row" style="margin-top:10px;justify-content:center"><a class="link-strong small" href="#/signup">New centre? Create your account →</a></div>' : '') +
         '<div class="auth-legal-links"><a href="#/legal/terms">Terms</a><span aria-hidden="true">·</span><a href="#/legal/privacy">Privacy</a><span aria-hidden="true">·</span><a href="#/legal/cookies">Cookies</a><span aria-hidden="true">·</span><a href="#/legal">Legal hub</a></div>' +
@@ -336,7 +347,7 @@
       '<h3>Send an enquiry</h3><p class="muted small">Share a few details and the admissions team will reply by email. There is no obligation.</p>' +
       '<div class="alert alert-success" x-show="publicResult" style="margin-bottom:12px"><i data-lucide="check-circle"></i><span x-text="publicResult"></span></div>' +
       '<div class="alert alert-danger" x-show="publicError" style="margin-bottom:12px"><i data-lucide="alert-circle"></i><span x-text="publicError"></span></div>' +
-      '<form @submit.prevent="submitPublicEnquiry($event, \'' + R.attr(slug) + '\')">' +
+      '<form @submit.prevent="submitPublicEnquiry($event, ' + R.jsString(slug) + ')">' +
       '<div class="form-grid">' +
       '<div class="field"><label>Your name *</label><input class="input" name="guardianName" required x-model="publicEnquiry.guardianName"></div>' +
       '<div class="field"><label>Email *</label><input class="input" type="email" name="guardianEmail" required x-model="publicEnquiry.guardianEmail"></div>' +
@@ -721,7 +732,7 @@
         '<div class="alert alert-success" x-show="publicResult" style="margin-top:12px"><i data-lucide="check-circle"></i><span x-text="publicResult"></span></div>' +
         '<div class="alert alert-danger" x-show="publicError" style="margin-top:12px"><i data-lucide="alert-circle"></i><span x-text="publicError"></span></div>' +
         '<div class="card glass site-form-card" style="margin-top:16px">' +
-        '<form @submit.prevent="submitPublicEnquiry($event, \'' + R.attr(params.slug) + '\')"><div class="form-grid">' +
+        '<form @submit.prevent="submitPublicEnquiry($event, ' + R.jsString(params.slug) + ')"><div class="form-grid">' +
         '<div class="field"><label>Your name *</label><input class="input" name="guardianName" required x-model="publicEnquiry.guardianName"></div>' +
         '<div class="field"><label>Email *</label><input class="input" type="email" name="guardianEmail" required x-model="publicEnquiry.guardianEmail"></div>' +
         '<div class="field"><label>Phone</label><input class="input" type="tel" name="guardianPhone" x-model="publicEnquiry.guardianPhone"></div>' +
@@ -845,9 +856,11 @@
       const branding = page.branding || {};
       const org = page.organisation || {};
       const input = (field) => {
-        const model = 'publicFormData.' + field.key;
+        const safeKey = /^[A-Za-z0-9_-]{1,60}$/.test(String(field.key || '')) ? field.key : 'field';
+        const model = 'publicFormData.' + safeKey;
         const required = field.required ? ' required' : '';
-        const key = R.attr(field.key);
+        const key = R.attr(safeKey);
+        const jsKey = R.jsString(safeKey);
         if (field.type === 'textarea') return '<textarea class="textarea" x-model="' + model + '"' + required + '></textarea>';
         if (field.type === 'radio') {
           return '<div class="radio-group">' + (field.options || []).map((option, index) =>
@@ -874,9 +887,9 @@
         if (field.type === 'phone') return '<input class="input" type="tel" x-model="' + model + '" autocomplete="tel"' + required + '>';
         if (field.type === 'file') {
           return '<div class="file-field">' +
-            '<input class="input" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.txt,.csv" @change="uploadPublicFormFile($event, \'' + key + '\', \'' + R.attr(params.slug) + '\', \'' + R.attr(params.formSlug) + '\')">' +
-            '<div class="hint" x-show="publicUploads[\'' + key + '\']">Uploading…</div>' +
-            '<div class="hint" x-show="publicFormData.' + field.key + '"><a :href="publicFormData.' + field.key + '" target="_blank" rel="noopener">View uploaded file</a> · <button type="button" class="btn btn-sm btn-ghost" @click="removePublicFormFile(\'' + key + '\')">Remove</button></div>' +
+            '<input class="input" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.txt,.csv" @change="uploadPublicFormFile($event, ' + jsKey + ', ' + R.jsString(params.slug) + ', ' + R.jsString(params.formSlug) + ')">' +
+            '<div class="hint" x-show="publicUploads[' + jsKey + ']">Uploading…</div>' +
+            '<div class="hint" x-show="publicFormData.' + safeKey + '"><a :href="publicFormData.' + field.key + '" target="_blank" rel="noopener">View uploaded file</a> · <button type="button" class="btn btn-sm btn-ghost" @click="removePublicFormFile(\'' + jsKey + '\')">Remove</button></div>' +
             '</div>';
         }
         if (field.type === 'signature') return '<input class="input" type="text" x-model="' + model + '" autocomplete="name" placeholder="Type your full name to sign"' + required + '>';
@@ -896,7 +909,7 @@
           : '') +
         '<div class="alert alert-success" x-show="publicResult" style="margin-top:12px"><i data-lucide="check-circle"></i><span x-text="publicResult"></span></div>' +
         '<div class="alert alert-danger" x-show="publicError" style="margin-top:12px"><i data-lucide="alert-circle"></i><span x-text="publicError"></span></div>' +
-        '<div class="card glass site-form-card" style="margin-top:16px"><form @submit.prevent="submitPublicForm($event, \'' + R.attr(params.slug) + '\', \'' + R.attr(params.formSlug) + '\')">' +
+        '<div class="card glass site-form-card" style="margin-top:16px"><form @submit.prevent="submitPublicForm($event, ' + R.jsString(params.slug) + ', ' + R.jsString(params.formSlug) + ')">' +
         (fields.length ? fields.map((f) => '<div class="field"><label>' + R.esc(f.label) + (f.required ? ' *' : '') + '</label>' + input(f) + (f.helpText ? '<div class="hint">' + R.esc(f.helpText) + '</div>' : '') + '</div>').join('') : '<p class="muted">This form has no fields yet.</p>') +
         (payment.enabled && payment.available && !hasEmailField
           ? '<div class="form-grid"><div class="field"><label>Email for the receipt</label><input class="input" type="email" x-model="publicPayerEmail" placeholder="you@example.com"></div>' +

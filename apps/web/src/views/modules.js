@@ -175,7 +175,7 @@
           (canCreate ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'moduleEdit\')">' + R.icon('pencil') + ' Edit</button>' : '') +
           publishAction +
           (canCreate ? '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'plan\')">' + R.icon('plus') + ' New plan in module</button>' : '');
-      return R.pageHead(module.title, module.description || 'A themed sequence of lesson plans.', headActions) +
+      return R.pageHead(module.title, R.esc(module.description || 'A themed sequence of lesson plans.'), headActions) +
         '<div class="grid grid-4 section">' +
         R.statCard({ label: 'Status', value: isOfficialRow(module) ? 'Official' : R.titleCase(module.status || 'draft'), icon: 'info', tone: module.status === 'published' ? 'green' : 'sun' }) +
         R.statCard({ label: 'Duration', value: module.duration_weeks ? R.number(module.duration_weeks) + ' weeks' : 'Open-ended', icon: 'hourglass', tone: 'sky' }) +

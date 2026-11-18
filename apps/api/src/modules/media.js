@@ -78,8 +78,9 @@ function register(router) {
       filename: body.filename,
       contentType: described.mime
     });
-    const url = storage.publicUrl(key);
-    if (!url) fail('CONFLICT', null, 'R2_PUBLIC_BASE_URL is not configured.');
+    // Clients load media through the authenticated proxy — the bucket never
+    // needs a public base URL and children's photos are not publicly reachable.
+    const url = storage.proxyPath(key);
     const upload = storage.presignPut(key, { contentType: described.mime });
     const asset = await ctx.db.one(
       `INSERT INTO media_assets (organisation_id, uploaded_by, scope, owner_type, owner_id, original_filename,
@@ -105,12 +106,41 @@ function register(router) {
     };
   }, { permission: 'media.upload.daycare' });
 
+  // Authenticated media proxy: membership of the owning organisation is the
+  // authorisation. Redirects to a short-lived signed URL; the bucket itself
+  // can stay private. Keys are tenant-scoped `org/<id>/...`.
+  router.get('/media/object', async (ctx) => {
+    const key = String(ctx.query.key || '');
+    const match = /^org\/([0-9a-fA-F-]{36})\//.exec(key);
+    if (!match) throw new AppError('NOT_FOUND');
+    if (match[1].toLowerCase() !== String(ctx.organisationId).toLowerCase()) throw new AppError('FORBIDDEN');
+    const asset = await ctx.db.one(
+      `SELECT status FROM media_assets WHERE storage_key = $1 AND organisation_id = $2`,
+      [key, ctx.organisationId]
+    ).catch(() => null);
+    // Deleted media must never be served again. Keys without an asset row are
+    // allowed — object keys are unguessable and scoped to the centre.
+    if (asset && asset.status === 'deleted') throw new AppError('NOT_FOUND');
+    const signed = storage.presignGet(key, { expires: 300 });
+    ctx.rawResponse = true;
+    ctx.res.statusCode = 302;
+    ctx.res.setHeader('Location', signed.url);
+    ctx.res.setHeader('Cache-Control', 'private, max-age=120');
+    ctx.res.end();
+  }, { authenticated: true });
+
   router.post('/media/assets/:id/complete', async (ctx) => {
     const asset = await ctx.db.one(
       'SELECT * FROM media_assets WHERE id = $1 AND organisation_id = $2',
       [ctx.params.id, ctx.organisationId]
     );
     if (!asset || asset.status === 'deleted') throw new AppError('NOT_FOUND');
+    // The browser reports "done" — the object may never have landed. Verify
+    // it exists before marking the asset usable.
+    const exists = await storage.verifyObject(asset.storage_key);
+    if (!exists) {
+      fail('VALIDATION', [{ field: 'upload', message: 'The upload did not reach storage — please try again.' }]);
+    }
     const updated = await ctx.db.one(
       `UPDATE media_assets SET status = 'ready', completed_at = now() WHERE id = $1 RETURNING *`,
       [asset.id]

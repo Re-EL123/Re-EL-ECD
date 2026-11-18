@@ -118,6 +118,18 @@
   function attr(value) { return esc(value); }
 
   /**
+   * A JS string literal safe to embed inside a double-quoted HTML attribute
+   * that Alpine then evaluates. Produces a double-quoted JS string with HTML
+   * entities for the surrounding attribute — the HTML parser decodes the
+   * entities, Alpine sees a well-formed string literal, and nothing from the
+   * value can break out of either context.
+   */
+  function jsString(value) {
+    const json = JSON.stringify(String(value == null ? '' : value));
+    return json.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  }
+
+  /**
    * Minimal, safe inline formatting for tenant-authored copy. Everything is
    * escaped first, then *asterisks* become bold. Two asterisks work too, so
    * people who reach for Markdown are not surprised.
@@ -501,7 +513,7 @@
       '--reel-sky-100': mix(accent, surface, dark ? 0.78 : 0.88),
       '--brand-primary': primary,
       '--brand-primary-hover': shade(primary, -0.14),
-      '--brand-on-primary': tokens.onPrimary || onColour(primary),
+      '--brand-on-primary': isHex(tokens.onPrimary) ? tokens.onPrimary : onColour(primary),
       '--brand-secondary': secondary,
       '--brand-accent': accent,
       '--focus-ring': '0 0 0 3px ' + rgba(primary, 0.35)
@@ -646,11 +658,25 @@
     return fallback || 'image';
   }
 
+  /**
+   * Media URLs must be http(s) or site-relative — never javascript:, data:,
+   * blob: or other scriptable schemes. Everything media goes through this.
+   */
+  function safeUrl(value) {
+    const s = String(value == null ? '' : value).trim();
+    if (!s) return '';
+    if (/^\/(?!\/)/.test(s)) return s;
+    if (/^https?:\/\//i.test(s)) return s;
+    return '';
+  }
+
   function mediaHtml(url, kind, options) {
     if (!url) return '<span class="muted">No file</span>';
     const opts = options || {};
     const type = kind || kindForUrl(url);
-    const safe = attr(url);
+    const checked = safeUrl(url);
+    if (!checked) return '<span class="muted">Unsupported file link</span>';
+    const safe = attr(checked);
     if (type === 'video') {
       return '<video class="media-video' + (opts.compact ? ' media-compact' : '') + '" controls preload="metadata" src="' + safe + '"></video>';
     }
@@ -951,6 +977,8 @@
   Reel.exportButtons = exportButtons;
   Reel.esc = esc;
   Reel.attr = attr;
+  Reel.jsString = jsString;
+  Reel.safeUrl = safeUrl;
   Reel.richText = richText;
   Reel.richParagraphs = richParagraphs;
   Reel.titleCase = titleCase;

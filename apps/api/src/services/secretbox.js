@@ -17,13 +17,22 @@ const crypto = require('node:crypto');
 const { AppError } = require('../../../../packages/contracts/errors');
 
 const ALGORITHM = 'aes-256-gcm';
+// Process-local key for unconfigured non-production environments. It is
+// random per process and never leaves the machine — credentials sealed in a
+// dev database become unreadable on restart, which is the loud failure we
+// want rather than sealing under a public constant anyone can derive.
+const DEV_EPHEMERAL_KEY = crypto.randomBytes(32);
+let warnedDevKey = false;
 
 function key() {
   const configured = String(process.env.PAYMENT_CREDENTIALS_KEY || '').trim();
   if (configured) return crypto.createHash('sha256').update(configured).digest();
   if (process.env.NODE_ENV !== 'production') {
-    // Public, local-only constant: not a secret and unusable in production.
-    return crypto.createHash('sha256').update('re-el local development credentials key (not for production)').digest();
+    if (!warnedDevKey) {
+      warnedDevKey = true;
+      console.warn('[secretbox] PAYMENT_CREDENTIALS_KEY is not set — using an ephemeral process-local key. Set PAYMENT_CREDENTIALS_KEY to a long random string to persist encrypted credentials.');
+    }
+    return DEV_EPHEMERAL_KEY;
   }
   throw new AppError('CONFLICT', null,
     'Online payments are not fully configured. Set PAYMENT_CREDENTIALS_KEY to a long random string and redeploy.');

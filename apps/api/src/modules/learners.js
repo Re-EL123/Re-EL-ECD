@@ -5,7 +5,8 @@ const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
 const { parsePagination } = require('../utils/http');
 const bulk = require('../services/bulk-service');
-const { getLearner, assertLearnerWrite, assertPermission, has, assignedClassroomIds } = require('./helpers');
+const { getLearner, assertPermission, has, assignedClassroomIds } = require('./helpers');
+const { hashPin, verifyPin } = require('../../../../packages/auth/pin');
 const { createNotification } = require('../services/notification-service');
 const { sendTemplate } = require('../services/email-service');
 
@@ -189,6 +190,11 @@ function register(router) {
     });
     const learner = await getLearner(ctx, ctx.params.id);
     if (!has(ctx, 'learners.update.daycare') && !has(ctx, 'learners.update.assigned')) throw new AppError('FORBIDDEN');
+    // Archiving/withdrawing a child is an org-level decision — it needs the
+    // dedicated archive permission, not just a classroom update grant.
+    if (body.status && ['archived', 'withdrawn', 'completed'].includes(body.status) && !has(ctx, 'learners.archive.daycare')) {
+      throw new AppError('FORBIDDEN');
+    }
     if (body.classroomId) {
       const classroom = await ctx.db.one('SELECT * FROM classrooms WHERE id = $1 AND organisation_id = $2',
         [body.classroomId, ctx.organisationId]);
@@ -478,7 +484,7 @@ function register(router) {
     const body = validate(ctx.body, {
       recordType: { type: 'string', min: 2, max: 60 },
       details: { type: 'string', min: 3, max: 4000 },
-      visibilityLevel: { type: 'string', enum: ['staff', 'medical', 'restricted'], optional: true },
+      visibilityLevel: { type: 'string', enum: ['staff', 'medical', 'restricted', 'guardian'], optional: true },
       effectiveFrom: { type: 'string', date: true, optional: true },
       effectiveUntil: { type: 'string', date: true, optional: true }
     });
@@ -672,11 +678,16 @@ function register(router) {
       if (!body.pin || !/^[0-9A-Za-z-]{3,24}$/.test(String(body.pin))) {
         fail('VALIDATION', [{ field: 'pin', message: 'Enter the code the collector was given.' }]);
       }
-      const collectorRow = await ctx.db.one('SELECT pin_hash FROM authorised_collectors WHERE id = $1', [body.collectorId]);
-      const hashed = collectorRow && collectorRow.pin_hash;
-      const candidate = require('crypto').createHash('sha256').update(ctx.organisationId + '::collection-pin::' + String(body.pin).trim().toLowerCase()).digest('hex');
-      if (!hashed || hashed !== candidate) {
+      const collectorRow = await ctx.db.one('SELECT id, pin_hash FROM authorised_collectors WHERE id = $1 AND organisation_id = $2', [body.collectorId, ctx.organisationId]);
+      const result = await verifyPin(body.pin, collectorRow && collectorRow.pin_hash, ctx.organisationId);
+      if (!result.ok) {
         throw new AppError('VALIDATION', [{ field: 'pin', message: 'That code does not match this collector. Ask the guardian to try again or approve on their phone.' }]);
+      }
+      if (result.needsRehash) {
+        try {
+          const upgraded = await hashPin(body.pin);
+          await ctx.db.query('UPDATE authorised_collectors SET pin_hash = $1 WHERE id = $2', [upgraded, collectorRow.id]);
+        } catch (err) { /* non-fatal */ }
       }
     }
 
@@ -851,7 +862,14 @@ function register(router) {
       [ctx.organisationId]
     );
     const assigned = await assignedClassroomIds(ctx);
-    const orgWide = has(ctx, 'organisation.settings.manage') || assigned.length === 0;
+    // Fail closed: no classroom assignments and no daycare-wide collection
+    // oversight means an empty gate — never every child in the building.
+    const orgWide = has(ctx, 'organisation.settings.manage') || has(ctx, 'collections.manage.daycare') || has(ctx, 'attendance.read.daycare') || has(ctx, 'attendance.record.daycare');
+    if (!orgWide && assigned.length === 0) {
+      const orgRow = await ctx.db.one('SELECT timezone FROM organisations WHERE id = $1', [ctx.organisationId]).catch(() => null);
+      const tz = (orgRow && orgRow.timezone) || 'Africa/Johannesburg';
+      return { children: [], lateMode: await isLateNow(ctx.db, ctx.organisationId, tz), cutoff: await collectionLateCutoff(ctx.db, ctx.organisationId), timezone: tz, now: new Date().toISOString(), scopedEmpty: true };
+    }
     const children = await ctx.db.many(
       orgWide
         ? `SELECT l.id, l.first_name, l.last_name, l.collection_hold_reason, c.name AS classroom_name

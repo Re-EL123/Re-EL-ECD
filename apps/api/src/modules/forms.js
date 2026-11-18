@@ -124,14 +124,18 @@ async function beginFormUpload(ctx, { organisationId, formId, uploadedBy, filena
       message: `This file is too large. The limit is ${Math.round(described.maxBytes / (1024 * 1024))} MB.`
     }]);
   }
+  // Only after the payload is known-good do we require configured storage —
+  // a bad MIME type is always a 422, unconfigured storage is a 409.
+  if (!storage.isConfigured()) {
+    fail('CONFLICT', null, 'File storage is not configured yet.');
+  }
   const key = storage.buildKey({
     organisationId,
     scope: 'general',
     filename,
     contentType: described.mime
   });
-  const url = storage.publicUrl(key);
-  if (!url) fail('CONFLICT', null, 'File storage is not configured yet.');
+  const url = storage.proxyPath(key);
   const upload = storage.presignPut(key, { contentType: described.mime });
   const asset = await ctx.db.one(
     `INSERT INTO media_assets (organisation_id, uploaded_by, scope, owner_type, owner_id, original_filename,
@@ -827,6 +831,13 @@ function register(router) {
     const record = await ctx.db.one('SELECT * FROM consent_records WHERE id = $1 AND organisation_id = $2',
       [ctx.params.id, ctx.organisationId]);
     if (!record) throw new AppError('NOT_FOUND');
+    // A parent may only withdraw consent for a child linked to them — never
+    // any consent record in the organisation. Staff with consent.manage.daycare
+    // may act org-wide.
+    if (!has(ctx, 'consent.manage.daycare')) {
+      const linked = record.learner_id ? await guardianLearnerIds(ctx, record.learner_id) : [];
+      if (!linked.length) throw new AppError('FORBIDDEN');
+    }
     if (record.status === 'withdrawn') fail('CONFLICT', null, 'This consent has already been withdrawn.');
     await ctx.db.query(
       "UPDATE consent_records SET status = 'withdrawn', withdrawn_at = now() WHERE id = $1", [record.id]

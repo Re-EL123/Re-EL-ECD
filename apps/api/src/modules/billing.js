@@ -15,6 +15,7 @@
 
 const { validate } = require('../../../../packages/contracts/validate');
 const { AppError, fail } = require('../../../../packages/contracts/errors');
+const { safeEqual } = require('../../../../packages/auth/password');
 const { recordAudit } = require('../services/audit-service');
 const payfast = require('../services/payfast-service');
 const payfastFees = require('../services/payfast-fees');
@@ -428,7 +429,7 @@ function register(router) {
   router.get('/internal/subscription-reminders', async (ctx) => {
     const secret = String(process.env.CRON_SECRET || '').trim();
     const auth = String(ctx.req.headers.authorization || '');
-    if (!secret || auth !== 'Bearer ' + secret) {
+    if (!secret || !safeEqual(auth, 'Bearer ' + secret)) {
       ctx.status = 404;
       return { error: { code: 'NOT_FOUND', message: 'The requested resource was not found.' } };
     }

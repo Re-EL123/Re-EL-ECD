@@ -11,8 +11,10 @@ const { seedDevelopment } = require('../packages/database/seeds/development');
 
 async function main() {
   const force = process.argv.includes('--force');
-  if (!process.env.DATABASE_URL && process.env.NODE_ENV === 'production') {
-    console.error('Refusing to seed in production without DATABASE_URL.');
+  // Demo accounts use a published password — never seed them into production.
+  // The only override is an explicit, loudly-named acknowledgement.
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_PRODUCTION_SEED !== 'true') {
+    console.error('Refusing to seed demo data. Demo accounts use a published password. Set ALLOW_PRODUCTION_SEED=true only if you truly mean it.');
     process.exit(1);
   }
   const pool = await db.getPool();

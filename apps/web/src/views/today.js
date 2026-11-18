@@ -209,8 +209,9 @@
         }, { cutout: '68%', onClick: chartGo('#/app/calendar'), onHover: chartCursor, plugins: { tooltip: { callbacks: { afterLabel: () => 'Click to open the calendar' } } } });
       }
 
+      // Subtitles render raw HTML — escape everything sourced from user data.
       const headerSub = timeline.length
-        ? (next ? ('Up next: ' + next.title + ' at ' + time(next.startsAt) + '.') : 'All planned blocks are complete — nice work.')
+        ? (next ? ('Up next: ' + esc(next.title) + ' at ' + esc(time(next.startsAt)) + '.') : 'All planned blocks are complete — nice work.')
         : (page.canDashboard ? 'Your centre at a glance for ' + R.date(page.date) + '.' : 'Nothing scheduled on the calendar yet. Schedule your day and it will appear here.');
 
       const timeLine = '<span class="today-time-badge">' + R.icon(tod.icon) + ' ' + esc(tod.label) + ' · ' + R.time(now.toISOString()) + '</span>';

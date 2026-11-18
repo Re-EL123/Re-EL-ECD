@@ -15,7 +15,7 @@ const KINDS = ['lesson_plan', 'activity', 'observation', 'announcement', 'framew
 const CREATE_PERMISSIONS = {
   lesson_plan: ['curriculum.create.daycare'],
   activity: ['curriculum.create.daycare'],
-  observation: ['assessments.create.assigned', 'assessments.read.daycare'],
+  observation: ['assessments.create.assigned'],
   announcement: ['announcements.manage.daycare'],
   framework: ['curriculum.create.daycare']
 };
@@ -161,7 +161,7 @@ function register(router) {
     );
     ctx.status = 201;
     return present(row);
-  }, { permission: ['curriculum.create.daycare', 'assessments.create.assigned', 'assessments.read.daycare', 'announcements.manage.daycare'], permissionMode: 'any' });
+  }, { permission: ['curriculum.create.daycare', 'assessments.create.assigned', 'announcements.manage.daycare'], permissionMode: 'any' });
 
   router.delete('/templates/:id', async (ctx) => {
     const template = await ctx.db.one('SELECT * FROM content_templates WHERE id = $1 AND organisation_id = $2',
@@ -170,7 +170,7 @@ function register(router) {
     if (!canCreate(ctx, template.kind)) throw new AppError('FORBIDDEN');
     await ctx.db.query('DELETE FROM content_templates WHERE id = $1', [template.id]);
     return { deleted: true };
-  }, { permission: ['curriculum.create.daycare', 'assessments.create.assigned', 'assessments.read.daycare', 'announcements.manage.daycare'], permissionMode: 'any' });
+  }, { permission: ['curriculum.create.daycare', 'assessments.create.assigned', 'announcements.manage.daycare'], permissionMode: 'any' });
 }
 
 module.exports = { register, KINDS, BUILTIN_TEMPLATES };

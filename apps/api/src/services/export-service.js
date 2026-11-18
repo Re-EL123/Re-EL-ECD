@@ -68,7 +68,10 @@ function columnWidths(columns, rows) {
 // ------------------------------------------------------------------ csv ----
 
 function csvCell(value) {
-  const text = value === undefined || value === null ? '' : String(value);
+  let text = value === undefined || value === null ? '' : String(value);
+  // Spreadsheet formula injection guard — cells that start with =, +, - or @
+  // execute as formulas in Excel; prefix with an apostrophe.
+  if (/^[=+\-@]/.test(text)) text = "'" + text;
   return /[",\r\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
 }
 

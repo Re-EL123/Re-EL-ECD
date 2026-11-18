@@ -169,7 +169,7 @@
       const head = '<a href="#/app/learners" class="muted small">← All learners</a>' +
         '<div class="row" style="gap:14px;align-items:flex-start">' + R.mediaThumb(l.profile_image_url, (l.first_name || '') + ' ' + (l.last_name || '')) +
         '<div style="flex:1">' +
-        R.pageHead((l.first_name || '') + ' ' + (l.last_name || ''), (l.learner_reference || '') + ' · ' + R.esc(classroom.name || 'No classroom') + ' · ' + R.esc(branch.name || ''),
+        R.pageHead((l.first_name || '') + ' ' + (l.last_name || ''), R.esc(l.learner_reference || '') + ' · ' + R.esc(classroom.name || 'No classroom') + ' · ' + R.esc(branch.name || ''),
           (canUpdate ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'editLearner\')">' + R.icon('pencil') + ' Edit</button>' : '') +
           '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'dailyReport\')">' + R.icon('notebook-pen') + ' Daily report</button>' +
           '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'guardian\')">' + R.icon('user-plus') + ' Add guardian</button>') +
@@ -349,7 +349,7 @@
       } else if (name === 'medical') {
         ctx.openModal({ title: 'Add medical record', endpoint: '/learners/' + id + '/medical', submitLabel: 'Save record', fields: [
           { name: 'recordType', label: 'Record type', type: 'select', required: true, options: ['allergy', 'condition', 'medication', 'immunisation', 'emergency'] },
-          { name: 'visibilityLevel', label: 'Visibility', type: 'select', options: ['all_staff', 'teachers', 'management'], value: 'teachers' },
+          { name: 'visibilityLevel', label: 'Who can see this', type: 'select', options: ['staff', 'medical', 'restricted', 'guardian'], value: 'staff' },
           { name: 'details', label: 'Details', type: 'textarea', required: true, span: 2 },
           { name: 'effectiveFrom', label: 'Effective from', type: 'date', value: R.today() },
           { name: 'effectiveUntil', label: 'Effective until', type: 'date' }

@@ -10,12 +10,10 @@ const crypto = require('crypto');
 const { has, guardianLearnerIds, guardianForLearner, today, dateOnly, roundMoney } = require('./helpers');
 const { progressFor } = require('./assessments');
 
+const { hashPin } = require('../../../../packages/auth/pin');
+
 function generatePin() {
   return String(crypto.randomInt(0, 1000000)).padStart(6, '0');
-}
-
-function hashPin(organisationId, pin) {
-  return crypto.createHash('sha256').update(organisationId + '::collection-pin::' + String(pin).trim().toLowerCase()).digest('hex');
 }
 
 async function childOrFail(ctx, learnerId) {
@@ -26,6 +24,20 @@ async function childOrFail(ctx, learnerId) {
   if (!learner) throw new AppError('NOT_FOUND');
   const link = await guardianForLearner(ctx, learnerId);
   return { learner, link };
+}
+
+/** Learners whose guardian link allows financial disclosures to this user. */
+async function financeLearnerIds(ctx) {
+  const rows = await ctx.db.many(
+    `SELECT lg.learner_id FROM learner_guardians lg
+     JOIN guardians g ON g.id = lg.guardian_id
+     WHERE g.user_id = $1 AND lg.organisation_id = $2
+       AND lg.portal_access_status = 'active'
+       AND (lg.ends_at IS NULL OR lg.ends_at >= CURRENT_DATE)
+       AND lg.can_receive_financial_information = true`,
+    [ctx.user.id, ctx.organisationId]
+  );
+  return rows.map((r) => r.learner_id);
 }
 
 function register(router) {
@@ -108,7 +120,7 @@ function register(router) {
         policy, body.photoUrl || null, 'active', autoApprove ? 'approved' : 'pending',
         autoApprove ? new Date() : null, ctx.user.id,
         body.collectorType || 'family', body.vehicleDescription || null, body.licencePlate || null,
-        hashPin(ctx.organisationId, body.pin), new Date()]
+        body.pin ? await hashPin(body.pin) : null, body.pin ? new Date() : null]
     );
     await recordAudit(ctx.db, ctx, {
       action: 'parent.collector_added', resourceType: 'authorised_collector', resourceId: row.id,
@@ -145,7 +157,7 @@ function register(router) {
     const pin = generatePin();
     await ctx.db.query(
       `UPDATE authorised_collectors SET pin_hash = $1, pin_created_at = now() WHERE id = $2`,
-      [hashPin(ctx.organisationId, pin), collector.id]
+      [await hashPin(pin), collector.id]
     );
     await recordAudit(ctx.db, ctx, {
       action: 'parent.collector_pin_regenerated', resourceType: 'authorised_collector', resourceId: collector.id,
@@ -199,7 +211,7 @@ function register(router) {
     await ctx.db.query(
       `UPDATE guardians SET collection_pin_hash = $1, collection_pin_created_at = now(), updated_at = now()
        WHERE id = $2`,
-      [hashPin(ctx.organisationId, pin), guardian.id]
+      [await hashPin(pin), guardian.id]
     );
     await recordAudit(ctx.db, ctx, {
       action: 'parent.gate_code_created', resourceType: 'guardian', resourceId: guardian.id,
@@ -504,13 +516,18 @@ function register(router) {
          ORDER BY report_date DESC LIMIT 10`, [learner.id]
       )
       : [];
-    const balance = await ctx.db.one(
-      `SELECT COALESCE(SUM(total_amount - amount_paid),0)::float AS outstanding FROM invoices
-       WHERE learner_id = $1 AND status IN ('issued','partially_paid','overdue')`, [learner.id]
-    );
+    const canFinance = Boolean(link && link.can_receive_financial_information);
+    const balance = canFinance
+      ? await ctx.db.one(
+          `SELECT COALESCE(SUM(total_amount - amount_paid),0)::float AS outstanding FROM invoices
+           WHERE learner_id = $1 AND status IN ('issued','partially_paid','overdue')`, [learner.id]
+        )
+      : null;
+    // Guardians only ever see medical notes the centre deliberately marked as
+    // guardian-visible — never internal staff or medical notes.
     const medical = await ctx.db.many(
       `SELECT id, record_type, details, visibility_level, effective_from, effective_until
-       FROM learner_medical_records WHERE learner_id = $1 AND visibility_level IN ('staff','medical')
+       FROM learner_medical_records WHERE learner_id = $1 AND visibility_level = 'guardian'
        ORDER BY created_at DESC`, [learner.id]
     );
     return {
@@ -526,7 +543,7 @@ function register(router) {
         canReceiveFinancialInformation: link.can_receive_financial_information
       } : null,
       classroom, branch, attendance, dailyReports: reports,
-      outstandingBalance: roundMoney(balance.outstanding),
+      outstandingBalance: canFinance ? roundMoney(balance.outstanding) : null,
       medical
     };
   }, { permission: 'parent.read.own' });
@@ -590,7 +607,8 @@ function register(router) {
   }, { permission: 'parent.read.own' });
 
   router.get('/parent/children/:id/portfolio', async (ctx) => {
-    const { learner } = await childOrFail(ctx, ctx.params.id);
+    const { learner, link } = await childOrFail(ctx, ctx.params.id);
+    if (!link || !link.can_receive_reports) throw new AppError('FORBIDDEN');
     return ctx.db.many(
       `SELECT id, title, description, media_type, media_url, storage_key, created_at FROM learner_portfolio_items
        WHERE learner_id = $1 AND sharing_status IN ('guardians','public')
@@ -696,8 +714,8 @@ function register(router) {
       [ctx.user.id, ctx.organisationId]
     );
     if (!guardian) throw new AppError('NOT_FOUND');
-    const ids = await guardianLearnerIds(ctx);
-    if (!ids.length) fail('CONFLICT', null, 'There are no children linked to your account.');
+    const ids = await financeLearnerIds(ctx);
+    if (!ids.length) fail('CONFLICT', null, 'There are no children linked to your account with financial access.');
     const invoices = await ctx.db.many(
       `SELECT * FROM invoices WHERE organisation_id = $1 AND learner_id = ANY($2::uuid[])
          AND status IN ('issued','partially_paid','overdue')
@@ -724,7 +742,7 @@ function register(router) {
   }, { permission: 'parent.finance.read.own' });
 
   router.get('/parent/finance/summary', async (ctx) => {
-    const ids = await guardianLearnerIds(ctx);
+    const ids = await financeLearnerIds(ctx);
     const invoices = [];
     for (const id of ids) {
       const rows = await ctx.db.many(

@@ -75,7 +75,7 @@ async function loadSession(db, req) {
 async function loadToken(db, token, fromCookie, requireImpersonation = false) {
   const row = (await db.query(
     `SELECT s.*, u.email, u.display_name, u.status AS user_status, u.avatar_url, u.phone,
-            u.email_normalized,
+            u.email_normalized, u.mfa_enabled, u.totp_secret_enc, u.mfa_recovery_hashes,
             admin.email AS impersonated_by_email, admin.display_name AS impersonated_by_name
      FROM sessions s JOIN users u ON u.id = s.user_id
      LEFT JOIN users admin ON admin.id = s.impersonated_by
@@ -88,6 +88,8 @@ async function loadToken(db, token, fromCookie, requireImpersonation = false) {
   if (new Date(row.expires_at).getTime() <= Date.now()) return null;
   if (row.user_status !== 'active') return null;
   await db.query('UPDATE sessions SET last_seen_at = now() WHERE id = $1', [row.id]);
+  delete row.totp_secret_enc;
+  delete row.mfa_recovery_hashes;
   const impersonated = row.impersonated_by
     ? { by: row.impersonated_by, byName: row.impersonated_by_name, byEmail: row.impersonated_by_email }
     : null;
@@ -101,7 +103,8 @@ async function loadToken(db, token, fromCookie, requireImpersonation = false) {
       displayName: row.display_name,
       status: row.user_status,
       avatarUrl: row.avatar_url,
-      phone: row.phone
+      phone: row.phone,
+      mfaEnabled: Boolean(row.mfa_enabled)
     }
   };
 }

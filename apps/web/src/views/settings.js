@@ -108,8 +108,39 @@ window.Reel.renderGateQr = function (targetId) {
       return R.pageHead('Settings', 'How the centre is configured — the details every other screen depends on.',
         (canUpdate ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'organisation\')">' + R.icon('building-2') + ' Edit organisation</button>' : '') +
         (canManageBranches ? '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'branch\')">' + R.icon('plus') + ' Add branch</button>' : '')) +
-        R.tabs([{ key: 'organisation', label: 'Organisation' }, { key: 'branding', label: 'Branding' }, { key: 'branches', label: 'Branches (' + branches.length + ')' }, { key: 'operations', label: 'Operations' }, { key: 'gateqr', label: 'Gate QR' }, { key: 'onboarding', label: 'Setup checklist' }, { key: 'billing', label: 'Billing & payments' }], tab) +
-        (tab === 'branches' ? this.renderBranches(ctx, page) : tab === 'branding' ? this.renderBranding(ctx, page) : tab === 'operations' ? this.renderOperations(ctx, settings, hours, attendance, notifications, retention, canManageSettings, page, myPush) : tab === 'gateqr' ? this.renderGateQr(org) : tab === 'onboarding' ? this.renderOnboarding(onboarding) : tab === 'billing' ? this.renderBilling(ctx, page, canManageSettings) : this.renderOrganisation(org, branches, settings));
+        R.tabs([{ key: 'organisation', label: 'Organisation' }, { key: 'branding', label: 'Branding' }, { key: 'branches', label: 'Branches (' + branches.length + ')' }, { key: 'operations', label: 'Operations' }, { key: 'gateqr', label: 'Gate QR' }, { key: 'onboarding', label: 'Setup checklist' }, { key: 'billing', label: 'Billing & payments' }, { key: 'security', label: 'My security' }], tab) +
+        (tab === 'branches' ? this.renderBranches(ctx, page) : tab === 'branding' ? this.renderBranding(ctx, page) : tab === 'operations' ? this.renderOperations(ctx, settings, hours, attendance, notifications, retention, canManageSettings, page, myPush) : tab === 'gateqr' ? this.renderGateQr(org) : tab === 'onboarding' ? this.renderOnboarding(onboarding) : tab === 'billing' ? this.renderBilling(ctx, page, canManageSettings) : tab === 'security' ? this.renderSecurity(ctx) : this.renderOrganisation(org, branches, settings));
+    },
+
+    renderSecurity(ctx) {
+      const mfa = Boolean(ctx.session && ctx.session.user && ctx.session.user.mfaEnabled);
+      const passwordCard = R.card('Password',
+        '<p class="muted small">Change the password you use to sign in to Re-EL ECD. You will need your current password.</p>' +
+        '<div class="btn-group" style="margin-top:12px"><button class="btn btn-secondary" @click="openNamedModal(\'changePassword\')">' + R.icon('lock') + ' Change password</button></div>');
+      const mfaCard = '<div class="card section" x-data="{ step: \'idle\', secret: \'\', otpauthUri: \'\', code: \'\', backupCodes: [], busy: false, error: null, copied: false, startSetup: async function () { var self = this; self.busy = true; self.error = null; try { var res = await window.Reel.api(\'POST\', \'/auth/mfa/setup\', {}); self.secret = (res.data || {}).secret || \'\'; self.otpauthUri = (res.data || {}).otpauthUri || \'\'; self.step = \'setup\'; setTimeout(function () { var el = document.getElementById(\'mfa-qr\'); if (el && window.QRCodeStyling) { el.innerHTML = \'\'; try { new window.QRCodeStyling({ width: 176, height: 176, margin: 2, data: self.otpauthUri, dotsOptions: { color: \'#111111\', type: \'rounded\' }, backgroundOptions: { color: \'#ffffff\' } }).append(el); } catch (e) { el.innerHTML = \'<p>QR failed to render — use the secret below.</p>\'; } } }, 80); } catch (e) { self.error = e.message || \'Could not start setup.\'; } finally { self.busy = false; } }, confirmEnable: async function () { var self = this; self.busy = true; self.error = null; try { var res = await window.Reel.api(\'POST\', \'/auth/mfa/enable\', { code: self.code }); self.backupCodes = ((res.data || {}).backupCodes) || []; self.step = \'backup\'; } catch (e) { self.error = e.message || \'That code is not right.\'; } finally { self.busy = false; } }, disable: async function () { var self = this; self.busy = true; self.error = null; try { await window.Reel.api(\'POST\', \'/auth/mfa/disable\', { code: self.code }); window.ReelApp && window.ReelApp.toast ? window.ReelApp.toast(\'Two-factor authentication is off.\', \'success\') : null; window.location.reload(); } catch (e) { self.error = e.message || \'That code is not right.\'; } finally { self.busy = false; } } }">' +
+        '<div class="card-head"><h3>' + R.icon('shield-check') + ' Two-factor authentication</h3>' +
+          (mfa ? '<span class="badge badge-green">On</span>' : '<span class="badge badge-muted">Off</span>') + '</div>' +
+        '<p class="muted small">After your password, a 6-digit code from an authenticator app on your phone. Stops a stolen password from ever opening the centre.</p>' +
+        '<div class="alert alert-danger" x-show="error" x-cloak style="margin:10px 0"><i data-lucide="alert-circle"></i><span x-text="error"></span></div>' +
+        (mfa
+          ? '<div style="margin-top:10px"><button class="btn btn-secondary" @click="step = step === \'disable\' ? \'idle\' : \'disable\'">' + R.icon('shield-off') + ' Turn off two-factor authentication</button>' +
+            '<div x-show="step === \'disable\'" x-cloak style="margin-top:12px"><div class="field"><label class="field-label">Enter a code from your app (or a recovery code)</label><input class="input" inputmode="numeric" autocomplete="one-time-code" maxlength="32" x-model="code" placeholder="123456"></div>' +
+            '<button class="btn btn-danger" :disabled="busy" @click="$data.disable()">Turn it off</button></div></div>'
+          : '<div style="margin-top:10px"><button class="btn btn-primary" :disabled="busy" x-show="step === \'idle\'" @click="$data.startSetup()">' + R.icon('shield-check') + ' Set up two-factor authentication</button>' +
+            '<div x-show="step === \'setup\'" x-cloak><div class="split" style="gap:18px;align-items:center;margin-bottom:12px"><div id="mfa-qr" style="width:190px;height:190px;display:grid;place-items:center"></div><div><p class="muted small">Scan with Google Authenticator, Microsoft Authenticator, 1Password or Authy. Cannot scan? Enter the secret manually:</p>' +
+            '<code class="mono" style="display:block;word-break:break-all;font-size:0.85rem;background:var(--surface-2);padding:8px 10px;border-radius:8px" x-text="secret"></code></div></div>' +
+            '<div class="field"><label class="field-label">Enter the 6-digit code it shows</label><input class="input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" x-model="code" placeholder="123456"></div>' +
+            '<div class="btn-group"><button class="btn btn-primary" :disabled="busy" @click="$data.confirmEnable()">Turn it on</button><button class="btn btn-ghost" @click="step = \'idle\'">Cancel</button></div></div>' +
+            '<div x-show="step === \'backup\'" x-cloak><div class="alert alert-warn"><i data-lucide="alert-triangle"></i><span>These are your recovery codes — shown <strong>once</strong>. Save them somewhere safe (a manager password app, a printed card in the safe). Each works once.</span></div>' +
+            '<div class="mono" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin:12px 0">' +
+              '<template x-for="code in backupCodes" :key="code"><code class="mono" style="background:var(--surface-2);padding:6px 8px;border-radius:6px;font-size:0.8rem" x-text="code"></code></template>' +
+            '</div>' +
+            '<button class="btn btn-primary" @click="window.location.reload()">I have saved them</button></div></div>') +
+        '</div>';
+      const whyCard = R.card('Why this matters',
+        '<p class="muted small">Your account can unenroll incidents, release children from the gate, publish reports to families and move money. A password alone is not enough — two factors is the same standard banks use.</p>' +
+        '<p class="muted small" style="margin-top:8px">Questions? Your principal can reset your password, but nobody can reset your authenticator — that is the point. If you lose your phone, use one of the recovery codes you saved when enabling MFA.</p>');
+      return '<div class="split"><div class="stack">' + passwordCard + mfaCard + '</div><div class="stack">' + whyCard + '</div></div>';
     },
 
     renderOrganisation(org, branches, settings) {
@@ -473,6 +504,16 @@ window.Reel.renderGateQr = function (targetId) {
             { name: 'currency', label: 'Currency', value: org.currency || 'ZAR' },
             { name: 'locale', label: 'Locale', value: org.locale || 'en-ZA' }
           ]
+        });
+      } else if (name === 'changePassword') {
+        ctx.openModal({
+          title: 'Change password', endpoint: '/auth/change-password', submitLabel: 'Change password',
+          description: 'Use at least 10 characters. Every other session will be signed out.',
+          fields: [
+            { name: 'currentPassword', label: 'Current password', type: 'password', required: true, span: 2 },
+            { name: 'newPassword', label: 'New password', type: 'password', required: true, span: 2 }
+          ],
+          successMessage: 'Password changed. Other sessions were signed out.'
         });
       } else if (name === 'logo') {
         ctx.openModal({

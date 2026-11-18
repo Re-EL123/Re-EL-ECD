@@ -10,6 +10,13 @@ const { recordAudit } = require('../services/audit-service');
 const { sendTemplate } = require('../services/email-service');
 const branding = require('../services/branding-service');
 const { clearCookie } = require('../utils/http');
+const secretbox = require('../services/secretbox');
+const totp = require('../../../../packages/auth/totp');
+const { debugTokensEnabled } = require('../utils/debug');
+
+// Format-valid scrypt hash of a random string — used to equalise timing for
+// unknown accounts without storing a guessable value.
+const DUMMY_PASSWORD_HASH = 'scrypt$00000000000000000000000000000000$' + '0'.repeat(128);
 
 async function sessionPayload(ctx) {
   const memberships = await ctx.db.many(
@@ -75,6 +82,27 @@ async function sessionPayload(ctx) {
   };
 }
 
+/** Constant-time TOTP check against the user's encrypted secret; falls back
+ * to the stored recovery codes (SHA-256 hashes) and reports the remaining
+ * hashes when one was consumed. */
+async function verifySecondFactor(user, code) {
+  const trimmed = String(code == null ? '' : code).trim();
+  if (user.totp_secret_enc) {
+    try {
+      const secret = secretbox.decrypt(user.totp_secret_enc);
+      if (totp.verifyTotp(secret, trimmed)) return { ok: true, usedRecovery: false };
+    } catch (error) {
+      // Undecryptable secret — fall through to recovery codes rather than lock the user out.
+    }
+  }
+  const hashes = Array.isArray(user.mfa_recovery_hashes) ? user.mfa_recovery_hashes.slice() : [];
+  const hash = totp.sha256(trimmed.toLowerCase());
+  const index = hashes.indexOf(hash);
+  if (index === -1) return { ok: false };
+  hashes.splice(index, 1);
+  return { ok: true, usedRecovery: true, remainingRecovery: hashes };
+}
+
 function register(router) {
   router.post('/auth/login', async (ctx) => {
     const body = validate(ctx.body, {
@@ -84,13 +112,21 @@ function register(router) {
     const limit = rateLimit(`login:${ctx.ip}:${body.email.toLowerCase()}`, 8, 15 * 60 * 1000);
     if (!limit.allowed) throw new AppError('RATE_LIMITED');
     const user = await ctx.db.one('SELECT * FROM users WHERE email_normalized = $1', [body.email.toLowerCase()]);
-    if (!user || !user.password_hash) throw new AppError('INVALID_CREDENTIALS');
-    if (user.locked_until && new Date(user.locked_until) > new Date()) {
+    if (!user || !user.password_hash) {
+      // Always run a scrypt verification so a missing account costs the same
+      // time as a wrong password — no account-existence timing oracle.
+      await verifyPassword(body.password, DUMMY_PASSWORD_HASH);
+      throw new AppError('INVALID_CREDENTIALS');
+    }
+    const lockExpired = user.locked_until && new Date(user.locked_until) <= new Date();
+    if (user.locked_until && !lockExpired) {
       throw new AppError('RATE_LIMITED', null, 'Too many failed attempts. Please try again later.');
     }
     const valid = await verifyPassword(body.password, user.password_hash);
     if (!valid) {
-      const failures = Number(user.failed_login_count) + 1;
+      // A spent lockout gives a fresh set of tries, not an instant re-lock.
+      const base = lockExpired ? 0 : Number(user.failed_login_count || 0);
+      const failures = base + 1;
       const lock = failures >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null;
       await ctx.db.query('UPDATE users SET failed_login_count = $1, locked_until = $2 WHERE id = $3', [failures, lock, user.id]);
       await recordAudit(ctx.db, ctx, { action: 'auth.login_failed', resourceType: 'user', resourceId: user.id });
@@ -98,9 +134,20 @@ function register(router) {
     }
     if (user.status === 'suspended') throw new AppError('ACCOUNT_SUSPENDED');
     if (user.status === 'disabled' || user.status === 'invited') throw new AppError('FORBIDDEN', null, 'This account is not active.');
+    // Second factor: a correct password is not enough on its own. Hand out a
+    // short-lived challenge — the client exchanges it for a session only
+    // after the TOTP (or a recovery code) checks out.
+    if (user.mfa_enabled) {
+      const limit = rateLimit(`mfa-challenge:${ctx.ip}`, 8, 10 * 60 * 1000);
+      if (!limit.allowed) throw new AppError('RATE_LIMITED');
+      const challenge = (await ctx.db.query(
+        'INSERT INTO mfa_challenges (user_id) VALUES ($1) RETURNING id', [user.id]
+      )).rows[0];
+      return { mfaRequired: true, challengeId: challenge.id };
+    }
     const created = await createSession(ctx.db, user.id, ctx.req, ctx.res, { ip: ctx.ip, userAgent: ctx.req.headers['user-agent'] });
     ctx.session = created.session;
-    ctx.user = { id: user.id, email: user.email, displayName: user.display_name, status: user.status, avatarUrl: user.avatar_url };
+    ctx.user = { id: user.id, email: user.email, displayName: user.display_name, status: user.status, avatarUrl: user.avatar_url, mfaEnabled: Boolean(user.mfa_enabled) };
     ctx.fromCookie = true;
     const memberships = await ctx.db.many(
       `SELECT organisation_id FROM memberships WHERE user_id = $1 AND status = 'active' ORDER BY created_at`,
@@ -173,7 +220,7 @@ function register(router) {
         `INSERT INTO password_resets (user_id, token_hash, expires_at) VALUES ($1,$2,now() + interval '1 hour')`,
         [user.id, sha256(token)]
       );
-      if (process.env.NODE_ENV !== 'production') ctx.meta.resetToken = token;
+      if (debugTokensEnabled()) ctx.meta.resetToken = token;
       await sendTemplate(ctx.db, 'passwordReset', {
         to: user.email,
         metadata: { userId: user.id },
@@ -210,6 +257,101 @@ function register(router) {
       });
     }
     return { success: true };
+  }, { public: true, skipCsrf: true });
+
+  // --- Two-factor authentication (TOTP) --------------------------------------
+  // Authenticator-app TOTP. Setup is a two-step: /auth/mfa/setup mints the
+  // secret and stores it encrypted; /auth/mfa/enable proves the app can read
+  // it before the flag flips and recovery codes are issued.
+  router.post('/auth/mfa/setup', async (ctx) => {
+    const user = await ctx.db.one('SELECT id, email, display_name, mfa_enabled FROM users WHERE id = $1', [ctx.user.id]);
+    if (user.mfa_enabled) fail('CONFLICT', null, 'Two-factor authentication is already on. Disable it first to re-enrol.');
+    const limit = rateLimit(`mfa-setup:${ctx.user.id}`, 10, 10 * 60 * 1000);
+    if (!limit.allowed) throw new AppError('RATE_LIMITED');
+    const secret = totp.generateSecret();
+    await ctx.db.query('UPDATE users SET totp_secret_enc = $1 WHERE id = $2', [secretbox.encrypt(secret), user.id]);
+    const email = user.email || '';
+    const uri = totp.otpauthUri({ issuer: 'Re-EL ECD', label: email, secret });
+    await recordAudit(ctx.db, ctx, { action: 'auth.mfa_setup_started', resourceType: 'user', resourceId: user.id });
+    return { secret, otpauthUri: uri };
+  }, { authenticated: true });
+
+  router.post('/auth/mfa/enable', async (ctx) => {
+    const body = validate(ctx.body, { code: { type: 'string', min: 6, max: 8 } });
+    const user = await ctx.db.one('SELECT id, mfa_enabled, totp_secret_enc FROM users WHERE id = $1', [ctx.user.id]);
+    if (user.mfa_enabled) fail('CONFLICT', null, 'Two-factor authentication is already on.');
+    if (!user.totp_secret_enc) fail('CONFLICT', null, 'Run the setup first so we can mint your secret.');
+    const limit = rateLimit(`mfa-enable:${ctx.user.id}`, 10, 10 * 60 * 1000);
+    if (!limit.allowed) throw new AppError('RATE_LIMITED');
+    const secret = secretbox.decrypt(user.totp_secret_enc);
+    if (!totp.verifyTotp(secret, body.code)) {
+      fail('VALIDATION', [{ field: 'code', message: 'That code does not match. Check your authenticator app and try again.' }]);
+    }
+    const recovery = totp.generateRecoveryCodes();
+    const hashes = recovery.map((code) => totp.sha256(code.trim().toLowerCase()));
+    await ctx.db.query(
+      'UPDATE users SET mfa_enabled = true, mfa_recovery_hashes = $1::jsonb WHERE id = $2',
+      [JSON.stringify(hashes), user.id]
+    );
+    await recordAudit(ctx.db, ctx, { action: 'auth.mfa_enabled', resourceType: 'user', resourceId: user.id });
+    return { backupCodes: recovery };
+  }, { authenticated: true });
+
+  router.post('/auth/mfa/disable', async (ctx) => {
+    const body = validate(ctx.body, { code: { type: 'string', min: 4, max: 32 } });
+    const user = await ctx.db.one('SELECT id, mfa_enabled, totp_secret_enc, mfa_recovery_hashes FROM users WHERE id = $1', [ctx.user.id]);
+    if (!user.mfa_enabled) fail('CONFLICT', null, 'Two-factor authentication is not on.');
+    const limit = rateLimit(`mfa-disable:${ctx.user.id}`, 10, 10 * 60 * 1000);
+    if (!limit.allowed) throw new AppError('RATE_LIMITED');
+    const ok = await verifySecondFactor(user, body.code);
+    if (!ok.ok) {
+      fail('VALIDATION', [{ field: 'code', message: 'That code does not match. Use your authenticator app or a recovery code.' }]);
+    }
+    await ctx.db.query('UPDATE users SET mfa_enabled = false, totp_secret_enc = NULL, mfa_recovery_hashes = $1::jsonb WHERE id = $2', ['[]', user.id]);
+    await recordAudit(ctx.db, ctx, { action: 'auth.mfa_disabled', resourceType: 'user', resourceId: user.id });
+    return { success: true };
+  }, { authenticated: true });
+
+  // Exchange the pending-login challenge for a session. The challenge id is a
+  // UUID handed out after a correct password — only possession of it plus a
+  // valid TOTP (or a recovery code) finishes sign-in.
+  router.post('/auth/mfa/challenge', async (ctx) => {
+    const body = validate(ctx.body, {
+      challengeId: { type: 'string', uuid: true },
+      code: { type: 'string', min: 4, max: 32 }
+    });
+    const limit = rateLimit(`mfa-verify:${body.challengeId}`, 5, 10 * 60 * 1000);
+    if (!limit.allowed) throw new AppError('RATE_LIMITED');
+    const challenge = await ctx.db.one(
+      'SELECT * FROM mfa_challenges WHERE id = $1 AND used_at IS NULL AND expires_at > now()', [body.challengeId]
+    ).catch(() => null);
+    if (!challenge) throw new AppError('VALIDATION', [{ field: 'challengeId', message: 'That sign-in attempt expired. Sign in again.' }]);
+    const user = await ctx.db.one(
+      'SELECT id, email, display_name, status, avatar_url, mfa_enabled, totp_secret_enc, mfa_recovery_hashes FROM users WHERE id = $1',
+      [challenge.user_id]
+    );
+    if (!user || !user.mfa_enabled || user.status !== 'active') throw new AppError('UNAUTHENTICATED');
+    const result = await verifySecondFactor(user, body.code);
+    if (!result.ok) {
+      await recordAudit(ctx.db, ctx, { action: 'auth.mfa_challenge_failed', resourceType: 'user', resourceId: user.id });
+      fail('VALIDATION', [{ field: 'code', message: 'That code is not right. Try again — you have five attempts.' }]);
+    }
+    if (result.usedRecovery) {
+      await ctx.db.query('UPDATE users SET mfa_recovery_hashes = $1::jsonb WHERE id = $2',
+        [JSON.stringify(result.remainingRecovery), user.id]);
+    }
+    await ctx.db.query('UPDATE mfa_challenges SET used_at = now() WHERE id = $1', [challenge.id]);
+    const created = await createSession(ctx.db, user.id, ctx.req, ctx.res, { ip: ctx.ip, userAgent: ctx.req.headers['user-agent'] });
+    ctx.session = created.session;
+    ctx.user = { id: user.id, email: user.email, displayName: user.display_name, status: user.status, avatarUrl: user.avatar_url, mfaEnabled: true };
+    ctx.fromCookie = true;
+    const memberships = await ctx.db.many(
+      `SELECT organisation_id FROM memberships WHERE user_id = $1 AND status = 'active' ORDER BY created_at`,
+      [user.id]
+    );
+    ctx.organisationId = memberships.length ? memberships[0].organisation_id : null;
+    await recordAudit(ctx.db, ctx, { action: 'auth.mfa_challenge_passed', resourceType: 'session', resourceId: created.session.id });
+    return sessionPayload(ctx);
   }, { public: true, skipCsrf: true });
 
   router.post('/auth/verify-email', async (ctx) => {

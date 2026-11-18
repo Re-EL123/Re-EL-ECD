@@ -187,6 +187,27 @@ function presignGet(key, options = {}) {
   return presign('GET', key, options);
 }
 
+/**
+ * The stable, authenticated path clients use for stored media. The object is
+ * never exposed on a public bucket path; `/media/object` resolves the
+ * caller's org membership and redirects to a short-lived presigned URL.
+ */
+function proxyPath(key) {
+  return '/api/v1/media/object?key=' + encodeURIComponent(String(key));
+}
+
+/** Server-side existence check: a presigned 60-second GET against R2. */
+async function verifyObject(key) {
+  if (!isConfigured()) return true; // storage not configured — nothing to verify
+  try {
+    const signed = presignGet(key, { expires: 60 });
+    const response = await fetch(signed.url, { method: 'HEAD' });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 function publicUrl(key) {
   const base = config().publicBase;
   if (!base) return null;
@@ -462,6 +483,8 @@ module.exports = {
   presignPut,
   presignGet,
   publicUrl,
+  proxyPath,
+  verifyObject,
   check,
   deleteObject,
   buildKey,

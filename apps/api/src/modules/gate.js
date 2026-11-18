@@ -19,20 +19,12 @@
  * release; public endpoints are rate-limited.
  */
 
-const crypto = require('crypto');
 const { validate } = require('../../../../packages/contracts/validate');
 const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
 const { createNotification } = require('../services/notification-service');
 const { rateLimit } = require('../middleware/rate-limit');
-
-function hashPin(orgId, pin) {
-  return crypto.createHash('sha256').update(orgId + '::collection-pin::' + String(pin).trim().toLowerCase()).digest('hex');
-}
-function verifyPin(orgId, pin, hash) {
-  if (!hash) return false;
-  return crypto.timingSafeEqual(Buffer.from(hashPin(orgId, pin), 'hex'), Buffer.from(hash, 'hex'));
-}
+const { hashPin, verifyPin } = require('../../../../packages/auth/pin');
 
 async function loadGateOrg(db, slug) {
   const org = await db.one("SELECT id, name FROM organisations WHERE slug = $1 AND status = 'active'", [slug]);
@@ -53,7 +45,17 @@ async function authenticateCollector(db, org, body) {
        AND (lower(name) = lower($2) OR lower(split_part(name, ' ', 1)) = lower($2))`,
     [org.id, body.name.trim()]
   );
-  const matched = rows.filter((c) => verifyPin(org.id, body.pin, c.pin_hash));
+  const rowChecks = await Promise.all(rows.map(async (c) => ({ c, result: await verifyPin(body.pin, c.pin_hash, org.id) })));
+  const matched = rowChecks.filter((entry) => entry.result.ok).map((entry) => entry.c);
+  // Transparently upgrade legacy sha256 digests to scrypt on successful use.
+  for (const entry of rowChecks) {
+    if (entry.result.ok && entry.result.needsRehash) {
+      try {
+        const upgraded = await hashPin(body.pin);
+        await db.query('UPDATE authorised_collectors SET pin_hash = $1 WHERE id = $2', [upgraded, entry.c.id]);
+      } catch (err) { /* non-fatal */ }
+    }
+  }
   const guardianRows = await db.many(
     `SELECT g.id AS guardian_id, trim(g.first_name || ' ' || g.last_name) AS name,
             g.collection_pin_hash, lg.learner_id
@@ -64,7 +66,16 @@ async function authenticateCollector(db, org, body) {
             OR lower(trim(g.first_name || ' ' || g.last_name)) = lower($2))`,
     [org.id, body.name.trim()]
   );
-  const guardianMatches = guardianRows.filter((g) => verifyPin(org.id, body.pin, g.collection_pin_hash));
+  const guardianChecks = await Promise.all(guardianRows.map(async (g) => ({ g, result: await verifyPin(body.pin, g.collection_pin_hash, org.id) })));
+  const guardianMatches = guardianChecks.filter((entry) => entry.result.ok).map((entry) => entry.g);
+  for (const entry of guardianChecks) {
+    if (entry.result.ok && entry.result.needsRehash) {
+      try {
+        const upgraded = await hashPin(body.pin);
+        await db.query('UPDATE guardians SET collection_pin_hash = $1 WHERE id = $2', [upgraded, entry.g.guardian_id]);
+      } catch (err) { /* non-fatal */ }
+    }
+  }
   if (!matched.length && !guardianMatches.length) {
     // Intentionally vague — never reveal which part was wrong.
     throw new AppError('UNAUTHENTICATED', null, 'That name or PIN does not match anyone cleared for this centre.');

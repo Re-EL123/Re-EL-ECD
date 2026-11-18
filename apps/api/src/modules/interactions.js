@@ -10,6 +10,8 @@
 const { validate } = require('../../../../packages/contracts/validate');
 const { AppError } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
+const { rateLimit } = require('../middleware/rate-limit');
+const { assignedClassroomIds, has, getLearner } = require('./helpers');
 
 function isInteractiveType(type) {
   return type === 'poll' || type === 'mcq' || type === 'dragdrop';
@@ -50,8 +52,25 @@ function isCorrect(step, response) {
 }
 
 function csvEsc(value) {
-  const s = String(value == null ? '' : value);
+  let s = String(value == null ? '' : value);
+  // Spreadsheet formula injection: a cell whose text starts with =, +, - or @
+  // executes as a formula in Excel/LibreOffice. Prefix with an apostrophe.
+  if (/^[=+\-@]/.test(s)) s = "'" + s;
   return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+/**
+ * Classroom-scoped access for a presentation session. Org-wide staff
+ * (learners.read.daycare) and the session's creator keep access; an assigned
+ * staff member only sees sessions for their own classrooms — never the
+ * whole centre's evidence.
+ */
+async function assertPresentationAccess(ctx, session) {
+  if (has(ctx, 'learners.read.daycare')) return;
+  if (session && session.created_by === ctx.user.id) return;
+  const assigned = await assignedClassroomIds(ctx);
+  if (session && session.classroom_id && assigned.includes(session.classroom_id)) return;
+  throw new AppError('FORBIDDEN');
 }
 
 function aggregate(step, responses) {
@@ -125,6 +144,11 @@ function register(router) {
     if (body.classroomId) {
       const room = await ctx.db.one('SELECT id FROM classrooms WHERE id = $1 AND organisation_id = $2', [body.classroomId, ctx.organisationId]);
       if (!room) throw new AppError('NOT_FOUND');
+      // Assigned staff may only run sessions for their own classrooms.
+      if (!has(ctx, 'learners.read.daycare')) {
+        const assigned = await assignedClassroomIds(ctx);
+        if (!assigned.includes(body.classroomId)) throw new AppError('FORBIDDEN');
+      }
     }
     const row = await ctx.db.one(
       `INSERT INTO presentation_sessions (organisation_id, lesson_plan_id, title, created_by, classroom_id, participant_mode)
@@ -139,6 +163,7 @@ function register(router) {
   // The roster used for class_roster sessions — ids + names only, nothing else.
   router.get('/presentations/sessions/:id/roster', async (ctx) => {
     const session = await getSession(ctx, ctx.params.id);
+    await assertPresentationAccess(ctx, session);
     if (!session.classroom_id) return { learners: [] };
     const rows = await ctx.db.many(
       `SELECT id, first_name, last_name FROM learners
@@ -151,9 +176,21 @@ function register(router) {
 
   router.get('/presentations/sessions', async (ctx) => {
     const planId = ctx.query.lessonPlanId;
+    const wide = has(ctx, 'learners.read.daycare');
+    const assigned = wide ? [] : await assignedClassroomIds(ctx);
     const params = [ctx.organisationId];
     let extra = '';
-    if (planId) { params.push(planId); extra = ' AND s.lesson_plan_id = $2'; }
+    if (!wide) {
+      // Assigned staff see their own sessions and their own classrooms' sessions.
+      params.push(ctx.user.id);
+      extra = ' AND (s.created_by = $' + params.length;
+      if (assigned.length) {
+        params.push(assigned);
+        extra += ' OR s.classroom_id = ANY($' + params.length + '::uuid[])';
+      }
+      extra += ')';
+    }
+    if (planId) { params.push(planId); extra += ' AND s.lesson_plan_id = $' + params.length; }
     const rows = await ctx.db.many(
       `SELECT s.*, lp.title AS plan_title, u.display_name AS created_by_name
        FROM presentation_sessions s
@@ -173,6 +210,7 @@ function register(router) {
 
   router.get('/presentations/sessions/:id', async (ctx) => {
     const session = await getSession(ctx, ctx.params.id);
+    await assertPresentationAccess(ctx, session);
     // include results snapshot
     const results = await buildResults(ctx, session);
     return { session: { id: session.id, status: session.status, participantMode: session.participant_mode, lessonPlanId: session.lesson_plan_id }, results };
@@ -214,11 +252,13 @@ function register(router) {
 
   router.get('/presentations/sessions/:id/results', async (ctx) => {
     const session = await getSession(ctx, ctx.params.id);
+    await assertPresentationAccess(ctx, session);
     return { session: { id: session.id, status: session.status, participantMode: session.participant_mode, lessonPlanId: session.lesson_plan_id }, results: await buildResults(ctx, session) };
   }, { permission: 'curriculum.read.daycare' });
 
   router.get('/presentations/sessions/:id/export.csv', async (ctx) => {
     const session = await getSession(ctx, ctx.params.id);
+    await assertPresentationAccess(ctx, session);
     const plan = await ctx.db.one('SELECT title FROM lesson_plans WHERE id = $1', [session.lesson_plan_id]).catch(() => null);
     const steps = await ctx.db.many(
       `SELECT id, title, step_type, interactive_data FROM lesson_steps WHERE lesson_plan_id = $1 AND step_type IN ('poll','mcq','dragdrop') ORDER BY position`,
@@ -371,7 +411,12 @@ function register(router) {
   }
 
   router.post('/presentations/sessions/:id/responses', async (ctx) => {
+    // One member may submit at most 120 responses to one session per 10 minutes
+    // — enough for a class of 30 answering 3 questions, not a poll-flood.
+    const flood = rateLimit('livecheck-resp:' + ctx.params.id + ':' + ctx.user.id, 120, 10 * 60 * 1000);
+    if (!flood.allowed) throw new AppError('RATE_LIMITED');
     const session = await getSession(ctx, ctx.params.id);
+    await assertPresentationAccess(ctx, session);
     if (session.status === 'closed') throw new AppError('CONFLICT', 'This presentation session is closed.');
     const body = validate(ctx.body, {
       stepId: { type: 'string', uuid: true },
@@ -444,8 +489,9 @@ function register(router) {
 
   // A child's live-check history — staff-only; guardians see published observations only.
   router.get('/learners/:id/live-checks', async (ctx) => {
-    const learner = await ctx.db.one('SELECT id FROM learners WHERE id = $1 AND organisation_id = $2', [ctx.params.id, ctx.organisationId]);
-    if (!learner) throw new AppError('NOT_FOUND');
+    // Enforces org + (daycare read | assigned classroom | parent link) instead
+    // of org-only, so live-check history is never visible centre-wide.
+    const learner = await getLearner(ctx, ctx.params.id);
     const rows = await ctx.db.many(
       `SELECT s.id AS session_id, s.title AS session_title, s.closed_at, lp.title AS plan_title,
               st.id AS step_id, st.title AS step_title, st.step_type, st.interactive_data, pr.response, pr.created_at

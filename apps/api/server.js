@@ -25,10 +25,17 @@ const MIME = {
 };
 
 function safeJoin(root, requestPath) {
-  const decoded = decodeURIComponent(requestPath.split('?')[0]);
-  const resolved = path.join(root, decoded);
-  if (!resolved.startsWith(root)) return null;
-  return resolved;
+  let decoded;
+  try {
+    decoded = decodeURIComponent(requestPath.split('?')[0]);
+  } catch {
+    return null; // malformed percent-encoding
+  }
+  const resolved = path.resolve(root, '.' + decoded);
+  // The boundary must include the separator (or be the root itself) so a
+  // sibling directory like `apps/web2` is never considered inside `apps/web`.
+  const inside = resolved === root || resolved.startsWith(root + path.sep);
+  return inside ? resolved : null;
 }
 
 function serveStatic(req, res, pathname) {

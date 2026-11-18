@@ -8,7 +8,43 @@
  * evidence/wrap-up signals needed to close the loop.
  */
 
-const { assignedClassroomIds } = require('./helpers');
+const { assignedClassroomIds, has } = require('./helpers');
+
+/**
+ * Fail closed. A staff member with no classroom assignments can only see
+ * centre-wide data when they hold an org-wide read; otherwise they get an
+ * intentionally empty day (nothing scheduled, no children) — never the whole
+ * centre's PII.
+ */
+const WIDE_READ_PERMS = ['learners.read.daycare', 'reports.read.daycare', 'organisation.settings.manage', 'attendance.record.daycare'];
+
+function wideRead(ctx) {
+  return WIDE_READ_PERMS.some((key) => has(ctx, key));
+}
+
+function emptyMorning(today) {
+  return {
+    scopedEmpty: true,
+    expected: 0,
+    present: 0,
+    recorded: 0,
+    registerPct: 0,
+    date: today,
+    children: [],
+    timeline: [],
+    absentees: [],
+    focusChildren: [],
+    unverifiedDropoffs: [],
+    gateScans: [],
+    unopened: [],
+    unfinished: { tasksDueToday: 0, draftObservations: 0 },
+    dailyReports: { children: [], missing: 0, draft: 0, presentCount: 0 },
+    rings: {},
+    moments: { children: [], streak: 0 },
+    unmarkedIds: [],
+    wrapUp: { unfinishedBlocks: [], unfinishedCount: 0 }
+  };
+}
 
 function dayStartIso(day) {
   return day + 'T00:00:00Z';
@@ -17,6 +53,7 @@ function dayStartIso(day) {
 async function buildMorning(ctx, opts) {
   const today = opts && opts.today ? opts.today : new Date().toISOString().slice(0, 10);
   const assigned = await assignedClassroomIds(ctx);
+  if (!assigned.length && !wideRead(ctx)) return emptyMorning(today);
   const scoped = assigned.length > 0;
   const learnerRows = await ctx.db.many(
     scoped
@@ -325,27 +362,40 @@ async function buildMorning(ctx, opts) {
       label: 'This month'
     },
     _ids: ids,
-    _presence: presence
+    _presence: presence,
+    _assigned: assigned
   };
 }
 
 async function buildToday(ctx) {
   const today = new Date().toISOString().slice(0, 10);
   const morning = await buildMorning(ctx, { today });
+  if (morning.scopedEmpty) return morning;
   const ids = morning._ids || [];
   const presence = morning._presence || [];
   const presentIds = new Set(presence.filter((row) => row.attendance_status === 'present' || row.attendance_status === 'late' || row.check_in_at).map((r) => r.learner_id));
   const presentChildren = (morning.children || []).filter((c) => presentIds.has(c.id));
 
+  const assignedForEvents = morning._assigned || [];
+  const restrictEvents = !wideRead(ctx) && assignedForEvents.length > 0;
   const events = await ctx.db.many(
-    `SELECT sa.*, c.name AS classroom_name, u.display_name AS staff_name, lp.title AS lesson_plan_title
-     FROM scheduled_activities sa
-     LEFT JOIN classrooms c ON c.id = sa.classroom_id
-     LEFT JOIN users u ON u.id = sa.assigned_staff_id
-     LEFT JOIN lesson_plans lp ON lp.id = sa.lesson_plan_id
-     WHERE sa.organisation_id = $1 AND sa.starts_at >= $2::timestamptz AND sa.starts_at < ($3::date + 1)
-     ORDER BY sa.starts_at`,
-    [ctx.organisationId, dayStartIso(today), today]
+    restrictEvents
+      ? `SELECT sa.*, c.name AS classroom_name, u.display_name AS staff_name, lp.title AS lesson_plan_title
+         FROM scheduled_activities sa
+         LEFT JOIN classrooms c ON c.id = sa.classroom_id
+         LEFT JOIN users u ON u.id = sa.assigned_staff_id
+         LEFT JOIN lesson_plans lp ON lp.id = sa.lesson_plan_id
+         WHERE sa.organisation_id = $1 AND sa.starts_at >= $2::timestamptz AND sa.starts_at < ($3::date + 1)
+           AND sa.classroom_id = ANY($4::uuid[])
+         ORDER BY sa.starts_at`
+      : `SELECT sa.*, c.name AS classroom_name, u.display_name AS staff_name, lp.title AS lesson_plan_title
+         FROM scheduled_activities sa
+         LEFT JOIN classrooms c ON c.id = sa.classroom_id
+         LEFT JOIN users u ON u.id = sa.assigned_staff_id
+         LEFT JOIN lesson_plans lp ON lp.id = sa.lesson_plan_id
+         WHERE sa.organisation_id = $1 AND sa.starts_at >= $2::timestamptz AND sa.starts_at < ($3::date + 1)
+         ORDER BY sa.starts_at`,
+    restrictEvents ? [ctx.organisationId, dayStartIso(today), today, assignedForEvents] : [ctx.organisationId, dayStartIso(today), today]
   );
 
   const planIds = [...new Set(events.map((e) => e.lesson_plan_id).filter(Boolean))];
@@ -411,9 +461,9 @@ async function buildToday(ctx) {
   const momentsToday = presentIds.size
     ? await ctx.db.many(
         `SELECT o.learner_id, COUNT(*)::int AS count FROM learner_observations o
-         WHERE o.organisation_id = $1 AND o.observation_date = CURRENT_DATE
+         WHERE o.organisation_id = $1 AND o.observation_date = CURRENT_DATE AND o.learner_id = ANY($2::uuid[])
          GROUP BY o.learner_id`,
-        [ctx.organisationId]
+        [ctx.organisationId, [...presentIds]]
       )
     : [];
   const momentsByChild = new Map(momentsToday.map((m) => [m.learner_id, m.count]));
@@ -549,6 +599,7 @@ async function buildToday(ctx) {
   const base = Object.assign({}, morning);
   delete base._ids;
   delete base._presence;
+  delete base._assigned;
   return Object.assign(base, {
     date: today,
     timeline,
@@ -567,7 +618,7 @@ async function buildToday(ctx) {
 }
 
 const TODAY_PERMS = {
-  permission: ['curriculum.create.daycare', 'assessments.create.assigned', 'attendance.record.assigned', 'attendance.record.own', 'staff_attendance.record.assigned', 'staff_attendance.record.own'],
+  permission: ['curriculum.create.daycare', 'assessments.create.assigned', 'attendance.record.assigned', 'attendance.record.daycare', 'staff_attendance.record.daycare', 'staff_attendance.record.own'],
   permissionMode: 'any'
 };
 
@@ -577,6 +628,7 @@ function register(router) {
     const base = Object.assign({}, morning);
     delete base._ids;
     delete base._presence;
+    delete base._assigned;
     return base;
   }, TODAY_PERMS);
 

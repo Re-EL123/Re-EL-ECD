@@ -44,13 +44,6 @@ async function getLearner(ctx, learnerId, options = {}) {
   throw new AppError('FORBIDDEN');
 }
 
-function assertLearnerWrite(ctx, learner) {
-  const perms = ctx.access.permissions;
-  if (hasPermission(perms, 'learners.update.daycare')) return;
-  if (hasPermission(perms, 'learners.update.assigned') && learner.classroom_id) return;
-  fail('FORBIDDEN');
-}
-
 function assertPermission(ctx, key) {
   if (!hasPermission(ctx.access.permissions, key)) fail('FORBIDDEN');
 }
@@ -133,7 +126,6 @@ module.exports = {
   assignedClassroomIds,
   guardianLearnerIds,
   getLearner,
-  assertLearnerWrite,
   assertPermission,
   has,
   guardianForLearner,

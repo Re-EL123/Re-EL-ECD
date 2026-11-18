@@ -22,7 +22,10 @@
     render(ctx, params, page) {
       const org = page.org || {};
       const orgName = org.name || 'This centre';
-      const slug = page.slug;
+      // The slug is user-controlled (hash route) — only ever interpolate a
+      // verified pattern, never raw text, into the markup and Alpine JS.
+      const rawSlug = String(page.slug || '');
+      const slug = /^[a-z0-9-]{2,64}$/.test(rawSlug) ? rawSlug : 'this-centre';
       return '<div class="section" style="max-width:460px;margin:0 auto;padding:32px 20px;text-align:center">' +
         '<div class="gate-brand" style="margin-bottom:28px">' +
           '<div style="width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,var(--forest-600),var(--forest-800));display:inline-flex;align-items:center;justify-content:center;font-size:1.8rem;color:#fff;margin-bottom:16px">' + R.esc((orgName[0] || 'R').toUpperCase()) + '</div>' +

@@ -10,6 +10,7 @@ const { recordAudit } = require('../services/audit-service');
 const { createNotification } = require('../services/notification-service');
 const { sendTemplate } = require('../services/email-service');
 const bulk = require('../services/bulk-service');
+const { debugTokensEnabled } = require('../utils/debug');
 
 async function actorRank(ctx) {
   let max = 0;
@@ -106,7 +107,7 @@ function register(router) {
         expiresAt: invitation.expires_at
       }
     });
-    if (process.env.NODE_ENV !== 'production') ctx.meta.inviteToken = token;
+    if (debugTokensEnabled()) ctx.meta.inviteToken = token;
     return { invitationId: invitation.id, email: body.email, roleKey: body.roleKey, expiresAt: invitation.expires_at };
   }, { permission: 'access.manage.daycare' });
 
@@ -125,6 +126,17 @@ function register(router) {
       ? Array.from(new Set(body.roleKeys))
       : (body.roleKey ? [body.roleKey] : []);
     if (!roleKeys.length) fail('VALIDATION', [{ field: 'roleKeys', message: 'Choose at least one role.' }]);
+    // No equal-or-higher self-grant: an access manager must not hand
+    // themselves extra authority. Peers of equal rank can only be granted by
+    // someone above them.
+    if (membership.user_id === ctx.user.id && !(ctx.access.roles || []).includes('platform_super_admin')) {
+      const actorSelf = await actorRank(ctx);
+      for (const roleKey of roleKeys) {
+        if ((ROLE_HIERARCHY[roleKey] || 0) >= actorSelf) {
+          throw new AppError('FORBIDDEN', null, 'You cannot grant yourself a role of equal or higher authority.');
+        }
+      }
+    }
     const branchIds = body.branchIds && body.branchIds.length
       ? Array.from(new Set(body.branchIds))
       : (body.branchId ? [body.branchId] : [null]);
@@ -232,12 +244,18 @@ function register(router) {
     const membership = await ctx.db.one('SELECT * FROM memberships WHERE id = $1 AND organisation_id = $2',
       [ctx.params.id, ctx.organisationId]);
     if (!membership) throw new AppError('NOT_FOUND');
+    if (membership) {
+      if (membership.user_id === ctx.user.id && body.status && body.status !== 'active') {
+        throw new AppError('FORBIDDEN', null, 'You cannot suspend or revoke your own access.');
+      }
+    }
     if (body.status) {
       await ctx.db.query('UPDATE memberships SET status = $1 WHERE id = $2', [body.status, membership.id]);
+      // Revoke only this organisation's access — the member's other tenants,
+      // the platform org and their sessions elsewhere are unaffected. The
+      // membership check on every request fails closed from now on, and the
+      // permission cache is cleared immediately.
       invalidateAccess(membership.user_id, ctx.organisationId);
-      if (body.status !== 'active') {
-        await ctx.db.query('UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [membership.user_id]);
-      }
     }
     await recordAudit(ctx.db, ctx, {
       action: 'access.membership_updated', resourceType: 'membership', resourceId: membership.id,
@@ -281,9 +299,7 @@ function register(router) {
         await ctx.db.query('UPDATE memberships SET status = $1 WHERE id = $2', [target, membership.id]);
         invalidateAccess(membership.user_id, ctx.organisationId);
         if (target !== 'active') {
-          await ctx.db.query(
-            'UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [membership.user_id]
-          );
+          invalidateAccess(membership.user_id, ctx.organisationId);
           const member = await ctx.db.one('SELECT email, display_name FROM users WHERE id = $1', [membership.user_id]);
           if (member && member.email) {
             await sendTemplate(ctx.db, 'accessRevoked', {
@@ -330,6 +346,11 @@ function register(router) {
       [body.granteeUserId, ctx.organisationId]
     );
     if (!grantee) fail('VALIDATION', [{ field: 'granteeUserId', message: 'The user is not an active member of this organisation.' }]);
+    if (body.branchId) {
+      const branch = await ctx.db.one('SELECT id FROM branches WHERE id = $1 AND organisation_id = $2',
+        [body.branchId, ctx.organisationId]);
+      if (!branch) fail('VALIDATION', [{ field: 'branchId', message: 'Unknown branch.' }]);
+    }
     if (body.granteeUserId === ctx.user.id) fail('VALIDATION', [{ field: 'granteeUserId', message: 'You cannot delegate permissions to yourself.' }]);
     if (new Date(body.expiresAt) <= new Date()) fail('VALIDATION', [{ field: 'expiresAt', message: 'The expiry must be in the future.' }]);
     for (const permission of body.permissions) {
