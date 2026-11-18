@@ -2592,3 +2592,162 @@ a.crumb:hover { color: var(--text-strong); background: var(--surface-2); text-de
 .avatar-strip .avatar:first-child { margin-left: 0; }
 .avatar-strip > span { display: inline-flex; }
 .avatar-more { background: var(--surface-2); color: var(--text-muted); font-size: 0.72rem; font-weight: 800; }
+
+/* ==========================================================================
+   TODAY v2 — “the day at a glance” design system
+   A rebuilt Today: a live hero scene, small KPI deck, glass chart cards that
+   are clickable throughout, a vertical teaching rail and a completion meter.
+   All colours come from the brand variable scales, so org theming (including
+   red, purple or deep-sea palettes) carries through unchanged.
+   ========================================================================== */
+
+/* --- Hero scene ---------------------------------------------------------- */
+.today-hero { border-radius: var(--radius-lg); box-shadow: 0 26px 60px -26px var(--neon-glow-strong), var(--shadow-sm); }
+.today-hero .day-scene { height: 252px; }
+@media (max-width: 900px) { .today-hero .day-scene { height: 210px; } }
+
+/* Live pill next to the clock — only when a block is in progress. */
+.live-badge { display: inline-flex; align-items: center; gap: 6px; margin-left: 12px; padding: 3px 10px 3px 8px; border-radius: 999px;
+  font-size: 0.62rem; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 800;
+  color: #fff; background: rgba(221, 11, 20, 0.78); border: 1px solid rgba(255,255,255,0.45);
+  vertical-align: middle; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+.live-pulse { width: 7px; height: 7px; border-radius: 50%; background: #ffd7d7; animation: livePulse 1.15s ease-in-out infinite; }
+@keyframes livePulse {
+  0%, 100% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 0 rgba(255, 120, 120, 0.55); }
+  50% { transform: scale(1.35); opacity: 0.75; box-shadow: 0 0 0 5px rgba(255, 120, 120, 0); }
+}
+
+/* Day info as four glass tiles instead of a vertical list. */
+.day-info-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 14px 16px 16px; }
+@media (max-width: 900px) { .day-info-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .day-info-tiles { grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px; } }
+.day-tile { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px 12px; border-radius: 14px;
+  background: var(--surface-2); border: 1px solid var(--border-subtle);
+  transition: transform 0.3s cubic-bezier(0.3, 0.7, 0.3, 1), border-color 0.3s ease; }
+.day-tile:hover { transform: translateY(-2px); border-color: var(--neon-border-strong); }
+.day-tile-ico { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; }
+.day-tile-ico svg { width: 17px; height: 17px; }
+.day-tile-body { min-width: 0; }
+.day-info-tiles .day-info-label { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); font-weight: 700; }
+.day-info-tiles .day-info-value { font-size: 0.86rem; font-weight: 650; color: var(--text-strong); line-height: 1.25; margin-top: 2px; }
+.tile-green .day-tile-ico { background: var(--reel-green-100); color: var(--reel-green-800); }
+.tile-sky .day-tile-ico { background: var(--reel-sky-100); color: var(--reel-sky-700); }
+.tile-sun .day-tile-ico { background: var(--reel-sun-200); color: var(--reel-sun-700); }
+.tile-clay .day-tile-ico { background: var(--reel-clay-100); color: var(--reel-clay-700); }
+@media (prefers-reduced-motion: reduce) { .day-tile { transition: none; } .live-pulse { animation: none; } }
+
+/* --- Mini KPI deck (teachers & staff who don't see the manager board) ---- */
+.kpi-deck { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 900px) { .kpi-deck { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.kpi-mini { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; min-width: 0;
+  background: var(--surface-1); border: 1px solid var(--neon-border);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 4px 12px -6px var(--neon-glow); }
+.kpi-mini-ico { flex: 0 0 auto; width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; }
+.kpi-mini-ico svg { width: 18px; height: 18px; }
+.kpi-mini-body { display: flex; flex-direction: column; min-width: 0; }
+.kpi-mini-value { font-size: 1.05rem; font-weight: 800; color: var(--text-strong); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.kpi-mini-label { font-size: 0.66rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.07em; font-weight: 700; margin-top: 2px; }
+.kpi-mini.tone-green .kpi-mini-ico { background: var(--reel-green-100); color: var(--reel-green-800); }
+.kpi-mini.tone-sky .kpi-mini-ico { background: var(--reel-sky-100); color: var(--reel-sky-700); }
+.kpi-mini.tone-sun .kpi-mini-ico { background: var(--reel-sun-200); color: var(--reel-sun-700); }
+.kpi-mini.tone-clay .kpi-mini-ico { background: var(--reel-clay-100); color: var(--reel-clay-700); }
+
+/* --- Chart grid & chart cards -------------------------------------------- */
+.chart-grid { display: grid; grid-template-columns: 1.35fr 1fr; gap: 14px; }
+.chart-grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+@media (max-width: 1100px) { .chart-grid-3 { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 900px) { .chart-grid, .chart-grid-3 { grid-template-columns: 1fr; } }
+.chart-card { padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 6px; }
+.chart-card .card-head { margin-bottom: 2px; }
+.chart-card .card-head h3 { display: inline-flex; align-items: center; gap: 8px; font-size: 0.92rem; }
+.chart-card .card-head h3 svg { width: 17px; height: 17px; }
+.chart-body { position: relative; flex: 1 1 auto; min-height: 0; }
+.chart-body canvas { cursor: pointer; }
+.chart-sub { font-size: 0.74rem; color: var(--text-muted); line-height: 1.35; }
+.chart-hint { display: inline-flex; align-items: center; gap: 6px; margin-top: 2px;
+  font-size: 0.7rem; font-weight: 600; color: var(--text-muted); opacity: 0.85; }
+.chart-hint svg { width: 12px; height: 12px; }
+.chart-hint a { color: var(--reel-green-700); text-decoration: none; }
+.chart-hint a:hover { text-decoration: underline; }
+.chart-card:hover { border-color: var(--neon-border-strong); }
+[data-theme="dark"] .chart-hint a { color: var(--reel-green-300); }
+
+/* Ring card shares the chart-card rhythm. */
+.ring-card .ring-row { flex: 1 1 auto; justify-content: center; }
+
+/* --- Teaching timeline rail ----------------------------------------------- */
+.rail { position: relative; list-style: none; margin: 0; padding: 2px 0 2px 52px; }
+.rail::before { content: ''; position: absolute; left: 20px; top: 18px; bottom: 18px; width: 2px;
+  background: linear-gradient(180deg, var(--neon-border-strong) 0%, var(--border-subtle) 40%, var(--border-subtle) 100%);
+  border-radius: 2px; }
+.rail-item { position: relative; margin-bottom: 14px; }
+.rail-item:last-child { margin-bottom: 0; }
+.rail-item .today-block { margin: 0; }
+.rail-node { position: absolute; left: -52px; top: 14px; z-index: 1;
+  width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--surface-1); border: 1px solid var(--border-subtle); color: var(--text-muted);
+  box-shadow: 0 2px 8px rgba(28, 42, 30, 0.08); }
+.rail-node svg { width: 17px; height: 17px; }
+.rail-item.rail-completed .rail-node { background: var(--reel-green-100); border-color: var(--neon-border-strong); color: var(--reel-green-800); }
+.rail-item.rail-in_progress .rail-node { background: var(--reel-sun-200); border-color: var(--reel-sun-500); color: var(--reel-sun-700);
+  animation: nodePulse 2.4s ease-in-out infinite; }
+.rail-item.rail-scheduled .rail-node { background: var(--surface-1); border-color: var(--reel-sky-500); color: var(--reel-sky-700); }
+.rail-item.rail-cancelled .rail-node { background: var(--surface-2); color: var(--text-muted); opacity: 0.8; }
+.rail-item.is-next .rail-node { border-color: var(--neon-border-strong); color: var(--reel-green-700); box-shadow: 0 0 0 3px var(--neon-glow), 0 2px 8px rgba(28,42,30,0.1); }
+@keyframes nodePulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(232, 154, 43, 0.45); }
+  50% { box-shadow: 0 0 0 7px rgba(232, 154, 43, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .rail-item.rail-in_progress .rail-node { animation: none; } }
+@media (max-width: 560px) { .rail { padding-left: 44px; } .rail::before { left: 16px; } .rail-node { left: -44px; width: 32px; height: 32px; top: 12px; } }
+
+/* Stagger bloom for the rail items (light motion, spring easing via CSS). */
+.rail-item { animation: todayFadeUp 0.5s cubic-bezier(0.3, 0.7, 0.3, 1) both; }
+.rail-item:nth-child(1) { animation-delay: 0.04s; }
+.rail-item:nth-child(2) { animation-delay: 0.10s; }
+.rail-item:nth-child(3) { animation-delay: 0.16s; }
+.rail-item:nth-child(4) { animation-delay: 0.22s; }
+.rail-item:nth-child(5) { animation-delay: 0.28s; }
+.rail-item:nth-child(n+6) { animation-delay: 0.34s; }
+@media (prefers-reduced-motion: reduce) { .rail-item { animation: none; } }
+
+/* --- Day completion meter --------------------------------------------------- */
+.day-meter { position: relative; height: 10px; border-radius: 999px; overflow: hidden;
+  background: var(--surface-2); border: 1px solid var(--border-subtle); }
+.day-meter-fill { height: 100%; width: var(--meter, 0%); border-radius: inherit;
+  background: linear-gradient(90deg, var(--reel-green-600) 0%, var(--reel-green-400) 55%, var(--reel-sun-500) 130%);
+  box-shadow: 0 0 12px var(--neon-glow-strong);
+  animation: meterGrow 1.15s cubic-bezier(0.25, 1, 0.35, 1) both; }
+@keyframes meterGrow { from { width: 0%; } to { width: var(--meter, 0%); } }
+.day-meter-meta { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-top: 6px; font-size: 0.82rem; color: var(--text); }
+.day-meter-meta strong { font-variant-numeric: tabular-nums; color: var(--text-strong); }
+@media (prefers-reduced-motion: reduce) { .day-meter-fill { animation: none; } }
+
+/* --- Animation delays shared across Today v2 -------------------------------- */
+.anim-delay-1 { animation-delay: 0.04s !important; }
+.anim-delay-2 { animation-delay: 0.10s !important; }
+.anim-delay-3 { animation-delay: 0.16s !important; }
+.anim-delay-4 { animation-delay: 0.22s !important; }
+.anim-delay-5 { animation-delay: 0.28s !important; }
+.anim-delay-6 { animation-delay: 0.34s !important; }
+
+/* --- Suggestion rows: slightly stronger hover + neon icon tile --------------- */
+.today-suggest .suggest-row { box-shadow: 0 1px 4px rgba(28,42,30,0.04); }
+.today-suggest .suggest-row:hover { border: 0; }
+
+/* --- Print: keep the prep list, drop the chrome ------------------------------ */
+@media print {
+  .kpi-deck, .chart-hint, .day-meter, .rail::before { display: none !important; }
+  .rail { padding-left: 0; }
+  .rail-node { display: none; }
+}
+
+/* --- Up next: leading icon tile + responsive layout -------------------------- */
+.next-row { flex-wrap: wrap; }
+.next-ico { flex: 0 0 auto; width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center;
+  background: linear-gradient(150deg, var(--reel-green-100), var(--reel-sun-200));
+  border: 1px solid var(--neon-border); color: var(--reel-green-800);
+  box-shadow: 0 4px 12px -4px var(--neon-glow); }
+.next-ico svg { width: 22px; height: 22px; }
+.next-actions { margin-left: auto; }
+@media (max-width: 720px) { .next-actions { margin-left: 0; width: 100%; } .next-actions .btn { flex: 1 1 auto; } }

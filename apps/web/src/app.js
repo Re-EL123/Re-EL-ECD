@@ -396,14 +396,13 @@
       async boot() {
         window.ReelApp = this;
         this._pendingTick = [];
-        this.$nextTick = (fn) => {
-          const next = () => {
+        this.nextTick = (fn) => {
+          const tick = () => Promise.resolve().then(() => {
             if (typeof fn === 'function') {
-              try { fn.call(this); } catch (err) { console.warn('$nextTick callback failed', err); }
+              try { fn.call(this); } catch (err) { console.warn('nextTick callback failed', err); }
             }
-            return Promise.resolve();
-          };
-          return Promise.resolve().then(next);
+          });
+          return tick();
         };
         this.refreshVoices();
         if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -869,7 +868,7 @@
           const html = view.render ? view.render(this, matched.params, this.page) : '';
           this.renderHtml(html);
           this.loading = false;
-          await this.$nextTick();
+          await this.nextTick();
           this.afterRender();
         } catch (error) {
           if (seq !== this._navSeq) return;
@@ -971,7 +970,7 @@
         } else if (staleBanner) {
           staleBanner.remove();
         }
-        this.$nextTick(() => this.updateCrumbHighlight());
+        this.nextTick(() => this.updateCrumbHighlight());
         this.refreshUnread();
         // Live presence tab: refresh every 10s while the app is visible so the
         // gate/register feed never goes stale on a classroom tablet.
@@ -1101,7 +1100,7 @@
       },
 
       refreshIcons() {
-        this.$nextTick(() => this.renderIconsNow());
+        this.nextTick(() => this.renderIconsNow());
       },
 
       syncBodyScroll() {
@@ -1396,7 +1395,7 @@
         const view = Reel.views[this.route.view] || Reel.views[viewName];
         if (view && view.render) {
           this.renderHtml(view.render(this, this.params, this.page));
-          this.$nextTick(() => this.afterRender());
+          this.nextTick(() => this.afterRender());
         }
       },
 
@@ -1448,14 +1447,14 @@
         const prevRegister = JSON.parse(JSON.stringify(this.page.register || {}));
         applyLocal(this.page);
         this.renderHtml(view.render(this, this.params, this.page));
-        this.$nextTick(() => this.afterRender());
+        this.nextTick(() => this.afterRender());
         return apiCall().then(() => {
           this.toast(successMessage || 'Saved.', undefined, undoAction || null);
           setTimeout(() => { if (this.route && this.route.path === '/app/learner-attendance') this.navigate(true); }, 500);
         }).catch((error) => {
           this.page.register = prevRegister;
           this.renderHtml(view.render(this, this.params, this.page));
-          this.$nextTick(() => this.afterRender());
+          this.nextTick(() => this.afterRender());
           this.toast(error.message || 'Could not save.', 'error');
         });
       },
@@ -1918,7 +1917,7 @@
           error: null
         };
         // Zoom-in window transition as the modal opens.
-        this.$nextTick(() => {
+        this.nextTick(() => {
           if (window.Reel && window.Reel.anim) window.Reel.anim.windowIn(document.querySelector('.modal-backdrop:not(.guide-backdrop) .modal'));
         });
       },
@@ -2143,7 +2142,7 @@
             stepIndex: clampedPosition, mode: 'open'
           }).catch(() => { /* offline — not critical */ });
           if (isResumed) this.toast('Picking up from step ' + (clampedPosition + 1) + ' of ' + steps.length + '.');
-          this.$nextTick(() => {
+          this.nextTick(() => {
             if (window.Reel && window.Reel.anim) window.Reel.anim.windowIn(document.querySelector('.guide-backdrop .guide-modal'), { duration: 500 });
             this.guideBindSwipe();
             this.guideBindDragDrop();
@@ -2225,7 +2224,7 @@
             .then((p) => { if (p && p.data && p.data.completed) this.toast('Lesson complete — well done.'); })
             .catch(() => {});
           this.scrollGuideToTop();
-          this.$nextTick(() => {
+          this.nextTick(() => {
             if (this._guideStepSeq !== seq || !this.guide) return;
             const next = document.querySelector('.guide-backdrop .guide-step[data-step-index="' + to + '"]');
             if (next && anim && !anim.reduced()) {
@@ -2247,7 +2246,7 @@
       },
 
       scrollGuideToTop() {
-        this.$nextTick(() => {
+        this.nextTick(() => {
           const body = document.querySelector('.guide-modal .modal-body');
           if (body) body.scrollTop = 0;
         });
@@ -3294,7 +3293,7 @@
         this.commandQuery = '';
         this.commandIndex = 0;
         this.runCommandSearch();
-        this.$nextTick(() => { if (this.$refs.commandInput) this.$refs.commandInput.focus(); });
+        this.nextTick(() => { if (this.$refs.commandInput) this.$refs.commandInput.focus(); });
       },
 
       async runCommandSearch() {
