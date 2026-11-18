@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **455 routes** across 27 modules.
+Generated from the router: **460 routes** across 27 modules.
 
 ## Access
 
@@ -68,21 +68,21 @@ Generated from the router: **455 routes** across 27 modules.
 | --- | --- | --- |
 | POST | `/assessments/learner` | assessments.create.assigned OR assessments.publish.daycare |
 | GET | `/assessments/learner/:learnerId` | assessments.read.daycare OR assessments.read.assigned |
-| GET | `/assessments/monthly-arcs` | assessments.create.assigned OR assessments.read.assigned OR assessments.create.daycare OR organisation.settings.manage |
-| PUT | `/assessments/monthly-arcs` | assessments.create.assigned OR assessments.create.daycare OR organisation.settings.manage |
+| GET | `/assessments/monthly-arcs` | assessments.create.assigned OR assessments.read.assigned OR assessments.create.assigned OR organisation.settings.manage |
+| PUT | `/assessments/monthly-arcs` | assessments.create.assigned OR assessments.create.assigned OR organisation.settings.manage |
 | GET | `/assessments/observations` | assessments.read.daycare OR assessments.read.assigned |
-| POST | `/assessments/observations` | assessments.create.assigned OR assessments.read.daycare |
-| PATCH | `/assessments/observations/:id` | assessments.create.assigned OR assessments.read.daycare |
+| POST | `/assessments/observations` | assessments.create.assigned |
+| PATCH | `/assessments/observations/:id` | assessments.create.assigned |
 | POST | `/assessments/observations/:id/amend` | assessments.publish.daycare |
 | GET | `/assessments/observations/:id/comments` | assessments.read.daycare OR assessments.create.assigned OR assessments.read.assigned |
 | POST | `/assessments/observations/:id/comments` | assessments.publish.daycare OR assessments.create.assigned OR assessments.read.daycare |
 | POST | `/assessments/observations/:id/publish` | assessments.publish.daycare |
-| POST | `/assessments/observations/:id/submit` | assessments.create.assigned OR assessments.read.daycare |
-| POST | `/assessments/observations/bulk` | assessments.create.assigned OR assessments.read.daycare |
+| POST | `/assessments/observations/:id/submit` | assessments.create.assigned |
+| POST | `/assessments/observations/bulk` | assessments.create.assigned OR assessments.publish.daycare |
 | GET | `/assessments/overview` | assessments.read.daycare |
 | GET | `/assessments/periods` | assessments.read.daycare |
 | POST | `/assessments/periods` | assessments.publish.daycare |
-| POST | `/assessments/quick-moments` | assessments.create.assigned OR assessments.create.daycare |
+| POST | `/assessments/quick-moments` | assessments.create.assigned OR assessments.create.assigned |
 | POST | `/assessments/reports/generate` | assessments.read.daycare OR parent.read.own |
 
 ## Audit
@@ -101,6 +101,10 @@ Generated from the router: **455 routes** across 27 modules.
 | POST | `/auth/invitations/accept` | Public |
 | POST | `/auth/login` | Public |
 | POST | `/auth/logout` | Authenticated |
+| POST | `/auth/mfa/challenge` | Public |
+| POST | `/auth/mfa/disable` | Authenticated |
+| POST | `/auth/mfa/enable` | Authenticated |
+| POST | `/auth/mfa/setup` | Authenticated |
 | POST | `/auth/reset-password` | Public |
 | GET | `/auth/session` | Authenticated |
 | POST | `/auth/verify-email` | Authenticated |
@@ -463,6 +467,7 @@ Generated from the router: **455 routes** across 27 modules.
 | POST | `/media/assets/:id/complete` | media.upload.daycare |
 | POST | `/media/assets/bulk` | media.manage.daycare |
 | GET | `/media/config` | media.read.daycare |
+| GET | `/media/object` | Authenticated |
 | POST | `/media/uploads` | media.upload.daycare |
 
 ## Notifications
@@ -690,9 +695,9 @@ Generated from the router: **455 routes** across 27 modules.
 | POST | `/staff/:id/training` | staff.manage.daycare |
 | GET | `/staff/activity-summary` | reports.read.daycare OR staff.read.daycare OR staff_attendance.record.own |
 | POST | `/staff/bulk` | staff.manage.daycare |
-| GET | `/staff/morning` | curriculum.create.daycare OR assessments.create.assigned OR attendance.record.assigned OR attendance.record.own OR staff_attendance.record.assigned OR staff_attendance.record.own |
-| GET | `/staff/overview` | staff.read.daycare OR tasks.read.own |
-| GET | `/staff/today` | curriculum.create.daycare OR assessments.create.assigned OR attendance.record.assigned OR attendance.record.own OR staff_attendance.record.assigned OR staff_attendance.record.own |
+| GET | `/staff/morning` | curriculum.create.daycare OR assessments.create.assigned OR attendance.record.assigned OR attendance.record.daycare OR staff_attendance.record.daycare OR staff_attendance.record.own |
+| GET | `/staff/overview` | staff.read.daycare |
+| GET | `/staff/today` | curriculum.create.daycare OR assessments.create.assigned OR attendance.record.assigned OR attendance.record.daycare OR staff_attendance.record.daycare OR staff_attendance.record.own |
 
 ## Staff Attendance
 
@@ -734,8 +739,8 @@ Generated from the router: **455 routes** across 27 modules.
 | Method | Path | Access |
 | --- | --- | --- |
 | GET | `/templates` | curriculum.read.daycare OR assessments.read.daycare OR announcements.read.daycare |
-| POST | `/templates` | curriculum.create.daycare OR assessments.create.assigned OR assessments.read.daycare OR announcements.manage.daycare |
-| DELETE | `/templates/:id` | curriculum.create.daycare OR assessments.create.assigned OR assessments.read.daycare OR announcements.manage.daycare |
+| POST | `/templates` | curriculum.create.daycare OR assessments.create.assigned OR announcements.manage.daycare |
+| DELETE | `/templates/:id` | curriculum.create.daycare OR assessments.create.assigned OR announcements.manage.daycare |
 
 ## Timesheets
 
