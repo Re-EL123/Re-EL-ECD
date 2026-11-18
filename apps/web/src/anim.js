@@ -210,6 +210,72 @@
   }
 
   /**
+   * Reveal on scroll: IntersectionObserver adds .is-revealed; CSS handles the
+   * transition. Anything still unrevealed after a grace period is revealed
+   * regardless — content must never stay invisible because JS was slow.
+   */
+  function reveal(root, options) {
+    if (typeof window === 'undefined') return;
+    const scope = root || document;
+    const els = scope.querySelectorAll ? Array.from(scope.querySelectorAll('.reveal')) : [];
+    if (!els.length) return;
+    if (reduced() || !('IntersectionObserver' in window)) {
+      els.forEach((el) => el.classList.add('is-revealed'));
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-revealed');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.12 });
+    els.forEach((el) => observer.observe(el));
+    // Grace fallback: whatever is still hidden after 1.2s becomes visible.
+    setTimeout(() => els.forEach((el) => el.classList.add('is-revealed')), 1200);
+  }
+
+  /**
+   * Pointer parallax: elements with [data-parallax] drift opposite the
+   * pointer by (data-parallax * px), springing back on leave. Purely
+   * decorative; no-ops under reduced-motion or touch-only devices.
+   */
+  function parallax(container, options) {
+    if (reduced() || !container) return;
+    if (window.matchMedia && !window.matchMedia('(pointer: fine)').matches) return;
+    const layers = Array.from(container.querySelectorAll('[data-parallax]'));
+    if (!layers.length) return;
+    let raf = 0;
+    let targetX = 0;
+    let targetY = 0;
+    let currentX = 0;
+    let currentY = 0;
+    const stiffness = 0.09;
+    const move = () => {
+      raf = 0;
+      currentX += (targetX - currentX) * stiffness;
+      currentY += (targetY - currentY) * stiffness;
+      layers.forEach((layer) => {
+        const depth = Number(layer.getAttribute('data-parallax')) || 1;
+        layer.style.transform = 'translate3d(' + (currentX * depth) + 'px, ' + (currentY * depth) + 'px, 0)';
+      });
+      if (Math.abs(targetX - currentX) > 0.05 || Math.abs(targetY - currentY) > 0.05) raf = requestAnimationFrame(move);
+    };
+    container.addEventListener('mousemove', (event) => {
+      const rect = container.getBoundingClientRect();
+      targetX = ((event.clientX - rect.left) / rect.width - 0.5) * 22;
+      targetY = ((event.clientY - rect.top) / rect.height - 0.5) * 16;
+      if (!raf) raf = requestAnimationFrame(move);
+    });
+    container.addEventListener('mouseleave', () => {
+      targetX = 0;
+      targetY = 0;
+      if (!raf) raf = requestAnimationFrame(move);
+    });
+  }
+
+  /**
    * Count-up: animates the number inside each element with the spring easing
    * while preserving any prefix/suffix text (R1 250, 82%, "3 / 12"). Runs on
    * the elements given (usually .stat-value nodes) right after a render.
@@ -249,7 +315,7 @@
 
   const anim = {
     reduced, springSamples, springEase, springLinear, keyframes, phase,
-    windowIn, windowOut, routeZoom, bloomStagger, countUp
+    windowIn, windowOut, routeZoom, bloomStagger, countUp, reveal, parallax
   };
 
   if (typeof window !== 'undefined') {

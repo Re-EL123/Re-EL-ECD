@@ -378,9 +378,10 @@
         '</svg>' +
         (isNight ? '<div class="scene-stars"></div>' : '') +
         '<div class="scene-orb ' + (isNight ? 'scene-moon' : 'scene-sun') + '" style="left:' + orbLeft + '%;bottom:' + orbBottom + '%"></div>' +
-        '<div class="scene-veil"></div>';
+        '<div class="scene-veil"></div>' +
+        '<div class="scene-sweep" aria-hidden="true"></div>';
       const live = timeline.some((b) => b.status === 'in_progress');
-      let html = '<div class="card day-card today-hero" data-phase="' + esc(tod.phase) + '">';
+      let html = '<div class="card day-card today-hero conic-accent" data-phase="' + esc(tod.phase) + '">';
       html += '<div class="day-scene" role="img" aria-label="' + R.attr(tod.label + ' — ' + (w ? w.label : place)) + '">';
       html += scene;
       html += '<div class="scene-overlay">' +
@@ -576,7 +577,7 @@
       const nextResume = nextPosition && nextPosition.step_index > 0 && nextSteps && nextPosition.step_index < nextSteps
         ? 'Step ' + (nextPosition.step_index + 1) + ' of ' + nextSteps + ' — Resume'
         : (nextPosition && nextPosition.completed_at ? 'Taught ✓' : null);
-      return '<div class="card glass today-next section anim-in pulse-now" style="border-left:4px solid var(--reel-green-500)"><div class="row next-row" style="justify-content:space-between;gap:14px;align-items:center">' +
+      return '<div class="card glass today-next section anim-in pulse-now conic-accent" style="border-left:4px solid var(--reel-green-500)"><div class="row next-row" style="justify-content:space-between;gap:14px;align-items:center">' +
         '<div class="row" style="gap:12px;align-items:center;min-width:0"><span class="next-ico" aria-hidden="true">' + R.icon('sparkles') + '</span>' +
         '<div style="min-width:0"><div class="muted small" style="text-transform:uppercase;letter-spacing:0.1em;font-weight:700;color:var(--reel-green-700)">Up next</div><div class="strong" style="font-size:1.06rem;margin:1px 0">' + esc(next.title) + '</div>' +
         '<div class="muted small">' + esc(nudge) + (next.classroom ? ' · ' + esc(next.classroom) : '') + (nextMod && nextMod.title ? ' · ' + esc(nextMod.title) : '') + '</div></div></div>' +
@@ -730,7 +731,7 @@
         meter = Math.round(((blockPart + reportPart) / 2) * 100);
       }
 
-      let html = '<div class="card glass section today-wrapup anim-in" id="today-wrapup"><div class="card-head"><h3>' + R.icon('sunset') + ' Wrap up the day</h3><span class="muted small">Close the loop before you go</span></div>';
+      let html = '<div class="card glass section today-wrapup anim-in' + (meter >= 100 ? ' is-complete' : '') + '" id="today-wrapup"><div class="card-head"><h3>' + R.icon('sunset') + ' Wrap up the day</h3><span class="muted small">Close the loop before you go</span></div>';
       html += '<div class="day-meter" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + R.attr(String(meter)) + '" aria-label="Day completion"><div class="day-meter-fill" style="--meter:' + R.attr(String(meter)) + '%"></div></div>' +
         '<div class="day-meter-meta"><span><strong>' + R.number(meter) + '%</strong> of today wrapped up</span><span class="muted small">' + R.number(doneBlocks) + ' of ' + R.number(totalBlocks) + ' blocks · ' + R.number(reportsShared) + ' of ' + R.number(dr.presentCount || 0) + ' reports</span></div>';
       html += '<div class="grid grid-3" style="margin:14px 0">' +
