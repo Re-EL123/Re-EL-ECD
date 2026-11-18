@@ -428,7 +428,7 @@ function register(router) {
           ? guardianFirst + ' asked to know more about the ' + (body.resourceType === 'observation' ? 'observation' : 'daily report') + ' from ' + sharedDate + ' — one short reply goes a long way.'
           : guardianFirst + ' was moved by your update for ' + childFirst + ' from ' + sharedDate + '.',
         resourceType: body.resourceType === 'observation' ? 'learner_observation' : 'daily_report',
-        resourceId: resource.id, url: '/app/overview'
+        resourceId: resource.id, url: '/app/today'
       });
     }
     return { reacted: true, reaction: body.reaction };

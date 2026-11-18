@@ -485,7 +485,7 @@ function register(router) {
               organisationName: organisation.name,
               title: body.title,
               body: body.message,
-              url: '/#/app/overview'
+              url: '/#/app/today'
             }
           });
           emails += 1;

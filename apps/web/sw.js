@@ -2,7 +2,7 @@
    Strategy: same-origin static assets are cache-backed so the app shell
    loads offline. API GETs are network-only — children's data is never
    written to Cache Storage, which persists after logout on shared devices. */
-const CACHE = 'reel-shell-v75';
+const CACHE = 'reel-shell-v76';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(self.skipWaiting());
@@ -22,15 +22,18 @@ self.addEventListener('activate', (event) => {
   })());
 });
 
+/* Stale-while-revalidate: serve the cached shell instantly (offline-safe)
+   while a background fetch refreshes it, so a deploy never leaves tablets
+   pinned to yesterday's JavaScript. */
 async function cacheFirst(request) {
   const cached = await caches.match(request);
-  if (cached) return cached;
-  const response = await fetch(request);
-  if (response && response.ok) {
-    const cache = await caches.open(CACHE);
-    cache.put(request, response.clone());
-  }
-  return response;
+  const fetched = fetch(request).then((response) => {
+    if (response && response.ok) {
+      caches.open(CACHE).then((cache) => cache.put(request, response.clone()));
+    }
+    return response;
+  }).catch(() => cached || new Response('Offline and not cached yet.', { status: 503, headers: { 'Content-Type': 'text/plain;charset=utf-8' } }));
+  return cached || fetched;
 }
 
 self.addEventListener('fetch', (event) => {
@@ -80,7 +83,7 @@ self.addEventListener('push', (event) => {
     icon: '/assets/branding/favicon-64.png',
     badge: '/assets/branding/favicon-64.png',
     tag: data.tag || data.type || 'reel',
-    data: { url: data.url || '/#/app/overview' },
+    data: { url: data.url || '/#/app/today' },
     renotify: true
   };
   event.waitUntil(self.registration.showNotification(title, options));
@@ -88,7 +91,7 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || '/#/app/overview';
+  const url = (event.notification.data && event.notification.data.url) || '/#/app/today';
   event.waitUntil((async () => {
     const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const client of clients) {

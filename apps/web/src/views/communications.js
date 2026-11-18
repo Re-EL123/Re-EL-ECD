@@ -146,7 +146,7 @@
         { label: 'Status', render: (d) => R.badge(d.delivery_status) },
         { label: 'Attempts', align: 'right', render: (d) => R.number(d.total) }
       ], emptyTitle: 'No deliveries recorded', emptyMessage: 'Delivery attempts for your notifications appear here.' }),
-        '<a class="btn btn-sm btn-ghost" href="#/app/overview">Back to overview</a>');
+        '<a class="btn btn-sm btn-ghost" href="#/app/today">Back to Today</a>');
     },
 
     openModal(ctx, name, id) {

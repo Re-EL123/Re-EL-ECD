@@ -16,8 +16,38 @@
   function statusLabel(s) {
     return ({ scheduled: 'Scheduled', in_progress: 'In progress', completed: 'Completed', cancelled: 'Cancelled' })[s] || R.titleCase(s || '');
   }
-  function statusTone(s) {
-    return ({ scheduled: 'badge-sky', in_progress: 'badge-sun', completed: 'badge-green', cancelled: 'badge-muted' })[s] || 'badge-muted';
+
+  /**
+   * Honest temporal state — what the timeline can truthfully claim right now.
+   * The database only stores scheduled/in_progress/completed/cancelled; overdue,
+   * running-late, currently-live and never-started are derived from real clock
+   * vs real block window, so the UI never calls a missed lesson "upcoming".
+   */
+  function temporalState(b, nowMs) {
+    if (b.status === 'completed') return 'completed';
+    if (b.status === 'cancelled') return 'cancelled';
+    const startMs = b.startsAt ? new Date(b.startsAt).getTime() : 0;
+    const endMs = b.endsAt ? new Date(b.endsAt).getTime() : (startMs ? startMs + 45 * 60000 : 0);
+    if (b.status === 'in_progress') return endMs && nowMs > endMs ? 'overdue' : 'live';
+    if (endMs && nowMs >= endMs) return 'missed';
+    if (startMs && nowMs >= startMs) return 'now';
+    return 'upcoming';
+  }
+  function deckStateLabel(state) {
+    return ({ completed: 'Completed', live: 'In progress', overdue: 'Running over', now: 'Now — start it', upcoming: 'Scheduled', missed: 'Not started', cancelled: 'Cancelled' })[state] || state;
+  }
+  function deckStateTone(state) {
+    return ({ completed: 'badge-green', live: 'badge-sun', overdue: 'badge-warn', now: 'badge-sun', upcoming: 'badge-sky', missed: 'badge-warn', cancelled: 'badge-muted' })[state] || 'badge-muted';
+  }
+  /** The index of the block that needs a human right now — the honest centre of the deck. */
+  function honestCurrentIndex(timeline, nowMs) {
+    const states = timeline.map((b) => temporalState(b, nowMs));
+    const pick = ['live', 'now', 'overdue', 'missed', 'upcoming'];
+    for (const s of pick) {
+      const i = states.indexOf(s);
+      if (i !== -1) return i;
+    }
+    return timeline.length - 1;
   }
 
   function findBlock(page, id) {
@@ -441,7 +471,9 @@
             '<div style="flex:1;min-width:0"><div class="strong" style="font-size:0.9rem">' + esc(s.text) + '</div>' + (s.foot ? '<div class="muted small">' + esc(s.foot) + '</div>' : '') + '</div>' + (s.mins ? '<span class="suggest-mins"><i data-lucide="clock" style="width:11px;height:11px"></i> ≈ ' + s.mins + ' min</span>' : '') +
             (s.href
               ? '<a class="btn btn-sm btn-secondary" href="' + R.attr(s.href) + '">' + esc(s.action) + ' ' + R.icon('arrow-right') + '</a>'
-              : '<button class="btn btn-sm btn-secondary" @click="' + R.attr(s.click) + '">' + esc(s.action) + '</button>') +
+              : (s.go
+                ? '<button class="btn btn-sm btn-secondary" @click="scrollToTodayBlock(\'' + R.attr(s.go) + '\')">' + esc(s.action) + ' ' + R.icon('arrow-down') + '</button>'
+                : '<button class="btn btn-sm btn-secondary" @click="' + R.attr(s.click) + '">' + esc(s.action) + '</button>')) +
           '</div>').join('') + '</div></div>';
     },
 
@@ -590,34 +622,66 @@
         '</div></div></div>';
     },
 
+    /**
+     * Today's blocks as an Orbit Deck 3D carousel: the block that needs the
+     * room is in the centre, its neighbours lean back in perspective. Every
+     * badge, dot and border is the honest temporal state (see temporalState) —
+     * never "upcoming" for a window that already passed, never "Live" for a
+     * block nobody started. Arrows, dots, arrow keys and horizontal drag all
+     * move the deck; side cards are clickable to travel.
+     */
     renderTimeline(ctx, page, timeline, nextIdx, nowMs) {
-      let html = '<div class="section"><div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px"><h2 style="font-size:1.1rem;margin:0">Today’s timeline</h2>' +
-        '<span class="muted small">' + R.number(timeline.length) + ' block' + (timeline.length === 1 ? '' : 's') + '</span></div>';
+      const done = timeline.filter((b) => b.status === 'completed').length;
+      let html = '<section class="section deck-section" aria-label="Today’s timeline">' +
+        '<div class="deck-head">' +
+          '<h2>Today’s timeline</h2>' +
+          '<span class="deck-summary">' + R.number(timeline.length) + ' block' + (timeline.length === 1 ? '' : 's') + (timeline.length ? ' · ' + R.number(done) + ' done' : '') + '</span>' +
+          '<div class="deck-head-actions">' +
+            '<button class="btn btn-sm btn-ghost deck-recenter" type="button" data-deck-recenter title="Jump back to the block that needs you right now">' + R.icon('locate-fixed') + ' Back to now</button>' +
+            '<button class="deck-arrow" type="button" data-deck-prev aria-label="Previous block">' + R.icon('chevron-left') + '</button>' +
+            '<span class="deck-count" id="deck-count"></span>' +
+            '<button class="deck-arrow" type="button" data-deck-next aria-label="Next block">' + R.icon('chevron-right') + '</button>' +
+          '</div>' +
+        '</div>';
       if (!timeline.length) {
         html += R.emptyState('No blocks scheduled for today', 'Plan your day from the calendar — link lesson plans and activities so everything shows up here, ready to teach.',
           '<a class="btn btn-primary" href="#/app/calendar">' + R.icon('calendar-plus') + ' Schedule the day</a>', 'calendar-days');
-      } else {
-        html += '<ol class="rail" aria-label="Timeline of today’s blocks">';
-        timeline.forEach((b, i) => {
-          const isNext = i === nextIdx;
-          const startMs = b.startsAt ? new Date(b.startsAt).getTime() : 0;
-          const endMs = b.endsAt ? new Date(b.endsAt).getTime() : 0;
-          const current = b.status === 'in_progress' || (b.status === 'scheduled' && startMs <= nowMs && (endMs ? nowMs < endMs : nowMs - startMs < 45 * 60000));
-          const nodeIcon = b.status === 'completed' ? 'check' : b.status === 'in_progress' ? 'pencil' : b.status === 'cancelled' ? 'x' : 'clock';
-          html += '<li class="rail-item rail-' + esc(b.status) + (isNext && b.status === 'scheduled' ? ' is-next' : '') + '">' +
-            '<span class="rail-node" aria-hidden="true">' + R.icon(nodeIcon) + '</span>' +
-            '<div class="rail-body">' + this.renderBlock(page, b, { isNext, current }) + '</div>' +
-          '</li>';
-        });
-        html += '</ol>';
+        html += '</section>';
+        return html;
       }
-      html += '</div>';
+      const saved = Number(ctx.deckSelection);
+      const currentIdx = Number.isInteger(saved) && saved >= 0 && saved < timeline.length
+        ? saved
+        : honestCurrentIndex(timeline, nowMs);
+      html += '<div class="deck" id="today-deck">' +
+        '<div class="deck-stage" id="deck-stage" tabindex="0" role="group" aria-roledescription="carousel" aria-label="Today’s blocks — drag, use arrow keys, or the dots below" data-current="' + currentIdx + '">';
+      timeline.forEach((b, i) => {
+        const state = temporalState(b, nowMs);
+        const offset = Math.max(-2, Math.min(2, i - currentIdx));
+        html += '<article class="deck-card deck-card--' + state + (state === 'missed' ? ' is-missed' : '') + '" tabindex="-1" data-offset="' + offset + '" data-index="' + i + '" role="group" aria-roledescription="slide" aria-label="Block ' + (i + 1) + ' of ' + timeline.length + '"' + (offset === 0 ? '' : ' aria-hidden="true"') + '>' +
+          '<div class="deck-scroll">' + this.renderBlock(page, b, { state, isNext: i === nextIdx }) + '</div>' +
+        '</article>';
+      });
+      html += '</div>' +
+        '<div class="deck-dots" role="group" aria-label="Jump to a block">';
+      timeline.forEach((b, i) => {
+        const state = temporalState(b, nowMs);
+        html += '<button type="button" class="deck-dot' + (i === currentIdx ? ' is-active' : '') + '" data-deck-dot="' + i + '" data-tone="' + state + '" aria-label="Block ' + (i + 1) + ': ' + esc(b.title) + ' — ' + esc(deckStateLabel(state)) + '" aria-current="' + (i === currentIdx ? 'true' : 'false') + '" title="' + esc(time(b.startsAt)) + ' — ' + esc(b.title) + ' · ' + esc(deckStateLabel(state)) + '"></button>';
+      });
+      html += '</div></div>' +
+        // Print view: one honest linear list, no 3D theatre.
+        '<ol class="deck-print" aria-label="Today’s blocks (print)">' +
+          timeline.map((b) => {
+            const state = temporalState(b, nowMs);
+            return '<li><strong>' + esc(time(b.startsAt)) + (b.endsAt ? ' – ' + esc(time(b.endsAt)) : '') + '</strong> — ' + esc(b.title) + ' (' + esc(deckStateLabel(state)) + ')' + (b.classroom ? ' · ' + esc(b.classroom) : '') + '</li>';
+          }).join('') + '</ol>';
+      html += '</section>';
       return html;
     },
 
     renderBlock(page, b, flags) {
       const isNext = flags && flags.isNext;
-      const current = flags && flags.current;
+      const state = (flags && flags.state) || temporalState(b, Date.now());
       const plan = b.plan;
       const act = b.activity;
       const mod = b.module;
@@ -631,28 +695,54 @@
       const resumedLabel = position && position.step_index > 0 && position.step_index < (positionSteps || Infinity)
         ? 'Step ' + (position.step_index + 1) + ' of ' + (positionSteps || '?') + ' — Resume'
         : (position && position.completed_at ? 'Taught ✓' : null);
-      const border = b.status === 'completed' ? 'var(--reel-green-500)' : b.status === 'in_progress' ? 'var(--reel-sun-500)' : (isNext ? 'var(--reel-sky-500)' : 'var(--border-subtle)');
-      const bg = b.status === 'completed' ? 'rgba(58,125,68,0.04)' : (current ? 'rgba(232,154,43,0.06)' : 'var(--surface-1)');
+      const interactive = (b.guide && b.guide.interactive) || null;
+      const interactiveCount = b.guide ? Number(b.guide.interactiveCount || 0) : 0;
+      const firstInteractiveIndex = b.guide && b.guide.firstInteractiveIndex != null ? Number(b.guide.firstInteractiveIndex) : null;
+      const border = state === 'completed' ? 'var(--reel-green-500)' : state === 'live' ? 'var(--reel-sun-500)' : state === 'now' ? 'var(--reel-sun-500)' : state === 'overdue' ? 'var(--reel-warn-500, #c77d2a)' : (isNext && state === 'upcoming' ? 'var(--reel-sky-500)' : 'var(--border-subtle)');
+      const bg = state === 'completed' ? 'rgba(58,125,68,0.04)' : (state === 'live' || state === 'now' ? 'rgba(232,154,43,0.06)' : 'var(--surface-1)');
 
       let h = '<div class="card glass today-block anim-in" data-block="' + R.attr(b.id) + '" style="border-left:4px solid ' + border + ';--block-bg:' + bg + '">';
       h += '<div class="row" style="justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">' +
         '<div style="min-width:0;flex:1">' +
           '<div class="row" style="gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px">' +
             '<span class="strong">' + esc(time(b.startsAt)) + (b.endsAt ? ' – ' + esc(time(b.endsAt)) : '') + '</span>' +
-            '<span class="badge ' + statusTone(b.status) + '">' + esc(statusLabel(b.status)) + '</span>' +
-            (isNext && b.status === 'scheduled' ? '<span class="badge badge-sky">Up next</span>' : '') +
-            (current && b.status === 'scheduled' ? '<span class="badge badge-sun">Now</span>' : '') +
+            '<span class="badge ' + deckStateTone(state) + '">' + esc(deckStateLabel(state)) + '</span>' +
+            (isNext && state === 'upcoming' ? '<span class="badge badge-sky">Up next</span>' : '') +
+            (state === 'now' ? '<span class="badge badge-sun">Start now</span>' : '') +
           '</div>' +
           '<div class="strong" style="font-size:1.02rem">' + esc(b.title) + '</div>' +
           '<div class="muted small">' + esc(b.classroom || 'Whole centre') + (b.staffName ? ' · ' + esc(b.staffName) : '') + '</div>' +
         '</div>' +
         '<div class="btn-group" style="flex-wrap:wrap">' +
+          (b.lessonPlanId && interactiveCount > 0 && firstInteractiveIndex != null ? '<button class="btn btn-sm btn-secondary" @click="openGuideInteractive(\'' + R.attr(b.lessonPlanId) + '\',' + firstInteractiveIndex + ')" title="Jump straight to the first interactive slide">' + R.icon('zap') + ' Interactive slides · ' + R.number(interactiveCount) + '</button>' : '') +
           (b.lessonPlanId ? '<button class="btn btn-sm btn-secondary" @click="openGuide(\'' + R.attr(b.lessonPlanId) + '\')">' + R.icon('book-open') + ' ' + (resumedLabel || (b.guide && b.guide.available ? 'Teach / Guide' : 'Guide')) + '</button>' : '') +
           (mod && mod.id ? '<button class="btn btn-sm btn-ghost" @click="downloadExport(\'/learning-modules/' + R.attr(mod.id) + '/teacher-guide\')" title="Download module teacher guide (PDF)">' + R.icon('file-down') + ' Teacher guide</button>' : '') +
-          (b.status === 'scheduled' ? '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/curriculum/calendar/events/' + R.attr(b.id) + '/start\',{},{successMessage:\'Block started — enjoy teaching.\'})">' + R.icon('play') + ' Start</button>' : '') +
-          (b.status === 'in_progress' ? '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'completeBlock\',\'' + R.attr(b.id) + '\')">' + R.icon('check-circle') + ' Complete</button>' : '') +
+          (b.status === 'scheduled' ? '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/curriculum/calendar/events/' + R.attr(b.id) + '/start\',{},{successMessage:\'Block started — enjoy teaching.\'})">' + R.icon('play') + ' ' + (state === 'missed' ? 'Start late' : state === 'now' ? 'Start now' : 'Start') + '</button>' : '') +
+          (b.status === 'in_progress' ? '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'completeBlock\',\'' + R.attr(b.id) + '\')">' + R.icon('check-circle') + ' ' + (state === 'overdue' ? 'Wrap up' : 'Complete') + '</button>' : '') +
           (b.status === 'completed' ? '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'completeBlock\',\'' + R.attr(b.id) + '\')" title="Edit participation">' + R.icon('edit-2') + ' Participation</button>' : '') +
         '</div></div>';
+
+      if (interactiveCount > 0) {
+        const ic = interactive || {};
+        const chips = [];
+        if (ic.poll) chips.push(ic.poll + (ic.poll === 1 ? ' poll' : ' polls'));
+        if (ic.mcq) chips.push(ic.mcq + (ic.mcq === 1 ? ' quiz' : ' quizzes'));
+        if (ic.dragdrop) chips.push(ic.dragdrop + ' matching');
+        if (ic.whiteboard) chips.push(ic.whiteboard + (ic.whiteboard === 1 ? ' whiteboard' : ' whiteboards'));
+        h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:10px">' +
+          '<span class="muted small" style="margin-right:2px">Interactive:</span>' +
+          chips.map((c) => '<span class="badge badge-plum">' + R.icon('zap') + ' ' + esc(c) + '</span>').join('') +
+          (firstInteractiveIndex != null ? '<span class="muted small">first at step ' + R.number(firstInteractiveIndex + 1) + '</span>' : '') +
+        '</div>';
+      }
+      if (state === 'overdue') {
+        h += '<div class="alert alert-warn" style="margin:10px 0 0;align-items:center;padding:8px 12px">' + R.icon('alert-triangle') +
+          '<span class="small">This block is past its planned end and still open. Wrapping up now keeps participation and evidence honest.</span></div>';
+      }
+      if (state === 'missed') {
+        h += '<div class="alert alert-warn" style="margin:10px 0 0;align-items:center;padding:8px 12px;border-style:dashed">' + R.icon('alert-triangle') +
+          '<span class="small">This block was never started. It will not count as taught — start it late, or mark it complete to set the record straight.</span></div>';
+      }
 
       if (mod && (mod.title || mod.position)) {
         h += '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px">' +
@@ -732,7 +822,7 @@
         meter = Math.round(((blockPart + reportPart) / 2) * 100);
       }
 
-      let html = '<div class="card glass section today-wrapup anim-in" id="today-wrapup"><div class="card-head"><h3>' + R.icon('sunset') + ' Wrap up the day</h3><span class="muted small">Close the loop before you go</span></div>';
+      let html = '<div class="card glass section today-wrapup anim-in" id="today-wrapup" tabindex="-1"><div class="card-head"><h3>' + R.icon('sunset') + ' Wrap up the day</h3><span class="muted small">Close the loop before you go</span></div>';
       html += '<div class="day-meter" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + R.attr(String(meter)) + '" aria-label="Day completion"><div class="day-meter-fill" style="--meter:' + R.attr(String(meter)) + '%"></div></div>' +
         '<div class="day-meter-meta"><span><strong>' + R.number(meter) + '%</strong> of today wrapped up</span><span class="muted small">' + R.number(doneBlocks) + ' of ' + R.number(totalBlocks) + ' blocks · ' + R.number(reportsShared) + ' of ' + R.number(dr.presentCount || 0) + ' reports</span></div>';
       html += '<div class="grid grid-3" style="margin:14px 0">' +

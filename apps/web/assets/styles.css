@@ -2637,7 +2637,7 @@ a.crumb:hover { color: var(--text-strong); background: var(--surface-2); text-de
 /* ==========================================================================
    TODAY v2 — “the day at a glance” design system
    A rebuilt Today: a live hero scene, small KPI deck, glass chart cards that
-   are clickable throughout, a vertical teaching rail and a completion meter.
+   are clickable throughout, an orbit-deck teaching carousel and a completion meter.
    All colours come from the brand variable scales, so org theming (including
    red, purple or deep-sea palettes) carries through unchanged.
    ========================================================================== */
@@ -2716,41 +2716,90 @@ a.crumb:hover { color: var(--text-strong); background: var(--surface-2); text-de
 /* Ring card shares the chart-card rhythm. */
 .ring-card .ring-row { flex: 1 1 auto; justify-content: center; }
 
-/* --- Teaching timeline rail ----------------------------------------------- */
-.rail { position: relative; list-style: none; margin: 0; padding: 2px 0 2px 52px; }
-.rail::before { content: ''; position: absolute; left: 20px; top: 18px; bottom: 18px; width: 2px;
-  background: linear-gradient(180deg, var(--neon-border-strong) 0%, var(--border-subtle) 40%, var(--border-subtle) 100%);
-  border-radius: 2px; }
-.rail-item { position: relative; margin-bottom: 14px; }
-.rail-item:last-child { margin-bottom: 0; }
-.rail-item .today-block { margin: 0; }
-.rail-node { position: absolute; left: -52px; top: 14px; z-index: 1;
-  width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
-  background: var(--surface-1); border: 1px solid var(--border-subtle); color: var(--text-muted);
-  box-shadow: 0 2px 8px rgba(28, 42, 30, 0.08); }
-.rail-node svg { width: 17px; height: 17px; }
-.rail-item.rail-completed .rail-node { background: var(--reel-green-100); border-color: var(--neon-border-strong); color: var(--reel-green-800); }
-.rail-item.rail-in_progress .rail-node { background: var(--reel-sun-200); border-color: var(--reel-sun-500); color: var(--reel-sun-700);
-  animation: nodePulse 2.4s ease-in-out infinite; }
-.rail-item.rail-scheduled .rail-node { background: var(--surface-1); border-color: var(--reel-sky-500); color: var(--reel-sky-700); }
-.rail-item.rail-cancelled .rail-node { background: var(--surface-2); color: var(--text-muted); opacity: 0.8; }
-.rail-item.is-next .rail-node { border-color: var(--neon-border-strong); color: var(--reel-green-700); box-shadow: 0 0 0 3px var(--neon-glow), 0 2px 8px rgba(28,42,30,0.1); }
-@keyframes nodePulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(232, 154, 43, 0.45); }
-  50% { box-shadow: 0 0 0 7px rgba(232, 154, 43, 0); }
+/* --- Today timeline: the Orbit Deck 3D three-card carousel ------------------- */
+.deck-section { margin-bottom: 26px; }
+.deck-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+.deck-head h2 { font-size: 1.1rem; margin: 0; }
+.deck-summary { color: var(--text-muted); font-size: 0.85rem; }
+.deck-head-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.deck-count { font-size: 0.82rem; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.deck-arrow {
+  width: 38px; height: 38px; border-radius: 999px; border: 1px solid var(--border-subtle);
+  background: var(--surface-1); color: var(--text-strong); display: grid; place-items: center; cursor: pointer;
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
 }
-@media (prefers-reduced-motion: reduce) { .rail-item.rail-in_progress .rail-node { animation: none; } }
-@media (max-width: 560px) { .rail { padding-left: 44px; } .rail::before { left: 16px; } .rail-node { left: -44px; width: 32px; height: 32px; top: 12px; } }
-
-/* Stagger bloom for the rail items (light motion, spring easing via CSS). */
-.rail-item { animation: todayFadeUp 0.5s cubic-bezier(0.3, 0.7, 0.3, 1) both; }
-.rail-item:nth-child(1) { animation-delay: 0.04s; }
-.rail-item:nth-child(2) { animation-delay: 0.10s; }
-.rail-item:nth-child(3) { animation-delay: 0.16s; }
-.rail-item:nth-child(4) { animation-delay: 0.22s; }
-.rail-item:nth-child(5) { animation-delay: 0.28s; }
-.rail-item:nth-child(n+6) { animation-delay: 0.34s; }
-@media (prefers-reduced-motion: reduce) { .rail-item { animation: none; } }
+.deck-arrow:hover { transform: translateY(-1px); border-color: var(--reel-green-600); box-shadow: 0 4px 14px rgba(58,125,68,0.18); }
+.deck-arrow:disabled { opacity: 0.35; cursor: default; transform: none; box-shadow: none; }
+.deck-arrow:focus-visible { outline: 2px solid var(--reel-green-600); outline-offset: 2px; }
+.deck-arrow svg { width: 18px; height: 18px; }
+.deck { position: relative; }
+.deck-card:focus { outline: none; }
+.deck-card:focus-visible { outline: 3px solid var(--reel-green-600); outline-offset: 3px; border-radius: 22px; }
+#today-wrapup { scroll-margin-top: 96px; }
+#today-wrapup:focus { outline: none; }
+#today-wrapup:focus-visible { outline: 3px solid var(--reel-green-600); outline-offset: 3px; border-radius: 18px; }
+.deck-stage {
+  position: relative; height: 560px; perspective: 1600px; touch-action: pan-y;
+  border-radius: 20px; outline: none;
+}
+.deck-stage:focus-visible { outline: 2px solid var(--reel-green-600); outline-offset: 4px; }
+.deck-card {
+  position: absolute; top: 0; left: 50%; width: min(720px, 94%); height: 100%;
+  transform: translateX(-50%) translateZ(0) rotateY(0deg);
+  transition: transform .5s cubic-bezier(.22,.61,.36,1), opacity .45s ease;
+  transform-style: preserve-3d; will-change: transform, opacity;
+  display: flex; flex-direction: column; overflow: hidden;
+  opacity: 0; pointer-events: none; z-index: 1; cursor: pointer;
+}
+.deck-card .deck-scroll { overflow-y: auto; overscroll-behavior: contain; padding: 16px 18px; height: 100%; }
+.deck-card .today-block { height: 100%; margin: 0; background: var(--surface-1); cursor: default; }
+.deck-card[data-offset="0"] {
+  transform: translateX(-50%) translateZ(0) rotateY(0deg); opacity: 1; z-index: 3;
+  pointer-events: auto; cursor: default;
+  box-shadow: 0 24px 60px -18px rgba(31,50,35,0.35), 0 0 0 1px var(--neon-border-strong);
+}
+.deck-card[data-offset="0"] .today-block {
+  background: linear-gradient(160deg, rgba(255,183,77,0.16) 0%, var(--surface-1) 38%),
+              linear-gradient(0deg, var(--surface-1), var(--surface-1));
+}
+.deck-card[data-offset="-1"] { transform: translateX(calc(-50% - 430px)) translateZ(-240px) rotateY(34deg); opacity: 0.78; z-index: 2; pointer-events: auto; }
+.deck-card[data-offset="1"] { transform: translateX(calc(-50% + 430px)) translateZ(-240px) rotateY(-34deg); opacity: 0.78; z-index: 2; pointer-events: auto; }
+.deck-card[data-offset="-1"] .deck-scroll, .deck-card[data-offset="1"] .deck-scroll { pointer-events: none; }
+.deck-card[data-offset="-2"] { transform: translateX(calc(-50% - 720px)) translateZ(-400px) rotateY(46deg); opacity: 0; z-index: 1; }
+.deck-card[data-offset="2"] { transform: translateX(calc(-50% + 720px)) translateZ(-400px) rotateY(-46deg); opacity: 0; z-index: 1; }
+.deck-card[data-offset="-1"]:hover, .deck-card[data-offset="1"]:hover { opacity: 0.95; }
+.deck-card.is-missed .today-block { border-style: dashed; border-color: var(--reel-clay-200, #e0c9a3) !important; }
+@media (max-width: 1180px) {
+  .deck-card[data-offset="-1"] { transform: translateX(calc(-50% - 300px)) translateZ(-220px) rotateY(30deg); }
+  .deck-card[data-offset="1"] { transform: translateX(calc(-50% + 300px)) translateZ(-220px) rotateY(-30deg); }
+}
+@media (max-width: 900px) {
+  .deck-stage { height: 620px; perspective: none; }
+  .deck-card { left: 0; width: 100%; transform: translateX(0); }
+  .deck-card[data-offset="0"] { transform: translateX(0); }
+  .deck-card[data-offset="-1"], .deck-card[data-offset="1"], .deck-card[data-offset="-2"], .deck-card[data-offset="2"] { opacity: 0; pointer-events: none; }
+}
+.deck-dots { display: flex; gap: 10px; justify-content: center; align-items: center; margin-top: 14px; flex-wrap: wrap; }
+.deck-dot {
+  width: 12px; height: 12px; border-radius: 999px; border: 2px solid transparent; cursor: pointer; padding: 0;
+  background: var(--surface-2); transition: transform .18s ease, box-shadow .18s ease;
+}
+.deck-dot:hover { transform: scale(1.35); }
+.deck-dot:focus-visible { outline: 2px solid var(--reel-green-600); outline-offset: 2px; }
+.deck-dot[data-tone="completed"] { background: var(--reel-green-600); }
+.deck-dot[data-tone="live"], .deck-dot[data-tone="now"] { background: var(--reel-sun-500); }
+.deck-dot[data-tone="upcoming"] { background: var(--reel-sky-500); }
+.deck-dot[data-tone="missed"], .deck-dot[data-tone="overdue"] { background: var(--reel-sun-700); }
+.deck-dot[data-tone="cancelled"] { background: var(--surface-2); border-color: var(--border-subtle); }
+.deck-dot.is-active { box-shadow: 0 0 0 3px var(--surface-1), 0 0 0 5px var(--reel-green-600); transform: scale(1.3); }
+.deck-recenter { display: inline-flex; align-items: center; gap: 6px; font-size: 0.78rem; }
+/* Print: one honest linear list, no 3D theatre. */
+.deck-print { display: none; }
+@media print {
+  .deck, .deck-nav-only { display: none !important; }
+  .deck-print { display: block !important; padding-left: 0; }
+  .deck-print li { margin-bottom: 8px; break-inside: avoid; }
+}
 
 /* --- Day completion meter --------------------------------------------------- */
 .day-meter { position: relative; height: 10px; border-radius: 999px; overflow: hidden;
@@ -2778,9 +2827,7 @@ a.crumb:hover { color: var(--text-strong); background: var(--surface-2); text-de
 
 /* --- Print: keep the prep list, drop the chrome ------------------------------ */
 @media print {
-  .kpi-deck, .chart-hint, .day-meter, .rail::before { display: none !important; }
-  .rail { padding-left: 0; }
-  .rail-node { display: none; }
+  .kpi-deck, .chart-hint, .day-meter { display: none !important; }
 }
 
 /* --- Up next: leading icon tile + responsive layout -------------------------- */

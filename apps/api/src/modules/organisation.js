@@ -507,7 +507,7 @@ function register(router) {
       );
     }
     const pages = [
-      { label: 'Dashboard', route: '#/app/overview' },
+      { label: 'Today', route: '#/app/today' },
       { label: 'Learners', route: '#/app/learners' },
       { label: 'Learner attendance', route: '#/app/learner-attendance' },
       { label: 'Curriculum', route: '#/app/curriculum' },

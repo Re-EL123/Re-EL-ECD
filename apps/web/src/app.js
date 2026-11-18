@@ -712,7 +712,7 @@
         this.activeOrganisationId = id;
         try { localStorage.setItem('reel.activeOrganisation', id); } catch { /* ignore */ }
         if (Reel.applyTheme) Reel.applyTheme(this.organisationTheme);
-        const target = this.isPlatformAdmin ? '/platform/overview' : (this.isParentOnly ? '/parent/overview' : '/app/overview');
+        const target = this.isPlatformAdmin ? '/platform/overview' : (this.isParentOnly ? '/parent/overview' : '/app/today');
         if (this.area === 'platform' && !this.isPlatformAdmin) location.hash = target;
         else await this.navigate(true);
       },
@@ -983,6 +983,193 @@
           clearInterval(this._presencePoll);
           this._presencePoll = null;
         }
+        this.syncTodayLive();
+        this.initTodayDeck();
+      },
+
+      /**
+       * Alpine handler for in-page jumps inside Today (suggested next steps
+       * scroll to the wrap-up card, etc.). Never touches the hash router.
+       */
+      scrollToTodayBlock(id) {
+        const el = document.getElementById(String(id || ''));
+        if (!el) return;
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        el.focus({ preventScroll: true });
+      },
+
+      /**
+       * The Orbit Deck carousel on Today's timeline. All navigation is
+       * vanilla: arrows, status-toned dots, ←/→/Home/End keys, horizontal
+       * drag, and click-the-leaning-card-to-travel. The centre position is
+       * the honest state the server and clock agree on; once the teacher
+       * pages the deck by hand the choice sticks across silent refreshes —
+       * "Back to now" recenters to what needs attention.
+       */
+      initTodayDeck() {
+        const deck = document.getElementById('today-deck');
+        if (!deck) return;
+        const section = deck.closest('.deck-section');
+        const stage = document.getElementById('deck-stage');
+        const count = document.getElementById('deck-count');
+        const prev = section ? section.querySelector('[data-deck-prev]') : null;
+        const next = section ? section.querySelector('[data-deck-next]') : null;
+        const recenter = section ? section.querySelector('[data-deck-recenter]') : null;
+        const cards = Array.prototype.slice.call(stage.querySelectorAll('.deck-card'));
+        const dots = Array.prototype.slice.call(deck.querySelectorAll('.deck-dot'));
+        const total = cards.length;
+        if (!total) return;
+        const clampIdx = (i) => Math.max(0, Math.min(total - 1, i));
+        let current = clampIdx(Number(stage.getAttribute('data-current')) || 0);
+        const paint = (focusCard) => {
+          stage.setAttribute('data-current', String(current));
+          for (let i = 0; i < cards.length; i++) {
+            const card = cards[i];
+            const offset = Math.max(-2, Math.min(2, i - current));
+            card.dataset.offset = String(offset);
+            card.setAttribute('aria-hidden', i === current ? 'false' : 'true');
+            card.querySelectorAll('a, button, input, select, textarea, [tabindex]').forEach((el) => { el.tabIndex = i === current ? 0 : -1; });
+          }
+          dots.forEach((dot, i) => {
+            dot.classList.toggle('is-active', i === current);
+            dot.setAttribute('aria-current', i === current ? 'true' : 'false');
+          });
+          if (count) count.textContent = 'Block ' + (current + 1) + ' of ' + total;
+          if (prev) prev.disabled = current === 0;
+          if (next) next.disabled = current === total - 1;
+          this.deckSelection = current;
+          // The clicked/activated card becomes the focused one — keyboard and
+          // screen-reader users land exactly where the deck visually is.
+          if (focusCard) cards[current].focus({ preventScroll: true });
+        };
+        const goTo = (i) => { current = clampIdx(i); paint(true); };
+        if (prev) prev.addEventListener('click', () => goTo(current - 1));
+        if (next) next.addEventListener('click', () => goTo(current + 1));
+        dots.forEach((dot, i) => dot.addEventListener('click', () => goTo(i)));
+        if (recenter) recenter.addEventListener('click', () => { this.deckSelection = undefined; this.refreshSilent(); });
+        cards.forEach((card, i) => card.addEventListener('click', () => {
+          if (Number(card.getAttribute('data-offset')) !== 0) goTo(i);
+        }));
+        stage.addEventListener('keydown', (event) => {
+          const key = event.key;
+          if (key === 'ArrowLeft') { event.preventDefault(); goTo(current - 1); }
+          else if (key === 'ArrowRight') { event.preventDefault(); goTo(current + 1); }
+          else if (key === 'Home') { event.preventDefault(); goTo(0); }
+          else if (key === 'End') { event.preventDefault(); goTo(total - 1); }
+        });
+        // Horizontal drag / swipe anywhere on the stage (pointer capture keeps
+        // vertical scrolling alive via touch-action: pan-y in CSS).
+        let dragX = null;
+        stage.addEventListener('pointerdown', (event) => {
+          if (event.button !== 0 && event.pointerType === 'mouse') return;
+          dragX = { x: event.clientX, y: event.clientY, moved: false };
+          try { stage.setPointerCapture(event.pointerId); } catch { /* not critical */ }
+        });
+        stage.addEventListener('pointermove', (event) => {
+          if (!dragX) return;
+          const dx = event.clientX - dragX.x;
+          const dy = event.clientY - dragX.y;
+          if (Math.abs(dy) > Math.abs(dx) * 1.2) { dragX = null; return; } // vertical scroll wins
+          if (Math.abs(dx) > 12) dragX.moved = true;
+        });
+        stage.addEventListener('pointerup', (event) => {
+          if (!dragX) return;
+          const dx = event.clientX - dragX.x;
+          dragX = null;
+          if (Math.abs(dx) >= 48) goTo(current + (dx < 0 ? 1 : -1));
+        });
+        stage.addEventListener('pointercancel', () => { dragX = null; });
+        paint(false);
+      },
+
+      /**
+       * Today, live: re-reads /staff/today in place every 20s instead of
+       * waiting for the teacher to hit Refresh. Deliberately soft — no
+       * skeleton, no scroll jump, no replayed animations — and it never
+       * swaps content while the user is interacting (modal open, focus
+       * inside an input) so the day stays seamless mid-teaching.
+       */
+      async refreshSilent() {
+        if (this._refreshingSilent) return;
+        const route = this.route;
+        if (!route || route.path !== '/app/today') return;
+        if (document.visibilityState !== 'visible') return;
+        if (this.loading || this.modal || this.guide || this.quickOpen) return;
+        const root = document.getElementById('view-root');
+        const active = document.activeElement;
+        if (active && root && root.contains(active) && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) return;
+        this._refreshingSilent = true;
+        const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+        // A deck card that has focus must survive the refresh — otherwise
+        // every 20s tick drops keyboard/assistive-tech users to <body>.
+        const focusCardIndex = (() => {
+          const el = document.activeElement;
+          const card = el && el.closest ? el.closest('.deck-card') : null;
+          return card ? Number(card.getAttribute('data-index')) : null;
+        })();
+        const seq = (this._navSeq = (this._navSeq || 0) + 1);
+        try {
+          const view = V[route.view];
+          if (!view || !view.load || !view.render) return;
+          const page = (await view.load(this, this.params)) || {};
+          if (seq !== this._navSeq) return; // a real navigation took over
+          this.page = page;
+          this._charts = [];
+          this.destroyCharts();
+          const html = view.render(this, this.params, page);
+          if (root) {
+            if (window.Alpine && window.Alpine.destroyTree) window.Alpine.destroyTree(root);
+            root.innerHTML = html;
+            if (window.Alpine && window.Alpine.initTree) window.Alpine.initTree(root);
+          }
+          window.scrollTo(0, scrollY);
+          this.afterRender({ silent: true });
+          if (focusCardIndex != null) {
+            const cards = root.querySelectorAll('.deck-card');
+            if (cards.length) {
+              const idx = Math.max(0, Math.min(cards.length - 1, focusCardIndex));
+              cards[idx].focus({ preventScroll: true });
+            }
+          }
+        } catch (error) {
+          // Realtime is a bonus on top of yesterday's render — keep the
+          // last good frame and try again on the next tick.
+          if (window.console) console.warn('Today live refresh failed — keeping the last render.', error);
+        } finally {
+          this._refreshingSilent = false;
+        }
+      },
+
+      /**
+       * Owns the Today auto-refresh poll and the little "Live · updated
+       * Ns ago" badge next to the time-of-day chip. Called from
+       * afterRender(); any other route tears both down.
+       */
+      syncTodayLive() {
+        const onToday = Boolean(this.route && this.route.path === '/app/today');
+        if (!onToday) { this.deckSelection = undefined; this.stopTodayLive(); return; }
+        if (!this._todayPoll) {
+          this._todayPoll = setInterval(() => { this.refreshSilent(); }, 20000);
+          this._todayVis = () => { if (document.visibilityState === 'visible') this.refreshSilent(); };
+          document.addEventListener('visibilitychange', this._todayVis);
+        }
+        const live = document.getElementById('today-live');
+        if (!live) return;
+        const since = Number(live.getAttribute('data-since')) || Date.now();
+        const paint = () => {
+          if (!document.body.contains(live)) return;
+          const secs = Math.max(0, Math.round((Date.now() - since) / 1000));
+          live.innerHTML = '<span class="today-live-dot"></span>' + (secs < 8 ? 'Live · updated just now' : 'Live · updated ' + secs + 's ago');
+        };
+        paint();
+        if (this._todayTick) clearInterval(this._todayTick);
+        this._todayTick = setInterval(paint, 2000);
+      },
+
+      stopTodayLive() {
+        if (this._todayPoll) { clearInterval(this._todayPoll); this._todayPoll = null; }
+        if (this._todayTick) { clearInterval(this._todayTick); this._todayTick = null; }
+        if (this._todayVis) { document.removeEventListener('visibilitychange', this._todayVis); this._todayVis = null; }
       },
 
       /**
@@ -1074,7 +1261,7 @@
       isActive(path) {
         if (!this.route) return false;
         if (this.route.path === path) return true;
-        if (path !== '/app/overview' && this.route.path.startsWith(path + '/')) return true;
+        if (path !== '/app/today' && this.route.path.startsWith(path + '/')) return true;
         return false;
       },
 
@@ -2169,6 +2356,19 @@
         } catch (error) {
           this.toast(error.message || 'The lesson guide could not be opened.', 'error');
         }
+      },
+
+      /**
+       * Open the guide straight at the first interactive slide (poll, quiz,
+       * matching activity or whiteboard). The timeline cards surface these as
+       * first-class content, so the jump must land there, not on step 1.
+       */
+      async openGuideInteractive(planId, stepIndex) {
+        const index = Math.max(0, Number(stepIndex) || 0);
+        try {
+          await Reel.api('PATCH', '/curriculum/lesson-plans/' + encodeURIComponent(planId) + '/guide-position', { stepIndex: index, mode: 'open' });
+        } catch { /* offline — the guide still opens, it just resumes where it resumes */ }
+        return this.openGuide(planId);
       },
 
       closeGuide() {

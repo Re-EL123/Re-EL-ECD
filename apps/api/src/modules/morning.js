@@ -453,6 +453,39 @@ async function buildToday(ctx) {
     : [];
   const stepsByPlan = new Map(steps.map((s) => [s.lesson_plan_id, s]));
 
+  // Interactive slides per plan (polls, quizzes, matching games, whiteboards):
+  // the Today timeline shows them as first-class, jumpable content.
+  const interactiveRows = planIds.length
+    ? await ctx.db.many(
+        `SELECT lesson_plan_id, step_type, COUNT(*)::int AS count
+         FROM lesson_steps
+         WHERE lesson_plan_id = ANY($1::uuid[])
+           AND step_type IN ('poll','mcq','dragdrop','whiteboard')
+         GROUP BY lesson_plan_id, step_type`, [planIds]
+      )
+    : [];
+  const firstInteractiveRows = planIds.length
+    ? await ctx.db.many(
+        `SELECT lesson_plan_id, MIN(ix)::int AS first_interactive_index
+         FROM (
+           SELECT lesson_plan_id,
+                  (row_number() OVER (PARTITION BY lesson_plan_id ORDER BY position) - 1) AS ix,
+                  step_type
+           FROM lesson_steps
+           WHERE lesson_plan_id = ANY($1::uuid[])
+         ) s
+         WHERE step_type IN ('poll','mcq','dragdrop','whiteboard')
+         GROUP BY lesson_plan_id`, [planIds]
+      )
+    : [];
+  const interactiveByPlan = new Map();
+  for (const row of interactiveRows) {
+    const entry = interactiveByPlan.get(row.lesson_plan_id) || { poll: 0, mcq: 0, dragdrop: 0, whiteboard: 0 };
+    entry[row.step_type] = row.count;
+    interactiveByPlan.set(row.lesson_plan_id, entry);
+  }
+  const firstInteractiveByPlan = new Map(firstInteractiveRows.map((r) => [r.lesson_plan_id, r.first_interactive_index]));
+
   // Per-user guide positions for every plan in today's blocks (resume labels),
   // and today's captured quick moments per classroom (wrap-up "N of M").
   const positions = planIds.length
@@ -547,7 +580,14 @@ async function buildToday(ctx) {
         objectives: planObjectives
       } : null,
       module: moduleCtx,
-      guide: plan ? { available: stepMeta.count > 0, stepCount: stepMeta.count, totalMinutes: stepMeta.total_minutes } : null,
+      guide: plan ? {
+        available: stepMeta.count > 0,
+        stepCount: stepMeta.count,
+        totalMinutes: stepMeta.total_minutes,
+        interactive: interactiveByPlan.get(plan.id) || null,
+        interactiveCount: (() => { const i = interactiveByPlan.get(plan.id); return i ? (i.poll + i.mcq + i.dragdrop + i.whiteboard) : 0; })(),
+        firstInteractiveIndex: firstInteractiveByPlan.has(plan.id) ? firstInteractiveByPlan.get(plan.id) : null
+      } : null,
       position: e.lesson_plan_id ? (positionByPlan.get(e.lesson_plan_id) || null) : null,
       momentsCaptured: (() => {
         const scope = e.classroom_id

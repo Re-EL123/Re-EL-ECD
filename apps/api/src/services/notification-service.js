@@ -12,7 +12,7 @@ const PUSH_URLS = {
   parent_welcome: '/parent/overview',
   weekly_digest: '/parent/overview',
   family_nudge: '/parent/overview',
-  guardian_reaction: '/app/overview',
+  guardian_reaction: '/app/today',
   collection: '/parent/attendance',
   collection_override: '/parent/attendance',
   collection_denied: '/parent/attendance',
