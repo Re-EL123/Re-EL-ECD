@@ -1948,6 +1948,18 @@
         this.modal.label[field.name] = option.label;
       },
 
+      // Label shown in the closed searchselect toggle. Falls back to an
+      // options lookup when the label was not captured (e.g. reopening).
+      ssToggleValue(field) {
+        if (!this.modal) return '';
+        const label = this.modal.label && this.modal.label[field.name];
+        if (label) return label;
+        const value = this.modal.data ? this.modal.data[field.name] : null;
+        if (value === undefined || value === null || value === '') return '';
+        const found = this.msOption(field, value);
+        return found ? found.label : '';
+      },
+
       msOptions(field) {
         if (!this.modal) return [];
         const query = String((this.modal.msQuery || {})[field.name] || '').trim().toLowerCase();

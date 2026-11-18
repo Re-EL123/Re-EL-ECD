@@ -2751,3 +2751,20 @@ a.crumb:hover { color: var(--text-strong); background: var(--surface-2); text-de
 .next-ico svg { width: 22px; height: 22px; }
 .next-actions { margin-left: auto; }
 @media (max-width: 720px) { .next-actions { margin-left: 0; width: 100%; } .next-actions .btn { flex: 1 1 auto; } }
+
+/* --- Searchable single-select dropdown (modal fields of type searchselect) -- */
+.ss-field { position: relative; }
+.ss-toggle { padding-right: 38px; cursor: pointer; }
+.ss-toggle:focus-visible { outline: 2px solid var(--reel-green-500); outline-offset: 1px; }
+.ss-toggle-chev { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; color: var(--text-muted); pointer-events: none; }
+.ss-panel { position: absolute; z-index: 40; top: calc(100% + 6px); left: 0; right: 0;
+  background: var(--surface-glass-strong, var(--surface-1)); border: 1px solid var(--neon-border); border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg, var(--shadow-md)), 0 0 24px -8px var(--neon-glow); padding: 8px; }
+.ss-options { display: grid; gap: 2px; max-height: 240px; overflow-y: auto; margin-top: 6px; }
+.ss-option { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  padding: 8px 10px; border: 0; border-radius: 10px; background: transparent; color: var(--text); cursor: pointer; font-size: 0.88rem; }
+.ss-option:hover, .ss-option:focus-visible { background: var(--surface-2); outline: none; }
+.ss-option-check { width: 16px; height: 16px; margin-left: auto; color: var(--reel-green-600); flex: 0 0 auto; }
+.ss-option[aria-selected="true"] { background: var(--reel-green-100); }
+[data-theme="dark"] .ss-option[aria-selected="true"] { background: rgba(92, 214, 116, 0.18); }
+@media print { .ss-panel { display: none; } }
