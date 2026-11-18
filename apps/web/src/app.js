@@ -3256,9 +3256,21 @@
         this.modal.error = null;
         const endpoint = this.modal.endpoint || '';
         try {
+          // datetime-local fields carry no offset — the browser is the only
+          // party that knows the intended wall time. Convert them to
+          // offset-aware ISO before sending so the instant is unambiguous
+          // (a naive string is interpreted in the server's timezone instead
+          // of the user's).
           const declared = (this.modal.fields || []).map((f) => f.name);
           const plain = {};
           for (const key of declared) plain[key] = this.modal.data[key];
+          for (const field of (this.modal.fields || [])) {
+            const v = plain[field.name];
+            if (field.type === 'datetime-local' && typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v) && !/Z$|[+-]\d{2}:?\d{2}$/.test(v)) {
+              const parsed = new Date(v);
+              if (!Number.isNaN(parsed.getTime())) plain[field.name] = parsed.toISOString();
+            }
+          }
           let body = this.modal.transform ? this.modal.transform(plain) : plain;
           if (body && typeof body === 'object') {
             try { body = JSON.parse(JSON.stringify(body)); } catch { /* send as-is */ }

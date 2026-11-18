@@ -378,6 +378,9 @@ async function buildToday(ctx) {
 
   const assignedForEvents = morning._assigned || [];
   const restrictEvents = !wideRead(ctx) && assignedForEvents.length > 0;
+  // Scope: assigned staff see their own classrooms AND classroom-less,
+  // centre-wide blocks AND anything assigned to them personally. Events bound
+  // to another classroom stay out of their view.
   const events = await ctx.db.many(
     restrictEvents
       ? `SELECT sa.*, c.name AS classroom_name, u.display_name AS staff_name, lp.title AS lesson_plan_title
@@ -386,7 +389,7 @@ async function buildToday(ctx) {
          LEFT JOIN users u ON u.id = sa.assigned_staff_id
          LEFT JOIN lesson_plans lp ON lp.id = sa.lesson_plan_id
          WHERE sa.organisation_id = $1 AND sa.starts_at >= $2::timestamptz AND sa.starts_at < ($3::date + 1)
-           AND sa.classroom_id = ANY($4::uuid[])
+           AND (sa.classroom_id IS NULL OR sa.classroom_id = ANY($4::uuid[]) OR sa.assigned_staff_id = $5::uuid)
          ORDER BY sa.starts_at`
       : `SELECT sa.*, c.name AS classroom_name, u.display_name AS staff_name, lp.title AS lesson_plan_title
          FROM scheduled_activities sa
@@ -395,7 +398,7 @@ async function buildToday(ctx) {
          LEFT JOIN lesson_plans lp ON lp.id = sa.lesson_plan_id
          WHERE sa.organisation_id = $1 AND sa.starts_at >= $2::timestamptz AND sa.starts_at < ($3::date + 1)
          ORDER BY sa.starts_at`,
-    restrictEvents ? [ctx.organisationId, dayStartIso(today), today, assignedForEvents] : [ctx.organisationId, dayStartIso(today), today]
+    restrictEvents ? [ctx.organisationId, dayStartIso(today), today, assignedForEvents, ctx.user.id] : [ctx.organisationId, dayStartIso(today), today]
   );
 
   const planIds = [...new Set(events.map((e) => e.lesson_plan_id).filter(Boolean))];
