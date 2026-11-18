@@ -389,15 +389,17 @@ async function buildToday(ctx) {
       ? `SELECT sa.*, c.name AS classroom_name, u.display_name AS staff_name, lp.title AS lesson_plan_title
          FROM scheduled_activities sa
          LEFT JOIN classrooms c ON c.id = sa.classroom_id
-         LEFT JOIN users u ON u.id = sa.assigned_staff_id
+         LEFT JOIN staff_profiles sp ON sp.id = sa.assigned_staff_id
+         LEFT JOIN users u ON u.id = sp.user_id
          LEFT JOIN lesson_plans lp ON lp.id = sa.lesson_plan_id
          WHERE sa.organisation_id = $1 AND sa.starts_at >= $2::timestamptz AND sa.starts_at < $3::timestamptz
-           AND (sa.classroom_id IS NULL OR sa.classroom_id = ANY($4::uuid[]) OR sa.assigned_staff_id = $5::uuid)
+           AND (sa.classroom_id IS NULL OR sa.classroom_id = ANY($4::uuid[]) OR sa.assigned_staff_id IN (SELECT id FROM staff_profiles WHERE user_id = $5 AND organisation_id = $1))
          ORDER BY sa.starts_at`
       : `SELECT sa.*, c.name AS classroom_name, u.display_name AS staff_name, lp.title AS lesson_plan_title
          FROM scheduled_activities sa
          LEFT JOIN classrooms c ON c.id = sa.classroom_id
-         LEFT JOIN users u ON u.id = sa.assigned_staff_id
+         LEFT JOIN staff_profiles sp ON sp.id = sa.assigned_staff_id
+         LEFT JOIN users u ON u.id = sp.user_id
          LEFT JOIN lesson_plans lp ON lp.id = sa.lesson_plan_id
          WHERE sa.organisation_id = $1 AND sa.starts_at >= $2::timestamptz AND sa.starts_at < $3::timestamptz
          ORDER BY sa.starts_at`,

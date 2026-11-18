@@ -829,7 +829,7 @@
       const label = R.time(e.starts_at) + ' ' + (e.title || 'Activity');
       return '<button type="button" class="' + cls + '" draggable="' + (e.status !== 'completed' && e.status !== 'cancelled') + '" ' +
         'data-event-id="' + R.attr(e.id) + '" ' +
-        'onclick="window.ReelApp && window.ReelApp.openNamedModal(\'calEvent\',\'' + R.attr(e.id) + '\')" ' +
+        '@click="openNamedModal(\'calEvent\',\'' + R.attr(e.id) + '\')" ' +
         'ondragstart="window.Reel && window.Reel._calDragStart && window.Reel._calDragStart(event,\'' + R.attr(e.id) + '\')" ' +
         'ondragend="window.Reel && window.Reel._calDragEnd && window.Reel._calDragEnd(event)" ' +
         'title="' + R.attr(label + (conflict ? ' · Overlaps with another event' : '') + (now ? ' · Happening now' : '')) + '" ' +
@@ -854,23 +854,23 @@
         const collapsed = past && ui.collapsedDays && ui.collapsedDays[day];
         const label = isToday ? 'Today' : (day === calAddDays(today, 1) ? 'Tomorrow' : R.date(day + 'T00:00:00'));
         h += '<div class="card section cal-day-card' + (isToday ? ' cal-day-today' : '') + '" id="cal-day-' + R.attr(day) + '" data-day="' + R.attr(day) + '">';
-        h += '<div class="card-head cal-day-head" style="cursor:' + (past ? 'pointer' : 'default') + '" ' + (past ? 'onclick="window.ReelApp && window.ReelApp.openNamedModal(\'calToggleDay\',\'' + R.attr(day) + '\')"' : '') + '>';
+        h += '<div class="card-head cal-day-head" style="cursor:' + (past ? 'pointer' : 'default') + '" ' + (past ? '@click="openNamedModal(\'calToggleDay\',\'' + R.attr(day) + '\')"' : '') + '>';
         h += '<h3>' + R.icon(isToday ? 'sun' : 'calendar-days') + ' ' + R.esc(label) + ' <span class="muted small" style="font-weight:500">' + R.esc(isToday || day === calAddDays(today,1) ? R.date(day + 'T00:00:00') : '') + '</span></h3>';
         h += '<div class="row" style="gap:8px;align-items:center"><span class="badge badge-muted">' + R.number(list.length) + '</span>' +
-          (past ? '<button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();window.ReelApp&&window.ReelApp.openNamedModal(\'calToggleDay\',\'' + R.attr(day) + '\')">' + R.icon(collapsed ? 'chevron-down' : 'chevron-up') + '</button>' : '') +
-          '<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();window.ReelApp&&window.ReelApp.openNamedModal(\'calNewAt\',\'' + R.attr(day) + '\')">' + R.icon('plus') + ' Add</button></div></div>';
+          (past ? '<button class="btn btn-sm btn-ghost" @click.stop="openNamedModal(\'calToggleDay\',\'' + R.attr(day) + '\')">' + R.icon(collapsed ? 'chevron-down' : 'chevron-up') + '</button>' : '') +
+          '<button class="btn btn-sm btn-secondary" @click.stop="openNamedModal(\'calNewAt\',\'' + R.attr(day) + '\')">' + R.icon('plus') + ' Add</button></div></div>';
         if (!(past && collapsed)) {
           if (!list.length) {
             h += '<div class="cal-day-empty">' + R.emptyState('No activities planned', 'Add a block for this day to build out the schedule.',
-              '<button class="btn btn-sm btn-primary" onclick="window.ReelApp&&window.ReelApp.openNamedModal(\'calNewAt\',\'' + R.attr(day) + '\')">' + R.icon('plus') + ' Schedule activity</button>', 'calendar-plus') + '</div>';
+              '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'calNewAt\',\'' + R.attr(day) + '\')">' + R.icon('plus') + ' Schedule activity</button>', 'calendar-plus') + '</div>';
           } else {
             h += '<div class="stack cal-day-list">';
             list.forEach((e) => {
               const now = this.isNow(e);
               const conflict = conflicts[e.id];
               h += '<div class="cal-agenda-row ' + calStatusClass(e.status) + (now ? ' is-now' : '') + (conflict ? ' has-conflict' : '') + '" tabindex="0" role="button" ' +
-                'onclick="if(!event.target.closest(\'button[data-action]\')) window.ReelApp&&window.ReelApp.openNamedModal(\'calEvent\',\'' + R.attr(e.id) + '\')" ' +
-                'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();window.ReelApp&&window.ReelApp.openNamedModal(\'calEvent\',\'' + R.attr(e.id) + '\')}" ' +
+                '@click="if (!$event.target.closest(\'button[data-action]\')) openNamedModal(\'calEvent\',\'' + R.attr(e.id) + '\')" ' +
+                '@keydown.enter.prevent="openNamedModal(\'calEvent\',\'' + R.attr(e.id) + '\')" @keydown.space.prevent="openNamedModal(\'calEvent\',\'' + R.attr(e.id) + '\')" ' +
                 'aria-label="' + R.attr((e.title || 'Activity') + ' at ' + R.time(e.starts_at) + ', ' + calStatusLabel(e.status)) + '">';
               h += '<div class="cal-agenda-time"><div class="strong">' + R.esc(R.time(e.starts_at)) + '</div><div class="muted small">' + R.esc(e.ends_at ? R.time(e.ends_at) : '') + '</div>' + (now ? '<span class="badge badge-sun" style="margin-top:4px">Now</span>' : '') + '</div>';
               h += '<div class="cal-agenda-main"><div class="row" style="gap:8px;align-items:center;flex-wrap:wrap"><span class="strong">' + R.esc(e.title || 'Activity') + '</span>' + R.badge(e.status) + (conflict ? '<span class="badge badge-danger">Overlap</span>' : '') + '</div>' +
@@ -878,8 +878,8 @@
                 (e.activity_materials ? '<div class="muted small">Materials: ' + R.esc(R.truncate(e.activity_materials, 80)) + '</div>' : '') +
                 '</div>';
               h += '<div class="cal-agenda-actions btn-group">';
-              h += '<button data-action="1" class="btn btn-sm btn-secondary" onclick="event.stopPropagation();window.ReelApp&&window.ReelApp.openNamedModal(\'calEvent\',\'' + R.attr(e.id) + '\')">Details</button>';
-              if (e.lesson_plan_id) h += '<button data-action="1" class="btn btn-sm btn-ghost" onclick="event.stopPropagation();window.ReelApp&&window.ReelApp.openGuide(\'' + R.attr(e.lesson_plan_id) + '\')" title="Teach / Guide">' + R.icon('book-open') + '</button>';
+              h += '<button data-action="1" class="btn btn-sm btn-secondary" @click.stop="openNamedModal(\'calEvent\',\'' + R.attr(e.id) + '\')">Details</button>';
+              if (e.lesson_plan_id) h += '<button data-action="1" class="btn btn-sm btn-ghost" @click.stop="openGuide(\'' + R.attr(e.lesson_plan_id) + '\')" title="Teach / Guide">' + R.icon('book-open') + '</button>';
               h += '</div></div>';
             });
             h += '</div>';
@@ -911,14 +911,14 @@
           const list = (byDay[day] || []).slice().sort((a,b) => String(a.starts_at).localeCompare(String(b.starts_at)));
           const isToday = day === today;
           h += '<div class="calendar-grid-cell cal-drop-target' + (inMonth ? '' : ' is-outside') + (isToday ? ' is-today' : '') + '" data-day="' + R.attr(day) + '" ' +
-            'onclick="if(!event.target.closest(\'.cal-event\')) window.ReelApp&&window.ReelApp.openNamedModal(\'calNewAt\',\'' + R.attr(day) + '\')" ' +
+            '@click="if (!$event.target.closest(\'.cal-event\')) openNamedModal(\'calNewAt\',\'' + R.attr(day) + '\')" ' +
             'ondragover="window.Reel&&window.Reel._calDragOver&&window.Reel._calDragOver(event)" ' +
             'ondrop="window.Reel&&window.Reel._calDrop&&window.Reel._calDrop(event,\'' + R.attr(day) + '\')">';
-          h += '<div class="calendar-grid-day-row"><button type="button" class="calendar-grid-day-btn" onclick="event.stopPropagation();window.ReelApp&&window.ReelApp.openNamedModal(\'calFocusDay\',\'' + R.attr(day) + '\')" title="Focus this day">' + R.number(new Date(day+'T00:00:00').getDate()) + '</button>' +
-            '<button type="button" class="btn btn-xs btn-ghost cal-cell-add" onclick="event.stopPropagation();window.ReelApp&&window.ReelApp.openNamedModal(\'calNewAt\',\'' + R.attr(day) + '\')" title="Schedule">+</button></div>';
+          h += '<div class="calendar-grid-day-row"><button type="button" class="calendar-grid-day-btn" @click.stop="openNamedModal(\'calFocusDay\',\'' + R.attr(day) + '\')" title="Focus this day">' + R.number(new Date(day+'T00:00:00').getDate()) + '</button>' +
+            '<button type="button" class="btn btn-xs btn-ghost cal-cell-add" @click.stop="openNamedModal(\'calNewAt\',\'' + R.attr(day) + '\')" title="Schedule">+</button></div>';
           const show = density === 'compact' ? 3 : 4;
           list.slice(0, show).forEach((e) => { h += this.renderEventChip(ctx, e, { conflicts, compact: density === 'compact' }); });
-          if (list.length > show) h += '<button type="button" class="cal-more" onclick="event.stopPropagation();window.ReelApp&&window.ReelApp.openNamedModal(\'calFocusDay\',\'' + R.attr(day) + '\')">+' + R.number(list.length - show) + ' more</button>';
+          if (list.length > show) h += '<button type="button" class="cal-more" @click.stop="openNamedModal(\'calFocusDay\',\'' + R.attr(day) + '\')">+' + R.number(list.length - show) + ' more</button>';
           h += '</div>';
         }
         h += '</div>';
@@ -941,7 +941,7 @@
       h += '<div class="cal-week-corner"></div>';
       days.forEach((day) => {
         const isToday = day === today;
-        h += '<div class="cal-week-head' + (isToday ? ' is-today' : '') + '" onclick="window.ReelApp&&window.ReelApp.openNamedModal(\'calFocusDay\',\'' + R.attr(day) + '\')">' +
+        h += '<div class="cal-week-head' + (isToday ? ' is-today' : '') + '" @click="openNamedModal(\'calFocusDay\',\'' + R.attr(day) + '\')">' +
           '<div class="strong">' + R.esc(new Date(day+'T00:00:00').toLocaleDateString('en-ZA',{weekday:'short'})) + '</div>' +
           '<div class="muted small">' + R.esc(new Date(day+'T00:00:00').toLocaleDateString('en-ZA',{day:'numeric',month:'short'})) + '</div></div>';
       });
@@ -954,8 +954,9 @@
             const m = calEventMinutes(e.starts_at);
             return m >= slotStart && m < slotEnd;
           }).sort((a,b) => String(a.starts_at).localeCompare(String(b.starts_at)));
+          const calSlot = day + 'T' + calPad(hour) + ':00';
           h += '<div class="cal-week-cell cal-drop-target" data-day="' + R.attr(day) + '" data-hour="' + hour + '" ' +
-            'onclick="if(!event.target.closest(\'.cal-event\')) window.ReelApp&&window.ReelApp.openNamedModal(\'calNewAt\',\'' + R.attr(day) + 'T' + calPad(hour) + ':00\')" ' +
+            '@click="if (!$event.target.closest(\'.cal-event\')) openNamedModal(\'calNewAt\',\'' + R.attr(calSlot) + '\')" ' +
             'ondragover="window.Reel&&window.Reel._calDragOver&&window.Reel._calDragOver(event)" ' +
             'ondrop="window.Reel&&window.Reel._calDrop&&window.Reel._calDrop(event,\'' + R.attr(day) + '\',' + hour + ')">';
           slotEvents.forEach((e) => { h += this.renderEventChip(ctx, e, { conflicts, compact: true }); });
@@ -980,14 +981,15 @@
         '<div class="btn-group"><button class="btn btn-sm btn-secondary" @click="openNamedModal(\'calNewAt\',\'' + R.attr(day) + '\')">' + R.icon('plus') + ' Schedule activity</button></div></div>';
       h += '<div class="cal-day-grid">';
       hours.forEach((hour) => {
+        const slotStart = day + 'T' + calPad(hour) + ':00';
         const slotEvents = list.filter((e) => { const m = calEventMinutes(e.starts_at); return m >= hour*60 && m < hour*60+60; });
         h += '<div class="cal-day-row"><div class="cal-day-hour">' + calPad(hour) + ':00</div><div class="cal-day-slot cal-drop-target" data-day="' + R.attr(day) + '" data-hour="' + hour + '" ' +
-          'onclick="if(!event.target.closest(\'.cal-event\')) window.ReelApp&&window.ReelApp.openNamedModal(\'calNewAt\',\'' + R.attr(day) + 'T' + calPad(hour) + ':00\')" ' +
+          '@click="if (!$event.target.closest(\'.cal-event\')) openNamedModal(\'calNewAt\',\'' + R.attr(slotStart) + '\')" ' +
           'ondragover="window.Reel&&window.Reel._calDragOver&&window.Reel._calDragOver(event)" ' +
           'ondrop="window.Reel&&window.Reel._calDrop&&window.Reel._calDrop(event,\'' + R.attr(day) + '\',' + hour + ')">';
         if (!slotEvents.length) h += '<div class="cal-slot-empty muted small">Click to schedule</div>';
         slotEvents.forEach((e) => {
-          h += '<div class="cal-day-block ' + calStatusClass(e.status) + (this.isNow(e) ? ' is-now' : '') + (conflicts[e.id] ? ' has-conflict' : '') + '" role="button" tabindex="0" onclick="window.ReelApp&&window.ReelApp.openNamedModal(\'calEvent\',\'' + R.attr(e.id) + '\')" onkeydown="if(event.key===\'Enter\'){window.ReelApp&&window.ReelApp.openNamedModal(\'calEvent\',\'' + R.attr(e.id) + '\')}">' +
+          h += '<div class="cal-day-block ' + calStatusClass(e.status) + (this.isNow(e) ? ' is-now' : '') + (conflicts[e.id] ? ' has-conflict' : '') + '" role="button" tabindex="0" @click="openNamedModal(\'calEvent\',\'' + R.attr(e.id) + '\')" @keydown.enter.prevent="openNamedModal(\'calEvent\',\'' + R.attr(e.id) + '\')">' +
             '<div class="row" style="justify-content:space-between;gap:8px"><div class="strong">' + R.esc(R.time(e.starts_at)) + (e.ends_at ? '–' + R.esc(R.time(e.ends_at)) : '') + ' · ' + R.esc(e.title) + '</div>' + R.badge(e.status) + '</div>' +
             '<div class="muted small">' + R.esc(e.classroom_name || 'Whole centre') + (e.staff_name ? ' · ' + R.esc(e.staff_name) : '') + '</div></div>';
         });
@@ -1007,10 +1009,10 @@
       const canEdit = ctx.has('curriculum.create.daycare');
       const conflict = conflicts[e.id];
       const now = this.isNow(e);
-      let h = '<div class="cal-drawer-backdrop" onclick="if(event.target===this) window.ReelApp&&window.ReelApp.openNamedModal(\'calCloseDrawer\')">';
+      let h = '<div class="cal-drawer-backdrop" @click.self="openNamedModal(\'calCloseDrawer\')">';
       h += '<aside class="cal-drawer" role="dialog" aria-label="Event details">';
       h += '<div class="cal-drawer-head"><div><div class="row" style="gap:8px;align-items:center;flex-wrap:wrap">' + R.badge(e.status) + (now ? '<span class="badge badge-sun">Happening now</span>' : '') + (conflict ? '<span class="badge badge-danger">Overlap</span>' : '') + '</div><h3 style="margin:6px 0 0">' + R.esc(e.title || 'Activity') + '</h3><div class="muted small">' + R.esc(R.date(e.starts_at)) + ' · ' + R.esc(R.time(e.starts_at)) + (e.ends_at ? '–' + R.esc(R.time(e.ends_at)) : '') + '</div></div>';
-      h += '<button class="btn btn-ghost btn-sm" onclick="window.ReelApp&&window.ReelApp.openNamedModal(\'calCloseDrawer\')" aria-label="Close">' + R.icon('x') + '</button></div>';
+      h += '<button class="btn btn-ghost btn-sm" @click="openNamedModal(\'calCloseDrawer\')" aria-label="Close">' + R.icon('x') + '</button></div>';
       h += '<div class="cal-drawer-body">';
       h += '<div class="cal-detail-grid">';
       h += R.detailItem('Classroom', R.esc(e.classroom_name || 'Whole centre'));
@@ -1024,10 +1026,10 @@
 
       if (e.lesson_plan_id || moduleId) {
         h += '<div class="cal-drawer-section"><h4>Teaching & context</h4><div class="stack">';
-        if (e.lesson_plan_id) h += '<button class="btn btn-secondary" onclick="window.ReelApp&&window.ReelApp.openGuide(\'' + R.attr(e.lesson_plan_id) + '\')">' + R.icon('book-open') + ' Teach / Guide</button>';
+        if (e.lesson_plan_id) h += '<button class="btn btn-secondary" @click="openGuide(\'' + R.attr(e.lesson_plan_id) + '\')">' + R.icon('book-open') + ' Teach / Guide</button>';
         if (e.lesson_plan_id) h += '<a class="btn btn-ghost" href="#/app/curriculum?tab=plans">Open lesson plan</a>';
         if (moduleId) h += '<a class="btn btn-ghost" href="#/app/modules/' + R.attr(moduleId) + '">Open module' + (moduleTitle ? ': ' + R.esc(moduleTitle) : '') + '</a>';
-        if (moduleId) h += '<button class="btn btn-ghost" onclick="window.ReelApp&&window.ReelApp.downloadExport(\'/learning-modules/' + R.attr(moduleId) + '/teacher-guide\')">' + R.icon('file-down') + ' Teacher guide (PDF)</button>';
+        if (moduleId) h += '<button class="btn btn-ghost" @click="downloadExport(\'/learning-modules/' + R.attr(moduleId) + '/teacher-guide\')">' + R.icon('file-down') + ' Teacher guide (PDF)</button>';
         if (e.activity_id) h += '<a class="btn btn-ghost" href="#/app/activities">Open activity library</a>';
         h += '</div></div>';
       }
@@ -1060,12 +1062,12 @@
       h += '</div>';
       h += '<div class="cal-drawer-foot">';
       h += '<div class="btn-group" style="flex-wrap:wrap">';
-      if (e.status === 'scheduled' && canEdit) h += '<button class="btn btn-primary" onclick="window.ReelApp&&window.ReelApp.openNamedModal(\'calStart\',\'' + R.attr(e.id) + '\')">' + R.icon('play') + ' Start</button>';
-      if ((e.status === 'scheduled' || e.status === 'in_progress') && canEdit) h += '<button class="btn btn-secondary" onclick="window.ReelApp&&window.ReelApp.openNamedModal(\'complete\',\'' + R.attr(e.id) + '\')">' + R.icon('check-circle') + ' Complete</button>';
-      if ((e.status === 'scheduled' || e.status === 'in_progress') && canEdit) h += '<button class="btn btn-ghost" onclick="window.ReelApp&&window.ReelApp.openNamedModal(\'calCancel\',\'' + R.attr(e.id) + '\')">Cancel</button>';
-      if (canEdit) h += '<button class="btn btn-secondary" onclick="window.ReelApp&&window.ReelApp.openNamedModal(\'calEdit\',\'' + R.attr(e.id) + '\')">' + R.icon('pencil') + ' Edit / Reschedule</button>';
-      if (canEdit) h += '<button class="btn btn-ghost" onclick="window.ReelApp&&window.ReelApp.openNamedModal(\'calDuplicate\',\'' + R.attr(e.id) + '\')">' + R.icon('copy') + ' Duplicate</button>';
-      if (canEdit) h += '<button class="btn btn-danger" onclick="window.ReelApp&&window.ReelApp.openNamedModal(\'calDelete\',\'' + R.attr(e.id) + '\')">' + R.icon('trash-2') + ' Delete</button>';
+      if (e.status === 'scheduled' && canEdit) h += '<button class="btn btn-primary" @click="openNamedModal(\'calStart\',\'' + R.attr(e.id) + '\')">' + R.icon('play') + ' Start</button>';
+      if ((e.status === 'scheduled' || e.status === 'in_progress') && canEdit) h += '<button class="btn btn-secondary" @click="openNamedModal(\'complete\',\'' + R.attr(e.id) + '\')">' + R.icon('check-circle') + ' Complete</button>';
+      if ((e.status === 'scheduled' || e.status === 'in_progress') && canEdit) h += '<button class="btn btn-ghost" @click="openNamedModal(\'calCancel\',\'' + R.attr(e.id) + '\')">Cancel</button>';
+      if (canEdit) h += '<button class="btn btn-secondary" @click="openNamedModal(\'calEdit\',\'' + R.attr(e.id) + '\')">' + R.icon('pencil') + ' Edit / Reschedule</button>';
+      if (canEdit) h += '<button class="btn btn-ghost" @click="openNamedModal(\'calDuplicate\',\'' + R.attr(e.id) + '\')">' + R.icon('copy') + ' Duplicate</button>';
+      if (canEdit) h += '<button class="btn btn-danger" @click="openNamedModal(\'calDelete\',\'' + R.attr(e.id) + '\')">' + R.icon('trash-2') + ' Delete</button>';
       h += '</div></div>';
       h += '</aside></div>';
       return h;

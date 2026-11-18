@@ -854,7 +854,8 @@ function register(router) {
               COALESCE(pc.participated_count, 0)::int AS participated_count
        FROM scheduled_activities sa
        LEFT JOIN classrooms c ON c.id = sa.classroom_id
-       LEFT JOIN users u ON u.id = sa.assigned_staff_id
+       LEFT JOIN staff_profiles sp ON sp.id = sa.assigned_staff_id
+              LEFT JOIN users u ON u.id = sp.user_id
        LEFT JOIN lesson_plans lp ON lp.id = sa.lesson_plan_id
        LEFT JOIN learning_modules lm ON lm.id = lp.module_id
        LEFT JOIN activities a ON a.id = sa.activity_id
@@ -999,7 +1000,8 @@ function register(router) {
               a.age_group AS activity_age_group
        FROM scheduled_activities sa
        LEFT JOIN classrooms c ON c.id = sa.classroom_id
-       LEFT JOIN users u ON u.id = sa.assigned_staff_id
+       LEFT JOIN staff_profiles sp ON sp.id = sa.assigned_staff_id
+              LEFT JOIN users u ON u.id = sp.user_id
        LEFT JOIN lesson_plans lp ON lp.id = sa.lesson_plan_id
        LEFT JOIN learning_modules lm ON lm.id = lp.module_id
        LEFT JOIN activities a ON a.id = sa.activity_id
