@@ -266,7 +266,7 @@
 
   function sectionHead(eyebrow, title, lede) {
     return '<div class="site-section-head">' + (eyebrow ? '<div class="site-eyebrow">' + R.esc(eyebrow) + '</div>' : '') +
-      '<h2>' + R.richText(title || '') + '</h2><span class="section-underline" aria-hidden="true"></span>' + (lede ? R.richParagraphs(lede, 'lede') : '') + '</div>';
+      '<h2>' + R.richText(title || '') + '</h2>' + (lede ? R.richParagraphs(lede, 'lede') : '') + '</div>';
   }
 
   function pageHero(title, lede, image, eyebrow) {
@@ -368,7 +368,7 @@
     return '<section class="site-cta"><div class="site-wrap site-cta-inner">' +
       '<div><div class="site-eyebrow">Admissions</div><h2>' + R.richText(title) + '</h2>' +
       R.richParagraphs((admissions && admissions.intro) || ('Enquire about a place at ' + (org.name || 'our centre') + '. We will reply by email and arrange a visit.')) + '</div>' +
-      '<div class="site-actions"><a class="btn btn-primary btn-sheen" href="' + R.attr(ctaHref) + '"' + linkTarget(ctaHref) + '>Enquire about a place</a>' +
+      '<div class="site-actions"><a class="btn btn-primary" href="' + R.attr(ctaHref) + '"' + linkTarget(ctaHref) + '>Enquire about a place</a>' +
       '<a class="btn btn-secondary" href="' + R.attr(siteHref(slug, 'forms')) + '">Forms and payments</a></div>' +
       '</div></section>';
   }
@@ -488,32 +488,23 @@
         (content.announcement ? '<div class="site-wrap"><div class="site-notice">' + R.icon('megaphone') + '<span>' + R.richText(content.announcement) + '</span></div></div>' : '') +
         '<div class="site-wrap site-hero-grid">' +
         '<div class="site-hero-copy">' +
-        '<div class="site-eyebrow reveal d1">' + R.icon('sprout') + ' ' + R.richText(hero.badge || 'Registered ECD centre') + '</div>' +
-        '<h1 class="reveal d2">' + R.richText(hero.headline) + '</h1>' +
-        R.richParagraphs(hero.subheadline, 'lede reveal d3') +
-        '<div class="site-actions reveal d4">' +
-        '<a class="btn btn-primary btn-sheen" href="' + R.attr(primaryHref) + '"' + linkTarget(primaryHref) + '>' + R.esc(hero.cta || 'Book a visit') + '</a>' +
+        '<div class="site-eyebrow">' + R.icon('sprout') + ' ' + R.richText(hero.badge || 'Registered ECD centre') + '</div>' +
+        '<h1>' + R.richText(hero.headline) + '</h1>' +
+        R.richParagraphs(hero.subheadline, 'lede') +
+        '<div class="site-actions">' +
+        '<a class="btn btn-primary" href="' + R.attr(primaryHref) + '"' + linkTarget(primaryHref) + '>' + R.esc(hero.cta || 'Book a visit') + '</a>' +
         '<a class="btn btn-secondary" href="' + R.attr(secondaryHref) + '"' + linkTarget(secondaryHref) + '>' + R.esc(hero.secondaryCta || 'Explore programmes') + '</a>' +
         '</div>' +
-        (stats.length ? '<div class="site-stats reveal d5">' + stats.map((stat) =>
+        (stats.length ? '<div class="site-stats">' + stats.map((stat) =>
           '<div><div class="site-stat-value">' + R.esc(stat.value) + '</div><div class="site-stat-label">' + R.esc(stat.label) + '</div></div>').join('') + '</div>' : '') +
         '</div>' +
         '<div class="site-hero-media' + (heroImage ? '' : ' is-empty') + '">' +
-        (heroImage ? imgTag(heroImage, hero.headline || org.name, 'site-hero-image')
-          : '<div class="site-hero-scene" aria-hidden="true">' +
-              '<span class="twinkle" style="top:14%;left:22%"></span><span class="twinkle" style="top:22%;left:44%"></span><span class="twinkle" style="top:9%;left:60%"></span><span class="twinkle" style="top:30%;left:68%"></span><span class="twinkle" style="top:16%;left:82%"></span>' +
-              '<div class="scene-sun"></div>' +
-              '<svg class="scene-cloud c1" viewBox="0 0 160 60" fill="currentColor"><ellipse cx="46" cy="38" rx="34" ry="12"/><ellipse cx="76" cy="26" rx="34" ry="16"/><ellipse cx="108" cy="38" rx="34" ry="12"/></svg>' +
-              '<svg class="scene-cloud c2" viewBox="0 0 160 60" fill="currentColor"><ellipse cx="46" cy="38" rx="30" ry="11"/><ellipse cx="78" cy="26" rx="30" ry="14"/><ellipse cx="110" cy="38" rx="30" ry="11"/></svg>' +
-              '<svg class="scene-cloud c3" viewBox="0 0 160 60" fill="currentColor"><ellipse cx="46" cy="40" rx="28" ry="9"/><ellipse cx="80" cy="28" rx="28" ry="12"/><ellipse cx="112" cy="40" rx="28" ry="9"/></svg>' +
-              '<svg class="scene-birds" viewBox="0 0 120 30" width="120" height="30" fill="none" stroke="#2c2c28" stroke-width="2" stroke-linecap="round"><path d="M4 18 Q11 11 18 18 Q25 11 32 18"/><path d="M42 8 Q48 3 54 8 Q60 3 66 8"/><path d="M74 22 Q80 17 86 22 Q92 17 98 22"/></svg>' +
-              '<svg class="ridgeline" viewBox="0 0 900 170" preserveAspectRatio="none" aria-hidden="true"><path fill="#8a97a6" opacity="0.55" d="M0 128 L120 120 C180 112 220 122 280 116 C360 108 420 118 480 110 L520 110 C560 110 600 118 660 112 C720 106 780 118 900 112 L900 170 L0 170 Z"/><path fill="#3c6b47" d="M0 146 C140 138 260 152 400 142 C520 134 640 152 760 144 C830 140 870 148 900 144 L900 170 L0 170 Z"/><g fill="#1d3a26"><path d="M96 146 L104 128 L112 146 Z"/><ellipse cx="104" cy="126" rx="30" ry="8"/><path d="M380 140 L388 116 L396 140 Z"/><ellipse cx="388" cy="114" rx="38" ry="10"/><path d="M702 144 L710 124 L718 144 Z"/><ellipse cx="710" cy="122" rx="26" ry="8"/></g><path fill="#24482a" d="M0 158 C220 150 380 164 560 156 C700 150 800 162 900 156 L900 170 L0 170 Z"/></svg>' +
-            '</div>') +
+        (heroImage ? imgTag(heroImage, hero.headline || org.name, 'site-hero-image') : '<div class="site-hero-pattern"></div>') +
         '<div class="site-hero-float"><div class="site-float-mark">' + R.icon('heart-handshake') + '</div>' +
         '<div><div class="strong">Our promise</div><div class="muted small">Safety, belonging and joyful discovery every single day.</div></div></div>' +
         '</div></div></header>';
 
-      const aboutBlock = '<section class="site-section reveal"><div class="site-wrap site-split">' +
+      const aboutBlock = '<section class="site-section"><div class="site-wrap site-split">' +
         '<div class="site-split-media' + (safeImageUrl(about.image) ? '' : ' is-empty') + '">' +
         (safeImageUrl(about.image) ? imgTag(about.image, about.heading || org.name, 'site-split-image') : '<div class="site-hero-pattern"></div>') +
         '</div><div class="site-split-copy">' + sectionHead('About us', about.heading || ('About ' + org.name), '') +
@@ -523,19 +514,19 @@
         '</div></div></section>';
 
       const valuesBlock = about.values && about.values.length
-        ? '<section class="site-section site-section-tint reveal"><div class="site-wrap">' +
+        ? '<section class="site-section site-section-tint"><div class="site-wrap">' +
           sectionHead('Why families choose us', 'Care you can see, every day', 'The small things that make a centre feel like home.') +
           valueCards(about.values) + '</div></section>'
         : '';
 
-      const programmeBlock = '<section class="site-section reveal"><div class="site-wrap">' +
+      const programmeBlock = '<section class="site-section"><div class="site-wrap">' +
         sectionHead('Programmes', 'Rooms that grow with your child', 'Age-appropriate routines, caring educators and space to explore.') +
         programmeCards(programmes, 3) +
         '<div class="site-section-foot"><a class="btn btn-secondary" href="' + R.attr(siteHref(slug, 'programmes')) + '">See all programmes</a></div>' +
         '</div></section>';
 
       const galleryBlock = galleryGrid(gallery, 6)
-        ? '<section class="site-section site-section-tint reveal"><div class="site-wrap">' +
+        ? '<section class="site-section site-section-tint"><div class="site-wrap">' +
           sectionHead('Life at our centre', 'A little look around', 'Real rooms, real play and the everyday moments families tell us about.') +
           galleryGrid(gallery, 6) +
           '<div class="site-section-foot"><a class="btn btn-secondary" href="' + R.attr(siteHref(slug, 'gallery')) + '">Open the gallery</a></div>' +
@@ -543,7 +534,7 @@
         : '';
 
       const testimonialBlock = testimonials.length
-        ? '<section class="site-section reveal"><div class="site-wrap">' +
+        ? '<section class="site-section"><div class="site-wrap">' +
           sectionHead('From our families', 'What parents tell us', '') +
           '<div class="site-card-grid site-testimonials">' + testimonials.map((item) =>
             '<blockquote class="site-testimonial"><p>“' + R.richText(item.quote) + '”</p>' +
@@ -552,7 +543,7 @@
           '</div></div></section>'
         : '';
 
-      const contactBlock = '<section class="site-section site-section-tint reveal"><div class="site-wrap site-split site-contact-split">' +
+      const contactBlock = '<section class="site-section site-section-tint"><div class="site-wrap site-split site-contact-split">' +
         '<div>' + sectionHead('Contact', 'Come and see us', 'Book a visit or ask a question. We will reply by email.') +
         contactCards(content.contact || {}) +
         (branches.length ? '<div class="site-branch-list">' + branchCards(branches) + '</div>' : '') +
@@ -683,7 +674,7 @@
             '<div class="site-contact-qr-code" x-init="window.Reel.mountQr($el)" ' + qrData + '></div>' +
           '</div>' +
         '</div></section>' +
-        '<section class="site-section site-section-tint reveal"><div class="site-wrap site-split site-contact-split">' +
+        '<section class="site-section site-section-tint"><div class="site-wrap site-split site-contact-split">' +
         '<div>' + sectionHead('Send a message', 'Tell us about your family', 'We reply by email. If you would rather talk, call the centre during office hours.') +
         socialLinks(content.social || {}) +
         (contact.mapUrl ? '<div class="site-section-foot"><a class="btn btn-secondary" href="' + R.attr(contact.mapUrl) + '" target="_blank" rel="noopener">Open directions</a></div>' : '') +
@@ -1145,44 +1136,33 @@
       const hero = '' +
         '<section class="home-hero home-hero-bg">' +
           '<div class="home-hero-copy">' +
-            '<span class="badge badge-green reveal d1"><span class="home-live-dot" aria-hidden="true"></span> Built for South African ECD centres</span>' +
-            '<h1 class="reveal d2">Run your ECD centre with <span class="home-underline">calm, clarity and care</span>.</h1>' +
-            '<p class="lede reveal d3">Re-EL ECD brings attendance and safe gate collection, teaching and curriculum, family communication, admissions and daily operations into one simple workspace — so you spend less time on admin and more time with children.</p>' +
-            '<div class="site-actions reveal d4" style="margin-top:18px">' +
-              '<a class="btn btn-primary btn-sheen" href="' + startHref + '">' + R.icon('sparkles') + ' ' + startLabel + '</a>' +
+            '<span class="badge badge-green">Built for South African ECD centres</span>' +
+            '<h1>Run your ECD centre with calm, clarity and care.</h1>' +
+            '<p class="lede">Re-EL ECD brings attendance and safe gate collection, teaching and curriculum, family communication, admissions and daily operations into one simple workspace — so you spend less time on admin and more time with children.</p>' +
+            '<div class="site-actions" style="margin-top:18px">' +
+              '<a class="btn btn-primary" href="' + startHref + '">' + R.icon('sparkles') + ' ' + startLabel + '</a>' +
               '<a class="btn btn-secondary" href="#/login">' + R.icon('log-in') + ' Sign in</a>' +
               '<a class="btn btn-ghost" href="#/?section=setup">See the R700 setup</a>' +
             '</div>' +
-            '<div class="home-proof reveal d5"><span>' + R.icon('shield-check') + ' Custody-aware gate &amp; register</span><span>' + R.icon('book-open') + ' Curriculum, guides &amp; evidence</span><span>' + R.icon('users') + ' Parent engagement</span></div>' +
-            '<div class="home-proof-band reveal d6" aria-label="Why ECD centres choose Re-EL">' +
-              '<div class="home-proof-item"><span class="home-proof-num">30</span><small>day free trial</small></div>' +
-              '<div class="home-proof-item"><span class="home-proof-num">R700</span><small>once-off, everything included</small></div>' +
-              '<div class="home-proof-item"><span class="home-proof-num">128</span><small>official NCF guide steps</small></div>' +
-            '</div>' +
+            '<div class="home-proof muted small"><span>' + R.icon('shield-check') + ' Custody-aware gate & register</span><span>' + R.icon('book-open') + ' Curriculum, guides & evidence</span><span>' + R.icon('users') + ' Parent engagement</span></div>' +
           '</div>' +
-          '<div class="home-hero-art card glass reveal d2" data-parallax-parent>' +
+          '<div class="home-hero-art card glass">' +
             '<div class="home-mock">' +
-              '<div class="home-mock-row"><span class="home-live-dot" aria-hidden="true"></span><span class="strong">Today at your centre</span><span class="row-end badge badge-green">Live</span></div>' +
+              '<div class="home-mock-row"><span class="dot" style="background:#3A7D44"></span><span class="strong">Today at your centre</span><span class="row-end badge badge-green">Live</span></div>' +
               '<div class="home-mock-grid">' +
-                '<div class="home-mock-stat"><div class="kpi-label">Present</div><div class="kpi-value">18 / 22</div><svg viewBox="0 0 120 34" width="100%" height="34" role="img" aria-label="Attendance this week"><polyline class="home-spark" style="--spark-len:220" points="2,26 20,22 38,24 56,16 74,19 92,10 118,7" fill="none" stroke="var(--reel-green-500)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle class="home-spark-dot" cx="118" cy="7" r="3.2" fill="var(--reel-green-600)"/></svg></div>' +
-                '<div class="home-mock-stat"><div class="kpi-label">Gate releases</div><div class="kpi-value">Verified</div><svg viewBox="0 0 120 34" width="100%" height="34" role="img" aria-label="Gate scans today"><polyline class="home-spark" style="--spark-len:220" points="2,28 20,26 40,22 60,23 80,18 100,14 118,12" fill="none" stroke="var(--reel-sun-500)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle class="home-spark-dot" cx="118" cy="12" r="3.2" fill="var(--reel-sun-600)"/></svg></div>' +
-                '<div class="home-mock-stat"><div class="kpi-label">Lesson blocks</div><div class="kpi-value">On track</div><svg viewBox="0 0 120 34" width="100%" height="34" role="img" aria-label="Lesson blocks completed"><polyline class="home-spark" style="--spark-len:220" points="2,30 24,30 40,24 60,24 78,17 98,13 118,9" fill="none" stroke="var(--reel-sky-500)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle class="home-spark-dot" cx="118" cy="9" r="3.2" fill="var(--reel-sky-700)"/></svg></div>' +
-                '<div class="home-mock-stat"><div class="kpi-label">Family updates</div><div class="kpi-value">Ready</div><svg viewBox="0 0 120 34" width="100%" height="34" role="img" aria-label="Family updates sent"><polyline class="home-spark" style="--spark-len:220" points="2,26 18,25 36,27 54,21 72,21 90,15 118,10" fill="none" stroke="var(--reel-plum-500)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle class="home-spark-dot" cx="118" cy="10" r="3.2" fill="var(--reel-plum-700)"/></svg></div>' +
+                '<div class="home-mock-stat"><div class="kpi-label">Present</div><div class="kpi-value">18 / 22</div></div>' +
+                '<div class="home-mock-stat"><div class="kpi-label">Gate releases</div><div class="kpi-value">Verified</div></div>' +
+                '<div class="home-mock-stat"><div class="kpi-label">Lesson blocks</div><div class="kpi-value">On track</div></div>' +
+                '<div class="home-mock-stat"><div class="kpi-label">Family updates</div><div class="kpi-value">Ready</div></div>' +
               '</div>' +
               '<div class="home-mock-list">' +
-                '<div class="home-mock-item reveal d3">' + R.icon('door-open') + '<span>Secure check-in &amp; collection at the gate</span></div>' +
-                '<div class="home-mock-item reveal d4">' + R.icon('presentation') + '<span>Interactive lessons, whiteboards &amp; guides</span></div>' +
-                '<div class="home-mock-item reveal d5">' + R.icon('heart-handshake') + '<span>Daily reports and moments for families</span></div>' +
+                '<div class="home-mock-item">' + R.icon('door-open') + '<span>Secure check-in & collection at the gate</span></div>' +
+                '<div class="home-mock-item">' + R.icon('presentation') + '<span>Interactive lessons, whiteboards & guides</span></div>' +
+                '<div class="home-mock-item">' + R.icon('heart-handshake') + '<span>Daily reports and moments for families</span></div>' +
               '</div>' +
             '</div>' +
-            '<div class="home-float-chip float-y" data-parallax="1.6" style="top:-30px;left:14%" aria-hidden="true"><span class="home-float-chip-ico">' + R.icon('camera') + '</span><span><span class="strong">Moment captured</span><span class="muted small">Amara · 2 min ago</span></span></div>' +
-            '<div class="home-float-chip float-y-slow" data-parallax="-1.4" style="bottom:-30px;right:12%" aria-hidden="true"><span class="home-float-chip-ico">' + R.icon('user-check') + '</span><span><span class="strong">Register marked</span><span class="muted small">19 of 22 present</span></span></div>' +
           '</div>' +
-        '</section>' +
-        '<div class="home-marquee" aria-hidden="true"><div class="home-marquee-track">' +
-          ['Interactive quick checks','Official NCF lesson plans','Live whiteboards','Custody-aware gate','Daily family reports','Admissions &amp; enrolment','Attendance &amp; registers','Staff &amp; leave','POPIA-ready data','Offline-capable PWA'].map(function (item) { return '<span class="home-marquee-item">' + R.icon('check-circle-2') + R.esc(item) + '</span>'; }).join('') +
-          ['Interactive quick checks','Official NCF lesson plans','Live whiteboards','Custody-aware gate','Daily family reports','Admissions &amp; enrolment','Attendance &amp; registers','Staff &amp; leave','POPIA-ready data','Offline-capable PWA'].map(function (item) { return '<span class="home-marquee-item">' + R.icon('check-circle-2') + R.esc(item) + '</span>'; }).join('') +
-        '</div></div>';
+        '</section>';
 
       const features = [
         ['door-open', 'Safe attendance & gate', 'One centre QR for verified check-in, check-out and collection with audited custody and collector codes.'],
@@ -1191,7 +1171,7 @@
         ['presentation', 'Whiteboards & live activities', 'Infinite canvases and interactive polls, questions and activities for engaging lessons.'],
         ['users', 'Families in the loop', 'Parent portal for updates, daily reports, moments, forms and clear communication.'],
         ['wallet', 'Admissions & operations', 'Enquiries, enrolment, staff, tasks, finance basics and reports in one place.']
-      ].map((f, i) => '<div class="card glass home-feature reveal d' + (Math.min(i + 1, 6)) + '"><div class="home-feature-icon">' + R.icon(f[0]) + '</div><h3>' + R.esc(f[1]) + '</h3><p class="muted small">' + R.esc(f[2]) + '</p></div>').join('');
+      ].map((f) => '<div class="card glass home-feature"><div class="home-feature-icon">' + R.icon(f[0]) + '</div><h3>' + R.esc(f[1]) + '</h3><p class="muted small">' + R.esc(f[2]) + '</p></div>').join('');
 
       const setupItems = [
         ['graduation-cap', '3 days staff training', 'Hands-on, practical training so your team is confident using Re-EL ECD in daily routines.'],
@@ -1213,7 +1193,7 @@
                 '<div class="home-price-tag"><span class="home-currency">R</span><span class="home-amount">700</span></div>' +
                 '<div class="muted">once-off setup fee</div>' +
                 '<div class="home-price-note">Everything included to launch your centre on Re-EL ECD</div>' +
-                '<a class="btn btn-primary btn-block btn-sheen" style="margin-top:14px" href="' + startHref + '">' + R.icon('arrow-right') + ' ' + startLabel + '</a>' +
+                '<a class="btn btn-primary btn-block" style="margin-top:14px" href="' + startHref + '">' + R.icon('arrow-right') + ' ' + startLabel + '</a>' +
               '</div>' +
             '</div>' +
             '<div class="home-setup-list">' +
@@ -1227,7 +1207,7 @@
       const cta = '' +
         '<section class="home-section home-cta card glass">' +
           '<div><h2>Ready to simplify your ECD centre?</h2><p class="muted">Start a 30-day trial, set up with the R700 launch package, and bring your team, families and teaching into one place.</p></div>' +
-          '<div class="site-actions"><a class="btn btn-primary btn-sheen" href="' + startHref + '">' + R.icon('sparkles') + ' ' + startLabel + '</a><a class="btn btn-secondary" href="#/login">Sign in</a></div>' +
+          '<div class="site-actions"><a class="btn btn-primary" href="' + startHref + '">' + R.icon('sparkles') + ' ' + startLabel + '</a><a class="btn btn-secondary" href="#/login">Sign in</a></div>' +
         '</section>';
 
       const footer = '' +

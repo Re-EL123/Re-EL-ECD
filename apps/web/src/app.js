@@ -958,9 +958,6 @@
           }
         }
         // Sample-data banner: visible, unmissable, one click to exit.
-        if (window.Reel && window.Reel.anim) {
-          window.Reel.anim.reveal(document.getElementById('view-root') || document);
-        }
         const staleBanner = document.querySelector('.sample-banner');
         if (this.page && this.page.sampleMode) {
           if (staleBanner) staleBanner.remove();
@@ -3811,11 +3808,6 @@
           }
           if (window.Alpine && window.Alpine.initTree) window.Alpine.initTree(root);
           this.renderIconsNow();
-          if (window.Reel && window.Reel.anim) {
-            window.Reel.anim.reveal(root);
-            window.Reel.anim.parallax(root);
-            window.Reel.anim.countUp(root.querySelectorAll('.site-stat-value'));
-          }
           window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
         } catch (error) {
           const homeLink = params && params.slug ? '#/site/' + encodeURIComponent(params.slug) : '#/login';
