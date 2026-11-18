@@ -631,16 +631,24 @@
      * move the deck; side cards are clickable to travel.
      */
     renderTimeline(ctx, page, timeline, nextIdx, nowMs) {
-      const done = timeline.filter((b) => b.status === 'completed').length;
+      // Completed blocks don't belong in the working timeline — they live on in
+      // Wrap up the day. Everything still on your plate (or late for it) does.
+      const deckBlocks = timeline.filter((b) => b.status !== 'completed');
+      const done = timeline.length - deckBlocks.length;
+      const hasBlocks = deckBlocks.length > 0;
+      const nextBlock = nextIdx >= 0 && timeline[nextIdx] ? timeline[nextIdx] : null;
+      const nextIdxDeck = nextBlock ? deckBlocks.findIndex((b) => b.id === nextBlock.id) : -1;
       let html = '<section class="section deck-section" aria-label="Today’s timeline">' +
         '<div class="deck-head">' +
           '<h2>Today’s timeline</h2>' +
-          '<span class="deck-summary">' + R.number(timeline.length) + ' block' + (timeline.length === 1 ? '' : 's') + (timeline.length ? ' · ' + R.number(done) + ' done' : '') + '</span>' +
+          '<span class="deck-summary">' + (hasBlocks ? (R.number(deckBlocks.length) + ' to go' + (done ? ' · ' + R.number(done) + ' done' : '')) : (done ? R.number(done) + ' done — nothing left' : 'Nothing scheduled')) + '</span>' +
           '<div class="deck-head-actions">' +
-            '<button class="btn btn-sm btn-ghost deck-recenter" type="button" data-deck-recenter title="Jump back to the block that needs you right now">' + R.icon('locate-fixed') + ' Back to now</button>' +
-            '<button class="deck-arrow" type="button" data-deck-prev aria-label="Previous block">' + R.icon('chevron-left') + '</button>' +
-            '<span class="deck-count" id="deck-count"></span>' +
-            '<button class="deck-arrow" type="button" data-deck-next aria-label="Next block">' + R.icon('chevron-right') + '</button>' +
+            (hasBlocks
+              ? '<button class="btn btn-sm btn-ghost deck-recenter" type="button" data-deck-recenter title="Jump back to the block that needs you right now">' + R.icon('locate-fixed') + ' Back to now</button>' +
+                '<button class="deck-arrow" type="button" data-deck-prev aria-label="Previous block">' + R.icon('chevron-left') + '</button>' +
+                '<span class="deck-count" id="deck-count"></span>' +
+                '<button class="deck-arrow" type="button" data-deck-next aria-label="Next block">' + R.icon('chevron-right') + '</button>'
+              : '') +
           '</div>' +
         '</div>';
       if (!timeline.length) {
@@ -649,29 +657,35 @@
         html += '</section>';
         return html;
       }
+      if (!hasBlocks) {
+        html += R.emptyState('All blocks complete', 'Everything planned for today is taught and closed out. Scroll down and wrap the day — reports, moments and evidence.',
+          '<button class="btn btn-primary" @click="scrollToTodayBlock(\'today-wrapup\')">' + R.icon('sunset') + ' Wrap up the day</button>', 'check-circle');
+        html += '</section>';
+        return html;
+      }
       const saved = Number(ctx.deckSelection);
-      const currentIdx = Number.isInteger(saved) && saved >= 0 && saved < timeline.length
+      const currentIdx = Number.isInteger(saved) && saved >= 0 && saved < deckBlocks.length
         ? saved
-        : honestCurrentIndex(timeline, nowMs);
+        : honestCurrentIndex(deckBlocks, nowMs);
       html += '<div class="deck" id="today-deck">' +
-        '<div class="deck-stage" id="deck-stage" tabindex="0" role="group" aria-roledescription="carousel" aria-label="Today’s blocks — drag, use arrow keys, or the dots below" data-current="' + currentIdx + '">';
-      timeline.forEach((b, i) => {
+        '<div class="deck-stage" id="deck-stage" tabindex="0" role="group" aria-roledescription="carousel" aria-label="Today’s remaining blocks — drag, use arrow keys, or the dots below" data-current="' + currentIdx + '">';
+      deckBlocks.forEach((b, i) => {
         const state = temporalState(b, nowMs);
         const offset = Math.max(-2, Math.min(2, i - currentIdx));
-        html += '<article class="deck-card deck-card--' + state + (state === 'missed' ? ' is-missed' : '') + '" tabindex="-1" data-offset="' + offset + '" data-index="' + i + '" role="group" aria-roledescription="slide" aria-label="Block ' + (i + 1) + ' of ' + timeline.length + '"' + (offset === 0 ? '' : ' aria-hidden="true"') + '>' +
-          '<div class="deck-scroll">' + this.renderBlock(page, b, { state, isNext: i === nextIdx }) + '</div>' +
+        html += '<article class="deck-card deck-card--' + state + (state === 'missed' ? ' is-missed' : '') + '" tabindex="-1" data-offset="' + offset + '" data-index="' + i + '" role="group" aria-roledescription="slide" aria-label="Block ' + (i + 1) + ' of ' + deckBlocks.length + '"' + (offset === 0 ? '' : ' aria-hidden="true"') + '>' +
+          '<div class="deck-scroll">' + this.renderBlock(page, b, { state, isNext: i === nextIdxDeck }) + '</div>' +
         '</article>';
       });
       html += '</div>' +
         '<div class="deck-dots" role="group" aria-label="Jump to a block">';
-      timeline.forEach((b, i) => {
+      deckBlocks.forEach((b, i) => {
         const state = temporalState(b, nowMs);
         html += '<button type="button" class="deck-dot' + (i === currentIdx ? ' is-active' : '') + '" data-deck-dot="' + i + '" data-tone="' + state + '" aria-label="Block ' + (i + 1) + ': ' + esc(b.title) + ' — ' + esc(deckStateLabel(state)) + '" aria-current="' + (i === currentIdx ? 'true' : 'false') + '" title="' + esc(time(b.startsAt)) + ' — ' + esc(b.title) + ' · ' + esc(deckStateLabel(state)) + '"></button>';
       });
       html += '</div></div>' +
         // Print view: one honest linear list, no 3D theatre.
-        '<ol class="deck-print" aria-label="Today’s blocks (print)">' +
-          timeline.map((b) => {
+        '<ol class="deck-print" aria-label="Today’s remaining blocks (print)">' +
+          deckBlocks.map((b) => {
             const state = temporalState(b, nowMs);
             return '<li><strong>' + esc(time(b.startsAt)) + (b.endsAt ? ' – ' + esc(time(b.endsAt)) : '') + '</strong> — ' + esc(b.title) + ' (' + esc(deckStateLabel(state)) + ')' + (b.classroom ? ' · ' + esc(b.classroom) : '') + '</li>';
           }).join('') + '</ol>';
