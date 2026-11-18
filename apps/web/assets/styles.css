@@ -1356,7 +1356,11 @@ img, video, canvas, svg { max-width: 100%; }
 }
 
 @media (max-width: 680px) {
-  html { -webkit-text-size-adjust: 100%; }
+  html {
+    -webkit-text-size-adjust: 100%;
+    -moz-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
   .btn { min-height: 40px; }
   .btn-sm { min-height: 34px; }
   .input, .select, .textarea { font-size: 16px; min-height: 42px; }
