@@ -73,7 +73,9 @@
       return R.pageHead('Assessments', 'Observe, record and understand each child\'s development.',
         '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'period\')">' + R.icon('calendar-plus') + ' New period</button>' +
         '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'observation\')">' + R.icon('plus') + ' Record observation</button>' +
-        R.exportButtons('/exports/observations')) +
+        R.exportButtons('/exports/observations') +
+        R.refreshButton()) +
+        R.teachingNav(ctx, 'assessments') +
         '<div class="grid grid-4 section">' +
         R.statCard({ label: 'Coverage', value: R.percent(o.completionRate), icon: 'target', foot: R.number(o.learnersWithObservations) + ' of ' + R.number(o.learners) + ' children' }) +
         R.statCard({ label: 'Observations', value: R.number(observations.length), icon: 'eye', tone: 'sky', foot: R.number(o.published) + ' published' }) +

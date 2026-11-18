@@ -232,7 +232,13 @@
     return years;
   }
 
-  function today() { return new Date().toISOString().slice(0, 10); }
+  // Local wall-clock date (org timezone for ZA centres) — never UTC, which
+  // flips to yesterday between 00:00 and 02:00 SAST.
+  function today() {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  }
 
   function statusTone(status) {
     const value = String(status || '').toLowerCase();
@@ -276,6 +282,40 @@
     return '<div class="page-head"><div><h1>' + esc(title) + '</h1>' +
       (subtitle ? '<div class="page-sub">' + subtitle + '</div>' : '') + '</div>' +
       (actions ? '<div class="page-actions">' + actions + '</div>' : '') + '</div>';
+  }
+
+  /**
+   * The seven teaching screens, one shared sub-navigation. Rendered under the
+   * page header on every Teaching view so switching between Today, Calendar,
+   * Whiteboards, Modules, Curriculum, Activities and Assessments never goes
+   * through the sidebar — the teaching day flows in one tap.
+   */
+  const TEACHING_NAV = [
+    { key: 'today', path: '/app/today', label: 'Today', icon: 'sun', permission: ['reports.read.daycare', 'tasks.read.own', 'attendance.read.assigned', 'curriculum.create.daycare', 'assessments.create.assigned', 'attendance.record.assigned', 'attendance.record.own', 'staff_attendance.record.assigned', 'staff_attendance.record.own'] },
+    { key: 'calendar', path: '/app/calendar', label: 'Calendar', icon: 'calendar-days', permission: 'curriculum.read.daycare' },
+    { key: 'whiteboards', path: '/app/whiteboards', label: 'Whiteboards', icon: 'presentation', permission: 'curriculum.read.daycare' },
+    { key: 'modules', path: '/app/modules', label: 'Modules', icon: 'blocks', permission: 'curriculum.read.daycare' },
+    { key: 'curriculum', path: '/app/curriculum', label: 'Curriculum', icon: 'book-open', permission: 'curriculum.read.daycare' },
+    { key: 'activities', path: '/app/activities', label: 'Activities', icon: 'puzzle', permission: 'curriculum.read.daycare' },
+    { key: 'assessments', path: '/app/assessments', label: 'Assessments', icon: 'clipboard-list', permission: ['assessments.read.daycare', 'assessments.read.assigned'] }
+  ];
+
+  function teachingNav(ctx, active) {
+    const items = TEACHING_NAV.filter((item) => !ctx || ctx.has(item.permission));
+    if (items.length < 2) return '';
+    return '<nav class="teaching-nav" aria-label="Teaching">' + items.map((item) => {
+      const isActive = item.key === active;
+      return '<a class="teaching-tab' + (isActive ? ' is-active' : '') + '" href="#' + item.path + '"' +
+        (isActive ? ' aria-current="page"' : '') + '>' + icon(item.icon) + '<span>' + esc(item.label) + '</span></a>';
+    }).join('') + '</nav>';
+  }
+
+  /**
+   * The standard secondary "Refresh" action for page headers — reloads the
+   * current view with a spinner-free full navigation.
+   */
+  function refreshButton() {
+    return '<button class="btn btn-secondary btn-sm" @click="navigate(true)" title="Reload this screen">' + icon('refresh-cw') + ' Refresh</button>';
   }
 
   function card(title, body, actions, opts) {
@@ -999,6 +1039,8 @@
   Reel.statCard = statCard;
   Reel.emptyState = emptyState;
   Reel.pageHead = pageHead;
+  Reel.teachingNav = teachingNav;
+  Reel.refreshButton = refreshButton;
   Reel.card = card;
   Reel.table = table;
   Reel.bulkBar = bulkBar;

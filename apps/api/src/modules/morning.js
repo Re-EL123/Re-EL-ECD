@@ -8,7 +8,7 @@
  * evidence/wrap-up signals needed to close the loop.
  */
 
-const { assignedClassroomIds, has } = require('./helpers');
+const { assignedClassroomIds, has, orgDayBounds } = require('./helpers');
 
 /**
  * Fail closed. A staff member with no classroom assignments can only see
@@ -46,12 +46,9 @@ function emptyMorning(today) {
   };
 }
 
-function dayStartIso(day) {
-  return day + 'T00:00:00Z';
-}
-
 async function buildMorning(ctx, opts) {
-  const today = opts && opts.today ? opts.today : new Date().toISOString().slice(0, 10);
+  const bounds = (opts && opts.bounds) || orgDayBounds(ctx);
+  const today = bounds.today;
   const assigned = await assignedClassroomIds(ctx);
   if (!assigned.length && !wideRead(ctx)) return emptyMorning(today);
   const scoped = assigned.length > 0;
@@ -100,10 +97,10 @@ async function buildMorning(ctx, opts) {
            ON o.learner_id = l.id AND o.assessment_status IN ('published','amended')
          WHERE l.organisation_id = $1 AND l.id = ANY($2::uuid[])
          GROUP BY l.id, l.first_name, l.last_name, l.classroom_id, c.name, l.profile_image_url
-         HAVING MAX(o.observation_date) IS NULL OR MAX(o.observation_date) < CURRENT_DATE - interval '30 days'
+         HAVING MAX(o.observation_date) IS NULL OR MAX(o.observation_date) < $3::date - interval '30 days'
          ORDER BY MAX(o.observation_date) ASC NULLS FIRST, l.first_name
          LIMIT 4`,
-        [ctx.organisationId, ids]
+        [ctx.organisationId, ids, today]
       )
     : [];
 
@@ -116,16 +113,16 @@ async function buildMorning(ctx, opts) {
   const reportsPendingSignoff = ids.length
     ? await ctx.db.one(
         `SELECT COUNT(*)::int AS count FROM daily_reports
-         WHERE organisation_id = $1 AND report_date >= CURRENT_DATE - interval '2 days'
+         WHERE organisation_id = $1 AND report_date >= $3::date - interval '2 days'
            AND shared_with_guardians = false AND learner_id = ANY($2::uuid[])`,
-        [ctx.organisationId, ids]
+        [ctx.organisationId, ids, today]
       )
     : { count: 0 };
   const tasksDueToday = await ctx.db.one(
     `SELECT COUNT(*)::int AS count FROM tasks
-     WHERE organisation_id = $1 AND assigned_to = $2 AND due_at = CURRENT_DATE
+     WHERE organisation_id = $1 AND assigned_to = $2 AND due_at = $3::date
        AND status IN ('open','in_progress','blocked')`,
-    [ctx.organisationId, ctx.user.id]
+    [ctx.organisationId, ctx.user.id, today]
   );
 
   const children = learnerRows.map((row) => ({
@@ -143,9 +140,10 @@ async function buildMorning(ctx, opts) {
          FROM learner_observations
          WHERE organisation_id = $1 AND learner_id = ANY($2::uuid[])
            AND assessment_status IN ('published','amended')
-           AND date_trunc('week', observation_date) = date_trunc('week', CURRENT_DATE)
+           AND observation_date >= date_trunc('week', $3::date)::date
+           AND observation_date < (date_trunc('week', $3::date) + interval '7 days')::date
          GROUP BY learner_id`,
-        [ctx.organisationId, ids]
+        [ctx.organisationId, ids, today]
       )
     : [];
   const momentMap = new Map(momentsThisWeek.map((row) => [row.learner_id, row.count]));
@@ -282,16 +280,18 @@ async function buildMorning(ctx, opts) {
         `SELECT COUNT(DISTINCT learner_id)::int AS count FROM learner_observations
          WHERE organisation_id = $1 AND learner_id = ANY($2::uuid[])
            AND assessment_status IN ('published','amended')
-           AND date_trunc('month', observation_date) = date_trunc('month', CURRENT_DATE)`,
-        [ctx.organisationId, ids]
+           AND observation_date >= date_trunc('month', $3::date)::date
+           AND observation_date < (date_trunc('month', $3::date) + interval '1 month')::date`,
+        [ctx.organisationId, ids, today]
       )
     : { count: 0 };
   const reportsThisWeek = ids.length
     ? await ctx.db.one(
         `SELECT COUNT(DISTINCT learner_id)::int AS count FROM daily_reports
          WHERE organisation_id = $1 AND learner_id = ANY($2::uuid[])
-           AND report_date >= date_trunc('week', CURRENT_DATE)`,
-        [ctx.organisationId, ids]
+           AND report_date >= date_trunc('week', $3::date)::date
+           AND report_date < (date_trunc('week', $3::date) + interval '7 days')::date`,
+        [ctx.organisationId, ids, today]
       )
     : { count: 0 };
 
@@ -368,8 +368,11 @@ async function buildMorning(ctx, opts) {
 }
 
 async function buildToday(ctx) {
-  const today = new Date().toISOString().slice(0, 10);
-  const morning = await buildMorning(ctx, { today });
+  const bounds = orgDayBounds(ctx);
+  const today = bounds.today;
+  const startIso = new Date(bounds.startUtc).toISOString();
+  const endIso = new Date(bounds.endUtc).toISOString();
+  const morning = await buildMorning(ctx, { today, bounds });
   if (morning.scopedEmpty) return morning;
   const ids = morning._ids || [];
   const presence = morning._presence || [];
@@ -388,7 +391,7 @@ async function buildToday(ctx) {
          LEFT JOIN classrooms c ON c.id = sa.classroom_id
          LEFT JOIN users u ON u.id = sa.assigned_staff_id
          LEFT JOIN lesson_plans lp ON lp.id = sa.lesson_plan_id
-         WHERE sa.organisation_id = $1 AND sa.starts_at >= $2::timestamptz AND sa.starts_at < ($3::date + 1)
+         WHERE sa.organisation_id = $1 AND sa.starts_at >= $2::timestamptz AND sa.starts_at < $3::timestamptz
            AND (sa.classroom_id IS NULL OR sa.classroom_id = ANY($4::uuid[]) OR sa.assigned_staff_id = $5::uuid)
          ORDER BY sa.starts_at`
       : `SELECT sa.*, c.name AS classroom_name, u.display_name AS staff_name, lp.title AS lesson_plan_title
@@ -396,9 +399,9 @@ async function buildToday(ctx) {
          LEFT JOIN classrooms c ON c.id = sa.classroom_id
          LEFT JOIN users u ON u.id = sa.assigned_staff_id
          LEFT JOIN lesson_plans lp ON lp.id = sa.lesson_plan_id
-         WHERE sa.organisation_id = $1 AND sa.starts_at >= $2::timestamptz AND sa.starts_at < ($3::date + 1)
+         WHERE sa.organisation_id = $1 AND sa.starts_at >= $2::timestamptz AND sa.starts_at < $3::timestamptz
          ORDER BY sa.starts_at`,
-    restrictEvents ? [ctx.organisationId, dayStartIso(today), today, assignedForEvents, ctx.user.id] : [ctx.organisationId, dayStartIso(today), today]
+    restrictEvents ? [ctx.organisationId, startIso, endIso, assignedForEvents, ctx.user.id] : [ctx.organisationId, startIso, endIso]
   );
 
   const planIds = [...new Set(events.map((e) => e.lesson_plan_id).filter(Boolean))];
@@ -464,9 +467,9 @@ async function buildToday(ctx) {
   const momentsToday = presentIds.size
     ? await ctx.db.many(
         `SELECT o.learner_id, COUNT(*)::int AS count FROM learner_observations o
-         WHERE o.organisation_id = $1 AND o.observation_date = CURRENT_DATE AND o.learner_id = ANY($2::uuid[])
+         WHERE o.organisation_id = $1 AND o.observation_date = $2::date AND o.learner_id = ANY($3::uuid[])
          GROUP BY o.learner_id`,
-        [ctx.organisationId, [...presentIds]]
+        [ctx.organisationId, today, [...presentIds]]
       )
     : [];
   const momentsByChild = new Map(momentsToday.map((m) => [m.learner_id, m.count]));

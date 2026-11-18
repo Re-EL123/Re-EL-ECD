@@ -60,8 +60,10 @@
       const newButton = (canCreate
         ? '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'module\')">' + R.icon('plus') + ' New module</button>'
         : '') + R.exportButtons('/exports/modules');
+      const headActions = newButton + R.refreshButton();
       const emptyNote = modules.length && !shown.length ? '<p class="muted small" style="margin:18px 0;text-align:center">Nothing matches “' + esc(query || theme) + '”. <a href="#/app/modules">Clear filters</a></p>' : '';
-      return R.pageHead('Learning modules', 'Group lesson plans into a themed journey — everything the children will live, in the order they will live it.', newButton) +
+      return R.pageHead('Learning modules', 'Group lesson plans into a themed journey — everything the children will live, in the order they will live it.', headActions) +
+        R.teachingNav(ctx, 'modules') +
         '<div class="grid grid-3 section">' +
         R.statCard({ label: 'Modules', value: R.number(modules.length), icon: 'blocks', foot: R.number(published) + ' published' }) +
         R.statCard({ label: 'Plans inside', value: R.number(plans), icon: 'notebook-pen', tone: 'sky', foot: 'Across all modules' }) +
@@ -175,7 +177,8 @@
           (canCreate ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'moduleEdit\')">' + R.icon('pencil') + ' Edit</button>' : '') +
           publishAction +
           (canCreate ? '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'plan\')">' + R.icon('plus') + ' New plan in module</button>' : '');
-      return R.pageHead(module.title, R.esc(module.description || 'A themed sequence of lesson plans.'), headActions) +
+      return R.pageHead(module.title, R.esc(module.description || 'A themed sequence of lesson plans.'), headActions + R.refreshButton()) +
+        R.teachingNav(ctx, 'modules') +
         '<div class="grid grid-4 section">' +
         R.statCard({ label: 'Status', value: isOfficialRow(module) ? 'Official' : R.titleCase(module.status || 'draft'), icon: 'info', tone: module.status === 'published' ? 'green' : 'sun' }) +
         R.statCard({ label: 'Duration', value: module.duration_weeks ? R.number(module.duration_weeks) + ' weeks' : 'Open-ended', icon: 'hourglass', tone: 'sky' }) +

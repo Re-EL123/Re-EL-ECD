@@ -106,6 +106,37 @@ function roundMoney(value) {
   return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 }
 
+/**
+ * “Today” in the organisation's timezone, plus the UTC instants bounding the
+ * local day. The app never trusts the server's clock TZ — Vercel runs UTC
+ * while South African users are on SAST, two hours apart — so every “today”
+ * window is derived from the org's own timezone via Intl.
+ */
+function tzOffsetMs(date, timeZone) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+  }).formatToParts(date);
+  const map = {};
+  for (const part of parts) if (part.type !== 'literal') map[part.type] = part.value;
+  const asUtc = Date.UTC(+map.year, +map.month - 1, +map.day, (+map.hour) % 24, +map.minute, +map.second);
+  return asUtc - Math.floor(date.getTime() / 1000) * 1000;
+}
+
+function orgDayBounds(ctx) {
+  const tz = (ctx.organisation && ctx.organisation.timezone) || 'Africa/Johannesburg';
+  const now = new Date();
+  const dateParts = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(now).split('-').map(Number);
+  const [year, month, day] = dateParts;
+  const today = year + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+  // Offset at local noon that day (SAST has no DST so it equals the day's offset).
+  const offset = tzOffsetMs(new Date(Date.UTC(year, month - 1, day, 12, 0, 0)), tz);
+  const startUtc = Date.UTC(year, month - 1, day, 0, 0, 0) - offset;
+  const endUtc = startUtc + 24 * 60 * 60 * 1000;
+  return { timeZone: tz, today, startUtc, endUtc };
+}
+
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -124,6 +155,7 @@ function iso(value) {
 
 module.exports = {
   assignedClassroomIds,
+  orgDayBounds,
   guardianLearnerIds,
   getLearner,
   assertPermission,

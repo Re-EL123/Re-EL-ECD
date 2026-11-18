@@ -214,15 +214,17 @@
         ? (next ? ('Up next: ' + esc(next.title) + ' at ' + esc(time(next.startsAt)) + '.') : 'All planned blocks are complete — nice work.')
         : (page.canDashboard ? 'Your centre at a glance for ' + R.date(page.date) + '.' : 'Nothing scheduled on the calendar yet. Schedule your day and it will appear here.');
 
-      const timeLine = '<span class="today-time-badge">' + R.icon(tod.icon) + ' ' + esc(tod.label) + ' · ' + R.time(now.toISOString()) + '</span>';
+      const timeLine = '<span class="today-time-badge">' + R.icon(tod.icon) + ' ' + esc(tod.label) + ' · ' + R.time(now.toISOString()) + '</span>' +
+        '<span class="today-live" id="today-live" data-since="' + Date.now() + '" title="Today refreshes itself automatically — the blocks, register, reports and suggestions below stay current."><span class="today-live-dot"></span>Live</span>';
 
       let html = '<div class="today-wrap" id="today-root">';
       html += R.pageHead(tod.greeting + ', ' + esc(firstName), headerSub + ' ' + esc(tod.tone) + '<div style="margin-top:6px">' + timeLine + ' · ' + R.date(page.date) + '</div>',
         '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'quickMoment\')">' + R.icon('camera') + ' Quick moment</button>' +
         '<button class="btn btn-secondary btn-sm" onclick="window.print()">' + R.icon('printer') + ' Prep list</button>' +
         (page.canDashboard && ctx.has('learners.create.daycare') ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'learner\')">' + R.icon('user-plus') + ' Add learner</button>' : '') +
-        '<button class="btn btn-primary btn-sm" @click="navigate(true)">' + R.icon('refresh-cw') + ' Refresh</button>'
+        R.refreshButton()
       );
+      html += R.teachingNav(ctx, 'today');
 
       // Manager dashboard (alerts, KPIs, charts, lists) — merged from Overview
       html += this.renderDayScene(ctx, page);

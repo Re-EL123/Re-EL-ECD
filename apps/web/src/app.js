@@ -940,13 +940,14 @@
         }
       },
 
-      afterRender() {
+      afterRender(opts) {
+        const silent = Boolean(opts && opts.silent);
         this.renderIconsNow();
         this.mountCharts();
         if (this.route && this.route.view === 'whiteboardDetail' && window.Reel && window.Reel.views && window.Reel.views._initWhiteboard) {
           try { window.Reel.views._initWhiteboard(this, this.page); } catch (e) { console.warn('whiteboard init failed', e); }
         }
-        if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        if (!silent && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
           const root = document.getElementById('view-root');
           if (root && window.Reel && window.Reel.anim) {
             // Window transition: the new route zooms into place, then widgets

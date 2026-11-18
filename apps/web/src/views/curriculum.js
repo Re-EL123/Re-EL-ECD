@@ -47,7 +47,9 @@
       return R.pageHead('Curriculum', 'Frameworks, learning objectives, lesson plans and academic periods.',
         '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'framework\')">' + R.icon('book-plus') + ' New framework</button>' +
         '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'plan\')">' + R.icon('plus') + ' New lesson plan</button>' +
-        R.exportButtons('/exports/lesson-plans')) +
+        R.exportButtons('/exports/lesson-plans') +
+        R.refreshButton()) +
+        R.teachingNav(ctx, 'curriculum') +
         '<div class="grid grid-4 section">' +
         R.statCard({ label: 'Lesson plans', value: R.number(o.plans), icon: 'notebook-pen', foot: R.number(o.published_plans) + ' published' }) +
         R.statCard({ label: 'Activities', value: R.number(o.activities), icon: 'puzzle', tone: 'sky', foot: R.number(o.completed_activities) + ' completed' }) +
@@ -401,7 +403,9 @@
       const types = Array.from(new Set(all.map((a) => a.activity_type).filter(Boolean))).sort();
       const ages = Array.from(new Set(all.map((a) => a.age_group).filter(Boolean))).sort();
       return R.pageHead('Activities', 'The experiences that fill the day — from sensory play to early literacy.',
-        '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'activity\')">' + R.icon('plus') + ' New activity</button>' + R.exportButtons('/exports/activities')) +
+        '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'activity\')">' + R.icon('plus') + ' New activity</button>' + R.exportButtons('/exports/activities') +
+        R.refreshButton()) +
+        R.teachingNav(ctx, 'activities') +
         R.filterBar('<input class="input" type="search" placeholder="Search activities…" value="' + R.attr(query) + '" @change="setFilter(\'q\',$event.target.value)" style="max-width:230px" aria-label="Search activities">' +
           R.selectFilter(ctx, 'type', types.map((t) => ({ value: t, label: R.titleCase(t) })), 'All domains') +
           R.selectFilter(ctx, 'age', ages.map((t) => ({ value: t, label: t })), 'All ages') +
@@ -679,7 +683,9 @@
       return R.pageHead('Learning calendar', 'Plan, run and track each day — schedule activities, open guides and capture participation.',
         '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'event\')">' + R.icon('calendar-plus') + ' Schedule activity</button>' +
         '<button class="btn btn-secondary btn-sm" onclick="window.print()">' + R.icon('printer') + ' Print</button>' +
-        R.exportButtons('/exports/activity-participation')) +
+        R.exportButtons('/exports/activity-participation') +
+        R.refreshButton()) +
+        R.teachingNav(ctx, 'calendar') +
         this.renderToolbar(ctx, page, view, from, to, rows, allRows) +
         body +
         drawer;

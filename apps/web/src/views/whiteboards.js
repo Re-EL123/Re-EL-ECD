@@ -386,7 +386,8 @@
       let html = R.pageHead('Whiteboards', 'Infinite digital canvases for teaching, annotation, math/science sketching and collaborative problem-solving.',
         (canEdit ? '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'whiteboard\')">' + R.icon('plus') + ' New whiteboard</button>' : '') +
         R.exportButtons('/exports/whiteboards') +
-        '<button class="btn btn-secondary btn-sm" @click="navigate(true)">' + R.icon('refresh-cw') + ' Refresh</button>');
+        R.refreshButton());
+      html += R.teachingNav(ctx, 'whiteboards');
 
       html += '<div class="grid grid-3 section">' +
         R.statCard({ label: 'Boards', value: R.number(boards.length), icon: 'presentation', foot: 'In your workspace' }) +
@@ -518,6 +519,7 @@
         (b.lessonPlanTitle ? '<a class="btn btn-sm btn-ghost" href="#/app/curriculum?tab=plans" title="This board was created from the lesson guide — the lesson guide will reopen it automatically.">' + R.icon('book-open') + ' ' + R.esc(R.truncate(b.lessonPlanTitle, 44)) + '</a>' : '') +
         (canEdit ? '<button class="btn btn-secondary btn-sm" id="wb-save-btn">' + R.icon('save') + ' Save</button>' : '') +
         '<span class="badge badge-muted" id="wb-status">Ready</span>');
+      html += R.teachingNav(ctx, 'whiteboards');
 
       html += '<div class="card glass wb-toolbar-card"><div class="wb-toolbar" id="wb-toolbar">' +
         '<div class="wb-tools">' +
