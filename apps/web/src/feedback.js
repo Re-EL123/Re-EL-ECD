@@ -181,7 +181,7 @@
     const threshold = opts.threshold || 72;
     el.addEventListener('pointerdown', (event) => {
       if (event.pointerType === 'mouse' && event.button !== 0) return;
-      if (event.target.closest('button, a, input, select, textarea, [role="button"]')) return;
+      if (event.target !== el && event.target.closest && event.target.closest('button, a, input, select, textarea')) return;
       active = true;
       startX = event.clientX;
       startY = event.clientY;
