@@ -1109,7 +1109,7 @@
     openModal(ctx, name, id) {
       const page = ctx.page || {};
       const t = page.today || {};
-      if (name === 'completeBlock' || name === 'blockObserve' || name === 'blockObserveFor') {
+      if (name === 'completeBlock' || name === 'blockObserve' || name === 'blockObserveFor' || name === 'blockObserveMany') {
         const parts = name === 'blockObserveFor' ? String(id || '').split(':') : [];
         const blockId = name === 'blockObserveFor' ? parts[0] : id;
         const presetLearnerId = name === 'blockObserveFor' ? parts[1] : undefined;
