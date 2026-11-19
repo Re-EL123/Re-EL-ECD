@@ -1028,7 +1028,7 @@
         const selected = Array.isArray(ids) ? ids : (obj ? [obj.id] : []);
         if (inspectorBoard) inspectorBoard.hidden = selected.length > 0;
         if (inspectorObject) inspectorObject.hidden = selected.length === 0;
-        if (!selected.length) return;
+        if (!selected.length || !engine) return;
         const first = engine.getSelected() || {};
         const colour = inspectorObject.querySelector('#wb-obj-color');
         const fill = inspectorObject.querySelector('#wb-obj-fill');
