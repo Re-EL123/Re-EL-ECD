@@ -1727,6 +1727,11 @@
         if (details) details.hidden = !details.hidden;
       },
 
+      toggleTodayCompleted() {
+        const panel = document.querySelector('.deck-section .deck-completed');
+        if (panel) panel.hidden = !panel.hidden;
+      },
+
       printDayPack() {
         const page = this.page || {};
         const t = page.today || {};

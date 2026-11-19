@@ -3379,7 +3379,10 @@ a:focus-visible, input:focus-visible, select:focus-visible {
 .deck-empty-top { display: flex; gap: 12px; align-items: center; }
 .deck-empty-top > svg { width: 30px; height: 30px; color: var(--reel-green-700); }
 .deck-empty-top .strong { font-size: 1.05rem; }
-.deck-details[hidden] { display: none !important; }
+.deck-details[hidden], .deck-completed[hidden] { display: none !important; }
+.deck-details .deck-print, .deck-completed .deck-print { display: block; padding-left: 20px; margin: 8px 0 0; }
+.deck-completed { margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); }
+.deck-completed .deck-print li { margin-bottom: 8px; }
 .deck-swipe-hint { display: none; justify-content: center; gap: 7px; align-items: center; margin-top: 10px; color: var(--text-muted); font-size: .78rem; }
 .deck-swipe-hint svg { width: 14px; height: 14px; }
 

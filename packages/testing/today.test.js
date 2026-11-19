@@ -100,6 +100,15 @@ test('suggestions can be completed or snoozed for the session', () => {
   assert.ok(app.includes('todaySuggestDone(key)') && app.includes('todaySuggestSnooze(key)'));
 });
 
+test('calendar events backfill the timeline and completed blocks are viewable', () => {
+  assert.ok(view.includes('calendarEventToBlock'), 'calendar rows are mapped to timeline blocks');
+  assert.ok(view.includes('!have.has(e.id)'), 'only missing events are added, no duplicates');
+  assert.ok(view.includes('toggleTodayCompleted()'), 'normal deck has a completed toggle');
+  assert.ok(app.includes('toggleTodayCompleted()'), 'completed toggle handler exists');
+  assert.ok(view.includes('Completed earlier today'), 'completed list has an honest heading');
+  assert.match(css, /\.deck-details \.deck-print, \.deck-completed \.deck-print \{ display: block/, 'expanded lists are actually visible');
+});
+
 test('the all-complete deck is compact and mobile has a swipe hint', () => {
   assert.ok(view.includes('today-deck-empty'), 'compact summary replaces the giant empty state');
   assert.ok(view.includes('moments captured'), 'evidence in the summary');

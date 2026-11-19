@@ -101,6 +101,26 @@
       '<div class="today-collapse-body" x-show="open" x-cloak>' + inner + '</div></div>';
   }
 
+  /** Calendar rows carry the same event data in a different shape. Use them as
+   *  a fallback when /staff/today returns no timeline (scoping, permissions or
+   *  a role without teaching perms) so scheduled work is never invisible. */
+  function calendarEventToBlock(e) {
+    return {
+      id: e.id, title: e.title, startsAt: e.starts_at, endsAt: e.ends_at,
+      status: e.status || 'scheduled', classroomId: e.classroom_id, classroom: e.classroom_name,
+      staffName: e.staff_name, notes: e.notes,
+      lessonPlanId: e.lesson_plan_id, lessonPlanTitle: e.lesson_plan_title, activityId: e.activity_id,
+      activity: e.activity_id ? {
+        id: e.activity_id, title: e.activity_title, description: e.activity_description,
+        materials: e.activity_materials, safetyNotes: e.activity_safety_notes,
+        type: e.activity_type, durationMinutes: e.activity_duration_minutes
+      } : null,
+      module: e.lesson_plan_module_id ? { id: e.lesson_plan_module_id, title: e.module_title } : null,
+      momentsCaptured: { captured: Number(e.participation_count) || 0, total: 0 },
+      participation: []
+    };
+  }
+
   function upcomingWhen(event, page) {
     const start = new Date(event.starts_at);
     const today = new Date((page && page.nowIso) || Date.now());
@@ -169,12 +189,24 @@
       // A billing lock must stop the page, not degrade it into empty numbers.
       if (billingLockError) throw billingLockError;
       const [todayRes, dashRes, tasksRes, notifRes, calRes, domainsRes, settingsRes] = settled;
-      const today = todayRes.status === 'fulfilled' && todayRes.value ? todayRes.value.data : null;
+      let today = todayRes.status === 'fulfilled' && todayRes.value ? todayRes.value.data : null;
       const dashboard = dashRes.status === 'fulfilled' && dashRes.value ? dashRes.value.data : null;
       const tasks = tasksRes.status === 'fulfilled' && tasksRes.value ? tasksRes.value.data : [];
       const notifications = notifRes.status === 'fulfilled' && notifRes.value ? notifRes.value.data : [];
       const calendarToday = calRes.status === 'fulfilled' && calRes.value ? calRes.value.data : [];
       const domains = domainsRes.status === 'fulfilled' && domainsRes.value ? domainsRes.value.data : [];
+      // Today and the calendar can disagree when a role lacks teaching perms or
+      // event scoping hides a block. Anything the calendar shows for today is
+      // legitimate for this teacher, so fold missing rows into the timeline.
+      if (today && Array.isArray(calendarToday) && calendarToday.length) {
+        const have = new Set((today.timeline || []).map((b) => b.id));
+        const extras = calendarToday.filter((e) => e && e.id && !have.has(e.id)).map(calendarEventToBlock);
+        if (extras.length) {
+          today = Object.assign({}, today, {
+            timeline: (today.timeline || []).concat(extras).sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt))
+          });
+        }
+      }
       const orgSettings = settingsRes.status === 'fulfilled' && settingsRes.value ? settingsRes.value.data : {};
       // Day-scene weather: never blocks Today — races a short timeout so a slow
       // network still renders instantly, and a failure simply omits the widget.
@@ -728,6 +760,7 @@
           '<div class="deck-head-actions">' +
             (hasBlocks
               ? '<button class="btn btn-sm btn-ghost deck-recenter" type="button" data-deck-recenter title="Jump back to the block that needs you right now">' + R.icon('locate-fixed') + ' Back to now</button>' +
+                (done ? '<button class="btn btn-sm btn-ghost" type="button" @click="toggleTodayCompleted()">' + R.icon('check-circle') + ' Completed (' + R.number(done) + ')</button>' : '') +
                 '<button class="deck-arrow" type="button" data-deck-prev aria-label="Previous block">' + R.icon('chevron-left') + '</button>' +
                 '<span class="deck-count" id="deck-count"></span>' +
                 '<button class="deck-arrow" type="button" data-deck-next aria-label="Next block">' + R.icon('chevron-right') + '</button>'
@@ -782,7 +815,13 @@
           deckBlocks.map((b) => {
             const state = temporalState(b, nowMs);
             return '<li><strong>' + esc(time(b.startsAt)) + (b.endsAt ? ' – ' + esc(time(b.endsAt)) : '') + '</strong> — ' + esc(b.title) + ' (' + esc(deckStateLabel(state)) + ')' + (b.classroom ? ' · ' + esc(b.classroom) : '') + '</li>';
-          }).join('') + '</ol>';
+          }).join('') + '</ol>' +
+        (done
+          ? '<div class="deck-completed" hidden><div class="muted small">Completed earlier today</div><ol class="deck-print">' +
+            timeline.filter((b) => b.status === 'completed').map((b) =>
+              '<li><strong>' + esc(time(b.startsAt)) + '</strong> — ' + esc(b.title) + ' (Completed)' + (b.classroom ? ' · ' + esc(b.classroom) : '') + '</li>').join('') +
+            '</ol></div>'
+          : '');
       html += '</section>';
       return html;
     },
