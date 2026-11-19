@@ -989,6 +989,11 @@
         this.syncTodayLive();
         this.initTodayDeck();
         this.installFeedbackSwipes();
+        // Liquid-glass scroll edges: fade the edges of real scrollers while
+        // leaving short content untouched (dataset guard avoids rebinding).
+        if (window.Reel && Reel.anim && Reel.anim.setupScrollEdges) {
+          Reel.anim.setupScrollEdges(document);
+        }
         if (window.Reel && Reel.feedback && this.route && this.route.path === '/app/today') {
           setTimeout(() => Reel.feedback.maybeRate(), 900);
         }
@@ -1007,7 +1012,7 @@
               { label: 'Duplicate', icon: 'copy', run: () => this.openNamedModal('calDuplicate', id) },
               { label: 'Delete', icon: 'trash-2', tone: 'danger', run: () => this.openNamedModal('calDelete', id) }
             ]
-          }) });
+          }, row) });
         });
         [...document.querySelectorAll('.today-block[data-block]')].forEach((card) => {
           const id = card.getAttribute('data-block');
@@ -1020,7 +1025,7 @@
             if (block.status === 'scheduled') actions.push({ label: 'Start block', icon: 'play', run: () => this.act('POST', '/curriculum/calendar/events/' + id + '/start', {}, { successMessage: 'Block started — enjoy teaching.' }) });
             if (block.status === 'in_progress') actions.push({ label: 'Complete block', icon: 'check-circle', run: () => this.openNamedModal('completeBlock', id) });
             actions.push({ label: 'Capture a moment', icon: 'camera', run: () => this.openNamedModal('blockObserve', id) });
-            Reel.feedback.sheet({ title: block.title, message: 'Swipe actions — pick what you want to do next.', actions });
+            Reel.feedback.sheet({ title: block.title, message: 'Swipe actions — pick what you want to do next.', actions }, card);
           } });
         });
       },
@@ -1322,7 +1327,20 @@
         const paint = () => {
           if (!document.body.contains(live)) return;
           const secs = Math.max(0, Math.round((Date.now() - since) / 1000));
-          live.innerHTML = '<span class="today-live-dot"></span>' + (secs < 8 ? 'Live · updated just now' : 'Live · updated ' + secs + 's ago');
+          const text = secs < 8 ? 'Live · updated just now' : 'Live · updated ' + secs + 's ago';
+          if (!live.querySelector('.today-live-dot')) {
+            live.innerHTML = '<span class="today-live-dot"></span><span class="today-live-text"></span>';
+          }
+          const label = live.querySelector('.today-live-text');
+          const dot = live.querySelector('.today-live-dot');
+          if (label && label.textContent !== text) {
+            if (window.Reel && Reel.anim && Reel.anim.contentTransition) {
+              Reel.anim.contentTransition(label, text, { inDuration: 240 });
+              if (dot && Reel.anim.symbolEffect) Reel.anim.symbolEffect(dot);
+            } else {
+              label.textContent = text;
+            }
+          }
         };
         paint();
         if (this._todayTick) clearInterval(this._todayTick);

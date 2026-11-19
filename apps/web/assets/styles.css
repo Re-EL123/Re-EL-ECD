@@ -2935,6 +2935,7 @@ a.crumb:hover { color: var(--text-strong); background: var(--surface-2); text-de
   box-shadow: 0 -12px 40px rgba(0,0,0,.2);
   animation: sheetUp .42s var(--reel-spring) both;
 }
+.feedback-sheet.from-hero { animation: none; }
 .feedback-sheet h3 { margin: 6px 0 4px; font-size: 1.1rem; }
 .feedback-sheet p { margin: 0 0 14px; }
 .sheet-grip { width: 42px; height: 5px; border-radius: 999px; background: var(--border-subtle); margin: 0 auto 8px; }
@@ -2969,4 +2970,71 @@ a.crumb:hover { color: var(--text-strong); background: var(--surface-2); text-de
   .symbol-burst { display: none; }
   .feedback-sheet { animation: none; }
   .is-shaking { animation: none; }
+}
+
+/* ---- Design system: content-first glass, type tiers, depth & flow --------- */
+:root {
+  --fs-display: clamp(1.65rem, 2.4vw, 2.25rem);
+  --fs-title: clamp(1.2rem, 1.7vw, 1.5rem);
+  --fs-section: 1.06rem;
+  --fs-body: .95rem;
+  --fs-caption: .79rem;
+  --space-xs: 6px;
+  --space-sm: 12px;
+  --space-md: 18px;
+  --space-lg: 28px;
+  --glass-blur: blur(22px) saturate(165%);
+  --glass-shadow: 0 14px 40px -22px rgba(24, 42, 30, .45), inset 0 1px 0 rgba(255, 255, 255, .45);
+}
+
+/* Type tiers: one clear focal title, quiet supporting text. */
+.page-head h1 { font-size: var(--fs-display); font-weight: 750; letter-spacing: -.028em; line-height: 1.15; }
+.page-sub { font-size: var(--fs-body); line-height: 1.5; }
+.card-head h3, .section-head h3, .today-wrap h2 { font-size: var(--fs-section); font-weight: 700; letter-spacing: -.01em; }
+.stat-value { font-size: clamp(1.55rem, 2.1vw, 2rem); font-weight: 750; letter-spacing: -.02em; }
+.muted.small, .hint, .card-sub { font-size: var(--fs-caption); }
+
+/* Elevated glass controls: translucent, depth-aware, never an opaque slab. */
+.topbar, .cal-toolbar, .filter-bar, .teaching-nav, .deck-head {
+  background: var(--surface-glass-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--glass-shadow);
+}
+.topbar { border-width: 0 0 1px 0; }
+[data-theme="dark"] .topbar, [data-theme="dark"] .cal-toolbar,
+[data-theme="dark"] .filter-bar, [data-theme="dark"] .teaching-nav { box-shadow: 0 14px 40px -22px rgba(0,0,0,.8); }
+.btn-secondary, .btn-ghost { color: var(--text); border-color: var(--border-subtle); }
+.btn-ghost { background: transparent; }
+.btn-primary { box-shadow: 0 6px 18px -8px rgba(58,125,68,.65); }
+.btn:focus-visible, .teaching-tab:focus-visible, .sheet-action:focus-visible,
+a:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 3px solid var(--reel-green-600); outline-offset: 2px;
+}
+
+/* Scroll-edge affordance — JS marks real scrollers with .scroll-edge and
+   toggles at-top/at-bottom, so short (non-scrolling) surfaces stay calm. */
+.scroll-edge {
+  --edge-fade: 18px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 var(--edge-fade), #000 calc(100% - var(--edge-fade)), transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 var(--edge-fade), #000 calc(100% - var(--edge-fade)), transparent);
+}
+.scroll-edge.at-top {
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - var(--edge-fade)), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - var(--edge-fade)), transparent 100%);
+}
+.scroll-edge.at-bottom {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--edge-fade), #000 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--edge-fade), #000 100%);
+}
+.scroll-edge.at-top.at-bottom { -webkit-mask-image: none; mask-image: none; }
+
+/* Progress and state bars inherit the shared spring. */
+.metric-bar .bar > span, .day-meter-fill, .progress > span, .ring {
+  transition: width .75s var(--reel-spring), --ring-pct .75s var(--reel-spring), transform .5s var(--reel-spring);
+}
+@media (prefers-reduced-motion: reduce) {
+  .metric-bar .bar > span, .day-meter-fill, .progress > span, .ring { transition: none; }
+  .skel, .skeleton { animation: none; }
 }
