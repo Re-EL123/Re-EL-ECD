@@ -3196,8 +3196,7 @@
       lessonCapture(learnerId) {
         const block = this.guide && this.guide.block;
         if (!block) return;
-        if (learnerId) this.openNamedModal('blockObserveFor', block.id + ':' + learnerId);
-        else this.openNamedModal('blockObserve', block.id);
+        this.openNamedModal('blockObserveMany', learnerId ? block.id + ':' + learnerId : block.id);
       },
 
       lessonParticipation() {

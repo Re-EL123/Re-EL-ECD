@@ -9,6 +9,48 @@ const { parsePagination } = require('../utils/http');
 const { getLearner, has, assignedClassroomIds, guardianLearnerIds } = require('./helpers');
 const exportService = require('../services/export-service');
 
+/** Shared single-child quick-moment creation, used by single and bulk capture. */
+async function createQuickMoment(ctx, learner, body) {
+  const photos = Array.isArray(body.photoUrls) ? body.photoUrls.filter((u) => /^https?:\/\//i.test(String(u))) : [];
+  const note = String(body.note || '').trim();
+  const text = note.length >= 3 ? note : 'Captured a lovely moment in the classroom.';
+  let domainId = null;
+  if (body.domainId) {
+    const domain = await ctx.db.one('SELECT id FROM curriculum_domains WHERE id = $1', [body.domainId]);
+    if (!domain) fail('VALIDATION', [{ field: 'domainId', message: 'Unknown curriculum domain.' }]);
+    domainId = domain.id;
+  }
+  let publishedPhotos = [];
+  let photosWithheld = false;
+  if (photos.length) {
+    const consent = await ctx.db.one(
+      `SELECT id FROM consent_records
+       WHERE learner_id = $1 AND organisation_id = $2
+         AND consent_type = 'photographs' AND status = 'granted'
+         AND (withdrawn_at IS NULL) LIMIT 1`,
+      [learner.id, ctx.organisationId]
+    );
+    if (consent) publishedPhotos = photos; else photosWithheld = true;
+  }
+  const canPublish = has(ctx, 'assessments.publish.daycare');
+  const observation = await ctx.db.one(
+    `INSERT INTO learner_observations (organisation_id, branch_id, learner_id, objective_id, domain_id,
+      observation_date, context, observation_text, assessment_status, visibility_status, recorded_by, reviewed_by, published_at, photo_urls)
+     VALUES ($1,$2,$3,NULL,$4,CURRENT_DATE,'Moment captured',$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+    [ctx.organisationId, learner.branch_id, learner.id, domainId, text,
+      canPublish ? 'published' : 'submitted', canPublish ? 'published' : 'internal', ctx.user.id,
+      canPublish ? ctx.user.id : null, canPublish ? new Date().toISOString() : null, JSON.stringify(publishedPhotos)]
+  );
+  if (canPublish) await notifyGuardians(ctx, learner.id, observation);
+  else await notifyReviewers(ctx, observation);
+  await recordAudit(ctx.db, ctx, {
+    action: canPublish ? 'assessment.quick_moment_published' : 'assessment.quick_moment_submitted',
+    resourceType: 'learner_observation', resourceId: observation.id,
+    branchId: learner.branch_id, metadata: { photosShared: publishedPhotos.length, photosWithheld }
+  });
+  return { observation, canPublish, photosWithheld, publishedPhotos };
+}
+
 function register(router) {
   router.get('/assessments/observations', async (ctx) => {
     const { page, pageSize, offset } = parsePagination(ctx.query);
@@ -259,56 +301,54 @@ function register(router) {
       const classrooms = await assignedClassroomIds(ctx);
       if (!learner.classroom_id || !classrooms.includes(learner.classroom_id)) throw new AppError('FORBIDDEN');
     }
-    const photos = Array.isArray(body.photoUrls) ? body.photoUrls.filter((u) => /^https?:\/\//i.test(String(u))) : [];
-    const note = String(body.note || '').trim();
-    const text = note.length >= 3 ? note : 'Captured a lovely moment in the classroom.';
-    let domainId = null;
-    if (body.domainId) {
-      const domain = await ctx.db.one('SELECT id FROM curriculum_domains WHERE id = $1', [body.domainId]);
-      if (!domain) fail('VALIDATION', [{ field: 'domainId', message: 'Unknown curriculum domain.' }]);
-      domainId = domain.id;
-    }
-    // Photos only reach families when the centre holds photo consent.
-    let publishedPhotos = [];
-    let photoWithheld = false;
-    if (photos.length) {
-      const consent = await ctx.db.one(
-        `SELECT id FROM consent_records
-         WHERE learner_id = $1 AND organisation_id = $2
-           AND consent_type = 'photographs' AND status = 'granted'
-           AND (withdrawn_at IS NULL) LIMIT 1`,
-        [learner.id, ctx.organisationId]
-      );
-      if (consent) publishedPhotos = photos; else photoWithheld = true;
-    }
-    // 10-second share for publishers; everyone else's moment is held as
-    // submitted for the principal's review before a family sees anything.
-    const canPublish = has(ctx, 'assessments.publish.daycare');
-    const observation = await ctx.db.one(
-      `INSERT INTO learner_observations (organisation_id, branch_id, learner_id, objective_id, domain_id,
-        observation_date, context, observation_text, assessment_status, visibility_status, recorded_by, reviewed_by, published_at, photo_urls)
-       VALUES ($1,$2,$3,NULL,$4,CURRENT_DATE,'Moment captured',$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-      [ctx.organisationId, learner.branch_id, learner.id, domainId, text,
-       canPublish ? 'published' : 'submitted', canPublish ? 'published' : 'internal', ctx.user.id,
-       canPublish ? ctx.user.id : null, canPublish ? new Date().toISOString() : null, JSON.stringify(publishedPhotos)]
-    );
-    if (canPublish) await notifyGuardians(ctx, learner.id, observation);
-    else await notifyReviewers(ctx, observation);
-    await recordAudit(ctx.db, ctx, {
-      action: canPublish ? 'assessment.quick_moment_published' : 'assessment.quick_moment_submitted', resourceType: 'learner_observation', resourceId: observation.id,
-      branchId: learner.branch_id, metadata: { photosShared: publishedPhotos.length, photosWithheld: photoWithheld }
-    });
+    const result = await createQuickMoment(ctx, learner, body);
     ctx.status = 201;
     return {
-      ...observation,
-      photosWithheld: photoWithheld,
-      message: !canPublish
+      ...result.observation,
+      photosWithheld: result.photosWithheld,
+      message: !result.canPublish
         ? 'Moment saved — the principal will review it before the family sees it.'
-        : (photoWithheld
+        : (result.photosWithheld
           ? 'Moment shared without the photo — the centre does not yet hold photo consent for this child.'
-          : (publishedPhotos.length ? 'Moment shared with ' + publishedPhotos.length + ' photo' + (publishedPhotos.length === 1 ? '' : 's') + '.' : 'Moment shared without a photo.'))
+          : (result.publishedPhotos.length ? 'Moment shared with ' + result.publishedPhotos.length + ' photo' + (result.publishedPhotos.length === 1 ? '' : 's') + '.' : 'Moment shared without a photo.'))
     };
   }, { permission: ['assessments.create.assigned', 'assessments.create.assigned'], permissionMode: 'any' });
+
+  /** Capture one moment for several children at once (lesson workspace). */
+  router.post('/assessments/quick-moments/bulk', async (ctx) => {
+    const body = validate(ctx.body, {
+      learnerIds: { type: 'array', of: 'uuid', max: 100 },
+      domainId: { type: 'string', uuid: true, optional: true },
+      photoUrls: { type: 'array', of: 'string', max: 10, optional: true },
+      note: { type: 'string', max: 600, optional: true }
+    });
+    const ids = [...new Set(body.learnerIds || [])];
+    if (!ids.length) fail('VALIDATION', [{ field: 'learnerIds', message: 'Choose at least one child.' }]);
+    const created = [];
+    const failed = [];
+    for (const learnerId of ids) {
+      try {
+        const learner = await getLearner(ctx, learnerId);
+        if (!has(ctx, 'assessments.create.assigned') && !has(ctx, 'assessments.publish.daycare')) {
+          const classrooms = await assignedClassroomIds(ctx);
+          if (!learner.classroom_id || !classrooms.includes(learner.classroom_id)) throw new AppError('FORBIDDEN');
+        }
+        const result = await createQuickMoment(ctx, learner, body);
+        created.push({ learnerId, observationId: result.observation.id, published: result.canPublish, photosWithheld: result.photosWithheld });
+      } catch (error) {
+        failed.push({ learnerId, message: error.message || 'Could not save this moment.' });
+      }
+    }
+    ctx.status = created.length ? 201 : 422;
+    return {
+      created: created.length,
+      items: created,
+      failed,
+      message: created.length
+        ? 'Moment captured for ' + created.length + ' child' + (created.length === 1 ? '' : 'ren') + '.'
+        : 'No moments were saved.'
+    };
+  }, { permission: ['assessments.create.assigned', 'assessments.publish.daycare'], permissionMode: 'any' });
 
   // --- The month, in one paragraph -------------------------------------------
   // Teachers write the arc; the 15th portfolio digest carries it straight

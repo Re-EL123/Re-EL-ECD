@@ -58,3 +58,18 @@ test('privacy gates are enforced on every parent-facing read', () => {
   assert.match(learners, /if \(report\.shared_with_guardians\) await notifyReportShared/);
   assert.match(learners, /async function notifyReportShared/);
 });
+
+test('multi-child capture is wired end to end', () => {
+  const assessments = read('apps/api/src/modules/assessments.js');
+  assert.match(assessments, /router\.post\('\/assessments\/quick-moments\/bulk'/);
+  assert.match(assessments, /async function createQuickMoment/);
+  assert.match(assessments, /learnerIds: \{ type: 'array', of: 'uuid', max: 100 \}/);
+  const today = read('apps/web/src/views/today.js');
+  assert.match(today, /name === 'blockObserveMany'/);
+  assert.match(today, /type: 'multiselect'/);
+  assert.match(today, /learnerIds: Array\.isArray\(data\.learnerIds\)/);
+  const app = read('apps/web/src/app.js');
+  assert.match(app, /lessonCapture\(learnerId\) \{[\s\S]{0,300}blockObserveMany/);
+  const index = read('apps/web/index.html');
+  assert.match(index, /Capture for selected children/);
+});

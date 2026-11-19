@@ -1134,6 +1134,35 @@
           });
           return;
         }
+        if (name === 'blockObserveMany') {
+          const parts = String(id || '').split(':');
+          const b2 = findBlock(t, parts[0]);
+          const learners = blockClassroomLearners(t, b2 || {});
+          const options = learners.map((c) => ({ value: c.id, label: c.name + (c.classroom ? ' · ' + c.classroom : '') }));
+          ctx.openModal({
+            title: 'Capture moments — ' + (b2 ? b2.title : 'Activity'),
+            description: 'Select one or more children. The same photo and sentence goes to each selected child’s family.',
+            endpoint: '/assessments/quick-moments/bulk',
+            submitLabel: 'Share with families',
+            successMessage: 'Moments saved — families will see them shortly.',
+            size: 'wide',
+            fields: [
+              { name: 'learnerIds', label: 'Children — select one or more', type: 'multiselect', required: true, span: 2,
+                options, value: parts[1] ? [parts[1]] : [] },
+              { name: 'domainId', label: 'What was it about? (optional)', type: 'select', options: (page.domains || []).map((d) => ({ value: d.id, label: d.name })) },
+              { name: 'photoUrls', label: 'Photo', type: 'media', multiple: true, accept: 'image/*', capture: 'environment', scope: 'observation', ownerType: 'learner' },
+              { name: 'note', label: 'One sentence', type: 'textarea', span: 2, placeholder: b2 ? ('During ' + b2.title + ', …') : 'A lovely moment from today…' }
+            ],
+            transform: (data) => ({
+              learnerIds: Array.isArray(data.learnerIds) ? data.learnerIds : [],
+              domainId: data.domainId || undefined,
+              photoUrls: data.photoUrls || [],
+              note: data.note || ''
+            }),
+            onSuccess: () => {} // stay in the lesson workspace
+          });
+          return;
+        }
         const b = findBlock(t, id);
         if (!b) { ctx.toast('That block has changed — refresh and try again.', 'warn'); return; }
         const learners = participationLearners(t, b);

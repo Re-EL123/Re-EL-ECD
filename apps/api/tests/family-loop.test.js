@@ -105,3 +105,22 @@ test('daily reports shared on create notify guardians', async () => {
   assert.ok(after.total > before.total, 'creating a shared report notifies');
   await client.delete('/learners/' + learner.id + '/daily-reports/' + report.data.id, { organisationId }).catch(() => {});
 });
+
+test('one moment can be captured for several children at once', async () => {
+  const { client, organisationId } = await login('principal@littlesprouts.local');
+  const learners = await client.get('/learners?pageSize=4', { organisationId });
+  const ids = (learners.data || []).slice(0, 2).map((l) => l.id);
+  assert.equal(ids.length, 2);
+  const res = await client.post('/assessments/quick-moments/bulk', {
+    learnerIds: ids.concat(ids[0]), note: 'Counting together with bottle caps.'
+  }, { organisationId });
+  assert.equal(res.status, 201, JSON.stringify(res.error));
+  assert.equal(res.data.created, 2, 'duplicates are collapsed');
+  assert.equal(res.data.failed.length, 0);
+  const rows = await db.query(
+    `SELECT COUNT(*)::int AS total FROM learner_observations
+     WHERE learner_id = ANY($1::uuid[]) AND observation_text = $2`,
+    [ids, 'Counting together with bottle caps.']
+  );
+  assert.equal(rows.rows[0].total, 2);
+});
