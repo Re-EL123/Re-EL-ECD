@@ -730,7 +730,8 @@
       const b = page.board || {};
       const canEdit = ctx.has('curriculum.create.daycare');
       let html = '<div class="wb-shell' + (canEdit ? '' : ' wb-readonly') + '" data-board-id="' + attr(b.id) + '">';
-      html += R.pageHead(esc(b.title || 'Whiteboard'), (b.description ? esc(b.description) + ' · ' : '') + 'Infinite canvas · collaborative (auto-saves)',
+      const who = b.createdByName ? ' · created by ' + esc(b.createdByName) : '';
+      html += R.pageHead(esc(b.title || 'Whiteboard'), (b.description ? esc(b.description) + ' · ' : '') + 'Shared team canvas' + who + ' · anyone with access can edit · auto-syncs every 5s',
         '<a class="btn btn-secondary btn-sm" href="#/app/whiteboards">' + R.icon('arrow-left') + ' All boards</a>' +
         (b.lessonPlanTitle ? '<a class="btn btn-sm btn-ghost" href="#/app/curriculum?tab=plans" title="Created from a lesson guide">' + R.icon('book-open') + ' ' + R.esc(R.truncate(b.lessonPlanTitle, 40)) + '</a>' : '') +
         (canEdit ? '<button class="btn btn-sm btn-secondary" id="wb-history-btn">' + R.icon('history') + ' History</button>' : '') +

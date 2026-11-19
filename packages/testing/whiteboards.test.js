@@ -45,7 +45,7 @@ test('the shared renderer fits any object set into a thumbnail', () => {
   assert.ok(empty.w > 0 && empty.h > 0);
 });
 
-test('the canvas engine is grouped, inline, pannable andundoable', () => {
+test('the canvas engine is grouped, inline, pannable and undoable', () => {
   assert.ok(source.includes('const TOOL_GROUPS'), 'grouped toolbar');
   assert.ok(source.includes("hand: { label: 'Pan'"), 'a pan tool exists');
   assert.ok(source.includes("e.code === 'Space'"), 'space-drag pan is wired');
