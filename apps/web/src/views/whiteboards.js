@@ -982,10 +982,12 @@
     const shellEl = document.querySelector('.wb-teach-shell');
     function sizeShell() {
       if (!shellEl) return;
-      const top = shellEl.offsetTop || shellEl.getBoundingClientRect().top;
+      const top = shellEl.getBoundingClientRect().top;
       shellEl.style.height = Math.max(320, window.innerHeight - top) + 'px';
     }
     sizeShell();
+    if (window.requestAnimationFrame) requestAnimationFrame(() => requestAnimationFrame(sizeShell));
+    setTimeout(sizeShell, 120);
     window.addEventListener('resize', sizeShell);
     const statusEl = document.getElementById('wb-status');
     const verEl = document.getElementById('wb-version');
