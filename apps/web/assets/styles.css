@@ -3038,3 +3038,196 @@ a:focus-visible, input:focus-visible, select:focus-visible {
   .metric-bar .bar > span, .day-meter-fill, .progress > span, .ring { transition: none; }
   .skel, .skeleton { animation: none; }
 }
+
+/* ---- Nursery rhymes: classroom-first library ----------------------------- */
+.page-sub { color: var(--text); }
+
+.rhyme-filters { padding: 14px 16px; }
+.rhyme-filter-top { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.rhyme-filter-top .search-box { flex: 1 1 280px; max-width: 480px; }
+.rhyme-sort { display: flex; gap: 8px; align-items: center; margin-left: auto; }
+.rhyme-sort .select { min-width: 150px; }
+.rhyme-filter-row { display: flex; gap: 12px; align-items: center; padding: 7px 0; border-top: 1px solid var(--border-subtle); }
+.rhyme-filter-row:first-of-type { border-top: 0; }
+.rhyme-filter-label { flex: 0 0 62px; font-size: .76rem; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: .06em; }
+.rhyme-chip-scroll {
+  display: flex; gap: 8px; overflow-x: auto; padding: 3px 2px 8px;
+  scrollbar-width: thin; -webkit-overflow-scrolling: touch; touch-action: pan-x;
+}
+.rhyme-chip { flex: 0 0 auto; border-radius: 999px; }
+.rhyme-chip:first-child { position: sticky; left: 0; z-index: 2; box-shadow: 8px 0 12px -10px rgba(0,0,0,.35); }
+.rhyme-chip.is-active { background: var(--reel-green-700); color: #fff; border-color: transparent; }
+.chip-count { opacity: .7; font-size: .78em; font-variant-numeric: tabular-nums; }
+
+.rhyme-pinned { display: grid; gap: 14px; margin-bottom: 4px; }
+.rhyme-pin { padding: 14px 16px; }
+.pin-head { display: flex; gap: 10px; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+.pin-head h2 { font-size: 1rem; display: inline-flex; gap: 8px; align-items: center; }
+.pin-head svg { width: 17px; height: 17px; }
+.rhyme-compact-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; -webkit-overflow-scrolling: touch; }
+.rhyme-compact {
+  display: inline-flex; gap: 7px; align-items: center; flex: 0 0 auto;
+  padding: 9px 13px; border-radius: 999px; border: 1px solid var(--border-subtle);
+  background: var(--surface-2); color: var(--text); font-size: .86rem; font-weight: 600; cursor: pointer;
+  transition: transform .25s var(--reel-spring), background-color .18s ease;
+}
+.rhyme-compact:hover { background: var(--reel-green-100); transform: translateY(-2px); }
+.rhyme-compact svg { width: 15px; height: 15px; color: var(--reel-green-700); }
+
+.rhyme-card { padding: 16px; display: flex; flex-direction: column; gap: 7px; }
+.rhyme-card .card-head { align-items: flex-start; }
+.rhyme-card .card-head h2 { font-size: 1.04rem; font-weight: 700; letter-spacing: -.01em; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.rhyme-card .card-head h2 svg { width: 18px; height: 18px; color: var(--reel-green-700); }
+.rhyme-star { color: var(--text-muted); }
+.rhyme-star.is-fav { color: var(--reel-sun-600); }
+.rhyme-star.is-fav svg { fill: var(--reel-sun-500); }
+.rhyme-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.rhyme-tag {
+  display: inline-flex; gap: 4px; align-items: center; padding: 3px 9px; border-radius: 999px;
+  background: var(--reel-green-100); color: var(--reel-green-900); font-size: .72rem; font-weight: 650;
+}
+.rhyme-tag svg { width: 12px; height: 12px; }
+.rhyme-preview { margin: 2px 0; line-height: 1.45; }
+.rhyme-action { display: flex; gap: 6px; align-items: flex-start; }
+.rhyme-action svg { width: 14px; height: 14px; flex: 0 0 auto; margin-top: 2px; }
+.rhyme-licence {
+  display: inline-flex; gap: 6px; align-items: center; align-self: flex-start;
+  color: var(--reel-sky-700); text-decoration: none; font-weight: 600;
+}
+.rhyme-licence:hover { text-decoration: underline; }
+.rhyme-licence svg { width: 14px; height: 14px; }
+.rhyme-controls { display: flex; gap: 8px; align-items: center; margin-top: auto; padding-top: 6px; flex-wrap: wrap; }
+.rhyme-play { min-width: 104px; }
+.rhyme-play[data-state="playing"] { box-shadow: 0 0 0 3px var(--reel-green-100); }
+.rhyme-more { margin-left: auto; }
+.rhyme-status:empty { display: none; }
+.rhyme-audio-error {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  padding: 8px 10px; border-radius: 10px; background: var(--reel-danger-100);
+  color: var(--reel-danger-700); font-size: .8rem; font-weight: 600;
+}
+.rhyme-no-audio {
+  display: flex; flex-direction: column; gap: 8px; margin-top: auto; padding: 10px 12px;
+  border: 1px dashed var(--border-strong); border-radius: 12px; background: var(--surface-2);
+  font-size: .82rem; color: var(--text);
+}
+.rhyme-no-audio > span { display: inline-flex; gap: 7px; align-items: center; }
+.rhyme-no-audio svg { width: 16px; height: 16px; }
+.rhyme-select, .rhyme-manage { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 4px; font-size: .82rem; }
+.rhyme-manage { padding-top: 8px; border-top: 1px dashed var(--border-subtle); }
+.rhyme-manage .is-danger { color: var(--reel-danger-700); }
+.rhyme-about h2 { font-size: 1.05rem; }
+
+/* Now-playing bar — one player, always visible while music is on. */
+.rhyme-now-playing {
+  position: fixed; z-index: 185; left: 50%; bottom: 16px; transform: translateX(-50%);
+  width: min(760px, calc(100vw - 24px)); display: flex; gap: 10px; align-items: center;
+  padding: 10px 12px; border-radius: 16px; border: 1px solid var(--border-subtle);
+  background: var(--surface-glass-strong); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  box-shadow: 0 18px 44px -20px rgba(0,0,0,.5);
+  animation: npUp .42s var(--reel-spring) both;
+}
+@keyframes npUp { from { opacity: 0; transform: translate(-50%, 18px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.np-icon, .np-play {
+  display: inline-grid; place-items: center; flex: 0 0 auto; width: 36px; height: 36px;
+  border: 0; border-radius: 10px; background: transparent; color: var(--text); cursor: pointer;
+  transition: transform .22s var(--reel-spring), background-color .18s ease;
+}
+.np-icon:hover, .np-play:hover { background: var(--surface-3); transform: translateY(-1px); }
+.np-icon:active, .np-play:active { transform: scale(.92); }
+.np-icon:disabled { opacity: .35; cursor: default; }
+.np-icon.active { color: var(--reel-green-700); background: var(--reel-green-100); }
+.np-icon svg, .np-play svg { width: 18px; height: 18px; }
+.np-play { width: 42px; height: 42px; border-radius: 999px; background: var(--reel-green-700); color: #fff; }
+.np-play:hover { background: var(--reel-green-900); }
+.np-play svg { width: 20px; height: 20px; }
+.np-meta { display: flex; flex-direction: column; min-width: 120px; max-width: 190px; }
+.np-title { font-size: .86rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-sub { font-size: .68rem; }
+.np-seek { flex: 1 1 auto; min-width: 70px; accent-color: var(--reel-green-700); }
+.np-time { flex: 0 0 auto; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.np-volume { display: inline-flex; gap: 5px; align-items: center; }
+.np-volume svg { width: 16px; height: 16px; }
+.np-volume input { width: 72px; accent-color: var(--reel-green-700); }
+.np-count {
+  position: absolute; top: 2px; right: 2px; min-width: 15px; height: 15px; padding: 0 3px;
+  border-radius: 999px; background: var(--reel-green-700); color: #fff; font-size: .62rem;
+  display: grid; place-items: center;
+}
+.np-icon[data-np="queue"] { position: relative; }
+.np-count:empty { display: none; }
+.np-close { margin-left: auto; }
+
+.rhyme-queue-panel {
+  position: fixed; z-index: 186; right: 14px; bottom: 82px; width: min(360px, calc(100vw - 28px));
+  max-height: 50vh; overflow: auto; padding: 12px; border-radius: 16px;
+  border: 1px solid var(--border-subtle); background: var(--surface-1); box-shadow: var(--shadow-lg);
+}
+.queue-head, .queue-row { display: flex; gap: 8px; align-items: center; }
+.queue-head { justify-content: space-between; margin-bottom: 8px; }
+.queue-head .btn:last-child { margin-left: auto; }
+.queue-list { display: flex; flex-direction: column; gap: 4px; }
+.queue-row { padding: 6px 8px; border-radius: 10px; }
+.queue-row.is-current { background: var(--reel-green-100); }
+.queue-play { display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 8px; background: transparent; cursor: pointer; }
+.queue-play svg { width: 15px; height: 15px; }
+.queue-title { flex: 1 1 auto; font-size: .84rem; }
+.queue-foot { padding-top: 8px; }
+
+/* Lyrics reader — large, calm, and projectable. */
+.rhyme-reader-backdrop {
+  position: fixed; inset: 0; z-index: 380; display: grid; place-items: center;
+  padding: 20px; background: rgba(12, 24, 16, .58); animation: fade-in .2s ease;
+}
+.rhyme-reader {
+  width: min(860px, 100%); max-height: min(92vh, 960px); display: flex; flex-direction: column;
+  background: var(--surface-1); border-radius: 20px; border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-lg); overflow: hidden; animation: readerIn .42s var(--reel-spring) both;
+}
+@keyframes readerIn { from { opacity: 0; transform: translateY(16px) scale(.97); } to { opacity: 1; transform: none; } }
+.reader-head { display: flex; gap: 16px; justify-content: space-between; align-items: flex-start; padding: 18px 22px 12px; border-bottom: 1px solid var(--border-subtle); }
+.reader-head h2 { font-size: 1.5rem; letter-spacing: -.02em; }
+.reader-tools { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 22px; border-bottom: 1px solid var(--border-subtle); }
+.reader-body { overflow: auto; padding: 24px clamp(20px, 6vw, 72px) 40px; -webkit-overflow-scrolling: touch; }
+.reader-lines { --reader-scale: 1; display: flex; flex-direction: column; gap: .18em; max-width: 46ch; margin: 0 auto; }
+.reader-line {
+  margin: 0; padding: .12em .5em; border-radius: 10px;
+  font-size: calc(1.6rem * var(--reader-scale)); line-height: 1.5; font-weight: 550;
+  color: var(--text); transition: background-color .25s ease, color .25s ease, transform .25s var(--reel-spring);
+}
+.reader-line.is-sung { background: var(--reel-green-100); color: var(--reel-green-900); transform: translateX(6px); font-weight: 700; }
+.reader-gap { height: calc(1rem * var(--reader-scale)); }
+.rhyme-reader.is-projecting { width: 100%; height: 100%; max-height: none; border-radius: 0; border: 0; }
+.rhyme-reader.is-projecting .reader-head, .rhyme-reader.is-projecting .reader-tools { padding-left: clamp(24px, 8vw, 120px); }
+.rhyme-reader.is-projecting .reader-line { font-size: calc(2.1rem * var(--reader-scale)); }
+.rhyme-reader.is-projecting .reader-body { padding-top: 4vh; }
+
+/* Songbook print output. */
+#rhyme-print-sheet { display: none; }
+#rhyme-print-sheet pre { white-space: pre-wrap; font-family: inherit; font-size: 13pt; line-height: 1.65; }
+.songbook-cover { text-align: center; padding-top: 28vh; page-break-after: always; break-after: page; }
+.songbook-cover .cover-eyebrow { text-transform: uppercase; letter-spacing: .18em; color: #6a776c; }
+.songbook-cover h1 { font-family: Georgia, serif; font-size: 40pt; margin: 12px 0; }
+.songbook-cover .cover-note { margin-top: 12vh; color: #6a776c; }
+.songbook-page { page-break-after: always; break-after: page; padding-top: 12px; }
+.songbook-page:last-child { page-break-after: auto; break-after: auto; }
+.songbook-page h2 { font-family: Georgia, serif; font-size: 24pt; margin-bottom: 6px; }
+@media print {
+  #rhyme-print-sheet { display: block; padding: 0; }
+  .rhyme-now-playing, .rhyme-queue-panel, .rhyme-reader-backdrop { display: none !important; }
+}
+
+@media (max-width: 680px) {
+  .rhyme-card .btn, .rhyme-no-audio .btn, .rhyme-manage .btn, .reader-tools .btn { min-height: 44px; }
+  .rhyme-filter-label { flex-basis: 100%; }
+  .np-volume { display: none; }
+  .np-meta { max-width: 110px; }
+  .rhyme-now-playing { gap: 6px; padding: 8px; bottom: 8px; }
+  .reader-line { font-size: calc(1.35rem * var(--reader-scale)); }
+  .reader-head h2 { font-size: 1.2rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rhyme-now-playing, .rhyme-reader { animation: none; }
+  .reader-line { transition: none; }
+  .rhyme-compact:hover, .np-icon:hover, .np-play:hover { transform: none; }
+}

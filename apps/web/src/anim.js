@@ -330,7 +330,8 @@
    * element, so a tapped row appears to grow into the sheet/detail view.
    */
   function hero(fromEl, toEl, options) {
-    if (!fromEl || !toEl || reduced() || typeof toEl.animate !== 'function') return null;
+    if (!fromEl || !toEl || typeof fromEl.getBoundingClientRect !== 'function' ||
+        reduced() || typeof toEl.animate !== 'function') return null;
     const from = fromEl.getBoundingClientRect();
     const to = toEl.getBoundingClientRect();
     if (!from.width || !to.width) return null;

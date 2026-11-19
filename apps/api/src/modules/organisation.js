@@ -7,6 +7,56 @@ const { parsePagination } = require('../utils/http');
 const branding = require('../services/branding-service');
 const { assignedClassroomIds, has, today } = require('./helpers');
 
+// Organisation-added nursery rhymes live in a dedicated, strictly shaped
+// setting. The generic object-settings validator below only allows flat
+// strings/numbers/booleans, so this list gets its own normaliser.
+const RHYME_TAGS = new Set(['Calm down', 'Energise', 'Transition', 'Bedtime', 'Circle time']);
+const RHYME_CATEGORIES = new Set(['Actions', 'Animals', 'Classics', 'Counting', 'Learning', 'Lullabies', 'Time', 'Weather', 'Other']);
+
+function plainObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+function shortText(value, max) {
+  return typeof value === 'string' ? value.trim().slice(0, max) : '';
+}
+
+function normaliseCustomRhymes(value) {
+  if (!Array.isArray(value)) {
+    fail('VALIDATION', [{ field: 'settings.nurseryRhymes', message: 'Expected a list of rhymes.' }]);
+  }
+  if (value.length > 100) {
+    fail('VALIDATION', [{ field: 'settings.nurseryRhymes', message: 'A centre can store up to 100 rhymes.' }]);
+  }
+  return value.map((row, index) => {
+    const item = plainObject(row);
+    const id = shortText(item.id, 80);
+    const title = shortText(item.title, 140);
+    const lyrics = Array.isArray(item.lyrics)
+      ? item.lyrics.map((line) => shortText(line, 400)).filter(Boolean).slice(0, 120)
+      : [];
+    const errors = [];
+    if (!/^[a-z0-9-]{3,80}$/.test(id)) {
+      errors.push({ field: 'settings.nurseryRhymes.' + index + '.id', message: 'Use an id of letters, numbers and dashes.' });
+    }
+    if (!title) errors.push({ field: 'settings.nurseryRhymes.' + index + '.title', message: 'Give the rhyme a title.' });
+    if (!lyrics.length) errors.push({ field: 'settings.nurseryRhymes.' + index + '.lyrics', message: 'Add at least one lyric line.' });
+    if (errors.length) fail('VALIDATION', errors);
+    const tags = Array.isArray(item.tags) ? item.tags.filter((tag) => RHYME_TAGS.has(tag)).slice(0, 5) : [];
+    const minutes = Number(item.minutes);
+    return {
+      id,
+      title,
+      category: RHYME_CATEGORIES.has(item.category) ? item.category : 'Other',
+      tags,
+      minutes: Number.isFinite(minutes) && minutes >= 1 && minutes <= 60 ? Math.round(minutes) : 2,
+      lyrics,
+      actions: shortText(item.actions, 300),
+      source: shortText(item.source, 500),
+      custom: true
+    };
+  });
+}
+
 function register(router) {
   router.get('/organisations/current', async (ctx) => {
     const organisation = await ctx.db.one('SELECT * FROM organisations WHERE id = $1', [ctx.organisationId]);
@@ -183,7 +233,7 @@ function register(router) {
   // a raw client object merged into the security config.
   const ALLOWED_SETTINGS = new Set([
     'academicYear', 'operatingHours', 'attendancePolicy', 'notificationPreferences',
-    'publicWebsite', 'dataRetention', 'weather', 'ncf', 'collection.lateCutoff', 'nurseryRhymeAudio'
+    'publicWebsite', 'dataRetention', 'weather', 'ncf', 'collection.lateCutoff', 'nurseryRhymeAudio', 'nurseryRhymes'
   ]);
   const OBJECT_SETTINGS = new Set(['operatingHours', 'attendancePolicy', 'notificationPreferences', 'publicWebsite', 'dataRetention', 'weather', 'ncf', 'nurseryRhymeAudio']);
   router.patch('/organisations/current/settings', async (ctx) => {
@@ -198,6 +248,8 @@ function register(router) {
         fail('VALIDATION', [{ field: 'settings.academicYear', message: 'Enter a valid year.' }]);
       } else if (key === 'collection.lateCutoff' && !/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(String(value))) {
         fail('VALIDATION', [{ field: 'settings.collection.lateCutoff', message: 'Use HH:MM, e.g. 17:30.' }]);
+      } else if (key === 'nurseryRhymes') {
+        body.settings[key] = normaliseCustomRhymes(value);
       } else if (OBJECT_SETTINGS.has(key) && (typeof value !== 'object' || value === null || Array.isArray(value))) {
         fail('VALIDATION', [{ field: 'settings.' + key, message: 'Expected an object.' }]);
       } else if (OBJECT_SETTINGS.has(key)) {
@@ -563,4 +615,4 @@ function register(router) {
   }, { permission: 'organisation.read.daycare' });
 }
 
-module.exports = { register };
+module.exports = { register, normaliseCustomRhymes };

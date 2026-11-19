@@ -154,8 +154,7 @@
     // from, then settles into its bottom-sheet resting place.
     const panel = backdrop.querySelector('.feedback-sheet');
     if (anchor && panel && window.Reel && Reel.anim && Reel.anim.hero) {
-      panel.classList.add('from-hero');
-      Reel.anim.hero(anchor, panel);
+      if (Reel.anim.hero(anchor, panel)) panel.classList.add('from-hero');
     }
     backdrop.addEventListener('click', (event) => {
       if (event.target === backdrop || event.target.closest('[data-sheet-cancel]')) return closeSheet();

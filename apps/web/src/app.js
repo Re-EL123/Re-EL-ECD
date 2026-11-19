@@ -285,6 +285,9 @@
       crumbs: [],
       tab: null,
       filters: {},
+      rhymeManage: false,
+      rhymeSelect: false,
+      rhymeSelection: [],
       sidebarOpen: false,
       sidebarCollapsed: true,
       navFlyout: null,
@@ -398,6 +401,7 @@
       async boot() {
         window.ReelApp = this;
         if (window.Reel && Reel.feedback) Reel.feedback.init();
+        if (window.Reel && Reel.rhymePlayer) Reel.rhymePlayer.init();
         this._pendingTick = [];
         this.nextTick = (fn) => {
           const tick = () => Promise.resolve().then(() => {
@@ -956,7 +960,9 @@
             // Window transition: the new route zooms into place, then widgets
             // bloom with spring physics, staggered across the page.
             window.Reel.anim.routeZoom(root);
-            window.Reel.anim.bloomStagger(root.querySelectorAll('.card, .stat-card, .today-pill, .page-head, .table-wrap, .theme-card'));
+            // Cap the stagger: 33 cards blooming at once reads as noise, and
+            // a long queue of delayed animations slows down every navigation.
+            window.Reel.anim.bloomStagger([...root.querySelectorAll('.card, .stat-card, .today-pill, .page-head, .table-wrap, .theme-card')].slice(0, 12));
             window.Reel.anim.countUp(root.querySelectorAll('.stat-value'));
             this.animateRings(root);
           }
@@ -1036,21 +1042,198 @@
         this.navigate(true);
       },
 
+      /* ---- Nursery rhymes: transport, curation and lesson prep ---------- */
+
+      rhymeUrl(id) {
+        const audio = (this.page && this.page.rhymeAudio) || {};
+        return audio[id] || '';
+      },
+
+      playRhyme(id) {
+        const url = this.rhymeUrl(id);
+        if (!url) { this.toast('No recording attached to this rhyme yet.', 'info'); return; }
+        const rhyme = Reel.nurseryRhymes && Reel.nurseryRhymes.find(id);
+        if (Reel.rhymeMeta) Reel.rhymeMeta.remember(id);
+        if (Reel.rhymePlayer) Reel.rhymePlayer.toggle(id, url, rhyme && rhyme.title);
+      },
+
+      openRhymeReader(id) {
+        const rhyme = Reel.nurseryRhymes && Reel.nurseryRhymes.find(id);
+        if (!rhyme) return;
+        if (Reel.rhymeMeta) Reel.rhymeMeta.remember(id);
+        if (Reel.rhymePlayer) Reel.rhymePlayer.openReader(rhyme, this.rhymeUrl(id));
+      },
+
+      toggleRhymeFav(id) {
+        if (!Reel.rhymeMeta) return;
+        const favs = Reel.rhymeMeta.toggleFavourite(id);
+        const isFav = favs.indexOf(id) !== -1;
+        const card = document.querySelector('[data-rhyme-id="' + id + '"]');
+        const button = card && card.querySelector('.rhyme-star');
+        if (button) {
+          button.classList.toggle('is-fav', isFav);
+          button.setAttribute('aria-label', isFav ? 'Remove from favourites' : 'Add to favourites');
+        }
+        this.toast(isFav ? 'Added to your favourites.' : 'Removed from your favourites.');
+      },
+
+      requestRhyme(id) {
+        if (!Reel.rhymeMeta) return;
+        Reel.rhymeMeta.request(id);
+        this.toast('Thanks — we’ve noted your request for this recording.', 'success');
+      },
+
+      recordRhymeAudio(id) {
+        if (this.has('organisation.settings.manage')) {
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.accept = 'audio/*';
+          input.setAttribute('capture', 'environment');
+          input.addEventListener('change', (event) => this.attachRhymeAudio(event, id));
+          input.click();
+          return;
+        }
+        if (Reel.feedback) Reel.feedback.sheet({
+          title: 'Add a recording',
+          message: 'Only an administrator can attach audio to the centre’s song library. Ask your principal, or let them know which song you need.',
+          actions: [
+            { label: 'Request this song', icon: 'bell', run: () => this.requestRhyme(id) }
+          ]
+        });
+      },
+
+      toggleRhymeManage() {
+        this.rhymeManage = !this.rhymeManage;
+        this.navigate(true);
+      },
+
+      toggleRhymeSelect() {
+        this.rhymeSelect = !this.rhymeSelect;
+        if (!this.rhymeSelect) this.rhymeSelection = [];
+        this.navigate(true);
+      },
+
+      toggleRhymeSelected(id) {
+        const list = (this.rhymeSelection || []).slice();
+        const at = list.indexOf(id);
+        if (at === -1) list.push(id); else list.splice(at, 1);
+        this.rhymeSelection = list;
+      },
+
+      clearRhymeSelection() {
+        this.rhymeSelection = [];
+        this.navigate(true);
+      },
+
+      printRhymeSongbook() {
+        const ids = (this.rhymeSelection || []).slice();
+        if (!ids.length) { this.toast('Select a few songs first.', 'warn'); return; }
+        const rhymes = ids.map((id) => Reel.nurseryRhymes && Reel.nurseryRhymes.find(id)).filter(Boolean);
+        if (!rhymes.length) return;
+        const org = (this.activeMembership && this.activeMembership.organisation && this.activeMembership.organisation.name) || 'Nursery rhymes';
+        const today = new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' });
+        let sheet = document.getElementById('rhyme-print-sheet');
+        if (!sheet) {
+          sheet = document.createElement('div');
+          sheet.id = 'rhyme-print-sheet';
+          document.body.appendChild(sheet);
+        }
+        sheet.innerHTML = '<section class="songbook-cover"><p class="cover-eyebrow">Nursery rhyme songbook</p>' +
+          '<h1>' + Reel.esc(org) + '</h1><p>' + rhymes.length + ' songs · compiled ' + Reel.esc(today) + '</p>' +
+          '<p class="cover-note">Traditional public-domain verses. Words vary by region.</p></section>' +
+          rhymes.map((r, i) => '<section class="songbook-page">' +
+            '<h2>' + Reel.esc(i + 1) + '. ' + Reel.esc(r.title) + '</h2>' +
+            '<p class="small muted">' + Reel.esc(r.category || '') + (r.actions ? ' · ' + Reel.esc(r.actions) : '') + '</p>' +
+            '<pre>' + Reel.esc((r.lyrics || []).join('\n')) + '</pre>' +
+          '</section>').join('');
+        window.print();
+      },
+
+      rhymeMenu(id, anchor) {
+        if (!Reel.feedback) return;
+        const rhyme = Reel.nurseryRhymes && Reel.nurseryRhymes.find(id);
+        if (!rhyme) return;
+        const url = this.rhymeUrl(id);
+        const isFav = Reel.rhymeMeta && Reel.rhymeMeta.favourites().indexOf(id) !== -1;
+        const queued = Reel.rhymePlayer && Reel.rhymePlayer.getState().queue.some((item) => item.id === id);
+        const actions = [];
+        if (url) {
+          actions.push({ label: 'Play / pause', icon: 'play', run: () => this.playRhyme(id) });
+          actions.push({ label: 'Add to session queue', icon: 'list-plus', run: () => {
+            if (Reel.rhymePlayer) Reel.rhymePlayer.enqueue(id, url, rhyme.title);
+            this.toast('Added to the session queue.');
+          } });
+          if (queued) actions.push({ label: 'Remove from queue', icon: 'list-x', run: () => {
+            if (Reel.rhymePlayer) Reel.rhymePlayer.removeFromQueue(id);
+          } });
+        }
+        actions.push({ label: isFav ? 'Remove from favourites' : 'Add to favourites', icon: 'star', run: () => this.toggleRhymeFav(id) });
+        actions.push({ label: 'Read lyrics', icon: 'book-open', run: () => this.openRhymeReader(id) });
+        actions.push({ label: 'Download lyrics (.txt)', icon: 'download', run: () => this.downloadRhymeLyrics(id) });
+        actions.push({ label: 'Print this song', icon: 'printer', run: () => this.printRhymeLyrics(id) });
+        if (rhyme.source) actions.push({ label: 'Get audio / sheet music', icon: 'external-link', run: () => window.open(rhyme.source, '_blank', 'noopener') });
+        Reel.feedback.sheet({ title: rhyme.title, message: 'Everything you can do with this song.', actions }, anchor);
+      },
+
+      rhymeMoreMenu(anchor) {
+        if (!Reel.feedback) return;
+        const actions = [
+          { label: 'Download all lyrics', icon: 'file-down', run: () => this.downloadAllRhymeLyrics() },
+          { label: this.rhymeSelect ? 'Finish selecting' : 'Select songs for a songbook', icon: 'check-square', run: () => this.toggleRhymeSelect() }
+        ];
+        if ((this.rhymeSelection || []).length) actions.push({ label: 'Print songbook (' + this.rhymeSelection.length + ')', icon: 'printer', run: () => this.printRhymeSongbook() });
+        if (this.has('organisation.settings.manage')) actions.push({ label: this.rhymeManage ? 'Leave manage mode' : 'Manage audio & rhymes', icon: 'settings-2', run: () => this.toggleRhymeManage() });
+        actions.push({ label: 'Clear all filters', icon: 'filter-x', run: () => {
+          this.filters = {};
+          this.navigate(true);
+        } });
+        Reel.feedback.sheet({ title: 'Song library', message: 'Library-wide actions.', actions }, anchor);
+      },
+
+      async deleteRhyme(id) {
+        if (!Reel.feedback) return;
+        const rhyme = Reel.nurseryRhymes && Reel.nurseryRhymes.find(id);
+        if (!rhyme) return;
+        Reel.feedback.sheet({
+          title: 'Delete ' + rhyme.title + '?',
+          message: 'This removes the song from every teacher at your centre. Your own recording will be removed too.',
+          actions: [{
+            label: 'Delete this rhyme', icon: 'trash-2', tone: 'danger', run: async () => {
+              try {
+                const custom = ((this.page || {}).rhymeCustom || []).filter((r) => r.id !== id);
+                await Reel.api('PATCH', '/organisations/current/settings', { settings: { nurseryRhymes: custom } });
+                const map = Object.assign({}, ((this.page || {}).rhymeAudio) || {});
+                delete map[id];
+                await Reel.api('PATCH', '/organisations/current/settings', { settings: { nurseryRhymeAudio: map } });
+                if (Reel.rhymePlayer) Reel.rhymePlayer.stop();
+                this.toast('Rhyme deleted.');
+                await this.navigate(true);
+              } catch (error) {
+                this.toast(error.message || 'The rhyme could not be deleted.', 'error');
+              }
+            }
+          }]
+        });
+      },
+
       /* ---- Nursery rhymes: plain-text download & print ------------------ */
 
       rhymeText(id) {
         const rhyme = window.Reel && window.Reel.nurseryRhymes ? window.Reel.nurseryRhymes.find(id) : null;
         if (!rhyme) return null;
+        const tags = Reel.rhymeMeta && Reel.rhymeMeta.tagsFor(rhyme);
+        const minutes = Reel.rhymeMeta && Reel.rhymeMeta.minutesFor(rhyme);
         return [
           rhyme.title.toUpperCase(),
-          'Category: ' + rhyme.category,
+          'Topic: ' + rhyme.category + (tags && tags.length ? ' · ' + tags.join(', ') : '') +
+            (minutes ? ' · about ' + minutes + ' min' : ''),
           '',
           rhyme.lyrics.join('\n'),
           '',
           rhyme.actions ? 'Actions: ' + rhyme.actions : '',
           '',
-          'Traditional public-domain verses; wording varies by region.',
-          'Licensed audio / sheet music: ' + rhyme.source
+          rhyme.custom ? 'Added by your centre.' : 'Traditional public-domain verses; wording varies by region.',
+          rhyme.source ? 'Audio / sheet music: ' + rhyme.source : ''
         ].filter((line, i, arr) => line !== '' || (arr[i + 1] && arr[i + 1] !== '')).join('\n');
       },
 
@@ -1102,7 +1285,10 @@
           document.body.appendChild(sheet);
         }
         const rhyme = window.Reel.nurseryRhymes.find(id);
-        sheet.innerHTML = '<h1>' + Reel.esc(rhyme.title) + '</h1><pre>' + Reel.esc(text) + '</pre>';
+        sheet.innerHTML = '<section class="songbook-page"><h1>' + Reel.esc(rhyme.title) + '</h1>' +
+          '<p class="small muted">' + Reel.esc(rhyme.category || '') +
+          (rhyme.actions ? ' · ' + Reel.esc(rhyme.actions) : '') + '</p>' +
+          '<pre>' + Reel.esc((rhyme.lyrics || []).join('\n')) + '</pre></section>';
         window.print();
       },
 
