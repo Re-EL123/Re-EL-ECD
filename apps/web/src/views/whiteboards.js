@@ -1,9 +1,9 @@
 'use strict';
 
 /**
- * Interactive whiteboards: infinite digital canvases for teaching, annotation,
- * math/science sketching and collaborative problem-solving. State is persisted
- * as a small vector document and polled for collaboration.
+ * Interactive whiteboards: a canvas-first teaching workspace with a compact
+ * tool strip, a layers panel, live co-presence, presentation mode and
+ * background autosave. State is a small validated vector document.
  */
 (function () {
   const R = window.Reel;
@@ -13,7 +13,6 @@
   function attr(s) { return R.attr(s == null ? '' : String(s)); }
   function uid() { return 'o' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
 
-  // ---- Tool catalogue ------------------------------------------------------
   const TOOLS = {
     select: { label: 'Select', icon: 'mouse-pointer-2', key: 'V', group: 'Navigate' },
     hand: { label: 'Pan', icon: 'hand', key: 'H', group: 'Navigate' },
@@ -26,12 +25,35 @@
     circle: { label: 'Circle', icon: 'circle', key: 'C', group: 'Shape' },
     text: { label: 'Text', icon: 'type', key: 'T', group: 'Insert' },
     sticky: { label: 'Sticky note', icon: 'sticky-note', key: 'N', group: 'Insert' },
-    math: { label: 'Math / science', icon: 'sigma', key: 'M', group: 'Insert' }
+    math: { label: 'Math / science', icon: 'sigma', key: 'M', group: 'Insert' },
+    image: { label: 'Image', icon: 'image', key: 'I', group: 'Insert' }
   };
   const TOOL_GROUPS = ['Navigate', 'Draw', 'Shape', 'Insert'];
   const MATH_SYMBOLS = ['+', '−', '×', '÷', '=', '≠', '≈', '<', '>', '≤', '≥', 'π', '√', 'x²', 'x³', '½', '¼', '°', 'α', 'β', 'θ', 'Δ', '∑', '∞', '→', '↔', 'H₂O', 'CO₂', 'O₂', 'NaCl', 'E=mc²'];
+  const SWATCHES = ['#1f3b2a', '#B73A3A', '#1f5f7a', '#8a4b32', '#5b3f6e', '#a8620a', '#ffffff'];
 
-  // ---- Shared vector renderer (canvas, thumbnails, presentation) -----------
+  function palette() {
+    const dark = typeof document !== 'undefined' && document.documentElement &&
+      document.documentElement.getAttribute('data-theme') === 'dark';
+    return dark
+      ? { bg: '#26322a', grid: 'rgba(210,235,215,0.08)', ink: '#dcebdc', stickyText: '#2b2200', stickyFill: '#f0d77a', selected: '#7fc7e0', laser: '#ff5d5d' }
+      : { bg: '#fafbf8', grid: 'rgba(120,140,125,0.12)', ink: '#1f3b2a', stickyText: '#4a3b00', stickyFill: '#FFF4B8', selected: '#3D8FAE', laser: '#e02b2b' };
+  }
+  function resolvedColor(o, pal) { return o.color === '#1f3b2a' ? pal.ink : (o.color || pal.ink); }
+
+  const imageCache = new Map();
+  function cachedImage(src, onLoad) {
+    let img = imageCache.get(src);
+    if (!img) {
+      img = new Image();
+      img.onload = () => { if (onLoad) onLoad(); };
+      img.src = src;
+      imageCache.set(src, img);
+    }
+    return img;
+  }
+
+  // ---- Shared vector renderer ----------------------------------------------
   function objectBounds(o) {
     if (!o) return null;
     if (o.type === 'path' || o.type === 'highlighter') {
@@ -46,14 +68,17 @@
     if (o.type === 'circle') return { x: o.cx - Math.abs(o.rx), y: o.cy - Math.abs(o.ry), w: Math.abs(o.rx) * 2, h: Math.abs(o.ry) * 2 };
     if (o.type === 'text' || o.type === 'math') return { x: o.x, y: o.y, w: Math.max(40, String(o.text || '').length * ((o.size || 20) * 0.6)), h: (o.size || 20) + 6 };
     if (o.type === 'sticky') return { x: o.x, y: o.y, w: o.w || 180, h: o.h || 140 };
+    if (o.type === 'image') return { x: o.x, y: o.y, w: o.w || 240, h: o.h || 160 };
     return null;
   }
 
   function drawObject(ctx, o, opts) {
     const options = opts || {};
+    const pal = options.palette || palette();
+    if (o.hidden) return;
     ctx.save();
     if (options.alpha != null) ctx.globalAlpha = options.alpha;
-    const c = o.color || '#1f3b2a';
+    const c = resolvedColor(o, pal);
     const w = o.width || 2;
     if (o.type === 'path' || o.type === 'highlighter') {
       ctx.strokeStyle = c; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -77,22 +102,30 @@
     } else if (o.type === 'circle') {
       ctx.strokeStyle = c; ctx.lineWidth = w; ctx.beginPath(); ctx.ellipse(o.cx, o.cy, Math.abs(o.rx), Math.abs(o.ry), 0, 0, Math.PI * 2); ctx.stroke();
     } else if (o.type === 'text' || o.type === 'math') {
-      ctx.fillStyle = c; ctx.font = (o.size || (o.type === 'math' ? 28 : 20)) + 'px "Segoe UI", Arial, sans-serif';
+      ctx.fillStyle = c;
+      const family = o.font === 'serif' ? 'Georgia, serif' : o.font === 'mono' ? 'monospace' : '"Segoe UI", Arial, sans-serif';
+      ctx.font = (o.size || (o.type === 'math' ? 28 : 20)) + 'px ' + family;
       ctx.textBaseline = 'top'; ctx.fillText(o.text || '', o.x, o.y);
     } else if (o.type === 'sticky') {
       const ww = o.w || 180, hh = o.h || 140;
-      ctx.fillStyle = o.fill || '#FFF4B8'; ctx.strokeStyle = 'rgba(0,0,0,0.08)'; ctx.lineWidth = 1;
+      ctx.fillStyle = o.fill || pal.stickyFill; ctx.strokeStyle = pal.grid; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.roundRect(o.x, o.y, ww, hh, 8); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = '#4a3b00'; ctx.font = '16px "Segoe UI", Arial, sans-serif'; ctx.textBaseline = 'top';
+      ctx.fillStyle = pal.stickyText;
+      const family = o.font === 'serif' ? 'Georgia, serif' : o.font === 'mono' ? 'monospace' : '"Segoe UI", Arial, sans-serif';
+      ctx.font = '16px ' + family; ctx.textBaseline = 'top';
       String(o.text || '').split('\n').forEach((ln, i) => ctx.fillText(ln, o.x + 12, o.y + 12 + i * 22));
+    } else if (o.type === 'image' && o.src) {
+      const img = cachedImage(o.src, options.onLoad);
+      if (img.complete && img.naturalWidth) ctx.drawImage(img, o.x, o.y, o.w || 240, o.h || 160);
+      else { ctx.fillStyle = pal.grid; ctx.fillRect(o.x, o.y, o.w || 240, o.h || 160); }
     }
     if (options.selected) {
       const b = objectBounds(o);
       if (b) {
-        ctx.strokeStyle = '#3D8FAE'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 4]);
+        ctx.strokeStyle = pal.selected; ctx.lineWidth = 1.5; ctx.setLineDash([5, 4]);
         ctx.strokeRect(b.x - 4, b.y - 4, b.w + 8, b.h + 8); ctx.setLineDash([]);
         if (options.handles) {
-          ctx.setLineDash([]); ctx.fillStyle = '#fff'; ctx.strokeStyle = '#1f5f7a'; ctx.lineWidth = 1.5;
+          ctx.setLineDash([]); ctx.fillStyle = pal.bg; ctx.strokeStyle = pal.selected; ctx.lineWidth = 1.5;
           [[b.x - 4, b.y - 4], [b.x + b.w + 4, b.y - 4], [b.x - 4, b.y + b.h + 4], [b.x + b.w + 4, b.y + b.h + 4]].forEach(([hx, hy]) => {
             ctx.beginPath(); ctx.rect(hx - 5, hy - 5, 10, 10); ctx.fill(); ctx.stroke();
           });
@@ -114,47 +147,44 @@
     return { x: minx, y: miny, w: Math.max(1, maxx - minx), h: Math.max(1, maxy - miny) };
   }
 
-  function renderThumbnail(canvas, state, width, height) {
+  function renderToCanvas(canvas, state, width, height, opts) {
     if (!canvas) return;
-    const dpr = window.devicePixelRatio || 1;
+    const options = opts || {};
+    const dpr = options.dpr || window.devicePixelRatio || 1;
     canvas.width = Math.max(1, Math.floor(width * dpr));
     canvas.height = Math.max(1, Math.floor(height * dpr));
-    canvas.style.width = width + 'px';
-    canvas.style.height = height + 'px';
+    canvas.style.width = width + 'px'; canvas.style.height = height + 'px';
     const ctx = canvas.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = '#fafbf8'; ctx.fillRect(0, 0, width, height);
+    const pal = palette();
+    ctx.fillStyle = pal.bg; ctx.fillRect(0, 0, width, height);
     const objects = (state && state.objects) || [];
     if (!objects.length) {
-      ctx.fillStyle = '#b7c3b9'; ctx.font = '12px Inter, sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText('Empty canvas', width / 2, height / 2); ctx.textAlign = 'left';
+      ctx.fillStyle = pal.ink; ctx.globalAlpha = 0.5; ctx.font = '12px Inter, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('Empty canvas', width / 2, height / 2); ctx.textAlign = 'left'; ctx.globalAlpha = 1;
       return;
     }
     const b = boardBounds(objects);
-    const pad = 12;
+    const pad = options.pad == null ? 12 : options.pad;
     const scale = Math.min((width - pad * 2) / b.w, (height - pad * 2) / b.h, 1.4);
     ctx.save();
-    ctx.translate(pad - b.x * scale, pad - b.y * scale);
-    ctx.scale(scale, scale);
-    objects.forEach((o) => drawObject(ctx, o));
+    ctx.translate(pad - b.x * scale, pad - b.y * scale); ctx.scale(scale, scale);
+    objects.forEach((o) => drawObject(ctx, o, { palette: pal, onLoad: options.onLoad }));
     ctx.restore();
   }
 
   function stateToPng(state, width, height) {
     const canvas = document.createElement('canvas');
-    const w = width || 1600;
-    const h = height || 900;
-    canvas.width = w; canvas.height = h;
+    canvas.width = width || 1600; canvas.height = height || 900;
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#fafbf8'; ctx.fillRect(0, 0, w, h);
+    const pal = palette();
+    ctx.fillStyle = pal.bg; ctx.fillRect(0, 0, canvas.width, canvas.height);
     const objects = (state && state.objects) || [];
     const b = boardBounds(objects);
     const pad = 60;
-    const scale = Math.min((w - pad * 2) / b.w, (h - pad * 2) / b.h, 2);
-    ctx.save();
-    ctx.translate(pad - b.x * scale, pad - b.y * scale);
-    ctx.scale(scale, scale);
-    objects.forEach((o) => drawObject(ctx, o));
+    const scale = Math.min((canvas.width - pad * 2) / b.w, (canvas.height - pad * 2) / b.h, 2);
+    ctx.save(); ctx.translate(pad - b.x * scale, pad - b.y * scale); ctx.scale(scale, scale);
+    objects.forEach((o) => drawObject(ctx, o, { palette: pal }));
     ctx.restore();
     return canvas.toDataURL('image/png');
   }
@@ -180,11 +210,15 @@
     let panStart = null;
     let spacePan = false;
     let selectedId = null;
+    let selectedIds = new Set();
     let snap = false;
     let readOnly = Boolean(opts.readOnly);
     let undo = [];
     let redo = [];
     let editor = null;
+    let laser = [];
+    let lastCursor = null;
+    let laserTimer = null;
 
     function resize() {
       const dpr = window.devicePixelRatio || 1;
@@ -201,15 +235,17 @@
     function toScreen(pt) { const v = vp(); return { x: pt.x * v.zoom + v.x, y: pt.y * v.zoom + v.y }; }
     function point(e) { const rect = canvas.getBoundingClientRect(); return { x: e.clientX - rect.left, y: e.clientY - rect.top }; }
     function grid(pt) { return snap ? { x: Math.round(pt.x / 20) * 20, y: Math.round(pt.y / 20) * 20 } : pt; }
-    function pushUndo() { undo.push(JSON.stringify(state.objects)); if (undo.length > 80) undo.shift(); redo = []; }
-    function notify() { if (onChange) onChange(JSON.parse(JSON.stringify(state))); }
+    function pushUndo() { undo.push(JSON.stringify(state.objects)); if (undo.length > 120) undo.shift(); redo = []; }
+    function notify() { if (onChange) onChange(JSON.parse(JSON.stringify(state))); if (opts.onObjects) opts.onObjects(objectsSummary()); }
     function isEditing() { return Boolean(editor); }
+    function objectsSummary() { return state.objects.map((o) => ({ id: o.id, type: o.type, hidden: Boolean(o.hidden), locked: Boolean(o.locked), groupId: o.groupId || null })).reverse(); }
 
     function drawGrid() {
       const v = vp(); const rect = canvas.getBoundingClientRect(); const step = 40 * v.zoom;
       if (step < 10) return;
+      const pal = palette();
       const offX = ((v.x % step) + step) % step; const offY = ((v.y % step) + step) % step;
-      ctx.save(); ctx.strokeStyle = 'rgba(120,140,125,0.12)'; ctx.lineWidth = 1;
+      ctx.save(); ctx.strokeStyle = pal.grid; ctx.lineWidth = 1;
       for (let x = offX; x < rect.width; x += step) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, rect.height); ctx.stroke(); }
       for (let y = offY; y < rect.height; y += step) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(rect.width, y); ctx.stroke(); }
       ctx.restore();
@@ -217,29 +253,50 @@
 
     function render() {
       const rect = canvas.getBoundingClientRect();
+      const pal = palette();
       ctx.clearRect(0, 0, rect.width, rect.height);
-      ctx.fillStyle = '#fafbf8'; ctx.fillRect(0, 0, rect.width, rect.height);
+      ctx.fillStyle = pal.bg; ctx.fillRect(0, 0, rect.width, rect.height);
       drawGrid();
       const v = vp();
       ctx.save(); ctx.translate(v.x, v.y); ctx.scale(v.zoom, v.zoom);
-      state.objects.forEach((o) => drawObject(ctx, o, { selected: o.id === selectedId, handles: o.id === selectedId && tool === 'select' }));
-      if (drawing && !drawing.drag && !drawing.resize && !drawing.erasing) drawObject(ctx, drawing, { alpha: 0.9 });
+      state.objects.forEach((o) => drawObject(ctx, o, {
+        palette: pal, onLoad: render,
+        selected: selectedIds.has(o.id) || o.id === selectedId,
+        handles: o.id === selectedId && tool === 'select' && !readOnly
+      }));
+      if (drawing && !drawing.drag && !drawing.resize && !drawing.erasing) drawObject(ctx, drawing, { alpha: 0.9, palette: pal });
+      if (laser.length) {
+        const now = Date.now();
+        laser = laser.filter((p) => now - p.t < 900);
+        if (laser.length > 1) {
+          ctx.save(); ctx.strokeStyle = pal.laser; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+          for (let i = 1; i < laser.length; i++) {
+            const age = (now - laser[i].t) / 900;
+            ctx.globalAlpha = Math.max(0, 1 - age);
+            ctx.beginPath(); ctx.moveTo(laser[i - 1].x, laser[i - 1].y); ctx.lineTo(laser[i].x, laser[i].y); ctx.stroke();
+          }
+          ctx.restore();
+        }
+      }
       ctx.restore();
-      canvas.style.cursor = panning || spacePan || tool === 'hand' ? 'grab' : (readOnly && !['select', 'hand'].includes(tool) ? 'not-allowed' : (tool === 'select' ? 'default' : 'crosshair'));
-      if (options.onSelection) options.onSelection(selectedId ? state.objects.find((o) => o.id === selectedId) || null : null);
+      canvas.style.cursor = panning || spacePan || tool === 'hand' ? 'grab' : (readOnly && !['select', 'hand', 'laser'].includes(tool) ? 'not-allowed' : (tool === 'select' ? 'default' : 'crosshair'));
+      if (opts.onSelection) opts.onSelection(selectedId ? state.objects.find((o) => o.id === selectedId) || null : Array.from(selectedIds));
+      if (opts.onViewport) opts.onViewport(vp());
     }
 
     function hitTest(wpt) {
       for (let i = state.objects.length - 1; i >= 0; i -= 1) {
-        const b = objectBounds(state.objects[i]);
-        if (b && wpt.x >= b.x - 6 && wpt.x <= b.x + b.w + 6 && wpt.y >= b.y - 6 && wpt.y <= b.y + b.h + 6) return state.objects[i];
+        const o = state.objects[i];
+        if (o.hidden || o.locked) continue;
+        const b = objectBounds(o);
+        if (b && wpt.x >= b.x - 6 && wpt.x <= b.x + b.w + 6 && wpt.y >= b.y - 6 && wpt.y <= b.y + b.h + 6) return o;
       }
       return null;
     }
 
     function handleAt(spt) {
       const obj = state.objects.find((o) => o.id === selectedId);
-      if (!obj || tool !== 'select') return null;
+      if (!obj || obj.locked || tool !== 'select') return null;
       const b = objectBounds(obj); if (!b) return null;
       const corners = [
         { key: 'nw', x: toScreen({ x: b.x, y: b.y }).x - 4, y: toScreen({ x: b.x, y: b.y }).y - 4 },
@@ -257,7 +314,7 @@
       const mapY = (y) => to.y + (y - from.y) * sy;
       if (o.type === 'path' || o.type === 'highlighter') o.points = (o.points || []).map((p) => ({ x: mapX(p.x), y: mapY(p.y) }));
       else if (o.type === 'line' || o.type === 'arrow') { o.x1 = mapX(o.x1); o.x2 = mapX(o.x2); o.y1 = mapY(o.y1); o.y2 = mapY(o.y2); }
-      else if (o.type === 'rect' || o.type === 'sticky') { o.x = mapX(from.x); o.y = mapY(from.y); o.w = from.w * sx; o.h = from.h * sy; }
+      else if (o.type === 'rect' || o.type === 'sticky' || o.type === 'image') { o.x = mapX(from.x); o.y = mapY(from.y); o.w = from.w * sx; o.h = from.h * sy; }
       else if (o.type === 'circle') { o.cx = mapX(base.cx); o.cy = mapY(base.cy); o.rx = Math.abs(base.rx) * sx; o.ry = Math.abs(base.ry) * sy; }
       else if (o.type === 'text' || o.type === 'math') { o.x = mapX(from.x); o.y = mapY(from.y); o.size = Math.max(8, Math.min(120, (base.size || 20) * Math.max(sx, sy))); }
       return o;
@@ -269,24 +326,33 @@
       const holder = document.createElement('div');
       holder.className = 'wb-inline-editor';
       holder.style.left = Math.max(8, Math.min(container.clientWidth - 250, position.x)) + 'px';
-      holder.style.top = Math.max(8, Math.min(container.clientHeight - 150, position.y)) + 'px';
-      holder.innerHTML = '<textarea class="wb-inline-input" rows="' + (kind === 'sticky' ? 4 : 2) + '" placeholder="' +
-        (kind === 'sticky' ? 'Write your note…' : kind === 'math' ? 'Expression or symbol…' : 'Type here…') + '">' + esc(seed || '') + '</textarea>' +
+      holder.style.top = Math.max(8, Math.min(container.clientHeight - 180, position.y)) + 'px';
+      const multi = kind === 'sticky';
+      holder.innerHTML = (kind === 'image'
+        ? '<input class="wb-inline-input" type="url" placeholder="Paste an image URL…" value="' + esc(seed || '') + '">'
+        : '<textarea class="wb-inline-input" rows="' + (multi ? 4 : 2) + '" placeholder="' +
+          (multi ? 'Write your note…' : kind === 'math' ? 'Expression or symbol…' : 'Type here…') + '">' + esc(seed || '') + '</textarea>') +
+        (kind === 'text' || kind === 'sticky' || kind === 'math'
+          ? '<div class="wb-inline-row"><label>Font <select class="wb-inline-font"><option value="sans">Sans</option><option value="serif">Serif</option><option value="mono">Mono</option></select></label>' +
+            '<label>Size <input class="wb-inline-size" type="number" min="8" max="120" value="' + (kind === 'math' ? 28 : 20) + '"></label></div>' : '') +
         '<div class="wb-inline-actions"><button type="button" class="btn btn-sm btn-ghost" data-wb-cancel>Cancel</button>' +
         '<button type="button" class="btn btn-sm btn-primary" data-wb-done>Add</button></div>';
       container.appendChild(holder);
-      const input = holder.querySelector('textarea');
+      const input = holder.querySelector('.wb-inline-input');
       editor = { holder, input, wpt, kind };
       input.focus(); input.select();
       function commit() {
         const value = input.value.trim();
         const target = editor && editor.wpt;
+        const font = holder.querySelector('.wb-inline-font') && holder.querySelector('.wb-inline-font').value;
+        const size = holder.querySelector('.wb-inline-size') && Number(holder.querySelector('.wb-inline-size').value);
         closeEditor();
         if (!value || readOnly || !target) return;
         pushUndo();
-        if (kind === 'sticky') state.objects.push({ id: uid(), type: 'sticky', x: target.x, y: target.y, w: 180, h: 140, text: value, fill: '#FFF4B8' });
-        else if (kind === 'math') state.objects.push({ id: uid(), type: 'math', color, size: 28, x: target.x, y: target.y, text: value });
-        else state.objects.push({ id: uid(), type: 'text', color, size: 22, x: target.x, y: target.y, text: value });
+        if (kind === 'sticky') state.objects.push({ id: uid(), type: 'sticky', x: target.x, y: target.y, w: 180, h: 140, text: value, fill: palette().stickyFill, font: font || 'sans' });
+        else if (kind === 'math') state.objects.push({ id: uid(), type: 'math', color, size: size || 28, x: target.x, y: target.y, text: value, font: font || 'sans' });
+        else if (kind === 'text') state.objects.push({ id: uid(), type: 'text', color, size: size || 22, x: target.x, y: target.y, text: value, font: font || 'sans' });
+        else if (kind === 'image') state.objects.push({ id: uid(), type: 'image', x: target.x, y: target.y, w: 280, h: 180, src: value });
         render(); notify();
       }
       function cancel() { closeEditor(); }
@@ -306,9 +372,11 @@
       if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
       const spt = point(e);
       const wpt = grid(toWorld(spt));
+      lastCursor = wpt;
       if (panning || spacePan || tool === 'hand' || e.button === 1) {
         panning = true; panStart = { x: spt.x - vp().x, y: spt.y - vp().y }; return;
       }
+      if (tool === 'laser') { laser.push({ x: wpt.x, y: wpt.y, t: Date.now() }); render(); return; }
       if (tool === 'select') {
         const handle = handleAt(spt);
         if (handle && canDraw()) {
@@ -317,14 +385,22 @@
           return;
         }
         const hit = hitTest(wpt);
-        selectedId = hit ? hit.id : null;
-        if (hit && canDraw()) drawing = { drag: true, id: hit.id, start: wpt, orig: JSON.parse(JSON.stringify(hit)) };
+        if (e.shiftKey && hit) {
+          if (selectedIds.has(hit.id)) selectedIds.delete(hit.id); else selectedIds.add(hit.id);
+          selectedId = hit.id; render(); return;
+        }
+        if (hit) {
+          if (!selectedIds.has(hit.id)) selectedIds = new Set([hit.id]);
+          selectedId = hit.id;
+          const origs = state.objects.filter((o) => selectedIds.has(o.id)).map((o) => ({ id: o.id, obj: JSON.parse(JSON.stringify(o)) }));
+          if (canDraw()) drawing = { drag: true, start: wpt, origs };
+        } else { selectedIds = new Set(); selectedId = null; }
         render(); return;
       }
       if (!canDraw()) return;
       if (tool === 'eraser') {
         const hit = hitTest(wpt);
-        if (hit) { pushUndo(); state.objects = state.objects.filter((o) => o.id !== hit.id); selectedId = null; render(); notify(); }
+        if (hit) { pushUndo(); state.objects = state.objects.filter((o) => o.id !== hit.id); selectedIds.delete(hit.id); render(); notify(); }
         drawing = { erasing: true }; return;
       }
       if (tool === 'pen' || tool === 'highlighter') {
@@ -335,7 +411,7 @@
         drawing = { id: uid(), type: 'rect', color, width: strokeW, x: wpt.x, y: wpt.y, w: 0, h: 0 };
       } else if (tool === 'circle') {
         drawing = { id: uid(), type: 'circle', color, width: strokeW, cx: wpt.x, cy: wpt.y, rx: 0, ry: 0 };
-      } else if (tool === 'text' || tool === 'sticky' || tool === 'math') {
+      } else if (tool === 'text' || tool === 'sticky' || tool === 'math' || tool === 'image') {
         openEditor(spt, wpt, tool); render(); return;
       }
       render();
@@ -345,6 +421,8 @@
       if (isEditing()) return;
       const spt = point(e);
       const wpt = grid(toWorld(spt));
+      lastCursor = wpt;
+      if (tool === 'laser') { laser.push({ x: wpt.x, y: wpt.y, t: Date.now() }); render(); return; }
       if (panning && panStart) { vp().x = spt.x - panStart.x; vp().y = spt.y - panStart.y; render(); return; }
       if (!drawing) return;
       if (drawing.erasing) {
@@ -365,20 +443,21 @@
         render(); return;
       }
       if (drawing.drag) {
-        const obj = state.objects.find((o) => o.id === drawing.id);
-        if (obj) {
-          const dx = wpt.x - drawing.start.x, dy = wpt.y - drawing.start.y; const o = drawing.orig;
-          if (obj.type === 'path' || obj.type === 'highlighter') obj.points = (o.points || []).map((p) => ({ x: p.x + dx, y: p.y + dy }));
-          else if (obj.type === 'line' || obj.type === 'arrow') { obj.x1 = o.x1 + dx; obj.y1 = o.y1 + dy; obj.x2 = o.x2 + dx; obj.y2 = o.y2 + dy; }
-          else if (obj.type === 'circle') { obj.cx = o.cx + dx; obj.cy = o.cy + dy; }
-          else { obj.x = o.x + dx; obj.y = o.y + dy; }
-          render();
-        }
-        return;
+        const dx = wpt.x - drawing.start.x, dy = wpt.y - drawing.start.y;
+        drawing.origs.forEach(({ id, obj }) => {
+          const at = state.objects.findIndex((o) => o.id === id);
+          if (at === -1) return;
+          const o = state.objects[at];
+          if (o.type === 'path' || o.type === 'highlighter') o.points = (obj.points || []).map((p) => ({ x: p.x + dx, y: p.y + dy }));
+          else if (o.type === 'line' || o.type === 'arrow') { o.x1 = obj.x1 + dx; o.y1 = obj.y1 + dy; o.x2 = obj.x2 + dx; o.y2 = obj.y2 + dy; }
+          else if (o.type === 'circle') { o.cx = obj.cx + dx; o.cy = obj.cy + dy; }
+          else { o.x = obj.x + dx; o.y = obj.y + dy; }
+        });
+        render(); return;
       }
       if (drawing.type === 'path' || drawing.type === 'highlighter') drawing.points.push(wpt);
       else if (drawing.type === 'line' || drawing.type === 'arrow') { drawing.x2 = wpt.x; drawing.y2 = wpt.y; }
-      else if (drawing.type === 'rect') { drawing.w = wpt.x - drawing.x; drawing.h = wpt.y - drawing.y; }
+      else if (drawing.type === 'rect' || drawing.type === 'image') { drawing.w = wpt.x - drawing.x; drawing.h = wpt.y - drawing.y; }
       else if (drawing.type === 'circle') { drawing.rx = wpt.x - drawing.cx; drawing.ry = wpt.y - drawing.cy; }
       render();
     }
@@ -392,7 +471,7 @@
         if ((drawing.points || []).length > 1) { pushUndo(); state.objects.push(drawing); notify(); }
       } else if (drawing.type === 'line' || drawing.type === 'arrow') {
         if (Math.hypot(drawing.x2 - drawing.x1, drawing.y2 - drawing.y1) > 2) { pushUndo(); state.objects.push(drawing); notify(); }
-      } else if (drawing.type === 'rect') {
+      } else if (drawing.type === 'rect' || drawing.type === 'image') {
         if (Math.abs(drawing.w) > 2 || Math.abs(drawing.h) > 2) { pushUndo(); state.objects.push(drawing); notify(); }
       } else if (drawing.type === 'circle') {
         if (Math.abs(drawing.rx) > 2 || Math.abs(drawing.ry) > 2) { pushUndo(); state.objects.push(drawing); notify(); }
@@ -425,23 +504,26 @@
     document.addEventListener('keydown', onKeyDown);
     document.addEventListener('keyup', onKeyUp);
     window.addEventListener('blur', onBlur);
+    laserTimer = setInterval(() => { if (laser.length) render(); }, 120);
 
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null;
-    if (ro) ro.observe(container);
-    else window.addEventListener('resize', resize);
+    if (ro) ro.observe(container); else window.addEventListener('resize', resize);
     resize();
 
     function moveSelected(direction) {
-      if (readOnly || !selectedId) return;
-      const at = state.objects.findIndex((o) => o.id === selectedId);
-      if (at === -1) return;
+      if (readOnly || !selectedIds.size) return;
       pushUndo();
-      const obj = state.objects[at];
-      state.objects.splice(at, 1);
-      if (direction === 'front') state.objects.push(obj);
-      else if (direction === 'back') state.objects.unshift(obj);
-      else if (direction === 'forward') state.objects.splice(Math.min(state.objects.length, at + 1), 0, obj);
-      else state.objects.splice(Math.max(0, at - 1), 0, obj);
+      const ids = new Set(selectedIds);
+      const picked = state.objects.filter((o) => ids.has(o.id));
+      state.objects = state.objects.filter((o) => !ids.has(o.id));
+      if (direction === 'front') state.objects.push(...picked);
+      else if (direction === 'back') state.objects.unshift(...picked);
+      else {
+        const anchor = picked[picked.length - 1];
+        const at = state.objects.indexOf(anchor);
+        const insert = direction === 'forward' ? Math.min(state.objects.length, at + 1) : Math.max(0, at - 1);
+        state.objects.splice(insert, 0, ...picked);
+      }
       render(); notify();
     }
 
@@ -472,37 +554,94 @@
       addMathSymbol(sym) {
         if (readOnly) return;
         pushUndo(); const v = vp(); const rect = canvas.getBoundingClientRect();
+        state.objects.push({ id: uid(), type: 'math', color, size: 32, x: (rect.width / 2 - v.x) / v.zoom, y: (rect.height / 2 - v.y) / v.zoom, text: sym, font: 'sans' });
+        render(); notify();
+      },
+      addImage(src) {
+        if (readOnly || !/^https?:\/\//i.test(src)) return;
+        pushUndo(); const v = vp(); const rect = canvas.getBoundingClientRect();
+        state.objects.push({ id: uid(), type: 'image', x: (rect.width / 2 - v.x) / v.zoom, y: (rect.height / 2 - v.y) / v.zoom, w: 280, h: 180, src });
+        render(); notify();
+      },
+      insertTemplate(kind) {
+        const tpl = TEMPLATES[kind];
+        if (!tpl || readOnly) return;
+        pushUndo();
+        const v = vp(); const rect = canvas.getBoundingClientRect();
         const cx = (rect.width / 2 - v.x) / v.zoom, cy = (rect.height / 2 - v.y) / v.zoom;
-        state.objects.push({ id: uid(), type: 'math', color, size: 32, x: cx, y: cy, text: sym });
+        tpl.state.objects.forEach((o) => {
+          const copy = JSON.parse(JSON.stringify(o));
+          copy.id = uid();
+          copy.x = (copy.x || 0) - 60 + cx / 2;
+          copy.y = (copy.y || 0) - 40 + cy / 2;
+          state.objects.push(copy);
+        });
         render(); notify();
       },
       updateSelected(patch) {
-        if (readOnly || !selectedId) return;
-        const obj = state.objects.find((o) => o.id === selectedId);
-        if (!obj) return;
-        pushUndo(); Object.assign(obj, patch); render(); notify();
+        if (readOnly || !selectedIds.size) return;
+        pushUndo();
+        state.objects.forEach((o) => { if (selectedIds.has(o.id)) Object.assign(o, patch); });
+        render(); notify();
       },
       deleteSelected() {
-        if (!selectedId || readOnly) return;
-        pushUndo(); state.objects = state.objects.filter((o) => o.id !== selectedId); selectedId = null; render(); notify();
+        if (readOnly || !selectedIds.size) return;
+        pushUndo(); state.objects = state.objects.filter((o) => !selectedIds.has(o.id));
+        selectedIds = new Set(); selectedId = null; render(); notify();
       },
-      undo() { if (!undo.length || readOnly) return; redo.push(JSON.stringify(state.objects)); state.objects = JSON.parse(undo.pop()); selectedId = null; render(); notify(); },
-      redo() { if (!redo.length || readOnly) return; undo.push(JSON.stringify(state.objects)); state.objects = JSON.parse(redo.pop()); selectedId = null; render(); notify(); },
-      clear() { if (!state.objects.length || readOnly) return; pushUndo(); state.objects = []; selectedId = null; render(); notify(); },
-      zoomIn() { const rect = canvas.getBoundingClientRect(); const spt = { x: rect.width / 2, y: rect.height / 2 }; const before = toWorld(spt); vp().zoom = Math.min(5, vp().zoom * 1.2); vp().x = spt.x - before.x * vp().zoom; vp().y = spt.y - before.y * vp().zoom; render(); notify(); },
-      zoomOut() { const rect = canvas.getBoundingClientRect(); const spt = { x: rect.width / 2, y: rect.height / 2 }; const before = toWorld(spt); vp().zoom = Math.max(0.1, vp().zoom / 1.2); vp().x = spt.x - before.x * vp().zoom; vp().y = spt.y - before.y * vp().zoom; render(); notify(); },
+      undo() { if (!undo.length || readOnly) return; redo.push(JSON.stringify(state.objects)); state.objects = JSON.parse(undo.pop()); selectedIds = new Set(); selectedId = null; render(); notify(); },
+      redo() { if (!redo.length || readOnly) return; undo.push(JSON.stringify(state.objects)); state.objects = JSON.parse(redo.pop()); selectedIds = new Set(); selectedId = null; render(); notify(); },
+      clear() { if (!state.objects.length || readOnly) return; pushUndo(); state.objects = []; selectedIds = new Set(); selectedId = null; render(); notify(); },
+      zoomIn() { this.setZoom(vp().zoom * 1.2); },
+      zoomOut() { this.setZoom(vp().zoom / 1.2); },
+      setZoom(z) {
+        const rect = canvas.getBoundingClientRect(); const spt = { x: rect.width / 2, y: rect.height / 2 };
+        const before = toWorld(spt); const nz = Math.min(5, Math.max(0.1, z));
+        vp().zoom = nz; vp().x = spt.x - before.x * nz; vp().y = spt.y - before.y * nz;
+        render(); notify();
+      },
       resetView() { vp().x = 0; vp().y = 0; vp().zoom = 1; render(); notify(); },
-      moveSelected,
-      getState() { return JSON.parse(JSON.stringify(state)); },
+      fitToContent() {
+        const rect = canvas.getBoundingClientRect(); const b = boardBounds(state.objects);
+        const zoom = Math.min(5, Math.max(0.1, Math.min((rect.width - 60) / b.w, (rect.height - 60) / b.h)));
+        vp().zoom = zoom;
+        vp().x = (rect.width - b.w * zoom) / 2 - b.x * zoom;
+        vp().y = (rect.height - b.h * zoom) / 2 - b.y * zoom;
+        render(); notify();
+      },
+      setViewport(next) { state.viewport = Object.assign({}, next); render(); },
       getViewport() { return Object.assign({}, vp()); },
+      getSelectedIds() { return Array.from(selectedIds); },
+      setSelectedIds(ids) { selectedIds = new Set(ids || []); selectedId = ids && ids[0] ? ids[0] : null; render(); },
+      selectAll() { selectedIds = new Set(state.objects.map((o) => o.id)); render(); },
+      toggleHidden(id) { const o = state.objects.find((x) => x.id === id); if (o && !readOnly) { pushUndo(); o.hidden = !o.hidden; render(); notify(); } },
+      toggleLocked(id) { const o = state.objects.find((x) => x.id === id); if (o && !readOnly) { pushUndo(); o.locked = !o.locked; render(); notify(); } },
+      groupSelected() {
+        if (readOnly || selectedIds.size < 2) return;
+        const already = state.objects.filter((o) => selectedIds.has(o.id)).every((o) => o.groupId && o.groupId === state.objects.find((x) => selectedIds.has(x.id)).groupId);
+        const gid = already ? null : 'g' + Date.now().toString(36);
+        pushUndo(); state.objects.forEach((o) => { if (selectedIds.has(o.id)) o.groupId = gid; });
+        render(); notify();
+      },
+      reorderObject(id, targetId) {
+        if (readOnly || id === targetId) return;
+        const from = state.objects.findIndex((o) => o.id === id);
+        const to = state.objects.findIndex((o) => o.id === targetId);
+        if (from === -1 || to === -1) return;
+        pushUndo(); const [obj] = state.objects.splice(from, 1);
+        state.objects.splice(to, 0, obj); render(); notify();
+      },
+      getObjects() { return objectsSummary(); },
       getSelected() { return selectedId ? state.objects.find((o) => o.id === selectedId) || null : null; },
+      getCursor() { return lastCursor; },
+      moveSelected,
       diffOps,
       exportPNG(width, height) { return stateToPng(state, width, height); },
       setState(s, opts) {
         state = JSON.parse(JSON.stringify(s || { objects: [], viewport: { x: 0, y: 0, zoom: 1 } }));
         state.objects = state.objects || []; state.viewport = state.viewport || { x: 0, y: 0, zoom: 1 };
         if (!opts || !opts.keepHistory) { undo = []; redo = []; }
-        selectedId = null; closeEditor(); render();
+        selectedIds = new Set(); selectedId = null; closeEditor(); render();
       },
       destroy() {
         canvas.removeEventListener('pointerdown', onPointerDown);
@@ -513,6 +652,7 @@
         document.removeEventListener('keydown', onKeyDown);
         document.removeEventListener('keyup', onKeyUp);
         window.removeEventListener('blur', onBlur);
+        clearInterval(laserTimer);
         if (ro) ro.disconnect(); else window.removeEventListener('resize', resize);
         closeEditor(); canvas.remove();
       }
@@ -524,7 +664,7 @@
     math: {
       label: 'Maths canvas', hint: 'Counting, number lines and problem-solving frames.', icon: 'sigma', title: 'Maths canvas',
       state: { viewport: { x: 0, y: 0, zoom: 1 }, objects: [
-        { type: 'text', x: 60, y: 46, text: 'Counting to 20', size: 34, color: '#17281c' },
+        { type: 'text', x: 60, y: 46, text: 'Counting to 20', size: 34, color: '#17281c', font: 'sans' },
         { type: 'arrow', x1: 60, y1: 152, x2: 840, y2: 152, color: '#2f5c3c', width: 3 },
         { type: 'sticky', x: 60, y: 196, w: 175, h: 132, text: '1–5\nCount out loud\ntogether.' },
         { type: 'sticky', x: 262, y: 196, w: 175, h: 132, text: '6–10\nPoint at each\nnumber.' },
@@ -535,7 +675,7 @@
     story: {
       label: 'Story retell', hint: 'Beginning, middle and end — the shape of every tale.', icon: 'book-open', title: 'Story retell',
       state: { viewport: { x: 0, y: 0, zoom: 1 }, objects: [
-        { type: 'text', x: 60, y: 46, text: 'Story retell', size: 34, color: '#17281c' },
+        { type: 'text', x: 60, y: 46, text: 'Story retell', size: 34, color: '#17281c', font: 'sans' },
         { type: 'sticky', x: 60, y: 150, w: 230, h: 176, text: 'Beginning\nWho is in the\nstory? Where?' },
         { type: 'arrow', x1: 312, y1: 238, x2: 380, y2: 238, color: '#2f5c3c', width: 3 },
         { type: 'sticky', x: 400, y: 150, w: 230, h: 176, text: 'Middle\nWhat happens?\nWhat changes?' },
@@ -546,14 +686,14 @@
     rhyme: {
       label: 'Rhyme / song board', hint: 'Verse-by-verse with space to add movement cues.', icon: 'music', title: 'Rhyme of the day',
       state: { viewport: { x: 0, y: 0, zoom: 1 }, objects: [
-        { type: 'text', x: 60, y: 46, text: 'Rhyme of the day', size: 34, color: '#17281c' },
+        { type: 'text', x: 60, y: 46, text: 'Rhyme of the day', size: 34, color: '#17281c', font: 'sans' },
         { type: 'sticky', x: 80, y: 150, w: 780, h: 210, text: 'Sing it together:\n\nLine one…\nLine two…\nLine three…\nLine four…\n\nClap on every third word.' }
       ] }
     },
     shape: {
       label: 'Shape sorter', hint: 'Sort, match and name — geometry for little hands.', icon: 'shapes', title: 'Shape sorter',
       state: { viewport: { x: 0, y: 0, zoom: 1 }, objects: [
-        { type: 'text', x: 60, y: 46, text: 'Shape sorter', size: 34, color: '#17281c' },
+        { type: 'text', x: 60, y: 46, text: 'Shape sorter', size: 34, color: '#17281c', font: 'sans' },
         { type: 'sticky', x: 80, y: 150, w: 170, h: 120, text: 'Circles\nRound like\na ball?' },
         { type: 'sticky', x: 280, y: 150, w: 170, h: 120, text: 'Squares\nFour equal\nsides?' },
         { type: 'sticky', x: 480, y: 150, w: 170, h: 120, text: 'Triangles\nThree\nsides?' },
@@ -719,7 +859,24 @@
     }
   };
 
-  // ---- Detail / editor view ------------------------------------------------
+  // Render thumbnails after the list view mounts.
+  const thumbCache = new Map();
+  V._initWhiteboards = function (ctx, page) {
+    const cards = [...document.querySelectorAll('.wb-thumb')];
+    cards.forEach((canvas) => {
+      const id = canvas.getAttribute('data-board-id');
+      const board = ((page || {}).boards || []).find((b) => b.id === id);
+      if (!board) return;
+      const paint = (state) => renderToCanvas(canvas, state, Math.max(120, canvas.clientWidth || 320), 132);
+      if (thumbCache.has(id)) { paint(thumbCache.get(id)); return; }
+      R.api('GET', '/whiteboards/' + encodeURIComponent(id)).then((res) => {
+        const state = (res && res.data && res.data.state) || { objects: [], viewport: { x: 0, y: 0, zoom: 1 } };
+        thumbCache.set(id, state); paint(state);
+      }).catch(() => paint({ objects: [] }));
+    });
+  };
+
+  // ---- Detail / editor view (canvas-first) ---------------------------------
   V.whiteboardDetail = {
     async load(ctx, params) {
       const board = await R.api('GET', '/whiteboards/' + encodeURIComponent(params.id)).then((p) => p.data);
@@ -729,89 +886,89 @@
     render(ctx, params, page) {
       const b = page.board || {};
       const canEdit = ctx.has('curriculum.create.daycare');
-      let html = '<div class="wb-shell' + (canEdit ? '' : ' wb-readonly') + '" data-board-id="' + attr(b.id) + '">';
-      const who = b.createdByName ? ' · created by ' + esc(b.createdByName) : '';
-      html += R.pageHead(esc(b.title || 'Whiteboard'), (b.description ? esc(b.description) + ' · ' : '') + 'Shared team canvas' + who + ' · anyone with access can edit · auto-syncs every 5s',
-        '<a class="btn btn-secondary btn-sm" href="#/app/whiteboards">' + R.icon('arrow-left') + ' All boards</a>' +
-        (b.lessonPlanTitle ? '<a class="btn btn-sm btn-ghost" href="#/app/curriculum?tab=plans" title="Created from a lesson guide">' + R.icon('book-open') + ' ' + R.esc(R.truncate(b.lessonPlanTitle, 40)) + '</a>' : '') +
-        (canEdit ? '<button class="btn btn-sm btn-secondary" id="wb-history-btn">' + R.icon('history') + ' History</button>' : '') +
-        '<button class="btn btn-sm btn-secondary" id="wb-present-btn">' + R.icon('monitor-play') + ' Present</button>' +
-        '<button class="btn btn-sm btn-secondary" id="wb-export-btn">' + R.icon('image-down') + ' Export</button>' +
-        (canEdit ? '<button class="btn btn-secondary btn-sm" id="wb-save-btn">' + R.icon('save') + ' Save</button>' : '') +
-        (canEdit ? '<span class="badge wb-status" id="wb-status">Ready</span>' : '<span class="badge badge-warn">View only</span>'));
-      html += R.teachingNav(ctx, 'whiteboards');
+      const toolButton = ([k, t]) => '<button type="button" class="btn btn-sm wb-tool ' + (k === 'pen' ? 'active' : '') + '" data-tool="' + k +
+        '" title="' + esc(t.label) + ' (' + t.key + ')" aria-label="' + esc(t.label) + ' (' + t.key + ')">' + R.icon(t.icon) + '</button>';
+      let html = '<div class="wb-teach-shell' + (canEdit ? '' : ' wb-readonly') + '" data-board-id="' + attr(b.id) + '">';
 
-      html += '<div class="card glass wb-toolbar-card"><div class="wb-toolbar" id="wb-toolbar">';
-      TOOL_GROUPS.forEach((group) => {
-        html += '<div class="wb-tool-group"><span class="wb-group-label">' + esc(group) + '</span><div class="wb-tools">' +
-          Object.entries(TOOLS).filter(([, t]) => t.group === group).map(([k, t]) =>
-            '<button type="button" class="btn btn-sm wb-tool ' + (k === 'pen' ? 'active' : '') + '" data-tool="' + k +
-            '" title="' + esc(t.label) + ' (' + t.key + ')" aria-label="' + esc(t.label) + ' (' + t.key + ')">' + R.icon(t.icon) + '</button>').join('') +
-        '</div></div>';
-      });
-      html += '<div class="wb-tool-group"><span class="wb-group-label">Style</span><div class="wb-tools">' +
-        '<label class="wb-color" title="Colour"><input type="color" id="wb-color" value="#1f3b2a" aria-label="Colour"></label>' +
-        '<select id="wb-width" class="select wb-select" title="Stroke width" aria-label="Stroke width"><option value="2">Thin</option><option value="3" selected>Medium</option><option value="6">Thick</option><option value="10">Bold</option></select>' +
-        '</div></div>';
-      html += '<div class="wb-tool-group"><span class="wb-group-label">Actions</span><div class="wb-tools">' +
-        '<button type="button" class="btn btn-sm btn-secondary wb-icon-btn" id="wb-undo" title="Undo (Ctrl+Z)" aria-label="Undo">' + R.icon('undo-2') + '</button>' +
-        '<button type="button" class="btn btn-sm btn-secondary wb-icon-btn" id="wb-redo" title="Redo (Ctrl+Y)" aria-label="Redo">' + R.icon('redo-2') + '</button>' +
-        '<button type="button" class="btn btn-sm btn-secondary wb-icon-btn" id="wb-del" title="Delete selected (Delete)" aria-label="Delete selected">' + R.icon('trash-2') + '</button>' +
-        '<button type="button" class="btn btn-sm btn-secondary wb-icon-btn" id="wb-clear" title="Clear canvas" aria-label="Clear canvas">' + R.icon('file-x-2') + '</button>' +
-        '<button type="button" class="btn btn-sm btn-secondary wb-icon-btn" id="wb-snap" title="Snap to grid" aria-label="Snap to grid" aria-pressed="false">' + R.icon('grid-3x3') + '</button>' +
-        '<button type="button" class="btn btn-sm btn-secondary wb-icon-btn" id="wb-keys" title="Keyboard shortcuts" aria-label="Keyboard shortcuts">' + R.icon('keyboard') + '</button>' +
-        '</div></div>';
-      html += '<div class="wb-tool-group"><span class="wb-group-label">View</span><div class="wb-tools">' +
-        '<button type="button" class="btn btn-sm btn-secondary wb-icon-btn" id="wb-zin" title="Zoom in (+)" aria-label="Zoom in">' + R.icon('zoom-in') + '</button>' +
-        '<button type="button" class="btn btn-sm btn-secondary wb-icon-btn" id="wb-zout" title="Zoom out (−)" aria-label="Zoom out">' + R.icon('zoom-out') + '</button>' +
-        '<button type="button" class="btn btn-sm btn-secondary wb-icon-btn" id="wb-reset" title="Reset view (0)" aria-label="Reset view">' + R.icon('maximize') + '</button>' +
-        '</div></div>';
-      html += '<div class="wb-tool-group wb-math-group"><button type="button" class="btn btn-sm btn-secondary" id="wb-math-toggle" aria-expanded="false" aria-controls="wb-mathbar">' + R.icon('sigma') + ' Math / science</button></div>';
-      html += '<div class="wb-mathbar" id="wb-mathbar" hidden><span class="muted small" style="margin-right:6px">Tap to place:</span>' +
-        MATH_SYMBOLS.map((s) => '<button type="button" class="btn btn-sm btn-ghost wb-math" data-sym="' + attr(s) + '" aria-label="Insert ' + attr(s) + '">' + esc(s) + '</button>').join('') +
-      '</div></div>';
+      // Slim sticky bar replaces the big page head and teaching nav.
+      html += '<header class="wb-topbar">' +
+        '<a class="btn btn-ghost btn-icon btn-sm" href="#/app/whiteboards" aria-label="All boards" title="All boards">' + R.icon('arrow-left') + '</a>' +
+        '<div class="wb-topbar-title"><strong>' + esc(b.title || 'Whiteboard') + '</strong><span class="muted small">' +
+          (b.lessonPlanTitle ? ' · ' + esc(R.truncate(b.lessonPlanTitle, 36)) : ' · Shared team canvas') + '</span></div>' +
+        '<div class="wb-topbar-actions">' +
+          (canEdit ? '<button class="btn btn-sm btn-ghost" id="wb-history-btn" title="Version history">' + R.icon('history') + '</button>' : '') +
+          '<button class="btn btn-sm btn-ghost" id="wb-present-btn" title="Present live">' + R.icon('monitor-play') + '</button>' +
+          '<button class="btn btn-sm btn-ghost" id="wb-export-btn" title="Export and print">' + R.icon('image-down') + '</button>' +
+          '<button class="btn btn-sm btn-ghost" id="wb-layers-btn" title="Layers and objects">' + R.icon('layers') + '</button>' +
+          (canEdit ? '<button class="btn btn-sm btn-secondary" id="wb-save-btn" title="Save a named version">' + R.icon('save') + ' Save version</button>' : '') +
+          (canEdit ? '<span class="badge wb-status" id="wb-status">Ready</span>' : '<span class="badge badge-warn">View only</span>') +
+        '</div></header>';
 
-      html += '<div class="wb-object-inspector" id="wb-inspector" hidden>' +
-        '<strong class="small">Selected object</strong>' +
-        '<label class="small">Colour <input type="color" id="wb-obj-color" aria-label="Object colour"></label>' +
-        '<label class="small">Size <input type="range" id="wb-obj-size" min="8" max="120" value="20" aria-label="Object size"></label>' +
-        '<label class="small">Fill <input type="color" id="wb-obj-fill" value="#fff4b8" aria-label="Sticky note fill"></label>' +
-        '<div class="wb-layer-btns">' +
-          '<button type="button" class="btn btn-sm btn-ghost" data-layer="front">Front</button>' +
-          '<button type="button" class="btn btn-sm btn-ghost" data-layer="forward">Forward</button>' +
-          '<button type="button" class="btn btn-sm btn-ghost" data-layer="backward">Backward</button>' +
-          '<button type="button" class="btn btn-sm btn-ghost" data-layer="back">Back</button>' +
-        '</div></div>';
+      // One scrollable tool strip.
+      html += '<div class="wb-tool-strip" id="wb-toolbar">' +
+        TOOL_GROUPS.map((g) => '<div class="wb-tool-group" data-group="' + g + '">' +
+          Object.entries(TOOLS).filter(([, t]) => t.group === g).map(toolButton).join('') + '</div>').join('') +
+        '<div class="wb-tool-group wb-view-group">' +
+          '<button class="btn btn-sm wb-tool" id="wb-zout" title="Zoom out" aria-label="Zoom out">' + R.icon('zoom-out') + '</button>' +
+          '<span class="wb-zoom" id="wb-zoom">100%</span>' +
+          '<button class="btn btn-sm wb-tool" id="wb-zin" title="Zoom in" aria-label="Zoom in">' + R.icon('zoom-in') + '</button>' +
+          '<button class="btn btn-sm wb-tool" id="wb-fit" title="Fit to content" aria-label="Fit to content">' + R.icon('scan') + '</button>' +
+          '<button class="btn btn-sm wb-tool" id="wb-reset" title="Reset view" aria-label="Reset view">' + R.icon('maximize') + '</button>' +
+        '</div>' +
+        '<div class="wb-tool-group"><button class="btn btn-sm wb-tool" id="wb-math-toggle" aria-expanded="false" aria-controls="wb-mathbar" title="Math and science palette">' + R.icon('sigma') + '</button></div>' +
+      '</div>';
+      html += '<div class="wb-mathbar" id="wb-mathbar" hidden>' + MATH_SYMBOLS.map((s) =>
+        '<button type="button" class="btn btn-sm btn-ghost wb-math" data-sym="' + attr(s) + '" aria-label="Insert ' + attr(s) + '">' + esc(s) + '</button>').join('') + '</div>';
 
-      html += '<div class="card glass wb-canvas-wrap" id="wb-canvas-wrap" style="padding:0;overflow:hidden;position:relative;height:70vh;min-height:420px"><div class="wb-hint muted small">Space or Pan to move · scroll to zoom · click text/sticky to type inline</div></div>';
+      // Floating inspector: board style when nothing is selected, object controls when it is.
+      html += '<aside class="wb-inspector" id="wb-inspector">' +
+        '<div class="wb-inspector-board" id="wb-inspector-board"><div class="wb-inspector-label">Board style</div>' +
+          '<div class="wb-swatches">' + SWATCHES.map((c) => '<button type="button" class="wb-swatch' + (c === '#1f3b2a' ? ' active' : '') + '" data-swatch="' + c + '" style="background:' + c + '" aria-label="Colour ' + c + '"></button>').join('') +
+            '<input type="color" id="wb-color" value="#1f3b2a" aria-label="Custom colour"></div>' +
+          '<label class="wb-inline-row">Width <select id="wb-width" class="wb-select"><option value="2">Thin</option><option value="3" selected>Medium</option><option value="6">Thick</option><option value="10">Bold</option></select></label>' +
+          '<div class="wb-actions">' +
+            '<button type="button" class="btn btn-sm btn-ghost wb-icon-btn" id="wb-undo" title="Undo (Ctrl+Z)" aria-label="Undo">' + R.icon('undo-2') + '</button>' +
+            '<button type="button" class="btn btn-sm btn-ghost wb-icon-btn" id="wb-redo" title="Redo (Ctrl+Y)" aria-label="Redo">' + R.icon('redo-2') + '</button>' +
+            '<button type="button" class="btn btn-sm btn-ghost wb-icon-btn" id="wb-del" title="Delete selected" aria-label="Delete selected">' + R.icon('trash-2') + '</button>' +
+            '<button type="button" class="btn btn-sm btn-ghost wb-icon-btn" id="wb-clear" title="Clear canvas" aria-label="Clear canvas">' + R.icon('file-x-2') + '</button>' +
+            '<button type="button" class="btn btn-sm btn-ghost wb-icon-btn" id="wb-snap" title="Snap to grid" aria-label="Snap to grid" aria-pressed="false">' + R.icon('grid-3x3') + '</button>' +
+            '<button type="button" class="btn btn-sm btn-ghost wb-icon-btn" id="wb-keys" title="Keyboard shortcuts" aria-label="Keyboard shortcuts">' + R.icon('keyboard') + '</button>' +
+          '</div></div>' +
+        '<div class="wb-inspector-object" id="wb-inspector-object" hidden><div class="wb-inspector-label">Selected object <span id="wb-sel-count"></span></div>' +
+          '<label class="wb-inline-row">Colour <input type="color" id="wb-obj-color" aria-label="Object colour"></label>' +
+          '<label class="wb-inline-row">Size <input type="range" id="wb-obj-size" min="8" max="120" value="20" aria-label="Object size"></label>' +
+          '<label class="wb-inline-row">Fill <input type="color" id="wb-obj-fill" value="#fff4b8" aria-label="Sticky fill"></label>' +
+          '<label class="wb-inline-row">Font <select id="wb-obj-font" class="wb-select"><option value="sans">Sans</option><option value="serif">Serif</option><option value="mono">Mono</option></select></label>' +
+          '<div class="wb-layer-btns">' +
+            '<button type="button" class="btn btn-sm btn-ghost" data-layer="front">Front</button>' +
+            '<button type="button" class="btn btn-sm btn-ghost" data-layer="forward">Forward</button>' +
+            '<button type="button" class="btn btn-sm btn-ghost" data-layer="backward">Backward</button>' +
+            '<button type="button" class="btn btn-sm btn-ghost" data-layer="back">Back</button>' +
+            '<button type="button" class="btn btn-sm btn-ghost" id="wb-group">Group</button>' +
+          '</div></div>' +
+      '</aside>';
+
+      // Layers panel.
+      html += '<aside class="wb-layers" id="wb-layers" hidden><div class="queue-head"><strong>Layers</strong>' +
+        '<button type="button" class="btn btn-sm btn-ghost" id="wb-select-all">Select all</button>' +
+        '<button type="button" class="btn btn-ghost btn-icon btn-sm" id="wb-layers-close" aria-label="Close layers">' + R.icon('x') + '</button></div>' +
+        '<div class="wb-layer-list"></div><div class="muted small">Drag to reorder · eye to hide · lock to protect</div></aside>';
+
+      // Canvas fills the remaining viewport.
+      html += '<div class="wb-canvas-wrap" id="wb-canvas-wrap"><div class="wb-hint muted small">Space or Pan to move · scroll to zoom · Shift-click to select multiple</div>' +
+        '<div class="wb-readonly-banner" id="wb-readonly-banner" hidden>View only — you can look around but cannot edit this board.</div>' +
+        '<div class="wb-presence" id="wb-presence"></div>' +
+        '<canvas class="wb-minimap" id="wb-minimap" width="180" height="110" aria-label="Board minimap"></canvas></div>';
+
       html += '<div class="wb-history-panel" id="wb-history-panel" hidden><div class="queue-head"><strong>Version history</strong>' +
-        '<button type="button" class="btn btn-sm btn-secondary" id="wb-snapshot-btn">Save a version</button>' +
         '<button type="button" class="btn btn-ghost btn-icon btn-sm" id="wb-history-close" aria-label="Close history">' + R.icon('x') + '</button></div>' +
+        '<div class="wb-save-version"><input class="input" id="wb-version-name" placeholder="Name this version" maxlength="120">' +
+          '<button type="button" class="btn btn-sm btn-primary" id="wb-snapshot-btn">Save</button></div>' +
         '<div class="wb-history-list"><span class="muted small">Loading…</span></div></div>';
       html += '<input type="hidden" id="wb-version" value="' + attr(String(b.version || 1)) + '">';
       html += '</div>';
       return html;
     }
-  };
-
-  // Render thumbnails after the list view mounts.
-  const thumbCache = new Map();
-  V._initWhiteboards = function (ctx, page) {
-    if (!window.Reel || !R.feedback) return;
-    const cards = [...document.querySelectorAll('.wb-thumb')];
-    cards.forEach((canvas) => {
-      const id = canvas.getAttribute('data-board-id');
-      const board = ((page || {}).boards || []).find((b) => b.id === id);
-      if (!board) return;
-      const width = Math.max(120, canvas.clientWidth || 320);
-      const height = 132;
-      if (thumbCache.has(id)) { renderThumbnail(canvas, thumbCache.get(id), width, height); return; }
-      R.api('GET', '/whiteboards/' + encodeURIComponent(id)).then((res) => {
-        const state = (res && res.data && res.data.state) || { objects: [], viewport: { x: 0, y: 0, zoom: 1 } };
-        thumbCache.set(id, state);
-        renderThumbnail(canvas, state, Math.max(120, canvas.clientWidth || width), height);
-      }).catch(() => renderThumbnail(canvas, { objects: [] }, width, height));
-    });
   };
 
   // ---- Editor initialization ----------------------------------------------
@@ -821,6 +978,7 @@
     const wrap = document.getElementById('wb-canvas-wrap');
     if (!wrap || wrap._wbInit) return;
     wrap._wbInit = true;
+    document.body.classList.add('wb-teaching');
     const statusEl = document.getElementById('wb-status');
     const verEl = document.getElementById('wb-version');
     let version = Number(board.version || 1);
@@ -828,7 +986,9 @@
     let saving = false;
     let savedAt = Date.now();
     let lastSaved = JSON.parse(JSON.stringify((board.state || {}).objects || []));
+    let layerObjects = [];
     const canEdit = ctx.has('curriculum.create.daycare');
+    const presenceColor = '#3D8FAE';
 
     function badge(text, tone) {
       if (!statusEl) return;
@@ -837,40 +997,66 @@
       statusEl.classList.toggle('is-good', tone === 'good');
     }
     function relativeSaved() {
-      if (!dirty) {
-        const secs = Math.max(0, Math.round((Date.now() - savedAt) / 1000));
-        badge(secs < 8 ? 'Saved just now' : 'Saved ' + R.relative(new Date(savedAt - secs * 1000).toISOString()), 'good');
-      }
+      if (dirty) return;
+      const secs = Math.max(0, Math.round((Date.now() - savedAt) / 1000));
+      badge(secs < 8 ? 'Saved just now' : 'Saved ' + R.relative(new Date(Date.now() - secs * 1000).toISOString()), 'good');
     }
 
-    const inspector = document.getElementById('wb-inspector');
-    const engine = newBoardCanvas(wrap, board.state || { objects: [], viewport: { x: 0, y: 0, zoom: 1 } }, () => {
+    const inspectorBoard = document.getElementById('wb-inspector-board');
+    const inspectorObject = document.getElementById('wb-inspector-object');
+    let engine = null;
+    engine = newBoardCanvas(wrap, board.state || { objects: [], viewport: { x: 0, y: 0, zoom: 1 } }, () => {
       dirty = true; badge('Editing…', 'warn');
     }, {
       readOnly: !canEdit,
-      onSelection(obj) {
-        if (!inspector) return;
-        inspector.hidden = !obj;
-        if (!obj) return;
-        const colour = inspector.querySelector('#wb-obj-color');
-        const fill = inspector.querySelector('#wb-obj-fill');
-        const size = inspector.querySelector('#wb-obj-size');
-        if (colour) colour.value = /^#[0-9a-f]{6}$/i.test(obj.color || '') ? obj.color : '#1f3b2a';
-        if (fill) fill.value = /^#[0-9a-f]{6}$/i.test(obj.fill || '') ? obj.fill : '#fff4b8';
-        if (size) size.value = String(obj.size || 20);
-        inspector.querySelectorAll('.wb-layer-btns button').forEach((b) => { b.disabled = !canEdit; });
+      onObjects(list) {
+        layerObjects = list;
+        renderLayers();
+        drawMinimap();
+      },
+      onSelection(obj, ids) {
+        const selected = Array.isArray(ids) ? ids : (obj ? [obj.id] : []);
+        if (inspectorBoard) inspectorBoard.hidden = selected.length > 0;
+        if (inspectorObject) inspectorObject.hidden = selected.length === 0;
+        if (!selected.length) return;
+        const first = engine.getSelected() || {};
+        const colour = inspectorObject.querySelector('#wb-obj-color');
+        const fill = inspectorObject.querySelector('#wb-obj-fill');
+        const size = inspectorObject.querySelector('#wb-obj-size');
+        const font = inspectorObject.querySelector('#wb-obj-font');
+        if (colour) colour.value = /^#[0-9a-f]{6}$/i.test(first.color || '') ? first.color : '#1f3b2a';
+        if (fill) fill.value = /^#[0-9a-f]{6}$/i.test(first.fill || '') ? first.fill : '#fff4b8';
+        if (size) size.value = String(first.size || 20);
+        if (font) font.value = first.font || 'sans';
+        const count = inspectorObject.querySelector('#wb-sel-count');
+        if (count) count.textContent = selected.length > 1 ? '(' + selected.length + ')' : '';
+        inspectorObject.querySelectorAll('button').forEach((b) => { b.disabled = !canEdit; });
+      },
+      onViewport(vp) {
+        const label = document.getElementById('wb-zoom');
+        if (label) label.textContent = Math.round(vp.zoom * 100) + '%';
+        drawMinimap();
       }
     });
     engine.setReadOnly(!canEdit);
+    if (!canEdit) {
+      const banner = document.getElementById('wb-readonly-banner');
+      if (banner) banner.hidden = false;
+    }
 
     function setActiveTool(t) {
       engine.setTool(t);
-      document.querySelectorAll('.wb-tool').forEach((btn) => btn.classList.toggle('active', btn.getAttribute('data-tool') === t));
+      document.querySelectorAll('.wb-tool[data-tool]').forEach((btn) => btn.classList.toggle('active', btn.getAttribute('data-tool') === t));
     }
-    document.querySelectorAll('.wb-tool').forEach((btn) => btn.addEventListener('click', () => setActiveTool(btn.getAttribute('data-tool'))));
+    document.querySelectorAll('.wb-tool[data-tool]').forEach((btn) => btn.addEventListener('click', () => setActiveTool(btn.getAttribute('data-tool'))));
+    document.querySelectorAll('[data-swatch]').forEach((btn) => btn.addEventListener('click', () => {
+      engine.setColor(btn.getAttribute('data-swatch'));
+      document.querySelectorAll('[data-swatch]').forEach((b) => b.classList.toggle('active', b === btn));
+      const picker = document.getElementById('wb-color');
+      if (picker) picker.value = btn.getAttribute('data-swatch');
+    }));
     const colorEl = document.getElementById('wb-color'); if (colorEl) colorEl.addEventListener('input', (e) => engine.setColor(e.target.value));
     const widthEl = document.getElementById('wb-width'); if (widthEl) widthEl.addEventListener('change', (e) => engine.setWidth(Number(e.target.value) || 3));
-
     const undoBtn = document.getElementById('wb-undo'); if (undoBtn) undoBtn.addEventListener('click', () => engine.undo());
     const redoBtn = document.getElementById('wb-redo'); if (redoBtn) redoBtn.addEventListener('click', () => engine.redo());
     const delBtn = document.getElementById('wb-del'); if (delBtn) delBtn.addEventListener('click', () => engine.deleteSelected());
@@ -887,12 +1073,13 @@
     const keysBtn = document.getElementById('wb-keys'); if (keysBtn) keysBtn.addEventListener('click', () => {
       if (R.feedback) R.feedback.sheet({
         title: 'Whiteboard shortcuts', message: 'Work faster with the keyboard.',
-        actions: Object.entries(TOOLS).map(([k, t]) => ({ label: t.label, icon: t.icon, run: () => setActiveTool(k) }))
-          .concat([{ label: 'Undo / Redo — Ctrl+Z / Ctrl+Y', icon: 'undo-2', run: () => {} }, { label: 'Delete selected — Delete', icon: 'trash-2', run: () => engine.deleteSelected() }])
+        actions: Object.entries(TOOLS).filter(([k]) => k !== 'image').map(([k, t]) => ({ label: t.label, icon: t.icon, run: () => setActiveTool(k) }))
+          .concat([{ label: 'Undo / Redo — Ctrl+Z / Ctrl+Y', icon: 'undo-2', run: () => {} }, { label: 'Delete — Delete key', icon: 'trash-2', run: () => engine.deleteSelected() }])
       });
     });
     const zin = document.getElementById('wb-zin'); if (zin) zin.addEventListener('click', () => engine.zoomIn());
     const zout = document.getElementById('wb-zout'); if (zout) zout.addEventListener('click', () => engine.zoomOut());
+    const fit = document.getElementById('wb-fit'); if (fit) fit.addEventListener('click', () => engine.fitToContent());
     const reset = document.getElementById('wb-reset'); if (reset) reset.addEventListener('click', () => engine.resetView());
     const mathToggle = document.getElementById('wb-math-toggle');
     const mathBar = document.getElementById('wb-mathbar');
@@ -903,15 +1090,87 @@
     document.querySelectorAll('.wb-math').forEach((btn) => btn.addEventListener('click', () => {
       setActiveTool('select'); engine.addMathSymbol(btn.getAttribute('data-sym'));
     }));
+    const objColor = inspectorObject && inspectorObject.querySelector('#wb-obj-color');
+    const objFill = inspectorObject && inspectorObject.querySelector('#wb-obj-fill');
+    const objSize = inspectorObject && inspectorObject.querySelector('#wb-obj-size');
+    const objFont = inspectorObject && inspectorObject.querySelector('#wb-obj-font');
+    if (objColor) objColor.addEventListener('input', (e) => engine.updateSelected({ color: e.target.value }));
+    if (objFill) objFill.addEventListener('input', (e) => engine.updateSelected({ fill: e.target.value }));
+    if (objSize) objSize.addEventListener('input', (e) => engine.updateSelected({ size: Number(e.target.value) || 20 }));
+    if (objFont) objFont.addEventListener('change', (e) => engine.updateSelected({ font: e.target.value }));
+    inspectorObject && inspectorObject.querySelectorAll('[data-layer]').forEach((b) => b.addEventListener('click', () => engine.moveSelected(b.getAttribute('data-layer'))));
+    const groupBtn = document.getElementById('wb-group'); if (groupBtn) groupBtn.addEventListener('click', () => engine.groupSelected());
 
-    if (inspector) {
-      const objColor = inspector.querySelector('#wb-obj-color');
-      const objFill = inspector.querySelector('#wb-obj-fill');
-      const objSize = inspector.querySelector('#wb-obj-size');
-      if (objColor) objColor.addEventListener('input', (e) => engine.updateSelected({ color: e.target.value }));
-      if (objFill) objFill.addEventListener('input', (e) => engine.updateSelected({ fill: e.target.value }));
-      if (objSize) objSize.addEventListener('input', (e) => engine.updateSelected({ size: Number(e.target.value) || 20 }));
-      inspector.querySelectorAll('[data-layer]').forEach((b) => b.addEventListener('click', () => engine.moveSelected(b.getAttribute('data-layer'))));
+    // ---- Layers panel ------------------------------------------------------
+    const layersPanel = document.getElementById('wb-layers');
+    const layersList = layersPanel && layersPanel.querySelector('.wb-layer-list');
+    function renderLayers() {
+      if (!layersList) return;
+      layersList.innerHTML = layerObjects.length ? layerObjects.map((o) =>
+        '<div class="wb-layer-row" draggable="true" data-id="' + attr(o.id) + '">' +
+          '<span class="wb-layer-type">' + R.icon(o.type === 'sticky' ? 'sticky-note' : o.type === 'image' ? 'image' : o.type === 'text' || o.type === 'math' ? 'type' : o.type === 'path' || o.type === 'highlighter' ? 'pencil' : 'square') + '</span>' +
+          '<span class="wb-layer-name">' + esc(o.type) + (o.groupId ? ' · group' : '') + '</span>' +
+          '<button type="button" class="btn btn-ghost btn-icon btn-sm" data-layer-hide="' + attr(o.id) + '" aria-label="Toggle visibility">' + R.icon(o.hidden ? 'eye-off' : 'eye') + '</button>' +
+          '<button type="button" class="btn btn-ghost btn-icon btn-sm" data-layer-lock="' + attr(o.id) + '" aria-label="Toggle lock">' + R.icon(o.locked ? 'lock' : 'unlock') + '</button>' +
+        '</div>').join('') : '<span class="muted small">Nothing on this board yet.</span>';
+      layersList.querySelectorAll('.wb-layer-row').forEach((row) => {
+        row.addEventListener('click', (e) => {
+          if (e.target.closest('button')) return;
+          engine.setSelectedIds([row.getAttribute('data-id')]);
+        });
+        row.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', row.getAttribute('data-id')); });
+        row.addEventListener('dragover', (e) => e.preventDefault());
+        row.addEventListener('drop', (e) => {
+          e.preventDefault();
+          engine.reorderObject(e.dataTransfer.getData('text/plain'), row.getAttribute('data-id'));
+        });
+      });
+      layersList.querySelectorAll('[data-layer-hide]').forEach((b) => b.addEventListener('click', () => engine.toggleHidden(b.getAttribute('data-layer-hide'))));
+      layersList.querySelectorAll('[data-layer-lock]').forEach((b) => b.addEventListener('click', () => engine.toggleLocked(b.getAttribute('data-layer-lock'))));
+    }
+    const layersBtn = document.getElementById('wb-layers-btn');
+    const layersClose = document.getElementById('wb-layers-close');
+    if (layersBtn && layersPanel) layersBtn.addEventListener('click', () => { layersPanel.hidden = !layersPanel.hidden; if (!layersPanel.hidden) renderLayers(); });
+    if (layersClose && layersPanel) layersClose.addEventListener('click', () => { layersPanel.hidden = true; });
+    const selectAll = document.getElementById('wb-select-all'); if (selectAll) selectAll.addEventListener('click', () => engine.selectAll());
+
+    // ---- Minimap -----------------------------------------------------------
+    const mini = document.getElementById('wb-minimap');
+    function drawMinimap() {
+      if (!mini || !engine) return;
+      const ctx = mini.getContext('2d');
+      const w = mini.width, h = mini.height;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = palette().bg; ctx.fillRect(0, 0, w, h);
+      const state = engine.getState();
+      const b = boardBounds(state.objects);
+      const scale = Math.min((w - 16) / b.w, (h - 16) / b.h);
+      ctx.save(); ctx.translate(8 - b.x * scale, 8 - b.y * scale); ctx.scale(scale, scale);
+      state.objects.forEach((o) => drawObject(ctx, o, { palette: palette() }));
+      ctx.restore();
+      const vp = engine.getViewport();
+      const rect = wrap.getBoundingClientRect();
+      const vw = rect.width / vp.zoom, vh = rect.height / vp.zoom;
+      ctx.strokeStyle = palette().selected; ctx.lineWidth = 1.5;
+      ctx.strokeRect(8 + (vp.x / vp.zoom - b.x) * scale, 8 + (vp.y / vp.zoom - b.y) * scale, vw * scale, vh * scale);
+    }
+    if (mini) mini.addEventListener('click', (e) => {
+      const r = mini.getBoundingClientRect();
+      const b = boardBounds(engine.getState().objects);
+      const scale = Math.min((r.width - 16) / b.w, (r.height - 16) / b.h);
+      const vp = engine.getViewport();
+      vp.x = -((e.clientX - r.left - 8) / scale + b.x) * vp.zoom + r.width / 2;
+      vp.y = -((e.clientY - r.top - 8) / scale + b.y) * vp.zoom + r.height / 2;
+      engine.setViewport(vp);
+    });
+
+    // ---- Presence ----------------------------------------------------------
+    const presenceEl = document.getElementById('wb-presence');
+    function drawPresence(people) {
+      if (!presenceEl) return;
+      presenceEl.innerHTML = people.map((p, i) =>
+        '<div class="wb-presence-peer" style="left:' + (12 + i * 42) + 'px;background:' + attr(p.colour || '#3D8FAE') + '" title="' + attr(p.name) + '">' + esc(String(p.name || 'T').charAt(0)) + '</div>').join('') +
+        (people.length ? '<span class="wb-presence-label">' + people.length + ' other' + (people.length === 1 ? '' : 's') + ' here</span>' : '');
     }
 
     function documentShortcuts(e) {
@@ -928,16 +1187,24 @@
     }
     document.addEventListener('keydown', documentShortcuts);
 
-    async function save(silent, force) {
+    async function save(silent, force, label) {
       if (!canEdit || saving) return;
+      if (label) {
+        try {
+          await R.api('POST', '/whiteboards/' + encodeURIComponent(board.id) + '/snapshots', { label });
+          badge('Version saved', 'good');
+          if (ctx.toast) ctx.toast('Version saved.');
+          loadHistory();
+        } catch (e) { if (ctx.toast) ctx.toast(e.message || 'Could not save a version.', 'error'); }
+        return;
+      }
       if (!dirty && !force) { relativeSaved(); return; }
       const ops = engine.diffOps(lastSaved);
-      const viewport = engine.getViewport();
       if (!ops.length && !force) { relativeSaved(); return; }
       saving = true; badge('Saving…');
       try {
         const res = await R.api('PUT', '/whiteboards/' + encodeURIComponent(board.id) + '/state', {
-          ops, viewport, version: force ? undefined : version
+          ops, viewport: engine.getViewport(), version: force ? undefined : version
         });
         if (res && res.conflict && res.latest) {
           const latest = res.latest;
@@ -967,52 +1234,92 @@
         if (!silent && R.feedback) R.feedback.cue('error');
       } finally { saving = false; }
     }
-    const saveBtn = document.getElementById('wb-save-btn'); if (saveBtn) saveBtn.addEventListener('click', () => save(false, true));
+    const saveBtn = document.getElementById('wb-save-btn');
+    if (saveBtn) saveBtn.addEventListener('click', () => {
+      if (R.feedback) R.feedback.sheet({
+        title: 'Save a version', message: 'Name this version so you can find it in History later.',
+        actions: [{ label: 'Save version', icon: 'save', run: () => {
+          const input = document.getElementById('wb-version-name');
+          save(false, false, (input && input.value.trim()) || ('Version ' + new Date().toLocaleString()));
+        } }]
+      });
+      else save(false, false, 'Manual save');
+    });
 
     const autosave = setInterval(() => { if (dirty) save(true); }, 4000);
-    const statusTick = setInterval(() => { if (!dirty && !saving) relativeSaved(); }, 3000);
+    const statusTick = setInterval(relativeSaved, 3000);
     const poll = setInterval(async () => {
       if (saving || dirty) return;
       try {
         const res = await R.api('GET', '/whiteboards/' + encodeURIComponent(board.id));
-        const d = res && res.data ? res.data : res;
-        if (d && Number(d.version) > version) {
-          version = Number(d.version); if (verEl) verEl.value = String(version);
-          engine.setState(d.state || { objects: [], viewport: { x: 0, y: 0, zoom: 1 } });
-          lastSaved = JSON.parse(JSON.stringify((d.state || {}).objects || []));
+        const data = res && res.data ? res.data : res;
+        if (data && Number(data.version) > version) {
+          version = Number(data.version); if (verEl) verEl.value = String(version);
+          engine.setState(data.state || { objects: [], viewport: { x: 0, y: 0, zoom: 1 } });
+          lastSaved = JSON.parse(JSON.stringify((data.state || {}).objects || []));
           badge('Synced with collaborator', 'good');
         }
       } catch (e) { badge('Offline — changes queued', 'warn'); }
     }, 5000);
+    const heartbeat = async () => {
+      const c = engine.getCursor() || { x: 0, y: 0 };
+      try { await R.api('POST', '/whiteboards/' + encodeURIComponent(board.id) + '/presence', { cursorX: c.x, cursorY: c.y, colour: presenceColor }); } catch (error) { /* offline */ }
+    };
+    const presencePoll = setInterval(async () => {
+      try {
+        const res = await R.api('GET', '/whiteboards/' + encodeURIComponent(board.id) + '/presence');
+        drawPresence((res && res.data) || []);
+      } catch (error) { /* offline */ }
+    }, 5000);
+    heartbeat();
+    const presenceBeat = setInterval(heartbeat, 15000);
 
-    // ---- Present / export --------------------------------------------------
+    // ---- Live presentation -------------------------------------------------
+    let presentCleanup = null;
     function closePresentation() {
+      if (presentCleanup) { presentCleanup(); presentCleanup = null; }
       const overlay = document.querySelector('.wb-presentation');
       if (overlay) overlay.remove();
-      const onKey = (e) => { if (e.key === 'Escape') closePresentation(); };
-      document.removeEventListener('keydown', onKey);
     }
     const presentBtn = document.getElementById('wb-present-btn');
     if (presentBtn) presentBtn.addEventListener('click', () => {
+      closePresentation();
       const overlay = document.createElement('div');
       overlay.className = 'wb-presentation';
       overlay.setAttribute('role', 'dialog');
-      overlay.setAttribute('aria-label', esc(board.title || 'Whiteboard') + ' presented');
-      overlay.innerHTML = '<div class="wb-present-top"><strong>' + esc(board.title || 'Whiteboard') + '</strong>' +
-        '<button type="button" class="btn btn-sm btn-secondary" data-wb-present-close>Exit presentation</button></div>' +
-        '<img alt="Presented whiteboard" src="' + engine.exportPNG(1800, 1000) + '">';
+      overlay.setAttribute('aria-label', esc(board.title || 'Whiteboard') + ' — live presentation');
+      overlay.innerHTML = '<div class="wb-present-bar"><strong>' + esc(board.title || 'Whiteboard') + '</strong>' +
+        '<div class="wb-present-tools">' +
+          '<button type="button" class="btn btn-sm btn-secondary" data-present="pen">' + R.icon('pencil') + ' Annotate</button>' +
+          '<button type="button" class="btn btn-sm btn-secondary" data-present="laser">' + R.icon('pointer') + ' Laser</button>' +
+          '<button type="button" class="btn btn-sm btn-secondary" data-present="pan">' + R.icon('hand') + ' Pan</button>' +
+          '<button type="button" class="btn btn-sm btn-ghost" data-present="fit">' + R.icon('scan') + ' Fit</button>' +
+        '</div>' +
+        '<button type="button" class="btn btn-sm btn-primary" data-present="exit">Exit <span class="muted">(Esc)</span></button></div>' +
+        '<div class="wb-present-stage"></div>';
       document.body.appendChild(overlay);
-      overlay.querySelector('[data-wb-present-close]').addEventListener('click', closePresentation);
-      overlay.addEventListener('click', (e) => { if (e.target === overlay) closePresentation(); });
+      const stage = overlay.querySelector('.wb-present-stage');
+      const presentEngine = newBoardCanvas(stage, engine.getState(), () => {}, { readOnly: false });
+      presentEngine.setTool('pen');
+      const tools = overlay.querySelectorAll('[data-present]');
+      tools.forEach((b) => b.addEventListener('click', () => {
+        const action = b.getAttribute('data-present');
+        if (action === 'exit') return closePresentation();
+        if (action === 'fit') return presentEngine.fitToContent();
+        presentEngine.setTool(action);
+        tools.forEach((x) => x.classList.toggle('active', x === b));
+      }));
       const onKey = (e) => { if (e.key === 'Escape') closePresentation(); };
       document.addEventListener('keydown', onKey);
+      presentCleanup = () => { document.removeEventListener('keydown', onKey); presentEngine.destroy(); };
       if (overlay.requestFullscreen && !R.anim.reduced()) overlay.requestFullscreen().catch(() => null);
     });
 
+    // ---- Export / print handout --------------------------------------------
     const exportBtn = document.getElementById('wb-export-btn');
     if (exportBtn) exportBtn.addEventListener('click', () => {
       if (R.feedback) R.feedback.sheet({
-        title: 'Export this board', message: 'A clean image of everything on the canvas.',
+        title: 'Export this board', message: 'A clean image, or a printable handout with the object list.',
         actions: [
           { label: 'Download PNG', icon: 'image-down', run: () => {
             const link = document.createElement('a');
@@ -1021,10 +1328,16 @@
             document.body.appendChild(link); link.click(); link.remove();
             if (ctx.toast) ctx.toast('Board image downloaded.');
           } },
-          { label: 'Print / save as PDF', icon: 'printer', run: () => {
+          { label: 'Print handout / PDF', icon: 'printer', run: () => {
             let sheet = document.getElementById('wb-print-sheet');
             if (!sheet) { sheet = document.createElement('div'); sheet.id = 'wb-print-sheet'; document.body.appendChild(sheet); }
-            sheet.innerHTML = '<h1>' + esc(board.title || 'Whiteboard') + '</h1><img src="' + engine.exportPNG(1800, 1000) + '" alt="Whiteboard">';
+            const objects = engine.getState().objects;
+            sheet.innerHTML = '<div class="handout-cover"><p class="eyebrow">Whiteboard handout</p><h1>' + esc(board.title || 'Whiteboard') + '</h1>' +
+              '<p>' + esc(new Date().toLocaleDateString()) + ' · ' + objects.length + ' objects</p></div>' +
+              '<section class="handout-page"><h2>The board</h2><img src="' + engine.exportPNG(1800, 1000) + '" alt="Whiteboard"></section>' +
+              '<section class="handout-page"><h2>Object list</h2><table><thead><tr><th>#</th><th>Type</th><th>Details</th></tr></thead><tbody>' +
+              objects.map((o, i) => '<tr><td>' + (i + 1) + '</td><td>' + esc(o.type) + '</td><td>' + esc(R.truncate(o.text || o.src || '', 90)) + '</td></tr>').join('') +
+              '</tbody></table></section>';
             window.print();
           } }
         ]
@@ -1041,11 +1354,16 @@
         const res = await R.api('GET', '/whiteboards/' + encodeURIComponent(board.id) + '/snapshots');
         const rows = (res && res.data) || [];
         list.innerHTML = rows.length ? rows.map((s) =>
-          '<div class="wb-history-row"><div><strong>' + esc(s.label || ('Version ' + s.version)) + '</strong>' +
-          '<div class="muted small">' + R.relative(s.createdAt) + ' · ' + R.number(s.objectCount || 0) + ' objects' +
-          (s.createdByName ? ' · ' + esc(s.createdByName) : '') + '</div></div>' +
-          '<button type="button" class="btn btn-sm btn-secondary" data-restore="' + attr(s.id) + '">' + R.icon('rotate-ccw') + ' Restore</button></div>').join('')
+          '<div class="wb-history-row" data-id="' + attr(s.id) + '">' +
+            '<canvas class="wb-history-thumb" width="90" height="56"></canvas>' +
+            '<div><strong>' + esc(s.label || ('Version ' + s.version)) + '</strong>' +
+            '<div class="muted small">' + R.relative(s.createdAt) + ' · ' + R.number(s.objectCount || 0) + ' objects' +
+            (s.createdByName ? ' · ' + esc(s.createdByName) : '') + '</div></div>' +
+            '<button type="button" class="btn btn-sm btn-secondary" data-restore="' + attr(s.id) + '">' + R.icon('rotate-ccw') + ' Restore</button></div>').join('')
           : '<span class="muted small">No saved versions yet. Changes are saved automatically as you work.</span>';
+        const boardRes = await R.api('GET', '/whiteboards/' + encodeURIComponent(board.id));
+        const snapState = (boardRes && boardRes.data && boardRes.data.state) || { objects: [] };
+        list.querySelectorAll('.wb-history-thumb').forEach((c) => renderToCanvas(c, snapState, 90, 56));
         list.querySelectorAll('[data-restore]').forEach((button) => button.addEventListener('click', () => {
           const id = button.getAttribute('data-restore');
           if (R.feedback) R.feedback.sheet({
@@ -1063,30 +1381,29 @@
     }
     const historyBtn = document.getElementById('wb-history-btn');
     const historyClose = document.getElementById('wb-history-close');
-    if (historyBtn && historyPanel) historyBtn.addEventListener('click', () => {
-      historyPanel.hidden = !historyPanel.hidden;
-      if (!historyPanel.hidden) loadHistory();
-    });
+    if (historyBtn && historyPanel) historyBtn.addEventListener('click', () => { historyPanel.hidden = !historyPanel.hidden; if (!historyPanel.hidden) loadHistory(); });
     if (historyClose && historyPanel) historyClose.addEventListener('click', () => { historyPanel.hidden = true; });
     const snapshotBtn = document.getElementById('wb-snapshot-btn');
-    if (snapshotBtn) snapshotBtn.addEventListener('click', async () => {
-      try {
-        await R.api('POST', '/whiteboards/' + encodeURIComponent(board.id) + '/snapshots', { label: 'Manual save' });
-        if (ctx.toast) ctx.toast('Version saved.');
-        loadHistory();
-      } catch (e) { if (ctx.toast) ctx.toast(e.message || 'Could not save a version.', 'error'); }
+    if (snapshotBtn) snapshotBtn.addEventListener('click', () => {
+      const input = document.getElementById('wb-version-name');
+      const label = (input && input.value.trim()) || 'Version ' + new Date().toLocaleString();
+      save(false, false, label);
+      if (input) input.value = '';
     });
 
     wrap._wbCleanup = () => {
+      document.body.classList.remove('wb-teaching');
       clearInterval(autosave); clearInterval(statusTick); clearInterval(poll);
+      clearInterval(presencePoll); clearInterval(presenceBeat);
       document.removeEventListener('keydown', documentShortcuts);
       closePresentation();
       engine.destroy();
     };
     setActiveTool('pen');
     badge('Ready', 'good');
+    renderLayers();
+    drawMinimap();
   };
 
-  // Expose the renderer so tests and other views can draw thumbnails.
-  R.whiteboardCanvas = { renderThumbnail, stateToPng, objectBounds, boardBounds, drawObject };
+  R.whiteboardCanvas = { renderToCanvas, renderThumbnail: renderToCanvas, stateToPng, objectBounds, boardBounds, drawObject, palette };
 })();

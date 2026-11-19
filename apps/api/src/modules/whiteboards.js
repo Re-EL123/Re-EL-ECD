@@ -21,7 +21,7 @@ const DEFAULT_STATE = { objects: [], viewport: { x: 0, y: 0, zoom: 1 } };
 const MAX_OBJECTS = 5000;
 const MAX_SNAPSHOTS = 30;
 
-const TYPES = new Set(['path', 'highlighter', 'line', 'arrow', 'rect', 'circle', 'text', 'math', 'sticky']);
+const TYPES = new Set(['path', 'highlighter', 'line', 'arrow', 'rect', 'circle', 'text', 'math', 'sticky', 'image']);
 const HEX = /^#[0-9a-f]{6}$/i;
 const FILL_HEX = /^#[0-9a-f]{6}$/i;
 
@@ -48,7 +48,10 @@ function cleanObject(raw) {
     id: typeof raw.id === 'string' && raw.id.length <= 80 ? raw.id : randomUUID(),
     type,
     color: HEX.test(String(raw.color)) ? String(raw.color) : '#1f3b2a',
-    width: num(raw.width, 3, 1, 40)
+    width: num(raw.width, 3, 1, 40),
+    hidden: raw.hidden === true,
+    locked: raw.locked === true,
+    groupId: typeof raw.groupId === 'string' ? raw.groupId.slice(0, 80) : null
   };
   switch (type) {
     case 'path':
@@ -84,8 +87,17 @@ function cleanObject(raw) {
         x: num(raw.x, 0, -100000, 100000), y: num(raw.y, 0, -100000, 100000),
         w: num(raw.w, 180, 40, 800), h: num(raw.h, 140, 40, 800),
         text: text(raw.text, 2000),
-        fill: FILL_HEX.test(String(raw.fill)) ? String(raw.fill) : '#FFF4B8'
+        fill: FILL_HEX.test(String(raw.fill)) ? String(raw.fill) : '#FFF4B8',
+        font: ['sans', 'serif', 'mono'].includes(raw.font) ? raw.font : 'sans'
       });
+    case 'image': {
+      if (!/^https?:\/\//i.test(String(raw.src || ''))) return null;
+      return Object.assign(base, {
+        x: num(raw.x, 0, -100000, 100000), y: num(raw.y, 0, -100000, 100000),
+        w: num(raw.w, 240, 20, 2000), h: num(raw.h, 160, 20, 2000),
+        src: String(raw.src).slice(0, 1000)
+      });
+    }
     default:
       return null;
   }
@@ -339,6 +351,43 @@ function register(router) {
     await recordAudit(ctx.db, ctx, { action: 'whiteboard.restored', resourceType: 'whiteboard', resourceId: ctx.params.id, metadata: { snapshotId: ctx.params.sid } });
     return present(row);
   }, { permission: 'curriculum.create.daycare' });
+
+  router.post('/whiteboards/:id/presence', async (ctx) => {
+    const body = validate(ctx.body, {
+      cursorX: { type: 'number', optional: true },
+      cursorY: { type: 'number', optional: true },
+      colour: { type: 'string', max: 20, optional: true }
+    });
+    const board = await ctx.db.one('SELECT id FROM whiteboards WHERE id = $1 AND organisation_id = $2', [ctx.params.id, ctx.organisationId]);
+    if (!board) throw new AppError('NOT_FOUND');
+    await ctx.db.query(
+      `INSERT INTO whiteboard_presence (organisation_id, whiteboard_id, user_id, cursor_x, cursor_y, colour, seen_at)
+       VALUES ($1,$2,$3,$4,$5,$6,now())
+       ON CONFLICT (whiteboard_id, user_id) DO UPDATE SET
+         cursor_x = EXCLUDED.cursor_x, cursor_y = EXCLUDED.cursor_y,
+         colour = EXCLUDED.colour, seen_at = now()`,
+      [ctx.organisationId, board.id, ctx.user.id, body.cursorX || 0, body.cursorY || 0, HEX.test(String(body.colour || '')) ? body.colour : '#3D8FAE']
+    );
+    return { ok: true };
+  }, { permission: ['curriculum.read.daycare', 'curriculum.create.daycare'], permissionMode: 'any' });
+
+  router.get('/whiteboards/:id/presence', async (ctx) => {
+    const board = await ctx.db.one('SELECT id FROM whiteboards WHERE id = $1 AND organisation_id = $2', [ctx.params.id, ctx.organisationId]);
+    if (!board) throw new AppError('NOT_FOUND');
+    const rows = await ctx.db.many(
+      `SELECT u.id AS user_id, u.display_name, p.cursor_x, p.cursor_y, p.colour, p.seen_at
+       FROM whiteboard_presence p JOIN users u ON u.id = p.user_id
+       WHERE p.whiteboard_id = $1 AND p.organisation_id = $2
+         AND p.seen_at > now() - interval '45 seconds' AND p.user_id <> $3
+       ORDER BY p.seen_at DESC LIMIT 20`,
+      [board.id, ctx.organisationId, ctx.user.id]
+    );
+    return rows.map((r) => ({
+      userId: r.user_id, name: r.display_name || 'Teacher',
+      x: Number(r.cursor_x) || 0, y: Number(r.cursor_y) || 0,
+      colour: r.colour, seenAt: r.seen_at
+    }));
+  }, { permission: ['curriculum.read.daycare', 'curriculum.create.daycare'], permissionMode: 'any' });
 
   router.delete('/whiteboards/:id', async (ctx) => {
     const existing = await ctx.db.one('SELECT id FROM whiteboards WHERE id = $1 AND organisation_id = $2', [ctx.params.id, ctx.organisationId]);
