@@ -45,7 +45,7 @@ const MIME_KINDS = {
 
 const SCOPES = [
   'branding', 'learner-photo', 'learner-document', 'portfolio', 'daily-report',
-  'incident', 'announcement', 'staff-avatar', 'staff-document', 'branch-image', 'website', 'general'
+  'incident', 'announcement', 'staff-avatar', 'staff-document', 'branch-image', 'website', 'nursery-rhyme', 'general'
 ];
 
 function isConfigured() {

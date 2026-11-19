@@ -1068,7 +1068,7 @@
           return;
         }
         try {
-          const asset = await Reel.uploadMedia(file, { scope: 'nursery_rhyme' });
+          const asset = await Reel.uploadMedia(file, { scope: 'nursery-rhyme' });
           if (!asset || !asset.url) throw new Error('The upload did not return a playable URL.');
           const map = Object.assign({}, (this.page && this.page.rhymeAudio) || {});
           map[id] = asset.url;
