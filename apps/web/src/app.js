@@ -3151,6 +3151,27 @@
         });
       },
 
+      async shareLessonWithFamilies() {
+        const block = this.guide && this.guide.block;
+        if (!block) { this.toast('Open a lesson from an activity first.', 'info'); return; }
+        if (!window.Reel || !Reel.feedback) return;
+        Reel.feedback.sheet({
+          title: 'Share this lesson with families',
+          message: 'One short note goes to the families of every child in this activity. Teachers without publish rights send it for principal review first.',
+          actions: [{
+            label: 'Share now', icon: 'send', run: async () => {
+              try {
+                const res = await Reel.api('POST', '/curriculum/calendar/events/' + encodeURIComponent(block.id) + '/share', { note: '' });
+                const data = (res && res.data) || {};
+                this.toast(data.message || (data.shared + ' moment' + (data.shared === 1 ? '' : 's') + ' shared.'));
+              } catch (error) {
+                this.toast(error.message || 'The lesson could not be shared.', 'error');
+              }
+            }
+          }]
+        });
+      },
+
       lessonObjectives() {
         const block = this.guide && this.guide.block;
         return (block && block.plan && block.plan.objectives) || [];

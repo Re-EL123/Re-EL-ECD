@@ -49,6 +49,7 @@ async function latestMoment(db, organisationId, learnerId) {
      LEFT JOIN users u ON u.id = o.recorded_by
      WHERE o.organisation_id = $1 AND o.learner_id = $2
        AND o.assessment_status IN ('published','amended')
+       AND o.visibility_status IN ('guardians','published')
        AND o.observation_date >= CURRENT_DATE - interval '7 days'
      ORDER BY o.observation_date DESC, o.created_at DESC LIMIT 1`,
     [organisationId, learnerId]
@@ -78,6 +79,7 @@ async function weekStats(db, organisationId, learnerId) {
   const observations = await db.one(
     `SELECT COUNT(*)::int AS count FROM learner_observations
      WHERE organisation_id = $1 AND learner_id = $2 AND assessment_status IN ('published','amended')
+       AND visibility_status IN ('guardians','published')
        AND observation_date >= CURRENT_DATE - interval '7 days'`,
     [organisationId, learnerId]
   );
@@ -216,6 +218,7 @@ async function observationsThisMonth(db, organisationId, learnerId) {
      LEFT JOIN curriculum_domains d ON d.id = ob.domain_id
      WHERE o.organisation_id = $1 AND o.learner_id = $2
        AND o.assessment_status IN ('published','amended')
+       AND o.visibility_status IN ('guardians','published')
        AND o.observation_date >= date_trunc('month', CURRENT_DATE)
      ORDER BY o.observation_date DESC`,
     [organisationId, learnerId]

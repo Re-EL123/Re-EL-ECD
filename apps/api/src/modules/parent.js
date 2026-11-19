@@ -60,7 +60,8 @@ function register(router) {
   router.post('/parent/observations/:id/read', async (ctx) => {
     const observation = await ctx.db.one(
       `SELECT * FROM learner_observations WHERE id = $1 AND organisation_id = $2
-       AND assessment_status IN ('published','amended')`,
+       AND assessment_status IN ('published','amended')
+       AND visibility_status IN ('guardians','published')`,
       [ctx.params.id, ctx.organisationId]
     );
     if (!observation) throw new AppError('NOT_FOUND');
@@ -382,7 +383,8 @@ function register(router) {
       resource = await ctx.db.one(
         `SELECT id, learner_id, recorded_by, observation_date AS shared_at
          FROM learner_observations
-         WHERE id = $1 AND organisation_id = $2 AND assessment_status IN ('published','amended')`,
+         WHERE id = $1 AND organisation_id = $2 AND assessment_status IN ('published','amended')
+           AND visibility_status IN ('guardians','published')`,
         [body.resourceId, ctx.organisationId]);
     } else {
       resource = await ctx.db.one(
@@ -451,10 +453,19 @@ function register(router) {
         `SELECT COALESCE(SUM(total_amount - amount_paid),0)::float AS outstanding FROM invoices
          WHERE learner_id = $1 AND status IN ('issued','partially_paid','overdue')`, [learner.id]
       );
-      const latestObservation = await ctx.db.one(
-        `SELECT observation_date, context FROM learner_observations WHERE learner_id = $1
-         AND assessment_status = 'published' ORDER BY observation_date DESC LIMIT 1`, [learner.id]
+      const link = await ctx.db.one(
+        `SELECT can_receive_reports FROM learner_guardians
+         WHERE learner_id = $1 AND guardian_id = (SELECT id FROM guardians WHERE user_id = $2 LIMIT 1) LIMIT 1`,
+        [learner.id, ctx.user.id]
       );
+      const latestObservation = link && link.can_receive_reports
+        ? await ctx.db.one(
+            `SELECT observation_date, context FROM learner_observations WHERE learner_id = $1
+             AND assessment_status IN ('published','amended')
+             AND visibility_status IN ('guardians','published')
+             ORDER BY observation_date DESC LIMIT 1`, [learner.id]
+          )
+        : null;
       children.push({
         id: learner.id, firstName: learner.first_name, lastName: learner.last_name,
         preferredName: learner.preferred_name, dateOfBirth: learner.date_of_birth,
@@ -578,7 +589,7 @@ function register(router) {
     const rows = await ctx.db.many(
       `SELECT sa.id, sa.title, sa.starts_at, sa.ends_at, sa.status, sa.classroom_id,
               a.title AS activity_title, lp.title AS lesson_plan_title,
-              ap.participation_status
+              ap.participation_status, ap.observation_summary AS participation_summary
        FROM scheduled_activities sa
        LEFT JOIN activities a ON a.id = sa.activity_id
        LEFT JOIN lesson_plans lp ON lp.id = sa.lesson_plan_id
@@ -603,6 +614,21 @@ function register(router) {
     return ctx.db.many(
       `SELECT * FROM daily_reports WHERE learner_id = $1 AND shared_with_guardians = true
        ORDER BY report_date DESC LIMIT 60`, [learner.id]
+    );
+  }, { permission: 'parent.read.own' });
+
+  router.get('/parent/children/:id/observations', async (ctx) => {
+    const { learner, link } = await childOrFail(ctx, ctx.params.id);
+    if (!link || !link.can_receive_reports) throw new AppError('FORBIDDEN');
+    return ctx.db.many(
+      `SELECT o.id, o.observation_date, o.context, o.observation_text, o.photo_urls, o.published_at,
+              o.parent_viewed_at, ob.code AS objective_code, d.name AS domain_name
+       FROM learner_observations o
+       LEFT JOIN learning_objectives ob ON ob.id = o.objective_id
+       LEFT JOIN curriculum_domains d ON d.id = ob.domain_id
+       WHERE o.learner_id = $1 AND o.assessment_status IN ('published','amended')
+         AND o.visibility_status IN ('guardians','published')
+       ORDER BY o.observation_date DESC, o.created_at DESC LIMIT 60`, [learner.id]
     );
   }, { permission: 'parent.read.own' });
 

@@ -205,7 +205,8 @@
           '<div class="row" style="gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border-subtle)">' +
             '<div style="min-width:88px"><div class="strong">' + R.date(event.starts_at) + '</div><div class="muted small">' + R.time(event.starts_at) + '</div></div>' +
             '<div style="flex:1;min-width:0"><div class="strong">' + R.esc(event.title) + '</div>' +
-              '<div class="muted small">' + R.esc(event.lesson_plan_title || event.activity_title || 'Classroom activity') + '</div></div>' +
+              '<div class="muted small">' + R.esc(event.lesson_plan_title || event.activity_title || 'Classroom activity') + '</div>' +
+              (event.participation_summary ? '<div class="muted small" style="margin-top:3px">' + R.esc(R.truncate(event.participation_summary, 160)) + '</div>' : '') + '</div>' +
             (event.participation_status ? '<span class="badge badge-green">' + R.esc(R.titleCase(event.participation_status)) + '</span>' : '<span class="badge badge-muted">Not yet observed</span>') +
           '</div>').join('') + '</div>' : '<p class="muted small">No activities scheduled this week yet.</p>', '') +
         R.card('Medical notes shared with you', medical.length ? '<div class="stack">' + medical.map((m) => '<div class="detail-item"><div class="d-label">' + R.esc(R.titleCase(m.record_type)) + '</div><div style="white-space:pre-wrap">' + R.esc(m.details) + '</div></div>').join('') + '</div>' : '<p class="muted small">No medical notes have been shared.</p>') +
@@ -302,25 +303,36 @@
       const children = await R.api('GET', '/parent/children').then((p) => p.data).catch(() => []);
       const reports = [];
       const portfolio = [];
+      const observations = [];
       const announcements = await R.api('GET', '/parent/announcements').then((p) => p.data).catch(() => []);
       const reactions = await R.api('GET', '/parent/reactions').then((p) => p.data).catch(() => ({ mine: {}, counts: {} }));
       for (const child of children || []) {
-        const [r, p] = await Promise.allSettled([
+        const [r, p, o] = await Promise.allSettled([
           R.api('GET', '/parent/children/' + encodeURIComponent(child.id) + '/daily-reports').then((x) => x.data),
-          R.api('GET', '/parent/children/' + encodeURIComponent(child.id) + '/portfolio').then((x) => x.data)
+          R.api('GET', '/parent/children/' + encodeURIComponent(child.id) + '/portfolio').then((x) => x.data),
+          R.api('GET', '/parent/children/' + encodeURIComponent(child.id) + '/observations').then((x) => x.data)
         ]);
         if (r.status === 'fulfilled') (r.value || []).forEach((row) => reports.push(Object.assign({ childName: childLabel(child) }, row)));
         if (p.status === 'fulfilled') (p.value || []).forEach((row) => portfolio.push(Object.assign({ childName: childLabel(child) }, row)));
+        if (o.status === 'fulfilled') (o.value || []).forEach((row) => observations.push(Object.assign({ childName: childLabel(child) }, row)));
       }
-      return { reports, portfolio, announcements: announcements || [], children: children || [], reactions };
+      return { reports, portfolio, observations, announcements: announcements || [], children: children || [], reactions };
     },
 
     render(ctx, params, page) {
       const reports = (page.reports || []).sort((a, b) => String(b.report_date).localeCompare(String(a.report_date)));
       const portfolio = page.portfolio || [];
+      const observations = (page.observations || []).slice().sort((a, b) => String(b.observation_date).localeCompare(String(a.observation_date)));
       const announcements = page.announcements || [];
       return R.pageHead('Activity feed', 'The small moments and the important notices, newest first.') +
         '<div class="split section"><div class="stack">' +
+        R.card('Classroom moments', observations.length ? '<div class="timeline">' + observations.slice(0, 12).map((o) =>
+          '<div class="timeline-item"><div class="t-time">' + R.date(o.observation_date) + ' · ' + R.esc(o.childName) + '</div>' +
+          '<div class="t-title">' + R.esc(o.context || 'A moment captured') + '</div>' +
+          '<div class="t-body">' + R.esc(R.truncate(o.observation_text || '', 180)) + '</div>' +
+          (o.photo_urls && o.photo_urls.length ? '<div class="media-grid" style="margin-top:6px">' + o.photo_urls.slice(0, 2).map((url) => '<div class="media-card">' + R.mediaHtml(url, R.kindForUrl(url), { alt: o.context }) + '</div>').join('') + '</div>' : '') +
+          reactionRow(page, 'observation', o.id) + '</div>').join('') + '</div>' :
+          '<p class="muted small">No classroom moments shared yet.</p>') +
         R.card('Daily reports', reports.length ? '<div class="timeline">' + reports.slice(0, 12).map((r) =>
           '<div class="timeline-item"><div class="t-time">' + R.date(r.report_date) + ' · ' + R.esc(r.childName) + '</div>' +
           '<div class="t-title">' + R.esc(r.mood ? R.titleCase(r.mood) : 'Daily report') + '</div>' +

@@ -168,6 +168,7 @@ function register(router) {
       `UPDATE learner_observations SET assessment_status = 'submitted', updated_at = now() WHERE id = $1`,
       [observation.id]
     );
+    await notifyReviewers(ctx, observation);
     await recordAudit(ctx.db, ctx, {
       action: 'assessment.observation_submitted', resourceType: 'learner_observation', resourceId: observation.id
     });
@@ -212,6 +213,12 @@ function register(router) {
     for (const id of published) {
       const observation = await ctx.db.one('SELECT * FROM learner_observations WHERE id = $1', [id]);
       await notifyGuardians(ctx, observation.learner_id, observation);
+    }
+    if (body.action === 'submit') {
+      for (const id of results.updated) {
+        const observation = await ctx.db.one('SELECT * FROM learner_observations WHERE id = $1', [id]);
+        await notifyReviewers(ctx, observation);
+      }
     }
     await recordAudit(ctx.db, ctx, {
       action: 'assessment.observations_bulk_' + body.action, resourceType: 'learner_observation',
@@ -286,6 +293,7 @@ function register(router) {
        canPublish ? ctx.user.id : null, canPublish ? new Date().toISOString() : null, JSON.stringify(publishedPhotos)]
     );
     if (canPublish) await notifyGuardians(ctx, learner.id, observation);
+    else await notifyReviewers(ctx, observation);
     await recordAudit(ctx.db, ctx, {
       action: canPublish ? 'assessment.quick_moment_published' : 'assessment.quick_moment_submitted', resourceType: 'learner_observation', resourceId: observation.id,
       branchId: learner.branch_id, metadata: { photosShared: publishedPhotos.length, photosWithheld: photoWithheld }
@@ -646,6 +654,30 @@ function register(router) {
   }, { permission: 'assessments.read.daycare' });
 }
 
+/** Tell people who can publish that a submitted observation is waiting. */
+async function notifyReviewers(ctx, observation) {
+  const reviewers = await ctx.db.many(
+    `SELECT DISTINCT m.user_id
+     FROM memberships m
+     JOIN membership_roles mr ON mr.membership_id = m.id
+     JOIN role_permissions rp ON rp.role_id = mr.role_id
+     JOIN permissions p ON p.id = rp.permission_id
+     WHERE m.organisation_id = $1 AND m.status = 'active'
+       AND p.permission_key = 'assessments.publish.daycare'`,
+    [ctx.organisationId]
+  );
+  if (!reviewers.length) return;
+  await createNotification(ctx.db, ctx, {
+    recipientUserIds: reviewers.map((r) => r.user_id),
+    type: 'observation_due',
+    title: 'Moments waiting to be shared',
+    body: String(observation.observation_text || 'A new observation').slice(0, 140),
+    resourceType: 'learner_observation',
+    resourceId: observation.id,
+    url: '/app/assessments'
+  });
+}
+
 async function notifyGuardians(ctx, learnerId, observation) {
   const guardians = await ctx.db.many(
     `SELECT g.user_id, g.email, g.first_name, lg.portal_access_status
@@ -696,12 +728,13 @@ async function progressFor(ctx, learner) {
      ORDER BY d.sort_order, o.code`, [ctx.organisationId]
   );
   const observations = await ctx.db.many(
-    `SELECT o.id, o.objective_id, o.observation_date, o.context, o.observation_text, o.assessment_status, o.photo_urls,
+    `SELECT o.id, o.objective_id, o.domain_id, o.observation_date, o.context, o.observation_text, o.assessment_status, o.photo_urls,
             ob.code AS objective_code, d.name AS domain_name
      FROM learner_observations o
      LEFT JOIN learning_objectives ob ON ob.id = o.objective_id
      LEFT JOIN curriculum_domains d ON d.id = ob.domain_id
      WHERE o.learner_id = $1 AND o.assessment_status IN ('published','amended')
+       AND o.visibility_status IN ('guardians','published')
      ORDER BY o.observation_date DESC`, [learner.id]
   );
   const domains = new Map();
@@ -710,7 +743,10 @@ async function progressFor(ctx, learner) {
       domains.set(objective.domain_name, { name: objective.domain_name, objectives: [], observed: 0 });
     }
     const domain = domains.get(objective.domain_name);
-    const related = observations.filter((o) => o.objective_id === objective.id);
+    // Moments may carry only a domain (no objective) — count those too.
+    const related = observations.filter((o) =>
+      (o.objective_id && o.objective_id === objective.id) ||
+      (!o.objective_id && o.domain_id && o.domain_id === objective.domain_id));
     if (related.length) domain.observed += 1;
     domain.objectives.push({
       code: objective.code, description: objective.description,
@@ -883,4 +919,4 @@ function progressTable(report) {
   return { columns, rows };
 }
 
-module.exports = { register, progressFor };
+module.exports = { register, progressFor, notifyGuardians, notifyReviewers };

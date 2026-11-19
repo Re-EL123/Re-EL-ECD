@@ -7,6 +7,7 @@ const { parsePagination } = require('../utils/http');
 const bulk = require('../services/bulk-service');
 const { has, officialEnabled, isOfficial } = require('./helpers');
 const { BUILTIN_TEMPLATES } = require('./templates');
+const { notifyGuardians, notifyReviewers } = require('./assessments');
 
 async function findOfficialPlan(ctx, id) {
   if (!(await officialEnabled(ctx))) return null;
@@ -961,6 +962,68 @@ function register(router) {
     await recordAudit(ctx.db, ctx, { action: 'curriculum.activity_completed', resourceType: 'scheduled_activity', resourceId: event.id });
     return ctx.db.one('SELECT * FROM scheduled_activities WHERE id = $1', [event.id]);
   }, { permission: 'curriculum.create.daycare' });
+
+  /**
+   * Bridge a taught lesson to families: one evidence record per child in the
+   * activity, published straight away by teachers who may publish and queued
+   * for principal review otherwise. The unique source index makes it safe to
+   * call again after a silent refresh or a second tap.
+   */
+  router.post('/curriculum/calendar/events/:id/share', async (ctx) => {
+    const body = validate(ctx.body, { note: { type: 'string', max: 600, optional: true } });
+    const event = await ctx.db.one(
+      `SELECT sa.*, a.title AS activity_title, lp.title AS plan_title
+       FROM scheduled_activities sa
+       LEFT JOIN activities a ON a.id = sa.activity_id
+       LEFT JOIN lesson_plans lp ON lp.id = sa.lesson_plan_id
+       WHERE sa.id = $1 AND sa.organisation_id = $2`, [ctx.params.id, ctx.organisationId]
+    );
+    if (!event) throw new AppError('NOT_FOUND');
+    const participants = await ctx.db.many(
+      `SELECT DISTINCT l.id, l.branch_id FROM activity_participation ap
+       JOIN learners l ON l.id = ap.learner_id
+       WHERE ap.scheduled_activity_id = $1 AND ap.organisation_id = $2`, [event.id, ctx.organisationId]
+    );
+    const learners = participants.length ? participants : (event.classroom_id
+      ? await ctx.db.many(
+          `SELECT id, branch_id FROM learners
+           WHERE organisation_id = $1 AND classroom_id = $2 AND status = 'enrolled' LIMIT 40`,
+          [ctx.organisationId, event.classroom_id]
+        )
+      : []);
+    if (!learners.length) return { shared: 0, skipped: 0, message: 'No children are linked to this activity yet.' };
+
+    const canPublish = has(ctx, 'assessments.publish.daycare');
+    const title = event.plan_title || event.activity_title || event.title;
+    const context = ('Lesson: ' + String(title || '').slice(0, 90)).slice(0, 120);
+    const text = String(body.note || '').trim() ||
+      ('Today we enjoyed ' + String(event.title || 'our lesson') + (event.activity_title ? ' — ' + event.activity_title : '') + '.');
+    let shared = 0;
+    let skipped = 0;
+    for (const learner of learners) {
+      const observation = await ctx.db.one(
+        `INSERT INTO learner_observations (organisation_id, branch_id, learner_id, objective_id, observation_date,
+           context, observation_text, assessment_status, visibility_status, recorded_by, reviewed_by, published_at,
+           source_type, source_id)
+         VALUES ($1,$2,$3,NULL,CURRENT_DATE,$4,$5,$6,$7,$8,$9,$10,'lesson',$11)
+         ON CONFLICT (source_type, source_id, learner_id) DO NOTHING RETURNING *`,
+        [ctx.organisationId, learner.branch_id, learner.id, context, text,
+          canPublish ? 'published' : 'submitted', canPublish ? 'published' : 'internal', ctx.user.id,
+          canPublish ? ctx.user.id : null, canPublish ? new Date().toISOString() : null, event.id]
+      );
+      if (!observation) { skipped += 1; continue; }
+      shared += 1;
+      if (canPublish) await notifyGuardians(ctx, learner.id, observation);
+      else await notifyReviewers(ctx, observation);
+    }
+    await recordAudit(ctx.db, ctx, {
+      action: 'curriculum.lesson_shared', resourceType: 'scheduled_activity', resourceId: event.id,
+      metadata: { shared, published: canPublish }
+    });
+    return { shared, skipped, published: canPublish, message: canPublish
+      ? 'Lesson shared with families.'
+      : 'Lesson moments sent for principal review before families see them.' };
+  }, { permission: ['curriculum.create.daycare', 'assessments.create.assigned'], permissionMode: 'any' });
 
   router.post('/curriculum/calendar/events/:id/start', async (ctx) => {
     const event = await ctx.db.one('SELECT * FROM scheduled_activities WHERE id = $1 AND organisation_id = $2',

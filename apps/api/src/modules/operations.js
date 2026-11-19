@@ -981,9 +981,11 @@ function register(router) {
         `SELECT l.id AS learner_id, l.first_name, l.last_name
          FROM learners l
          WHERE l.organisation_id = $1 AND l.status = 'enrolled'
-           AND (EXISTS (SELECT 1 FROM daily_reports r WHERE r.learner_id = l.id AND r.report_date = CURRENT_DATE)
+           AND (EXISTS (SELECT 1 FROM daily_reports r WHERE r.learner_id = l.id AND r.report_date = CURRENT_DATE
+                        AND r.shared_with_guardians = true)
              OR EXISTS (SELECT 1 FROM learner_observations o WHERE o.learner_id = l.id
                         AND o.assessment_status IN ('published','amended')
+                        AND o.visibility_status IN ('guardians','published')
                         AND o.observation_date >= CURRENT_DATE - interval '7 days'))`,
         [organisation.id]
       );
@@ -992,7 +994,7 @@ function register(router) {
       const pickupSms = await smsPreference(innerCtx.db, organisation.id, 'smsPickupBrief');
       for (const child of candidates) {
         const report = await innerCtx.db.one(
-          'SELECT * FROM daily_reports WHERE learner_id = $1 AND report_date = CURRENT_DATE',
+          'SELECT * FROM daily_reports WHERE learner_id = $1 AND report_date = CURRENT_DATE AND shared_with_guardians = true',
           [child.learner_id]
         );
         const moment = await innerCtx.db.one(
@@ -1003,6 +1005,7 @@ function register(router) {
            LEFT JOIN curriculum_domains d ON d.id = ob.domain_id
            WHERE o.learner_id = $1 AND o.organisation_id = $2
              AND o.assessment_status IN ('published','amended')
+             AND o.visibility_status IN ('guardians','published')
            ORDER BY o.observation_date DESC, o.created_at DESC LIMIT 1`,
           [child.learner_id, organisation.id]
         );
@@ -1142,6 +1145,7 @@ function register(router) {
               `SELECT o.id, o.observation_text FROM learner_observations o
                WHERE o.organisation_id = $1 AND o.learner_id = ANY($2::uuid[])
                  AND o.assessment_status IN ('published','amended')
+                 AND o.visibility_status IN ('guardians','published')
                ORDER BY o.observation_date DESC, o.created_at DESC LIMIT 1`,
               [organisation.id, childIds]
             );
@@ -1179,6 +1183,7 @@ function register(router) {
               `SELECT COUNT(*)::int AS count FROM learner_observations
                WHERE organisation_id = $1 AND learner_id = ANY($2::uuid[])
                  AND assessment_status IN ('published','amended')
+                 AND visibility_status IN ('guardians','published')
                  AND observation_date >= CURRENT_DATE - interval '7 days'`,
               [organisation.id, childIds]
             );

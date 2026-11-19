@@ -10,6 +10,24 @@ const { hashPin, verifyPin } = require('../../../../packages/auth/pin');
 const { createNotification } = require('../services/notification-service');
 const { sendTemplate } = require('../services/email-service');
 
+/** One notification path for sharing a daily report, on create or on edit. */
+async function notifyReportShared(ctx, learner, report) {
+  const guardians = await ctx.db.many(
+    `SELECT DISTINCT g.user_id
+     FROM learner_guardians lg JOIN guardians g ON g.id = lg.guardian_id
+     WHERE lg.learner_id = $1 AND lg.can_receive_reports = true AND lg.portal_access_status = 'active'
+       AND g.user_id IS NOT NULL`,
+    [learner.id]
+  );
+  if (!guardians.length) return;
+  await createNotification(ctx.db, ctx, {
+    recipientUserIds: guardians.map((g) => g.user_id), type: 'daily_report_shared',
+    title: 'Daily report for ' + learner.first_name,
+    body: (report.mood ? 'Mood today: ' + report.mood + '. ' : '') + 'Meals, naps and the moments are on the portal now.',
+    resourceType: 'daily_report', resourceId: report.id, url: '/parent/activities'
+  });
+}
+
 function register(router) {
   router.get('/learners', async (ctx) => {
     const { page, pageSize, offset } = parsePagination(ctx.query);
@@ -1083,6 +1101,7 @@ function register(router) {
         body.sharedWithGuardians === true, ctx.user.id]
     );
     await recordAudit(ctx.db, ctx, { action: 'learner.daily_report_created', resourceType: 'learner', resourceId: learner.id });
+    if (report.shared_with_guardians) await notifyReportShared(ctx, learner, report);
     ctx.status = 201;
     return report;
   }, { permission: ['attendance.record.assigned', 'learners.update.daycare'], permissionMode: 'any' });
@@ -1116,24 +1135,7 @@ function register(router) {
         photoUrls ? JSON.stringify(photoUrls) : null,
         body.sharedWithGuardians === undefined ? null : body.sharedWithGuardians, report.id]
     );
-    if (shareTransition) {
-      const guardians = await ctx.db.many(
-        `SELECT DISTINCT g.user_id
-         FROM learner_guardians lg JOIN guardians g ON g.id = lg.guardian_id
-         WHERE lg.learner_id = $1 AND lg.can_receive_reports = true AND lg.portal_access_status = 'active'
-           AND g.user_id IS NOT NULL`,
-        [learner.id]
-      );
-      const mood = body.mood || report.mood;
-      if (guardians.length) {
-        await createNotification(ctx.db, ctx, {
-          recipientUserIds: guardians.map((g) => g.user_id), type: 'daily_report_shared',
-          title: 'Daily report for ' + learner.first_name,
-          body: (mood ? 'Mood today: ' + mood + '. ' : '') + 'Meals, naps and the moments are on the portal now.',
-          resourceType: 'daily_report', resourceId: report.id, url: '/parent/activities'
-        });
-      }
-    }
+    if (shareTransition) await notifyReportShared(ctx, learner, Object.assign({}, report, { mood: body.mood || report.mood }));
     return ctx.db.one('SELECT * FROM daily_reports WHERE id = $1', [report.id]);
   }, { permission: ['attendance.record.assigned', 'learners.update.daycare'], permissionMode: 'any' });
 

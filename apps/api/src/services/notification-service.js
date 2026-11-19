@@ -7,7 +7,7 @@ const PUSH_URLS = {
   observation_published: '/parent/progress',
   progress_published: '/parent/progress',
   daily_report_shared: '/parent/activities',
-  moment: '/parent/activities',
+  moment: '/parent/progress',
   pickup_brief: '/parent/activities',
   parent_welcome: '/parent/overview',
   weekly_digest: '/parent/overview',
