@@ -1422,6 +1422,7 @@
     };
     setActiveTool('pen');
     badge('Ready', 'good');
+    layerObjects = engine.getObjects();
     renderLayers();
     drawMinimap();
   };
