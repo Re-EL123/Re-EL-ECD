@@ -3234,3 +3234,5 @@ a:focus-visible, input:focus-visible, select:focus-visible {
 
 /* [hidden] must win over the component's display rules. */
 .rhyme-now-playing[hidden], .rhyme-queue-panel[hidden], .rhyme-reader-backdrop[hidden] { display: none !important; }
+.rhyme-sort { flex: 0 0 auto; white-space: nowrap; }
+.rhyme-sort > span { flex: 0 0 auto; white-space: nowrap; }

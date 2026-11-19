@@ -26,6 +26,7 @@
   let bar = null;
   let queuePanel = null;
   let reader = null;
+  let readerBackdrop = null;
   let readerRhyme = null;
   let fontScale = 1;
 
@@ -366,7 +367,8 @@
         '</div></div>' +
       '</div>';
     document.body.appendChild(backdrop);
-    reader = backdrop;
+    readerBackdrop = backdrop;
+    reader = backdrop.querySelector('.rhyme-reader');
     backdrop.addEventListener('click', (event) => {
       if (event.target === backdrop) return closeReader();
       const control = event.target.closest && event.target.closest('[data-reader]');
@@ -394,8 +396,9 @@
   }
   function readerKey(event) { if (event.key === 'Escape') closeReader(); }
   function closeReader() {
-    if (!reader) return;
-    reader.remove();
+    if (!readerBackdrop) return;
+    readerBackdrop.remove();
+    readerBackdrop = null;
     reader = null;
     document.removeEventListener('keydown', readerKey);
     if (document.fullscreenElement && typeof document.exitFullscreen === 'function') {

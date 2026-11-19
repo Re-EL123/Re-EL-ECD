@@ -57,7 +57,7 @@
     if (!rhyme) return 2;
     if (Number.isFinite(rhyme.minutes) && rhyme.minutes > 0) return rhyme.minutes;
     const words = (rhyme.lyrics || []).join(' ').trim().split(/\s+/).filter(Boolean).length;
-    return Math.max(1, Math.min(20, Math.round(words / 70)));
+    return Math.max(1, Math.min(20, Math.round(words / 55)));
   }
 
   function bandFor(rhyme) {
