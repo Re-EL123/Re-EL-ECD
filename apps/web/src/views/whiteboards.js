@@ -979,6 +979,14 @@
     if (!wrap || wrap._wbInit) return;
     wrap._wbInit = true;
     document.body.classList.add('wb-teaching');
+    const shellEl = document.querySelector('.wb-teach-shell');
+    function sizeShell() {
+      if (!shellEl) return;
+      const top = shellEl.getBoundingClientRect().top;
+      shellEl.style.height = Math.max(320, window.innerHeight - top) + 'px';
+    }
+    sizeShell();
+    window.addEventListener('resize', sizeShell);
     const statusEl = document.getElementById('wb-status');
     const verEl = document.getElementById('wb-version');
     let version = Number(board.version || 1);
@@ -1393,6 +1401,7 @@
 
     wrap._wbCleanup = () => {
       document.body.classList.remove('wb-teaching');
+      window.removeEventListener('resize', sizeShell);
       clearInterval(autosave); clearInterval(statusTick); clearInterval(poll);
       clearInterval(presencePoll); clearInterval(presenceBeat);
       document.removeEventListener('keydown', documentShortcuts);

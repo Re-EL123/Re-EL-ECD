@@ -3578,3 +3578,4 @@ body.wb-teaching { overflow: hidden; }
   .wb-presentation { animation: none; }
   .wb-inspector, .wb-layers { box-shadow: none; }
 }
+body.wb-teaching .main { overflow: hidden; padding-bottom: 0 !important; }
