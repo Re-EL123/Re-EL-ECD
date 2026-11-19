@@ -49,7 +49,7 @@ test('empty data is shown honestly', () => {
   assert.ok(view.includes('Nothing coming up'), 'past/completed events are filtered');
   assert.ok(view.includes("e.status === 'completed' || e.status === 'cancelled'"), 'completed events excluded');
   assert.ok(view.includes('noTodayData'), 'chart gap for today');
-  assert.ok(view.includes('padToday') && view.includes('trendPresent.push(null)'), 'today has no fake zero');
+  assert.ok(view.includes('the open gap marks today'), 'today has no fake zero — the gap is explained in the subtitle');
   assert.ok(view.includes('Attendance · last 14 days'), 'chart period in the title');
 });
 

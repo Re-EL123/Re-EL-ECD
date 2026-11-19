@@ -212,17 +212,16 @@
         if (target) target.style.cursor = (elements && elements.length) ? 'pointer' : 'default';
       };
       if (page.canDashboard) {
-        const latestTrend = trend.length ? String(trend[trend.length - 1].attendance_date).slice(0, 10) : '';
-        const padToday = Boolean(latestTrend && latestTrend < String(page.date || R.today()));
+        // Chart.js's fill plugin cannot draw through null points — mark the
+        // missing day in the subtitle instead of inventing a zero or a gap.
         const trendLabels = trend.map((x) => new Date(x.attendance_date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' }));
         const trendPresent = trend.map((x) => x.present);
         const trendMarked = trend.map((x) => x.marked);
-        if (padToday) { trendLabels.push('Today'); trendPresent.push(null); trendMarked.push(null); }
         ctx.chart('attendance-trend', 'line', {
           labels: trendLabels,
           datasets: [
-            { label: 'Present', data: trendPresent, borderColor: '#3A7D44', backgroundColor: 'rgba(58,125,68,0.12)', fill: true, tension: 0.35, pointRadius: 2, pointHoverRadius: 5, spanGaps: false },
-            { label: 'Marked', data: trendMarked, borderColor: '#E89A2B', backgroundColor: 'transparent', borderDash: [4, 4], tension: 0.35, pointRadius: 0, spanGaps: false }
+            { label: 'Present', data: trendPresent, borderColor: '#3A7D44', backgroundColor: 'rgba(58,125,68,0.12)', fill: true, tension: 0.35, pointRadius: 2, pointHoverRadius: 5 },
+            { label: 'Marked', data: trendMarked, borderColor: '#E89A2B', backgroundColor: 'transparent', borderDash: [4, 4], tension: 0.35, pointRadius: 0 }
           ]
         }, { onClick: chartGo('#/app/learner-attendance?unmarked=1'), onHover: chartCursor });
         ctx.chart('revenue-chart', 'bar', {
@@ -587,7 +586,6 @@
         '</div>';
       html += '<div class="grid grid-2 section today-dash-grid">' +
         R.card('Tasks needing attention', tasks.length ? '<div class="stack">' + tasks.map((t) => '<div class="row" style="gap:10px;align-items:flex-start"><span class="badge ' + R.priorityTone(t.priority) + '">' + esc(t.priority) + '</span><div style="flex:1;min-width:0"><div class="strong" style="font-size:0.88rem">' + esc(t.title) + '</div><div class="muted small">' + esc(t.assignee_name || 'Unassigned') + ' · due ' + R.date(t.due_at) + '</div></div><button class="btn btn-sm btn-secondary" @click="actUndoable(\'PATCH\',\'/tasks/' + R.attr(t.id) + '\',{status:\'done\'},{successMessage:\'Task completed\'},{status:\'' + R.attr(t.status) + '\'})">Done</button></div>').join('') + '</div>' : R.emptyState('No open tasks', 'Everything assigned is complete.', '', 'check-circle'), '<a class="btn btn-sm btn-ghost" href="#/app/tasks">All tasks ' + R.icon('arrow-right') + '</a>') +
-        +
         R.card('Coming up', upcoming.length ? '<div class="timeline">' + upcoming.map((event) => '<div class="timeline-item"><div class="t-time">' + R.time(event.starts_at) + ' · ' + esc(event.classroom_name || '') + '</div><div class="t-title">' + esc(event.title) + '</div><div class="t-body">' + esc(R.titleCase(event.status || 'scheduled')) + '</div></div>').join('') + '</div>' : R.emptyState('Nothing coming up', 'The rest of the day is clear — nothing needs to start.', '<a class="btn btn-sm btn-secondary" href="#/app/calendar">Open calendar</a>', 'calendar'), '<a class="btn btn-sm btn-ghost" href="#/app/calendar">Calendar ' + R.icon('arrow-right') + '</a>') +
         R.card('At a glance', '<div class="kpi-list">' +
           '<div class="kpi-row"><span class="kpi-label">Staff on record</span><span class="kpi-value">' + R.number((d.staff || {}).total) + '</span></div>' +
