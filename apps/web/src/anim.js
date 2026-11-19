@@ -199,8 +199,8 @@
     const step = o.step === undefined ? 45 : o.step;
     elements.forEach((el, index) => {
       keyframes(el, [
-        { opacity: 0, transform: 'translateY(14px) scale(0.955)', filter: 'blur(7px)' },
-        { opacity: 1, transform: 'translateY(0) scale(1)', filter: 'blur(0px)' }
+        { opacity: 0, transform: 'translateY(14px) scale(0.955)' },
+        { opacity: 1, transform: 'translateY(0) scale(1)' }
       ], {
         duration: 520,
         spring: { stiffness: 200, damping: 18, duration: 0.52 },

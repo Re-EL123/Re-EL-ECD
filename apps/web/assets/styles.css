@@ -441,8 +441,8 @@ table.table { width: 100%; border-collapse: collapse; font-size: 0.86rem; min-wi
 
 /* --- Modal, toast, command palette ------------------------------------- */
 .modal-backdrop {
-  position: fixed; inset: 0; background: rgba(15, 25, 17, 0.48);
-  backdrop-filter: blur(4px); z-index: 120; display: grid; place-items: center; padding: 20px;
+  position: fixed; inset: 0; background: rgba(15, 25, 17, 0.3);
+  z-index: 120; display: grid; place-items: center; padding: 20px;
   animation: fade-in 160ms ease;
 }
 .modal-backdrop.guide-backdrop { z-index: 100; }
@@ -478,7 +478,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: 0.86rem; min-wi
 .toast.warn { border-left-color: var(--reel-warn-500); }
 .toast svg { width: 17px; height: 17px; flex: 0 0 17px; margin-top: 1px; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-.command-backdrop { position: fixed; inset: 0; background: rgba(15, 25, 17, 0.45); backdrop-filter: blur(4px); z-index: 150; padding: 10vh 16px; }
+.command-backdrop { position: fixed; inset: 0; background: rgba(15, 25, 17, 0.3); z-index: 150; padding: 10vh 16px; }
 .command {
   width: min(640px, 100%); margin: 0 auto; background: var(--surface-1);
   border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); overflow: hidden;
@@ -2081,8 +2081,8 @@ a.crumb:hover { color: var(--text-strong); background: var(--surface-2); text-de
 /* --- Bloom widgets -------------------------------------------------------- */
 .bloom-in { animation: bloom-in 0.5s cubic-bezier(0.3, 0.7, 0.3, 1) both; }
 @keyframes bloom-in {
-  from { opacity: 0; transform: translateY(14px) scale(0.955); filter: blur(7px); }
-  to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+  from { opacity: 0; transform: translateY(14px) scale(0.955); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 @media (hover: hover) and (pointer: fine) {
   .card, .stat-card { transition: transform 0.25s ease, box-shadow 0.25s ease; }
@@ -2926,7 +2926,7 @@ a.crumb:hover { color: var(--text-strong); background: var(--surface-2); text-de
 
 .feedback-sheet-backdrop {
   position: fixed; inset: 0; z-index: 400; display: flex; align-items: flex-end; justify-content: center;
-  background: rgba(12, 24, 16, .5); backdrop-filter: blur(3px);
+  background: rgba(12, 24, 16, .32);
   animation: sheetFade .2s ease both;
 }
 .feedback-sheet {
