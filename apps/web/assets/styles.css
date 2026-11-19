@@ -2883,3 +2883,90 @@ a.crumb:hover { color: var(--text-strong); background: var(--surface-2); text-de
 }
 .rhyme-player { margin: 6px 0 10px; }
 .rhyme-player audio { width: 100%; max-width: 420px; height: 38px; }
+
+/* ---- Feedback layer: spring motion, action sheets, haptic/symbol cues ----- */
+:root {
+  --reel-spring: cubic-bezier(.22, 1.35, .36, 1);
+  --reel-snap: cubic-bezier(.2, .9, .25, 1);
+}
+.btn, .deck-arrow, .teaching-tab, .tab, .rhyme-lyrics summary, .card {
+  transition: transform .32s var(--reel-spring), box-shadow .28s var(--reel-snap),
+    background-color .2s ease, border-color .2s ease, color .2s ease;
+}
+.btn:active:not(:disabled), .deck-arrow:active:not(:disabled), .teaching-tab:active {
+  transform: scale(.95);
+}
+.btn:hover:not(:disabled), .deck-arrow:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+.btn.is-busy { opacity: .75; cursor: progress; }
+.btn.is-busy .inline-spinner, .inline-spinner {
+  display: inline-block; width: 13px; height: 13px; margin-right: 6px; vertical-align: -2px;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 999px;
+  animation: feedbackSpin .7s linear infinite;
+}
+@keyframes feedbackSpin { to { transform: rotate(360deg); } }
+
+.symbol-burst {
+  position: fixed; z-index: 500; pointer-events: none;
+  display: grid; place-items: center; width: 34px; height: 34px; margin: -17px 0 0 -17px;
+  border-radius: 999px; font-size: 1.1rem; font-weight: 800; line-height: 1;
+  color: #fff; background: var(--reel-green-600);
+  box-shadow: 0 6px 22px rgba(58,125,68,.4);
+  animation: symbolPop .85s var(--reel-spring) forwards;
+}
+.symbol-burst.symbol-warn { background: var(--reel-sun-500); color: #1f2a22; }
+.symbol-burst.symbol-error { background: var(--reel-danger-600, #C73B3B); }
+@keyframes symbolPop {
+  0% { opacity: 0; transform: scale(.3) translateY(6px); }
+  35% { opacity: 1; transform: scale(1.15) translateY(-10px); }
+  70% { opacity: 1; transform: scale(1) translateY(-18px); }
+  100% { opacity: 0; transform: scale(.85) translateY(-34px); }
+}
+
+.feedback-sheet-backdrop {
+  position: fixed; inset: 0; z-index: 400; display: flex; align-items: flex-end; justify-content: center;
+  background: rgba(12, 24, 16, .5); backdrop-filter: blur(3px);
+  animation: sheetFade .2s ease both;
+}
+.feedback-sheet {
+  width: min(520px, 100%); background: var(--surface-1); color: var(--text);
+  border-radius: 22px 22px 0 0; padding: 10px 18px calc(20px + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -12px 40px rgba(0,0,0,.2);
+  animation: sheetUp .42s var(--reel-spring) both;
+}
+.feedback-sheet h3 { margin: 6px 0 4px; font-size: 1.1rem; }
+.feedback-sheet p { margin: 0 0 14px; }
+.sheet-grip { width: 42px; height: 5px; border-radius: 999px; background: var(--border-subtle); margin: 0 auto 8px; }
+.sheet-actions { display: flex; flex-direction: column; gap: 8px; }
+.sheet-action {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 16px;
+  border: 1px solid var(--border-subtle); border-radius: 14px; background: var(--surface-2);
+  color: var(--text-strong); font-size: .95rem; font-weight: 600; cursor: pointer;
+  transition: transform .25s var(--reel-spring), background-color .18s ease;
+}
+.sheet-action:hover { background: var(--surface-1); transform: translateY(-2px); }
+.sheet-action:active { transform: scale(.97); }
+.sheet-action svg { width: 19px; height: 19px; }
+.sheet-action.is-danger { color: var(--reel-danger-700, #A32D2D); }
+.sheet-cancel { justify-content: center; background: transparent; font-weight: 500; }
+@keyframes sheetFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+.is-shaking { animation: feedbackShake .5s ease; }
+@keyframes feedbackShake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-7px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(3px); }
+}
+[data-swiped] { touch-action: pan-y; transition: transform .25s var(--reel-spring); }
+
+@media (prefers-reduced-motion: reduce) {
+  .btn, .deck-arrow, .teaching-tab, .tab, .card, [data-swiped] { transition: none; }
+  .btn:hover:not(:disabled), .deck-arrow:hover:not(:disabled) { transform: none; }
+  .symbol-burst { display: none; }
+  .feedback-sheet { animation: none; }
+  .is-shaking { animation: none; }
+}

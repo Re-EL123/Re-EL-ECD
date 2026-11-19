@@ -886,7 +886,7 @@
             list.forEach((e) => {
               const now = this.isNow(e);
               const conflict = conflicts[e.id];
-              h += '<div class="cal-agenda-row ' + calStatusClass(e.status) + (now ? ' is-now' : '') + (conflict ? ' has-conflict' : '') + '" tabindex="0" role="button" ' +
+              h += '<div class="cal-agenda-row ' + calStatusClass(e.status) + (now ? ' is-now' : '') + (conflict ? ' has-conflict' : '') + '" data-event-id="' + R.attr(e.id) + '" tabindex="0" role="button" ' +
                 '@click="if (!$event.target.closest(\'button[data-action]\')) openNamedModal(\'calEvent\',\'' + R.attr(e.id) + '\')" ' +
                 '@keydown.enter.prevent="openNamedModal(\'calEvent\',\'' + R.attr(e.id) + '\')" @keydown.space.prevent="openNamedModal(\'calEvent\',\'' + R.attr(e.id) + '\')" ' +
                 'aria-label="' + R.attr((e.title || 'Activity') + ' at ' + R.time(e.starts_at) + ', ' + calStatusLabel(e.status)) + '">';

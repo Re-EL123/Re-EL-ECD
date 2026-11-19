@@ -140,7 +140,12 @@ window.Reel.renderGateQr = function (targetId) {
       const whyCard = R.card('Why this matters',
         '<p class="muted small">Your account can unenroll incidents, release children from the gate, publish reports to families and move money. A password alone is not enough — two factors is the same standard banks use.</p>' +
         '<p class="muted small" style="margin-top:8px">Questions? Your principal can reset your password, but nobody can reset your authenticator — that is the point. If you lose your phone, use one of the recovery codes you saved when enabling MFA.</p>');
-      return '<div class="split"><div class="stack">' + passwordCard + mfaCard + '</div><div class="stack">' + whyCard + '</div></div>';
+      const fb = window.Reel && Reel.feedback ? Reel.feedback.prefs() : { sound: false, haptics: false };
+      const feedbackCard = R.card('Feedback & cues',
+        '<p class="muted small">Small sounds and device taps confirm actions. Both are off when your device asks for reduced motion.</p>' +
+        '<label class="check" style="margin-top:10px"><input type="checkbox" ' + (fb.sound ? 'checked' : '') + ' @change="toggleFeedback(\'sound\')"> Interface sounds</label>' +
+        '<label class="check"><input type="checkbox" ' + (fb.haptics ? 'checked' : '') + ' @change="toggleFeedback(\'haptics\')"> Haptic taps (supported devices)</label>');
+      return '<div class="split"><div class="stack">' + passwordCard + mfaCard + '</div><div class="stack">' + feedbackCard + whyCard + '</div></div>';
     },
 
     renderOrganisation(org, branches, settings) {

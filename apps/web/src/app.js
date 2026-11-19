@@ -397,6 +397,7 @@
 
       async boot() {
         window.ReelApp = this;
+        if (window.Reel && Reel.feedback) Reel.feedback.init();
         this._pendingTick = [];
         this.nextTick = (fn) => {
           const tick = () => Promise.resolve().then(() => {
@@ -987,6 +988,47 @@
         }
         this.syncTodayLive();
         this.initTodayDeck();
+        this.installFeedbackSwipes();
+        if (window.Reel && Reel.feedback && this.route && this.route.path === '/app/today') {
+          setTimeout(() => Reel.feedback.maybeRate(), 900);
+        }
+      },
+
+      /** Swipe right on a day/calendar row for its action sheet. */
+      installFeedbackSwipes() {
+        if (!window.Reel || !Reel.feedback || !Reel.feedback.swipe) return;
+        [...document.querySelectorAll('.cal-agenda-row[data-event-id]')].forEach((row) => {
+          const id = row.getAttribute('data-event-id');
+          Reel.feedback.swipe(row, { onRight: () => Reel.feedback.sheet({
+            title: 'Activity actions',
+            actions: [
+              { label: 'Open details', icon: 'eye', run: () => this.openNamedModal('calEvent', id) },
+              { label: 'Edit / reschedule', icon: 'pencil', run: () => this.openNamedModal('calEdit', id) },
+              { label: 'Duplicate', icon: 'copy', run: () => this.openNamedModal('calDuplicate', id) },
+              { label: 'Delete', icon: 'trash-2', tone: 'danger', run: () => this.openNamedModal('calDelete', id) }
+            ]
+          }) });
+        });
+        [...document.querySelectorAll('.today-block[data-block]')].forEach((card) => {
+          const id = card.getAttribute('data-block');
+          const block = ((this.page || {}).today || {}).timeline
+            ? this.page.today.timeline.find((b) => b.id === id) : null;
+          if (!block) return;
+          Reel.feedback.swipe(card, { threshold: 90, onRight: () => {
+            const actions = [];
+            if (block.lessonPlanId) actions.push({ label: 'Teach / Guide', icon: 'book-open', run: () => this.openGuide(block.lessonPlanId) });
+            if (block.status === 'scheduled') actions.push({ label: 'Start block', icon: 'play', run: () => this.act('POST', '/curriculum/calendar/events/' + id + '/start', {}, { successMessage: 'Block started — enjoy teaching.' }) });
+            if (block.status === 'in_progress') actions.push({ label: 'Complete block', icon: 'check-circle', run: () => this.openNamedModal('completeBlock', id) });
+            actions.push({ label: 'Capture a moment', icon: 'camera', run: () => this.openNamedModal('blockObserve', id) });
+            Reel.feedback.sheet({ title: block.title, message: 'Swipe actions — pick what you want to do next.', actions });
+          } });
+        });
+      },
+
+      toggleFeedback(name) {
+        if (!window.Reel || !Reel.feedback) return;
+        Reel.feedback.setPref(name, !Reel.feedback.prefs()[name]);
+        this.navigate(true);
       },
 
       /* ---- Nursery rhymes: plain-text download & print ------------------ */
@@ -1620,6 +1662,9 @@
       toast(message, type, action) {
         const id = 'toast_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
         this.toasts.push({ id, message, type: type || 'success', action: action || null });
+        if (window.Reel && Reel.feedback) {
+          Reel.feedback.cue(type === 'error' ? 'error' : type === 'warn' ? 'warn' : 'success');
+        }
         this._toastTimers = this._toastTimers || {};
         if (this._toastTimers[id]) clearTimeout(this._toastTimers[id]);
         this._toastTimers[id] = setTimeout(() => this.dismissToast(id), action ? 8000 : 5200);
@@ -1666,6 +1711,9 @@
         try {
           const result = await Reel.api(method, path, body, opts);
           if (opts.successMessage) this.toast(opts.successMessage);
+          // Meaningful completions feed the (rare) rating prompt and get a
+          // stronger confirmation than an ordinary save.
+          if (window.Reel && Reel.feedback && /\/complete$|\/start$/.test(path)) Reel.feedback.delight();
           if (opts.reload !== false) await this.navigate(true);
           return result;
         } catch (error) {
@@ -3603,6 +3651,9 @@
           const message = this.modal.successMessage || 'Saved successfully.';
           const onSuccess = this.modal.onSuccess;
           this.modal = null;
+          if (/\/complete$/.test(endpoint)) {
+            if (window.Reel && Reel.feedback) { Reel.feedback.delight(); Reel.feedback.cue('complete'); }
+          }
           if (/^\/organisations\/current$/.test(endpoint) || /^\/platform\/settings$/.test(endpoint)) await this.refreshSession();
           this.toast(message);
           if (typeof onSuccess === 'function') {
@@ -3615,6 +3666,7 @@
           if (error.details && Array.isArray(error.details)) {
             this.modal.error += ' ' + error.details.map((d) => d.message || d.field).join(' · ');
           }
+          if (window.Reel && Reel.feedback) { Reel.feedback.cue('error'); Reel.feedback.shake(document.querySelector('.modal-backdrop .alert-danger')); }
           this.modal.saving = false;
         }
       },
