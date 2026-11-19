@@ -1328,7 +1328,7 @@
           if (!document.body.contains(live)) return;
           const secs = Math.max(0, Math.round((Date.now() - since) / 1000));
           const text = secs < 8 ? 'Live · updated just now' : 'Live · updated ' + secs + 's ago';
-          if (!live.querySelector('.today-live-dot')) {
+          if (!live.querySelector('.today-live-text')) {
             live.innerHTML = '<span class="today-live-dot"></span><span class="today-live-text"></span>';
           }
           const label = live.querySelector('.today-live-text');
