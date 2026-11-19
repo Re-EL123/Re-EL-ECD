@@ -997,6 +997,7 @@
     let savedAt = Date.now();
     let lastSaved = JSON.parse(JSON.stringify((board.state || {}).objects || []));
     let layerObjects = [];
+    let mini = null;
     const canEdit = ctx.has('curriculum.create.daycare');
     const presenceColor = '#3D8FAE';
 
@@ -1145,7 +1146,7 @@
     const selectAll = document.getElementById('wb-select-all'); if (selectAll) selectAll.addEventListener('click', () => engine.selectAll());
 
     // ---- Minimap -----------------------------------------------------------
-    const mini = document.getElementById('wb-minimap');
+    mini = document.getElementById('wb-minimap');
     function drawMinimap() {
       if (!mini || !engine) return;
       const ctx = mini.getContext('2d');
