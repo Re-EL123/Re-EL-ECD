@@ -477,7 +477,7 @@ function register(router) {
     const alerts = [];
     if (attendance.marked === 0) alerts.push({ severity: 'warning', message: "Today's attendance register has not been started.", link: '#/app/learner-attendance' });
     if (finance.outstanding > 0) alerts.push({ severity: 'info', message: `R${finance.outstanding.toFixed(2)} in fees is outstanding.`, link: '#/app/finance' });
-    if (applications.total > 0) alerts.push({ severity: 'info', message: `${applications.total} application(s) await review.`, link: '#/app/admissions' });
+    if (applications.total > 0) alerts.push({ severity: 'info', message: `${applications.total} application${applications.total === 1 ? '' : 's'} await${applications.total === 1 ? 's' : ''} review.`, link: '#/app/admissions' });
     return {
       date,
       learners,

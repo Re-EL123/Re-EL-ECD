@@ -82,6 +82,25 @@
     return child && child.activitiesSummary ? child.activitiesSummary : '';
   }
 
+  /** Lightweight, per-tab suggestion state — "done" and "snoozed" survive silent refreshes. */
+  function suggestionState() {
+    try {
+      if (typeof sessionStorage === 'undefined') return {};
+      return JSON.parse(sessionStorage.getItem('reel.today.suggestions') || '{}') || {};
+    } catch (error) { return {}; }
+  }
+  function suggestionKey(text) {
+    return String(text).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 64);
+  }
+
+  /** Wrap a finished/secondary section so teachers can fold it away. */
+  function collapsible(id, title, inner, open) {
+    return '<div class="today-collapsible" id="' + R.attr(id) + '" x-data="{ open: ' + (open ? 'true' : 'false') + ' }">' +
+      '<button type="button" class="today-collapse-btn" @click="open = !open" :aria-expanded="String(open)">' +
+        R.icon('chevron-down') + '<span>' + esc(title) + '</span><span class="muted small" x-text="open ? \'Hide\' : \'Show\'"></span></button>' +
+      '<div class="today-collapse-body" x-show="open" x-cloak>' + inner + '</div></div>';
+  }
+
   function statPill(label, value, icon) {
     return '<div class="row today-pill" style="gap:8px;align-items:center;padding:8px 12px;border-radius:12px">' +
       R.icon(icon) + '<div><div class="strong" style="font-size:0.95rem;line-height:1.1">' + esc(value) + '</div><div class="muted small">' + esc(label) + '</div></div></div>';
@@ -193,11 +212,17 @@
         if (target) target.style.cursor = (elements && elements.length) ? 'pointer' : 'default';
       };
       if (page.canDashboard) {
+        const latestTrend = trend.length ? String(trend[trend.length - 1].attendance_date).slice(0, 10) : '';
+        const padToday = Boolean(latestTrend && latestTrend < String(page.date || R.today()));
+        const trendLabels = trend.map((x) => new Date(x.attendance_date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' }));
+        const trendPresent = trend.map((x) => x.present);
+        const trendMarked = trend.map((x) => x.marked);
+        if (padToday) { trendLabels.push('Today'); trendPresent.push(null); trendMarked.push(null); }
         ctx.chart('attendance-trend', 'line', {
-          labels: trend.map((x) => new Date(x.attendance_date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })),
+          labels: trendLabels,
           datasets: [
-            { label: 'Present', data: trend.map((x) => x.present), borderColor: '#3A7D44', backgroundColor: 'rgba(58,125,68,0.12)', fill: true, tension: 0.35, pointRadius: 2, pointHoverRadius: 5 },
-            { label: 'Marked', data: trend.map((x) => x.marked), borderColor: '#E89A2B', backgroundColor: 'transparent', borderDash: [4, 4], tension: 0.35, pointRadius: 0 }
+            { label: 'Present', data: trendPresent, borderColor: '#3A7D44', backgroundColor: 'rgba(58,125,68,0.12)', fill: true, tension: 0.35, pointRadius: 2, pointHoverRadius: 5, spanGaps: false },
+            { label: 'Marked', data: trendMarked, borderColor: '#E89A2B', backgroundColor: 'transparent', borderDash: [4, 4], tension: 0.35, pointRadius: 0, spanGaps: false }
           ]
         }, { onClick: chartGo('#/app/learner-attendance?unmarked=1'), onHover: chartCursor });
         ctx.chart('revenue-chart', 'bar', {
@@ -214,7 +239,7 @@
       const hasDayData = (t.expected || 0) > 0 || page.teachingPerms;
       if (hasDayData) {
         ctx.chart('today-progress', 'bar', {
-          labels: ['Register', 'Observations', 'Daily reports'],
+          labels: ['Register (today)', 'Observations (month)', 'Reports (month)'],
           datasets: [{ label: 'Progress %', data: [Number(rings.registerPct || 0), Number(rings.observationsPublishedPct || 0), Number(rings.dailyReportsPct || 0)], backgroundColor: ['#3D8FAE', '#81599B', '#E89A2B'], borderRadius: 10, barThickness: 26, hoverBackgroundColor: ['#3D8FAE', '#81599B', '#E89A2B'] }]
         }, {
           scales: { y: { beginAtZero: true, max: 100, ticks: { callback: (v) => v + '%' } } },
@@ -233,10 +258,15 @@
         const doneBlocks = timeline.filter((b) => b.status === 'completed').length;
         const inProg = timeline.filter((b) => b.status === 'in_progress').length;
         const remaining = Math.max(0, timeline.length - doneBlocks - inProg);
+        const evidenceTotal = timeline.reduce((n, b) => n + (((b.momentsCaptured || {}).total) || 0), 0);
+        const evidenceDone = timeline.reduce((n, b) => n + (((b.momentsCaptured || {}).captured) || 0), 0);
         ctx.chart('today-blocks', 'doughnut', {
-          labels: ['Completed', 'In progress', 'Remaining'],
-          datasets: [{ data: [doneBlocks, inProg, remaining || (timeline.length ? 0 : 1)], backgroundColor: ['#3A7D44', '#E89A2B', '#E8E3D8'], borderWidth: 0, hoverOffset: 12 }]
-        }, { cutout: '68%', onClick: chartGo('#/app/calendar'), onHover: chartCursor, plugins: { tooltip: { callbacks: { afterLabel: () => 'Click to open the calendar' } } } });
+          labels: ['Blocks done', 'Blocks in progress', 'Blocks remaining', 'Moments captured', 'Moments still to capture'],
+          datasets: [
+            { data: [doneBlocks, inProg, remaining || (timeline.length ? 0 : 1)], backgroundColor: ['#3A7D44', '#E89A2B', '#E8E3D8'], borderWidth: 0, hoverOffset: 8 },
+            { data: [evidenceDone, Math.max(0, evidenceTotal - evidenceDone)], backgroundColor: ['#81599B', '#EDE6F5'], borderWidth: 0, hoverOffset: 8 }
+          ]
+        }, { cutout: '62%', onClick: chartGo('#/app/calendar'), onHover: chartCursor, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } }, tooltip: { callbacks: { afterLabel: () => 'Click to open the calendar' } } } });
       }
 
       // Subtitles render raw HTML — escape everything sourced from user data.
@@ -250,31 +280,60 @@
       let html = '<div class="today-wrap" id="today-root">';
       html += R.pageHead(tod.greeting + ', ' + esc(firstName), headerSub + ' ' + esc(tod.tone) + '<div style="margin-top:6px">' + timeLine + ' · ' + R.date(page.date) + '</div>',
         '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'quickMoment\')">' + R.icon('camera') + ' Quick moment</button>' +
-        '<button class="btn btn-secondary btn-sm" onclick="window.print()">' + R.icon('printer') + ' Prep list</button>' +
+        '<button class="btn btn-secondary btn-sm" @click="printDayPack()">' + R.icon('printer') + ' Print day pack</button>' +
         (page.canDashboard && ctx.has('learners.create.daycare') ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'learner\')">' + R.icon('user-plus') + ' Add learner</button>' : '') +
         R.refreshButton()
       );
       html += R.teachingNav(ctx, 'today');
 
-      // Manager dashboard (alerts, KPIs, charts, lists) — merged from Overview
-      html += this.renderDayScene(ctx, page);
-      html += this.renderMiniStats(ctx, page);
-      html += this.renderSuggestions(ctx, page);
-      if (page.canDashboard) {
-        html += this.renderDashboard(ctx, page);
-      }
-
-      // Teaching day: people/context + insights + timeline + wrap-up
-      html += this.renderPeopleStrip(ctx, page);
-      html += this.renderInsights(ctx, page);
-      html += this.renderFocus(ctx, page);
-      html += this.renderUpNext(ctx, page, next);
-      html += this.renderTimeline(ctx, page, timeline, nextIdx, nowMs);
-      html += this.renderWrapUp(ctx, page);
-      html += this.renderPrepList(page);
+      // Sections are assembled in the order a teacher actually needs them:
+      // prep in the morning, capture at midday, wrap-up in the evening.
+      const phaseOrder = (phase) => {
+        if (phase === 'dawn' || phase === 'morning') return ['hero', 'stats', 'suggestions', 'dashboard', 'prep', 'register', 'insights', 'focus', 'upNext', 'timeline', 'wrapup'];
+        if (phase === 'dusk' || phase === 'night') return ['hero', 'stats', 'suggestions', 'dashboard', 'wrapup', 'timeline', 'register', 'focus', 'insights', 'prep'];
+        return ['hero', 'stats', 'suggestions', 'dashboard', 'register', 'upNext', 'timeline', 'focus', 'insights', 'wrapup', 'prep'];
+      };
+      const order = phaseOrder(tod.phase).filter((key) => key !== 'dashboard' || page.canDashboard);
+      const parts = {
+        hero: this.renderDayScene(ctx, page),
+        stats: this.renderMiniStats(ctx, page),
+        suggestions: this.renderSuggestions(ctx, page),
+        dashboard: page.canDashboard ? this.renderDashboard(ctx, page) : '',
+        register: this.renderPeopleStrip(ctx, page),
+        insights: this.renderInsights(ctx, page),
+        focus: this.renderFocus(ctx, page),
+        upNext: this.renderUpNext(ctx, page, next),
+        timeline: this.renderTimeline(ctx, page, timeline, nextIdx, nowMs),
+        wrapup: this.renderWrapUp(ctx, page),
+        prep: this.renderPrepList(page)
+      };
+      html += '<h2 class="sr-only">Today overview</h2>';
+      html += this.renderJumpBar(order);
+      order.forEach((key) => {
+        if (!parts[key]) return;
+        if (key === 'wrapup') html += collapsible('today-wrapup-fold', 'Wrap up the day', parts[key], true);
+        else if (key === 'prep') html += collapsible('today-prep-fold', 'Prep list for today', parts[key], tod.phase !== 'dusk' && tod.phase !== 'night');
+        else html += parts[key];
+      });
 
       html += '</div>';
       return html;
+    },
+
+    /** Sticky section rail — the page is long, so make it navigable. */
+    renderJumpBar(order) {
+      const LABELS = {
+        hero: ['Today', 'today-hero'], stats: ['Numbers', 'today-stats'], suggestions: ['Next steps', 'today-suggestions'],
+        dashboard: ['Dashboard', 'today-dashboard'], prep: ['Prep list', 'today-prep'], register: ['Register', 'today-register'],
+        insights: ['Insights', 'today-insights'], focus: ['Observe', 'today-focus'], upNext: ['Up next', 'today-upnext'],
+        timeline: ['Timeline', 'today-schedule'], wrapup: ['Wrap-up', 'today-wrapup']
+      };
+      return '<nav class="today-jump" id="today-jump" aria-label="Jump to a Today section"><div class="today-jump-scroll">' +
+        order.map((key, i) => {
+          const label = LABELS[key];
+          return '<button type="button" class="today-jump-link' + (i === 0 ? ' is-active' : '') + '" data-jump="' + R.attr(label[1]) +
+            '" @click="scrollToTodayBlock(\'' + R.attr(label[1]) + '\')">' + esc(label[0]) + '</button>';
+        }).join('') + '</div></nav>';
     },
 
     /**
@@ -301,7 +360,7 @@
         { icon: 'file-text', label: 'Reports missing', value: R.number(dr.missing || 0), tone: dr.missing ? 'clay' : 'green' },
         { icon: 'list-checks', label: 'Tasks due', value: R.number(tasksDue), tone: tasksDue ? 'sun' : 'green' }
       ];
-      return '<div class="kpi-deck section anim-in" role="list">' + items.map((k) =>
+      return '<div class="kpi-deck section anim-in" id="today-stats" role="list">' + items.map((k) =>
         '<div class="kpi-mini tone-' + esc(k.tone) + '" role="listitem"><span class="kpi-mini-ico">' + R.icon(k.icon) + '</span>' +
         '<span class="kpi-mini-body"><span class="kpi-mini-value">' + esc(k.value) + '</span>' +
         '<span class="kpi-mini-label">' + esc(k.label) + '</span></span></div>').join('') + '</div>';
@@ -337,26 +396,26 @@
 
       const info = [];
       info.push({
-        icon: 'user-check', tone: 'green', label: 'Register',
+        key: 'register', icon: 'user-check', tone: 'green', label: 'Register',
         value: R.number(t.present || 0) + ' / ' + R.number(t.expected || 0) + ' present' + (t.registerPct ? ' · ' + R.percent(t.registerPct) + ' recorded' : '')
       });
-      if (next) info.push({ icon: 'clock', tone: 'sky', label: 'Next block', value: esc(next.title) + ' at ' + time(next.startsAt) });
-      else info.push({ icon: 'check-circle', tone: 'green', label: 'Schedule', value: timeline.length ? 'All planned blocks complete' : 'Nothing scheduled yet' });
+      if (next) info.push({ key: 'next', icon: 'clock', tone: 'sky', label: 'Next block', value: esc(next.title) + ' at ' + time(next.startsAt) });
+      else info.push({ key: 'schedule', icon: 'check-circle', tone: 'green', label: 'Schedule', value: timeline.length ? 'All planned blocks complete' : 'Nothing scheduled yet' });
       if (w) {
         if (!isNight && w.sunset) {
           info.push({
-            icon: 'sun', tone: 'sun', label: 'Outdoor play window',
+            key: 'outdoor', icon: 'sun', tone: 'sun', label: 'Outdoor play window',
             value: 'until ' + esc(String(w.sunset).slice(-5)) + ' · UV ' + (w.uv === null ? '—' : R.number(w.uv)) + ' · ' + R.number(w.wind || 0) + ' km/h wind'
           });
         } else {
           info.push({
-            icon: 'moon', tone: 'sky', label: 'Evening conditions',
+            key: 'evening', icon: 'moon', tone: 'sky', label: 'Evening conditions',
             value: (w.sunrise ? 'Sunrise ' + esc(String(w.sunrise).slice(-5)) + ' · ' : '') + 'feels like ' + R.number(w.feels !== null ? w.feels : w.temp) + '°C'
           });
         }
       }
       if (dr.missing || tasksDue) {
-        info.push({ icon: 'list-checks', tone: 'clay', label: 'Wrap-up', value: (dr.missing ? R.number(dr.missing) + ' report' + (dr.missing === 1 ? '' : 's') + ' to write' : '') + (dr.missing && tasksDue ? ' · ' : '') + (tasksDue ? R.number(tasksDue) + ' task' + (tasksDue === 1 ? '' : 's') + ' due' : '') });
+        info.push({ key: 'wrapup', icon: 'list-checks', tone: 'clay', label: 'Wrap-up', value: (dr.missing ? R.number(dr.missing) + ' report' + (dr.missing === 1 ? '' : 's') + ' to write' : '') + (dr.missing && tasksDue ? ' · ' : '') + (tasksDue ? R.number(tasksDue) + ' task' + (tasksDue === 1 ? '' : 's') + ' due' : '') });
       }
 
       // Layered vector landscape: hazy far koppies, a closer ridge, real
@@ -412,7 +471,7 @@
         '<div class="scene-orb ' + (isNight ? 'scene-moon' : 'scene-sun') + '" style="left:' + orbLeft + '%;bottom:' + orbBottom + '%"></div>' +
         '<div class="scene-veil"></div>';
       const live = timeline.some((b) => b.status === 'in_progress');
-      let html = '<div class="card day-card today-hero" data-phase="' + esc(tod.phase) + '">';
+      let html = '<div class="card day-card today-hero" id="today-hero" data-phase="' + esc(tod.phase) + '">';
       html += '<div class="day-scene" role="img" aria-label="' + R.attr(tod.label + ' — ' + (w ? w.label : place)) + '">';
       html += scene;
       html += '<div class="scene-overlay">' +
@@ -430,9 +489,12 @@
       '</div>';
       html += '</div>';
       html += '<div class="day-info day-info-tiles">' + info.map((row) =>
-        '<div class="day-tile tile-' + esc(row.tone) + '"><span class="day-tile-ico">' + R.icon(row.icon) + '</span>' +
-        '<div class="day-tile-body"><div class="day-info-label">' + esc(row.label) + '</div>' +
-        '<div class="day-info-value">' + row.value + '</div></div></div>').join('') + '</div>';
+        '<button type="button" class="day-tile tile-' + esc(row.tone) + '" data-tile="' + esc(row.key || '') + '" @click="todayTile(\'' + R.esc(row.key || '') + '\')">' +
+          '<span class="day-tile-ico">' + R.icon(row.icon) + '</span>' +
+          '<div class="day-tile-body"><div class="day-info-label">' + esc(row.label) + '</div>' +
+          '<div class="day-info-value">' + row.value + '</div></div>' +
+          R.icon('arrow-up-right') +
+        '</button>').join('') + '</div>';
       html += '</div>';
       return html;
     },
@@ -457,24 +519,33 @@
       if (tasksDue) suggestions.push({ icon: 'list-checks', tone: 'clay', text: 'Complete ' + R.number(tasksDue) + (tasksDue === 1 ? ' task' : ' tasks') + ' due today', foot: 'Due by end of day', href: '#/app/tasks', action: 'Open tasks', mins: 5 });
       if (!timeline.length && (page.teachingPerms || t.expected)) suggestions.push({ icon: 'calendar-days', tone: 'sky', text: 'Nothing is scheduled yet today', foot: 'Plan the day so the team knows what’s next', href: '#/app/calendar', action: 'Plan the day', mins: 5 });
 
-      if (!suggestions.length) {
+      const saved = suggestionState();
+      const visible = suggestions.filter((s) => saved[suggestionKey(s.text)] !== 'done').slice(0, 5);
+      if (!visible.length) {
         if (!(t.expected || page.teachingPerms)) return '';
-        return '<div class="card glass section today-suggest anim-in"><div class="row" style="gap:10px;align-items:center;padding:6px 2px">' +
+        return '<div class="card glass section today-suggest anim-in" id="today-suggestions"><div class="row" style="gap:10px;align-items:center;padding:6px 2px">' +
           '<span class="suggest-ico suggest-ok">' + R.icon('check-circle') + '</span>' +
           '<div style="flex:1"><div class="strong" style="font-size:0.9rem">All caught up</div><div class="muted small">Nothing needs your attention right now — nice work.</div></div></div></div>';
       }
 
-      return '<div class="card glass section today-suggest anim-in"><div class="card-head"><h3>' + R.icon('sparkles') + ' Suggested next steps</h3><span class="muted small">Picked up from today’s register, reports and tasks</span></div>' +
-        '<div class="stack" style="gap:8px">' + suggestions.slice(0, 5).map((s) =>
-          '<div class="suggest-row">' +
+      return '<div class="card glass section today-suggest anim-in" id="today-suggestions"><div class="card-head"><h3>' + R.icon('sparkles') + ' Suggested next steps</h3><span class="muted small">Picked up from today’s register, reports and tasks</span></div>' +
+        '<div class="stack" style="gap:8px">' + visible.map((s) => {
+          const key = suggestionKey(s.text);
+          const snoozed = saved[key] === 'snoozed';
+          return '<div class="suggest-row' + (snoozed ? ' is-snoozed' : '') + '" data-suggest-key="' + R.attr(key) + '">' +
             '<span class="suggest-ico suggest-' + esc(s.tone) + '">' + R.icon(s.icon) + '</span>' +
-            '<div style="flex:1;min-width:0"><div class="strong" style="font-size:0.9rem">' + esc(s.text) + '</div>' + (s.foot ? '<div class="muted small">' + esc(s.foot) + '</div>' : '') + '</div>' + (s.mins ? '<span class="suggest-mins"><i data-lucide="clock" style="width:11px;height:11px"></i> ≈ ' + s.mins + ' min</span>' : '') +
+            '<div style="flex:1;min-width:0"><div class="strong" style="font-size:0.9rem' + (snoozed ? ';text-decoration:line-through;opacity:.65' : '') + '">' + esc(s.text) + '</div>' +
+              (s.foot ? '<div class="muted small">' + esc(s.foot) + '</div>' : '') + '</div>' +
+            (s.mins ? '<span class="suggest-mins">' + R.icon('clock') + ' ≈ ' + s.mins + ' min</span>' : '') +
             (s.href
               ? '<a class="btn btn-sm btn-secondary" href="' + R.attr(s.href) + '">' + esc(s.action) + ' ' + R.icon('arrow-right') + '</a>'
               : (s.go
                 ? '<button class="btn btn-sm btn-secondary" @click="scrollToTodayBlock(\'' + R.attr(s.go) + '\')">' + esc(s.action) + ' ' + R.icon('arrow-down') + '</button>'
                 : '<button class="btn btn-sm btn-secondary" @click="' + R.attr(s.click) + '">' + esc(s.action) + '</button>')) +
-          '</div>').join('') + '</div></div>';
+            '<button type="button" class="btn btn-ghost btn-icon btn-sm suggest-done" title="Mark done" aria-label="Mark done: ' + R.attr(s.text) + '" @click="todaySuggestDone(\'' + R.attr(key) + '\')">' + R.icon('check') + '</button>' +
+            '<button type="button" class="btn btn-ghost btn-icon btn-sm suggest-snooze" title="' + (snoozed ? 'Bring back' : 'Snooze for this session') + '" aria-label="' + (snoozed ? 'Bring back' : 'Snooze') + ': ' + R.attr(s.text) + '" @click="todaySuggestSnooze(\'' + R.attr(key) + '\')">' + R.icon(snoozed ? 'rotate-ccw' : 'clock-3') + '</button>' +
+          '</div>';
+        }).join('') + '</div></div>';
     },
 
     renderDashboard(ctx, page) {
@@ -484,8 +555,15 @@
       const learners = d.learners || {};
       const alerts = d.alerts || [];
       const tasks = (page.tasks || []).slice(0, 6);
-      const upcoming = d.upcoming || page.calendarToday || [];
+      const upcoming = (d.upcoming || page.calendarToday || []).filter((e) => {
+        if (e.status === 'completed' || e.status === 'cancelled') return false;
+        const start = e.starts_at ? new Date(e.starts_at).getTime() : 0;
+        return !start || start >= Date.now() - 3600000;
+      });
       const notifications = page.notifications || [];
+      const trendRows = d.attendanceTrend || [];
+      const latestTrend = trendRows.length ? String(trendRows[trendRows.length - 1].attendance_date).slice(0, 10) : '';
+      const noTodayData = Boolean(latestTrend && latestTrend < String(page.date || R.today()));
 
       let html = '';
       if (alerts.length) {
@@ -496,21 +574,21 @@
         }).join('') + '</div>';
       }
 
-      html += '<div class="grid grid-4 section">' +
+      html += '<div class="grid grid-4 section" id="today-dashboard">' +
         R.statCard({ label: 'Enrolled learners', value: R.number(learners.enrolled), icon: 'users', foot: learners.waitlisted ? learners.waitlisted + ' waitlisted' : 'All places confirmed' }) +
-        R.statCard({ label: 'Attendance today', value: R.percent(attendance.rate), icon: 'calendar-check', tone: 'sky', foot: (attendance.present || 0) + ' present · ' + (attendance.absent || 0) + ' absent' }) +
+        R.statCard({ label: 'Attendance today', value: attendance.marked ? R.percent(attendance.rate) : '—', icon: 'calendar-check', tone: 'sky', foot: attendance.marked ? ((attendance.present || 0) + ' present · ' + (attendance.absent || 0) + ' absent') : 'Awaiting register — no data yet' }) +
         R.statCard({ label: 'Outstanding fees', value: R.money(finance.outstanding), icon: 'wallet', tone: 'clay', foot: 'Collected today ' + R.money(finance.collected) }) +
         R.statCard({ label: 'Open incidents', value: R.number((d.incidents || {}).total), icon: 'shield-alert', tone: (d.incidents || {}).total ? 'danger' : 'green', foot: 'Health and safety register' }) +
         '</div>';
 
       html += '<div class="chart-grid section">' +
-        chartCard({ id: 'attendance-trend', title: R.icon('trending-up') + ' Attendance trend', height: 240, hint: 'Click the chart to open the register', href: '#/app/learner-attendance?unmarked=1', action: 'Open register', delay: 1 }) +
+        chartCard({ id: 'attendance-trend', title: R.icon('trending-up') + ' Attendance · last 14 days', height: 240, hint: 'Click the chart to open the register', href: '#/app/learner-attendance?unmarked=1', action: 'Open register', delay: 1, sub: noTodayData ? 'No attendance recorded today yet — the open gap marks today.' : 'Daily present and marked counts.' }) +
         chartCard({ id: 'revenue-chart', title: R.icon('wallet') + ' Revenue & collections', height: 240, hint: 'Click the chart to open finance', href: '#/app/finance', action: 'Finance', delay: 2 }) +
         '</div>';
-      html += '<div class="split section"><div class="stack">' +
+      html += '<div class="grid grid-2 section today-dash-grid">' +
         R.card('Tasks needing attention', tasks.length ? '<div class="stack">' + tasks.map((t) => '<div class="row" style="gap:10px;align-items:flex-start"><span class="badge ' + R.priorityTone(t.priority) + '">' + esc(t.priority) + '</span><div style="flex:1;min-width:0"><div class="strong" style="font-size:0.88rem">' + esc(t.title) + '</div><div class="muted small">' + esc(t.assignee_name || 'Unassigned') + ' · due ' + R.date(t.due_at) + '</div></div><button class="btn btn-sm btn-secondary" @click="actUndoable(\'PATCH\',\'/tasks/' + R.attr(t.id) + '\',{status:\'done\'},{successMessage:\'Task completed\'},{status:\'' + R.attr(t.status) + '\'})">Done</button></div>').join('') + '</div>' : R.emptyState('No open tasks', 'Everything assigned is complete.', '', 'check-circle'), '<a class="btn btn-sm btn-ghost" href="#/app/tasks">All tasks ' + R.icon('arrow-right') + '</a>') +
-        '</div><div class="stack">' +
-        R.card('Coming up', upcoming.length ? '<div class="timeline">' + upcoming.map((event) => '<div class="timeline-item"><div class="t-time">' + R.time(event.starts_at) + ' · ' + esc(event.classroom_name || '') + '</div><div class="t-title">' + esc(event.title) + '</div><div class="t-body">' + esc(R.titleCase(event.status || 'scheduled')) + '</div></div>').join('') + '</div>' : R.emptyState('Nothing scheduled', 'The calendar is clear for now.', '<a class="btn btn-sm btn-secondary" href="#/app/calendar">Open calendar</a>', 'calendar'), '<a class="btn btn-sm btn-ghost" href="#/app/calendar">Calendar ' + R.icon('arrow-right') + '</a>') +
+        +
+        R.card('Coming up', upcoming.length ? '<div class="timeline">' + upcoming.map((event) => '<div class="timeline-item"><div class="t-time">' + R.time(event.starts_at) + ' · ' + esc(event.classroom_name || '') + '</div><div class="t-title">' + esc(event.title) + '</div><div class="t-body">' + esc(R.titleCase(event.status || 'scheduled')) + '</div></div>').join('') + '</div>' : R.emptyState('Nothing coming up', 'The rest of the day is clear — nothing needs to start.', '<a class="btn btn-sm btn-secondary" href="#/app/calendar">Open calendar</a>', 'calendar'), '<a class="btn btn-sm btn-ghost" href="#/app/calendar">Calendar ' + R.icon('arrow-right') + '</a>') +
         R.card('At a glance', '<div class="kpi-list">' +
           '<div class="kpi-row"><span class="kpi-label">Staff on record</span><span class="kpi-value">' + R.number((d.staff || {}).total) + '</span></div>' +
           '<div class="kpi-row"><span class="kpi-label">Applications in progress</span><span class="kpi-value">' + R.number((d.applications || {}).total) + '</span></div>' +
@@ -518,7 +596,7 @@
           '<div class="kpi-row"><span class="kpi-label">Unread notifications</span><span class="kpi-value">' + R.number(ctx.unread) + '</span></div>' +
           '</div>') +
         R.card('Latest notifications', notifications.length ? '<ul class="list-clean">' + notifications.map((n) => '<li><span class="dot ' + (n.read_at ? 'muted' : '') + '"></span><div style="flex:1"><div class="strong" style="font-size:0.86rem">' + esc(n.title) + '</div><div class="muted small">' + esc(R.truncate(n.body, 90)) + '</div><div class="muted" style="font-size:0.72rem">' + R.relative(n.created_at) + '</div></div></li>').join('') + '</ul>' : R.emptyState('All caught up', 'No notifications right now.', '', 'bell'), '<a class="btn btn-sm btn-ghost" href="#/app/communications">Open ' + R.icon('arrow-right') + '</a>') +
-        '</div></div>';
+        '</div>';
       return html;
     },
 
@@ -528,7 +606,7 @@
       const unverified = t.unverifiedDropoffs || [];
       const gate = t.gateScans || [];
       const expected = t.expected || 0;
-      return '<div class="card glass today-strip section anim-in">' +
+      return '<div class="card glass today-strip section anim-in" id="today-register">' +
         '<div class="today-strip-stats">' +
           statPill('Present', R.number(t.present || 0) + ' / ' + R.number(expected), 'user-check') +
           statPill('Absent', R.number(absentees.length), 'user-x') +
@@ -565,7 +643,7 @@
       const present = Number(t.present || 0);
       const expected = Number(t.expected || 0);
       const registerPct = expected ? Math.min(100, Math.round((present / expected) * 100)) : Number(t.registerPct || 0);
-      return '<div class="section today-insights"><div class="chart-grid chart-grid-3">' +
+      return '<div class="section today-insights" id="today-insights"><div class="chart-grid chart-grid-3">' +
         '<div class="card glass chart-card ring-card anim-in anim-delay-1"><div class="card-head"><h3>' + R.icon('sun') + ' Classroom now</h3><span class="muted small">' + esc(R.date(page.date)) + '</span></div>' +
           '<div class="ring-row">' +
             '<div class="ring" data-ring="' + R.attr(String(registerPct)) + '" style="--ring-size:118px;--ring-colour:var(--reel-green-500)">' +
@@ -579,7 +657,7 @@
           '</div>' +
           '<div class="chart-hint">' + R.icon('clipboard-check') + '<span><a href="#/app/learner-attendance?unmarked=1">Finish the register →</a></span></div>' +
         '</div>' +
-        chartCard({ id: 'today-progress', title: R.icon('activity') + ' Day momentum', height: 168, hint: 'Click a bar: register, assessments or reports', href: '#/app/assessments', action: 'Assessments', delay: 2, sub: (rings.label || 'This month') + ' · observations ' + R.percent(rings.observationsPublishedPct || 0) + ' · reports ' + R.percent(rings.dailyReportsPct || 0) }) +
+        chartCard({ id: 'today-progress', title: R.icon('activity') + ' Progress snapshot', height: 168, hint: 'Click a bar: register, assessments or reports', href: '#/app/assessments', action: 'Assessments', delay: 2, sub: 'Register today · observations and reports ' + esc(rings.label || 'this month') }) +
         chartCard({ id: 'today-blocks', title: R.icon('pie-chart') + ' Blocks & moments', height: 168, hint: 'Click the chart to open the calendar', href: '#/app/calendar', action: 'Calendar', delay: 3, sub: 'Blocks completed: ' + R.number(doneBlocks) + ' / ' + R.number(timeline.length) + ' · moments this week: ' + R.number(momentsDone) + ' of ' + R.number((moments.children || []).length) + (moments.streak ? ' · ' + R.number(moments.streak) + ' wk streak' : '') }) +
         '</div></div>';
     },
@@ -587,7 +665,7 @@
     renderFocus(ctx, page) {
       const focus = ((page.today || {}).focusChildren) || [];
       if (!focus.length) return '';
-      return '<div class="card glass section anim-in"><div class="card-head"><h3>' + R.icon('eye') + ' Observe today</h3><span class="muted small">Children who could use a fresh observation</span></div>' +
+      return '<div class="card glass section anim-in" id="today-focus"><div class="card-head"><h3>' + R.icon('eye') + ' Observe today</h3><span class="muted small">Children who could use a fresh observation</span></div>' +
         '<div class="stack">' + focus.map((c) => '<div class="row" style="gap:10px;justify-content:space-between;padding:8px 10px;background:var(--surface-2);border-radius:12px">' +
           '<div class="row" style="gap:10px;min-width:0">' + R.avatar(c, c.name, { size: 'xs', tip: c.name + ' · ' + (c.lastObservation ? 'last observed ' + R.date(c.lastObservation) : 'no observation yet') }) +
           '<div style="min-width:0"><div class="strong" style="font-size:0.88rem">' + esc(c.name) + '</div><div class="muted small">' + esc(c.classroom || 'Classroom') + (c.lastObservation ? ' · last ' + R.date(c.lastObservation) : ' · no observation yet') + '</div></div></div>' +
@@ -610,7 +688,7 @@
       const nextResume = nextPosition && nextPosition.step_index > 0 && nextSteps && nextPosition.step_index < nextSteps
         ? 'Step ' + (nextPosition.step_index + 1) + ' of ' + nextSteps + ' — Resume'
         : (nextPosition && nextPosition.completed_at ? 'Taught ✓' : null);
-      return '<div class="card glass today-next section anim-in pulse-now" style="border-left:4px solid var(--reel-green-500)"><div class="row next-row" style="justify-content:space-between;gap:14px;align-items:center">' +
+      return '<div class="card glass today-next section anim-in pulse-now" id="today-upnext" style="border-left:4px solid var(--reel-green-500)"><div class="row next-row" style="justify-content:space-between;gap:14px;align-items:center">' +
         '<div class="row" style="gap:12px;align-items:center;min-width:0"><span class="next-ico" aria-hidden="true">' + R.icon('sparkles') + '</span>' +
         '<div style="min-width:0"><div class="muted small" style="text-transform:uppercase;letter-spacing:0.1em;font-weight:700;color:var(--reel-green-700)">Up next</div><div class="strong" style="font-size:1.06rem;margin:1px 0">' + esc(next.title) + '</div>' +
         '<div class="muted small">' + esc(nudge) + (next.classroom ? ' · ' + esc(next.classroom) : '') + (nextMod && nextMod.title ? ' · ' + esc(nextMod.title) : '') + '</div></div></div>' +
@@ -638,7 +716,7 @@
       const hasBlocks = deckBlocks.length > 0;
       const nextBlock = nextIdx >= 0 && timeline[nextIdx] ? timeline[nextIdx] : null;
       const nextIdxDeck = nextBlock ? deckBlocks.findIndex((b) => b.id === nextBlock.id) : -1;
-      let html = '<section class="section deck-section" aria-label="Today’s timeline">' +
+      let html = '<section class="section deck-section" id="today-schedule" aria-label="Today’s timeline">' +
         '<div class="deck-head">' +
           '<h2>Today’s timeline</h2>' +
           '<span class="deck-summary">' + (hasBlocks ? (R.number(deckBlocks.length) + ' to go' + (done ? ' · ' + R.number(done) + ' done' : '')) : (done ? R.number(done) + ' done — nothing left' : 'Nothing scheduled')) + '</span>' +
@@ -658,9 +736,19 @@
         return html;
       }
       if (!hasBlocks) {
-        html += R.emptyState('All blocks complete', 'Everything planned for today is taught and closed out. Scroll down and wrap the day — reports, moments and evidence.',
-          '<button class="btn btn-primary" @click="scrollToTodayBlock(\'today-wrapup\')">' + R.icon('sunset') + ' Wrap up the day</button>', 'check-circle');
-        html += '</section>';
+        const evTotal = timeline.reduce((n, b) => n + (((b.momentsCaptured || {}).total) || 0), 0);
+        const evDone = timeline.reduce((n, b) => n + (((b.momentsCaptured || {}).captured) || 0), 0);
+        html += '<div class="card glass section today-deck-empty" id="today-deck-empty">' +
+          '<div class="deck-empty-top">' + R.icon('check-circle') +
+            '<div><div class="strong">All blocks complete</div><div class="muted small">' + R.number(done) + ' of ' + R.number(timeline.length) + ' blocks · ' +
+              R.number(evDone) + ' of ' + R.number(evTotal) + ' moments captured</div></div></div>' +
+          '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:12px">' +
+            '<button class="btn btn-sm btn-primary" @click="scrollToTodayBlock(\'today-wrapup\')">' + R.icon('sunset') + ' Wrap up the day</button>' +
+            '<button type="button" class="btn btn-sm btn-ghost" @click="toggleTodayDeckDetails()">Show completed blocks</button>' +
+          '</div>' +
+          '<div class="deck-details" hidden><ol class="deck-print">' + timeline.map((b) =>
+            '<li><strong>' + esc(time(b.startsAt)) + '</strong> — ' + esc(b.title) + ' (Completed)' + (b.classroom ? ' · ' + esc(b.classroom) : '') + '</li>').join('') + '</ol></div>' +
+        '</div></section>';
         return html;
       }
       const saved = Number(ctx.deckSelection);
@@ -682,7 +770,8 @@
         const state = temporalState(b, nowMs);
         html += '<button type="button" class="deck-dot' + (i === currentIdx ? ' is-active' : '') + '" data-deck-dot="' + i + '" data-tone="' + state + '" aria-label="Block ' + (i + 1) + ': ' + esc(b.title) + ' — ' + esc(deckStateLabel(state)) + '" aria-current="' + (i === currentIdx ? 'true' : 'false') + '" title="' + esc(time(b.startsAt)) + ' — ' + esc(b.title) + ' · ' + esc(deckStateLabel(state)) + '"></button>';
       });
-      html += '</div></div>' +
+      html += '</div>' +
+        '<div class="deck-swipe-hint" aria-hidden="true">' + R.icon('move-horizontal') + ' Swipe to move between blocks</div></div>' +
         // Print view: one honest linear list, no 3D theatre.
         '<ol class="deck-print" aria-label="Today’s remaining blocks (print)">' +
           deckBlocks.map((b) => {
@@ -824,21 +913,28 @@
       const tasksDue = ((t.unfinished || {}).tasksDueToday) || 0;
       const unopened = t.unopened || [];
 
-      // Day completion meter: blocks done + reports shared, as one honest number.
+      // Day completion: blocks, register, reports AND evidence. A day is not
+      // wrapped up while the register is blank or no moments were captured.
       const totalBlocks = timeline.length;
       const doneBlocks = timeline.filter((b) => b.status === 'completed').length;
       const reportsCovered = Math.max(0, (dr.presentCount || 0) - (dr.missing || 0));
       const reportsShared = reportsCovered;
-      let meter = 100;
-      if (totalBlocks || dr.presentCount) {
-        const blockPart = totalBlocks ? doneBlocks / totalBlocks : 1;
-        const reportPart = dr.presentCount ? reportsShared / dr.presentCount : 1;
-        meter = Math.round(((blockPart + reportPart) / 2) * 100);
-      }
+      const expected = Number(t.expected || 0);
+      const unmarked = (t.unmarkedIds || []).length;
+      const marked = Math.max(0, expected - unmarked);
+      const evidenceTotal = timeline.reduce((n, b) => n + (((b.momentsCaptured || {}).total) || 0), 0);
+      const evidenceDone = timeline.reduce((n, b) => n + (((b.momentsCaptured || {}).captured) || 0), 0);
+      const blockPart = totalBlocks ? doneBlocks / totalBlocks : 1;
+      const registerPart = expected ? marked / expected : 1;
+      const reportPart = dr.presentCount ? reportsShared / dr.presentCount : (expected ? 0 : 1);
+      const evidencePart = evidenceTotal ? evidenceDone / evidenceTotal : (doneBlocks === totalBlocks ? 1 : 0);
+      const meter = Math.round(((blockPart + registerPart + reportPart + evidencePart) / 4) * 100);
 
       let html = '<div class="card glass section today-wrapup anim-in" id="today-wrapup" tabindex="-1"><div class="card-head"><h3>' + R.icon('sunset') + ' Wrap up the day</h3><span class="muted small">Close the loop before you go</span></div>';
-      html += '<div class="day-meter" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + R.attr(String(meter)) + '" aria-label="Day completion"><div class="day-meter-fill" style="--meter:' + R.attr(String(meter)) + '%"></div></div>' +
-        '<div class="day-meter-meta"><span><strong>' + R.number(meter) + '%</strong> of today wrapped up</span><span class="muted small">' + R.number(doneBlocks) + ' of ' + R.number(totalBlocks) + ' blocks · ' + R.number(reportsShared) + ' of ' + R.number(dr.presentCount || 0) + ' reports</span></div>';
+      html += '<div class="day-meter" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + R.attr(String(meter)) + '" aria-label="Day completion: blocks, register, reports and moments"><div class="day-meter-fill" style="--meter:' + R.attr(String(meter)) + '%"></div></div>' +
+        '<div class="day-meter-meta"><span><strong>' + R.number(meter) + '%</strong> of today wrapped up</span>' +
+          '<span class="muted small">' + R.number(doneBlocks) + '/' + R.number(totalBlocks) + ' blocks · ' + R.number(marked) + '/' + R.number(expected) + ' register · ' +
+          R.number(reportsShared) + '/' + R.number(dr.presentCount || 0) + ' reports · ' + R.number(evidenceDone) + '/' + R.number(evidenceTotal) + ' moments</span></div>';
       html += '<div class="grid grid-3" style="margin:14px 0">' +
         R.statCard({ label: 'Unfinished blocks', value: R.number(unfinished.length), icon: 'clock', tone: unfinished.length ? 'sun' : 'green', foot: unfinished.length ? 'Not yet completed' : 'All done' }) +
         R.statCard({ label: 'Daily reports', value: R.number(dr.missing) + ' / ' + R.number(dr.presentCount), icon: 'file-text', tone: dr.missing ? 'clay' : 'green', foot: dr.missing ? (dr.missing + ' still to write') : (dr.draft ? (dr.draft + ' draft to share') : 'All present children covered') }) +
@@ -887,7 +983,8 @@
       if (unopened.length) {
         html += '<div class="section"></div><div class="muted small" style="margin-bottom:6px">Families who haven’t seen recent shares:</div><div class="stack">' +
           unopened.map((u) => '<div class="row" style="gap:10px;justify-content:space-between;padding:8px 10px;background:var(--surface-2);border-radius:12px">' +
-            '<div style="min-width:0"><span class="strong" style="font-size:0.86rem">' + esc(u.guardianFirst) + '</span><div class="muted small">' + esc(R.truncate(u.detail || '', 90)) + '</div></div>' +
+            '<div style="min-width:0"><span class="strong" style="font-size:0.86rem">' + esc(u.childName || u.guardianFirst || 'A family') + '</span>' +
+              '<div class="muted small">' + esc(u.guardianFirst && u.childName ? u.guardianFirst + ' · ' : '') + esc(R.truncate(u.detail || '', 120)) + '</div></div>' +
             '<span class="badge ' + (u.kind === 'digest' ? 'badge-sky' : 'badge-sun') + '">' + (u.kind === 'digest' ? 'Digest' : 'Shared') + '</span></div>').join('') + '</div>';
       }
 

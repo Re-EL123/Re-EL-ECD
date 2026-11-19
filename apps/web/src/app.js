@@ -997,6 +997,10 @@
         }
         this.syncTodayLive();
         this.initTodayDeck();
+        if (this.route && this.route.path === '/app/today') {
+          this.initTodayJump();
+          this.initTodayInteractionGuard();
+        }
         this.installFeedbackSwipes();
         // Liquid-glass scroll edges: fade the edges of real scrollers while
         // leaving short content untouched (dataset guard avoids rebinding).
@@ -1548,6 +1552,9 @@
         if (!route || route.path !== '/app/today') return;
         if (document.visibilityState !== 'visible') return;
         if (this.loading || this.modal || this.guide || this.quickOpen) return;
+        // Never swap the DOM under an active gesture — a 20s tick must not yank
+        // a carousel drag or a tap that is about to open a modal.
+        if (this._todayInteracting) return;
         const root = document.getElementById('view-root');
         const active = document.activeElement;
         if (active && root && root.contains(active) && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) return;
@@ -1617,14 +1624,14 @@
             live.innerHTML = '<span class="today-live-dot"></span><span class="today-live-text"></span>';
           }
           const label = live.querySelector('.today-live-text');
-          const dot = live.querySelector('.today-live-dot');
           if (label && label.textContent !== text) {
-            if (window.Reel && Reel.anim && Reel.anim.contentTransition) {
-              Reel.anim.contentTransition(label, text, { inDuration: 240 });
-              if (dot && Reel.anim.symbolEffect) Reel.anim.symbolEffect(dot);
-            } else {
-              label.textContent = text;
-            }
+            // A one-second ticker does not need a WAAPI transition: an
+            // interrupted fill:both animation left the text invisible in
+            // production. Always clear stale animations and set it directly.
+            if (label.getAnimations) label.getAnimations().forEach((anim) => { try { anim.cancel(); } catch (error) { /* gone */ } });
+            label.style.opacity = '';
+            label.style.transform = '';
+            label.textContent = text;
           }
         };
         paint();
@@ -1636,6 +1643,119 @@
         if (this._todayPoll) { clearInterval(this._todayPoll); this._todayPoll = null; }
         if (this._todayTick) { clearInterval(this._todayTick); this._todayTick = null; }
         if (this._todayVis) { document.removeEventListener('visibilitychange', this._todayVis); this._todayVis = null; }
+      },
+
+      /** Highlight the section currently in view in the Today jump rail. */
+      initTodayJump() {
+        const nav = document.getElementById('today-jump');
+        if (!nav) return;
+        if (this._jumpObserver) { this._jumpObserver.disconnect(); this._jumpObserver = null; }
+        const links = [...nav.querySelectorAll('[data-jump]')];
+        if (typeof IntersectionObserver === 'undefined') return;
+        this._jumpObserver = new IntersectionObserver((entries) => {
+          const visible = entries.filter((entry) => entry.isIntersecting)
+            .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+          if (!visible) return;
+          links.forEach((link) => link.classList.toggle('is-active', link.getAttribute('data-jump') === visible.target.id));
+        }, { rootMargin: '-130px 0px -55% 0px', threshold: [0, 0.1, 0.5] });
+        links.forEach((link) => {
+          const section = document.getElementById(link.getAttribute('data-jump'));
+          if (section) this._jumpObserver.observe(section);
+        });
+      },
+
+      /** Remember that a teacher is mid-gesture so silent refresh never swaps the DOM. */
+      initTodayInteractionGuard() {
+        if (this._todayGuardBound) return;
+        this._todayGuardBound = true;
+        document.addEventListener('pointerdown', (event) => {
+          const root = document.getElementById('view-root');
+          this._todayInteracting = Boolean(root && root.contains(event.target));
+        }, { passive: true });
+        const release = () => {
+          clearTimeout(this._todayInteractTimer);
+          this._todayInteractTimer = setTimeout(() => { this._todayInteracting = false; }, 700);
+        };
+        document.addEventListener('pointerup', release, { passive: true });
+        document.addEventListener('pointercancel', release, { passive: true });
+      },
+
+      todayTile(key) {
+        const page = this.page || {};
+        if (key === 'register') { location.hash = '#/app/learner-attendance'; return; }
+        if (key === 'outdoor' || key === 'evening') { this.todayWeather(); return; }
+        if (key === 'wrapup') { this.scrollToTodayBlock('today-wrapup'); return; }
+        this.scrollToTodayBlock('today-schedule');
+      },
+
+      todayWeather() {
+        const w = (this.page || {}).weather;
+        if (!w || !window.Reel || !Reel.feedback) return;
+        const bits = [String(w.temp || 0) + '° ' + String(w.label || ''), w.approximate ? 'near ' + (w.city || 'your centre') : (w.city || 'your centre')];
+        if (w.sunrise) bits.push('Sunrise ' + String(w.sunrise).slice(-5));
+        if (w.sunset) bits.push('Sunset ' + String(w.sunset).slice(-5));
+        if (w.uv !== null && w.uv !== undefined) bits.push('UV ' + Reel.number(w.uv));
+        bits.push('Wind ' + Reel.number(w.wind || 0) + ' km/h');
+        Reel.feedback.sheet({ title: 'Weather at your centre', message: bits.join(' · '), actions: [] });
+      },
+
+      _todaySuggestState() {
+        try {
+          if (typeof sessionStorage === 'undefined') return {};
+          return JSON.parse(sessionStorage.getItem('reel.today.suggestions') || '{}') || {};
+        } catch (error) { return {}; }
+      },
+
+      todaySuggestDone(key) {
+        const state = this._todaySuggestState();
+        state[key] = 'done';
+        try { sessionStorage.setItem('reel.today.suggestions', JSON.stringify(state)); } catch (error) { /* blocked */ }
+        this.toast('Marked as done for this session.');
+        this.navigate(true);
+      },
+
+      todaySuggestSnooze(key) {
+        const state = this._todaySuggestState();
+        state[key] = state[key] === 'snoozed' ? 'active' : 'snoozed';
+        try { sessionStorage.setItem('reel.today.suggestions', JSON.stringify(state)); } catch (error) { /* blocked */ }
+        this.toast(state[key] === 'snoozed' ? 'Snoozed until you bring it back.' : 'Back on your list.');
+        this.navigate(true);
+      },
+
+      toggleTodayDeckDetails() {
+        const details = document.querySelector('#today-deck-empty .deck-details');
+        if (details) details.hidden = !details.hidden;
+      },
+
+      printDayPack() {
+        const page = this.page || {};
+        const t = page.today || {};
+        const timeline = t.timeline || [];
+        const org = (this.activeMembership && this.activeMembership.organisation && this.activeMembership.organisation.name) || 'Today';
+        let sheet = document.getElementById('today-print-sheet');
+        if (!sheet) { sheet = document.createElement('div'); sheet.id = 'today-print-sheet'; document.body.appendChild(sheet); }
+        const materials = [];
+        const seen = new Set();
+        timeline.forEach((b) => {
+          const list = String((b.activity && b.activity.materials) || '').split(/\n|,|•|·/);
+          list.map((m) => m.trim()).filter(Boolean).forEach((m) => {
+            const key = m.toLowerCase();
+            if (!seen.has(key)) { seen.add(key); materials.push(m); }
+          });
+        });
+        const dr = t.dailyReports || {};
+        const esc = Reel.esc;
+        sheet.innerHTML = '<div class="daypack-cover"><p class="eyebrow">Day pack</p><h1>' + esc(org) + '</h1>' +
+          '<p>' + esc(Reel.date(page.date || Reel.today())) + ' · prepared ' + esc(new Date().toLocaleTimeString()) + '</p></div>' +
+          '<section><h2>Today at a glance</h2><p>' + esc(t.present || 0) + ' of ' + esc(t.expected || 0) + ' children present · ' +
+            esc(timeline.filter((b) => b.status === 'completed').length) + ' of ' + esc(timeline.length) + ' blocks complete · ' +
+            esc(dr.missing || 0) + ' daily reports to write.</p>' +
+            (page.weather ? '<p>Weather: ' + esc(page.weather.label || '') + ' ' + esc(page.weather.temp || '') + '°' + (page.weather.city ? ' · ' + esc(page.weather.city) : '') + '</p>' : '') + '</section>' +
+          '<section><h2>Schedule</h2>' + (timeline.length ? '<ol>' + timeline.map((b) => '<li><strong>' + esc(Reel.time(b.startsAt)) + '</strong> — ' + esc(b.title) +
+            (b.classroom ? ' (' + esc(b.classroom) + ')' : '') + (b.activity && b.activity.materials ? '<br><span class="muted">Materials: ' + esc(String(b.activity.materials).replace(/[\n,•·]+/g, ', ')) + '</span>' : '') + '</li>').join('') + '</ol>' : '<p>Nothing scheduled.</p>') + '</section>' +
+          '<section><h2>Materials to gather</h2>' + (materials.length ? '<ul>' + materials.map((m) => '<li>' + esc(m) + '</li>').join('') + '</ul>' : '<p>No materials listed.</p>') + '</section>' +
+          '<section><h2>Daily reports</h2>' + (dr.children || []).map((c) => '<p>' + esc(c.name) + ' — ' + (c.reportShared ? 'Shared' : (c.reportId ? 'Draft' : 'Not written')) + '</p>').join('') + '</section>';
+        window.print();
       },
 
       /**
