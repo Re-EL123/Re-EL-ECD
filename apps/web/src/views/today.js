@@ -788,7 +788,8 @@
             '<button type="button" class="btn btn-sm btn-ghost" @click="toggleTodayDeckDetails()">Show completed blocks</button>' +
           '</div>' +
           '<div class="deck-details" hidden><ol class="deck-print">' + timeline.map((b) =>
-            '<li><strong>' + esc(time(b.startsAt)) + '</strong> — ' + esc(b.title) + ' (Completed)' + (b.classroom ? ' · ' + esc(b.classroom) : '') + '</li>').join('') + '</ol></div>' +
+            '<li><strong>' + esc(time(b.startsAt)) + '</strong> — ' + esc(b.title) + ' (Completed)' + (b.classroom ? ' · ' + esc(b.classroom) : '') +
+              ' <button type="button" class="btn btn-sm btn-ghost" @click="openLesson(\'' + R.attr(b.id) + '\')">' + R.icon('presentation') + ' Reopen lesson</button></li>').join('') + '</ol></div>' +
         '</div></section>';
         return html;
       }
@@ -822,7 +823,8 @@
         (done
           ? '<div class="deck-completed" hidden><div class="muted small">Completed earlier today</div><ol class="deck-print">' +
             timeline.filter((b) => b.status === 'completed').map((b) =>
-              '<li><strong>' + esc(time(b.startsAt)) + '</strong> — ' + esc(b.title) + ' (Completed)' + (b.classroom ? ' · ' + esc(b.classroom) : '') + '</li>').join('') +
+              '<li><strong>' + esc(time(b.startsAt)) + '</strong> — ' + esc(b.title) + ' (Completed)' + (b.classroom ? ' · ' + esc(b.classroom) : '') +
+              ' <button type="button" class="btn btn-sm btn-ghost" @click="openLesson(\'' + R.attr(b.id) + '\')">' + R.icon('presentation') + ' Reopen lesson</button></li>').join('') +
             '</ol></div>'
           : '');
       html += '</section>';
@@ -1007,7 +1009,8 @@
             return '<div class="row" style="gap:10px;justify-content:space-between;padding:8px 10px;background:var(--surface-2);border-radius:12px">' +
               '<div><span class="strong" style="font-size:0.88rem">' + R.icon('check-circle') + ' ' + esc(b.lessonPlanTitle || b.title) + '</span>' +
               '<div class="muted small">Step 1–' + esc(stepsTotal) + ' · ' + R.number(mc.captured) + ' of ' + R.number(mc.total) + ' children had a moment captured</div></div>' +
-              '<span class="badge ' + tone + '">' + R.percent(pct) + '</span></div>';
+              '<div class="btn-group"><span class="badge ' + tone + '">' + R.percent(pct) + '</span>' +
+              '<button class="btn btn-sm btn-ghost" @click="openLesson(\'' + R.attr(b.id) + '\')">' + R.icon('presentation') + ' Reopen lesson</button></div></div>';
           }).join('') + '</div>';
       }
 
