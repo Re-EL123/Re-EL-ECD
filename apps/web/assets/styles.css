@@ -2860,3 +2860,24 @@ a.crumb:hover { color: var(--text-strong); background: var(--surface-2); text-de
 .ss-option[aria-selected="true"] { background: var(--reel-green-100); }
 [data-theme="dark"] .ss-option[aria-selected="true"] { background: rgba(92, 214, 116, 0.18); }
 @media print { .ss-panel { display: none; } }
+
+/* ---- Nursery rhymes library ---------------------------------------------- */
+.rhyme-card pre.rhyme-text {
+  white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit;
+  font-size: 0.95rem; line-height: 1.65; margin: 10px 0 12px;
+  padding: 12px 14px; border-radius: 12px; background: var(--surface-2);
+  color: var(--text); border: 1px solid var(--border-subtle);
+}
+.rhyme-lyrics summary {
+  cursor: pointer; font-weight: 600; font-size: 0.88rem; color: var(--reel-green-700);
+  padding: 6px 0; list-style: none;
+}
+.rhyme-lyrics summary::-webkit-details-marker { display: none; }
+.rhyme-lyrics summary::before { content: '▸ '; }
+.rhyme-lyrics[open] summary::before { content: '▾ '; }
+.rhyme-lyrics summary:hover { text-decoration: underline; }
+#rhyme-print-sheet { display: none; }
+#rhyme-print-sheet pre { white-space: pre-wrap; font-family: inherit; font-size: 12pt; line-height: 1.5; }
+@media print {
+  #rhyme-print-sheet { display: block; padding: 24px; }
+}

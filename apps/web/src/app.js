@@ -55,6 +55,7 @@
     route('/app/classrooms', 'app', 'classrooms', 'classrooms.read.daycare', 'Classrooms'),
     route('/app/curriculum', 'app', 'curriculum', 'curriculum.read.daycare', 'Curriculum'),
     route('/app/activities', 'app', 'activities', 'curriculum.read.daycare', 'Activities'),
+    route('/app/nursery-rhymes', 'app', 'nurseryRhymes', 'curriculum.read.daycare', 'Nursery rhymes'),
     route('/app/calendar', 'app', 'calendar', 'curriculum.read.daycare', 'Calendar'),
     route('/app/modules', 'app', 'modules', 'curriculum.read.daycare', 'Learning modules'),
     route('/app/modules/:id', 'app', 'moduleDetail', 'curriculum.read.daycare', 'Learning module'),
@@ -149,6 +150,7 @@
         { path: '/app/modules', label: 'Modules', icon: 'blocks', permission: 'curriculum.read.daycare' },
         { path: '/app/curriculum', label: 'Curriculum', icon: 'book-open', permission: 'curriculum.read.daycare' },
         { path: '/app/activities', label: 'Activities', icon: 'puzzle', permission: 'curriculum.read.daycare' },
+        { path: '/app/nursery-rhymes', label: 'Nursery rhymes', icon: 'music-2', permission: 'curriculum.read.daycare' },
         { path: '/app/assessments', label: 'Assessments', icon: 'clipboard-list', permission: ['assessments.read.daycare', 'assessments.read.assigned'] }
       ] },
       { label: 'Children', items: [
@@ -985,6 +987,76 @@
         }
         this.syncTodayLive();
         this.initTodayDeck();
+      },
+
+      /* ---- Nursery rhymes: plain-text download & print ------------------ */
+
+      rhymeText(id) {
+        const rhyme = window.Reel && window.Reel.nurseryRhymes ? window.Reel.nurseryRhymes.find(id) : null;
+        if (!rhyme) return null;
+        return [
+          rhyme.title.toUpperCase(),
+          'Category: ' + rhyme.category,
+          '',
+          rhyme.lyrics.join('\n'),
+          '',
+          rhyme.actions ? 'Actions: ' + rhyme.actions : '',
+          '',
+          'Traditional public-domain verses; wording varies by region.',
+          'Licensed audio / sheet music: ' + rhyme.source
+        ].filter((line, i, arr) => line !== '' || (arr[i + 1] && arr[i + 1] !== '')).join('\n');
+      },
+
+      saveTextFile(filename, text) {
+        try {
+          const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+          return true;
+        } catch (e) {
+          this.toast('Could not prepare the download.', 'error');
+          return false;
+        }
+      },
+
+      downloadRhymeLyrics(id) {
+        const text = this.rhymeText(id);
+        if (!text) return;
+        const rhyme = window.Reel.nurseryRhymes.find(id);
+        const name = String(rhyme.title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+        if (this.saveTextFile(name + '-lyrics.txt', text)) this.toast('Lyrics downloaded.');
+      },
+
+      downloadAllRhymeLyrics() {
+        const lib = window.Reel && window.Reel.nurseryRhymes;
+        if (!lib) return;
+        const text = [
+          'NURSERY RHYMES — TRADITIONAL LYRICS',
+          lib.all.length + ' rhymes. Public-domain verses; wording varies by region.',
+          '',
+          lib.all.map((r) => this.rhymeText(r.id)).join('\n\n' + '-'.repeat(48) + '\n\n')
+        ].join('\n');
+        if (this.saveTextFile('nursery-rhymes-lyrics.txt', text)) this.toast('All lyrics downloaded.');
+      },
+
+      printRhymeLyrics(id) {
+        const text = this.rhymeText(id);
+        if (!text) return;
+        let sheet = document.getElementById('rhyme-print-sheet');
+        if (!sheet) {
+          sheet = document.createElement('div');
+          sheet.id = 'rhyme-print-sheet';
+          document.body.appendChild(sheet);
+        }
+        const rhyme = window.Reel.nurseryRhymes.find(id);
+        sheet.innerHTML = '<h1>' + Reel.esc(rhyme.title) + '</h1><pre>' + Reel.esc(text) + '</pre>';
+        window.print();
       },
 
       /**
