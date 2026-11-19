@@ -954,6 +954,9 @@
         if (this.route && this.route.view === 'whiteboardDetail' && window.Reel && window.Reel.views && window.Reel.views._initWhiteboard) {
           try { window.Reel.views._initWhiteboard(this, this.page); } catch (e) { console.warn('whiteboard init failed', e); }
         }
+        if (this.route && this.route.view === 'whiteboards' && window.Reel && window.Reel.views && window.Reel.views._initWhiteboards) {
+          try { window.Reel.views._initWhiteboards(this, this.page); } catch (e) { console.warn('whiteboard thumbnails failed', e); }
+        }
         if (!silent && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
           const root = document.getElementById('view-root');
           if (root && window.Reel && window.Reel.anim) {
@@ -1040,6 +1043,102 @@
         if (!window.Reel || !Reel.feedback) return;
         Reel.feedback.setPref(name, !Reel.feedback.prefs()[name]);
         this.navigate(true);
+      },
+
+      /* ---- Whiteboards: creation menu and board actions ------------------ */
+
+      wbNewMenu(anchor) {
+        if (!Reel.feedback) return;
+        Reel.feedback.sheet({
+          title: 'New whiteboard',
+          message: 'Start blank, borrow a ready-made frame, or link a board to a lesson plan.',
+          actions: [
+            { label: 'Blank canvas', icon: 'pen-tool', run: () => this.openNamedModal('whiteboard') },
+            { label: 'Maths canvas', icon: 'sigma', run: () => this.openNamedModal('whiteboardTemplate', 'math') },
+            { label: 'Story retell', icon: 'book-open', run: () => this.openNamedModal('whiteboardTemplate', 'story') },
+            { label: 'Rhyme / song board', icon: 'music', run: () => this.openNamedModal('whiteboardTemplate', 'rhyme') },
+            { label: 'Shape sorter', icon: 'shapes', run: () => this.openNamedModal('whiteboardTemplate', 'shape') },
+            { label: 'From a lesson plan', icon: 'graduation-cap', run: () => this.openNamedModal('whiteboardFromPlan') }
+          ]
+        }, anchor);
+      },
+
+      wbBoardMenu(id, anchor) {
+        if (!Reel.feedback) return;
+        const board = ((this.page || {}).boards || []).find((b) => b.id === id) || {};
+        Reel.feedback.sheet({
+          title: board.title || 'Whiteboard',
+          message: 'Manage this board for your whole team.',
+          actions: [
+            { label: 'Open board', icon: 'external-link', run: () => { location.hash = '#/app/whiteboards/' + encodeURIComponent(id); } },
+            { label: 'Rename / edit details', icon: 'pencil', run: () => this.wbRenameBoard(id) },
+            { label: 'Duplicate board', icon: 'copy', run: () => this.wbDuplicateBoard(id) },
+            { label: board.isArchived ? 'Restore from archive' : 'Archive board', icon: 'archive', run: () => this.wbArchiveBoard(id, Boolean(board.isArchived)) },
+            { label: 'Delete board', icon: 'trash-2', tone: 'danger', run: () => this.wbDeleteBoard(id) }
+          ]
+        }, anchor);
+      },
+
+      wbRenameBoard(id) {
+        const board = ((this.page || {}).boards || []).find((b) => b.id === id) || {};
+        this.openModal({
+          title: 'Whiteboard details',
+          endpoint: '/whiteboards/' + encodeURIComponent(id),
+          method: 'PATCH',
+          submitLabel: 'Save details',
+          successMessage: 'Whiteboard updated.',
+          fields: [
+            { name: 'title', label: 'Title', required: true, value: board.title || '' },
+            { name: 'description', label: 'Description', type: 'textarea', value: board.description || '' }
+          ],
+          onSuccess: () => this.navigate(true)
+        });
+      },
+
+      async wbDuplicateBoard(id) {
+        try {
+          const res = await Reel.api('GET', '/whiteboards/' + encodeURIComponent(id));
+          const board = (res && res.data) || res;
+          const copy = await Reel.api('POST', '/whiteboards', {
+            title: String((board && board.title) || 'Whiteboard').slice(0, 190) + ' (copy)',
+            description: (board && board.description) || '',
+            state: (board && board.state) || { objects: [], viewport: { x: 0, y: 0, zoom: 1 } }
+          });
+          this.toast('Whiteboard duplicated.');
+          if (copy && copy.data && copy.data.id) location.hash = '#/app/whiteboards/' + copy.data.id;
+          else await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'The board could not be duplicated.', 'error');
+        }
+      },
+
+      async wbArchiveBoard(id, restore) {
+        try {
+          await Reel.api('PATCH', '/whiteboards/' + encodeURIComponent(id), { isArchived: !restore });
+          this.toast(restore ? 'Whiteboard restored.' : 'Whiteboard archived.');
+          await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'The board could not be updated.', 'error');
+        }
+      },
+
+      wbDeleteBoard(id) {
+        if (!Reel.feedback) return;
+        Reel.feedback.sheet({
+          title: 'Delete this whiteboard?',
+          message: 'This removes the board and its saved versions for everyone at your centre.',
+          actions: [{
+            label: 'Delete whiteboard', icon: 'trash-2', tone: 'danger', run: async () => {
+              try {
+                await Reel.api('DELETE', '/whiteboards/' + encodeURIComponent(id));
+                this.toast('Whiteboard deleted.');
+                await this.navigate(true);
+              } catch (error) {
+                this.toast(error.message || 'The board could not be deleted.', 'error');
+              }
+            }
+          }]
+        });
       },
 
       /* ---- Nursery rhymes: transport, curation and lesson prep ---------- */
