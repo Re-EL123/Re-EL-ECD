@@ -12,6 +12,14 @@
         try {
           const res = await R.api('GET', '/organisations/current/settings');
           audio = (res.data && res.data.nurseryRhymeAudio) || {};
+          // Stored media URLs are API-relative (/api/v1/media/object?…).
+          // Resolve them against the API origin so <audio> works from the
+          // separately hosted GitHub Pages frontend too.
+          const origin = R.apiBase ? R.apiBase() : '';
+          Object.keys(audio).forEach((id) => {
+            const url = String(audio[id] || '');
+            if (url.startsWith('/')) audio[id] = origin + (url.startsWith('/api/') ? url : '/api/v1' + url);
+          });
         } catch { /* teachers still get the lyrics without org settings access */ }
       }
       return { rhymeAudio: audio };
