@@ -3391,7 +3391,7 @@ a:focus-visible, input:focus-visible, select:focus-visible {
 }
 .today-collapse-btn svg { width: 15px; height: 15px; transition: transform .25s var(--reel-spring); }
 .today-collapse-btn[aria-expanded="true"] svg { transform: rotate(180deg); }
-.today-collapse-btn .muted { margin-left: auto; font-weight: 500; }
+.today-collapse-btn .muted { margin-left: auto; font-weight: 500; color: var(--text); }
 .today-collapse-btn:focus-visible { outline: 3px solid var(--reel-green-600); outline-offset: 2px; }
 .today-collapse-body > .section { margin-top: 0; }
 

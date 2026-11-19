@@ -112,6 +112,7 @@ test('the all-complete deck is compact and mobile has a swipe hint', () => {
 test('accessibility fixes and the day print pack are present', () => {
   assert.match(css, /\.alert-info \{ color: #155e78/, 'alert contrast');
   assert.match(css, /\.empty-state, \.empty-state p \{ color: var\(--text\)/, 'empty state contrast');
+  assert.match(css, /\.today-collapse-btn \.muted \{[^}]*color: var\(--text\)/, 'collapse label contrast');
   assert.ok(view.includes('sr-only'), 'heading order anchor');
   assert.ok(view.includes('Print day pack'), 'single print action');
   assert.ok(app.includes('printDayPack()'), 'print handler');
