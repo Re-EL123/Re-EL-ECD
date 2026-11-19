@@ -196,11 +196,14 @@ function proxyPath(key) {
   return '/api/v1/media/object?key=' + encodeURIComponent(String(key));
 }
 
-/** Server-side existence check: a presigned 60-second GET against R2. */
+/** Server-side existence check: a presigned 60-second HEAD against R2. */
 async function verifyObject(key) {
   if (!isConfigured()) return true; // storage not configured — nothing to verify
   try {
-    const signed = presignGet(key, { expires: 60 });
+    // SigV4 signatures bind the HTTP method. Signing a GET URL and then
+    // sending HEAD returns 403 SignatureDoesNotMatch, which made every
+    // upload look like it never reached storage.
+    const signed = presign('HEAD', key, { expires: 60 });
     const response = await fetch(signed.url, { method: 'HEAD' });
     return response.ok;
   } catch {
