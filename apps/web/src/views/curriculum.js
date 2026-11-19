@@ -550,6 +550,24 @@
     if (Number.isNaN(d.getTime())) return '';
     return d.getFullYear() + '-' + calPad(d.getMonth() + 1) + '-' + calPad(d.getDate()) + 'T' + calPad(d.getHours()) + ':' + calPad(d.getMinutes());
   }
+  /**
+   * After duplicating or rescheduling, bring the resulting event back into
+   * view: a copy lands on the next day and a reschedule can move outside the
+   * current range, so otherwise the action looks like it silently failed.
+   */
+  function revealCalendarEvent(ctx, event) {
+    if (!event || !event.id) return;
+    const day = String(event.startsAt || event.starts_at || '').slice(0, 10);
+    if (day && ctx.filters && (day < ctx.filters.from || day > ctx.filters.to)) {
+      ctx.filters.from = day;
+      ctx.filters.to = day;
+      ctx.filters.rangePreset = 'custom';
+    }
+    if (ctx.calendarUi) {
+      ctx.calendarUi.drawerEventId = event.id;
+      ctx.calendarUi.drawerEvent = null; // let the drawer loader re-fetch saved values
+    }
+  }
   function calDefaultStartForDay(dayStr) {
     const now = new Date();
     const base = new Date(dayStr + 'T09:00:00');
@@ -1292,7 +1310,7 @@
             ['classroomId','lessonPlanId','activityId','assignedStaffId','notes','endsAt'].forEach((k) => { if (out[k] === '') out[k] = null; });
             return out;
           },
-          onSuccess: async () => { if (ctx.calendarUi) { ctx.calendarUi.drawerEventId = null; ctx.calendarUi.drawerEvent = null; } await ctx.navigate(true); }
+          onSuccess: async (data) => { revealCalendarEvent(ctx, data); await ctx.navigate(true); }
         });
         return;
       }
@@ -1303,12 +1321,16 @@
         const duration = ev.ends_at && ev.starts_at ? (new Date(ev.ends_at) - new Date(ev.starts_at)) : 1800000;
         const end = start ? calAddMinutesToInput(start, Math.round(duration/60000)) : '';
         ctx.openModal({ title: 'Duplicate activity', endpoint: '/curriculum/calendar/events/' + id + '/duplicate', method: 'POST', submitLabel: 'Create copy', size: 'wide',
+          successMessage: 'Activity duplicated — opening the copy.',
           fields: [
             { name: 'title', label: 'Title', required: true, span: 2, value: (ev.title || 'Activity') + ' (copy)' },
             { name: 'startsAt', label: 'Starts at', type: 'datetime-local', required: true, value: start },
             { name: 'endsAt', label: 'Ends at', type: 'datetime-local', value: end }
           ],
-          onSuccess: async () => { ctx.toast('Activity duplicated.'); await ctx.navigate(true); }
+          onSuccess: async (data) => {
+            revealCalendarEvent(ctx, data);
+            await ctx.navigate(true);
+          }
         });
         return;
       }

@@ -424,8 +424,7 @@
           (w
             ? '<div class="scene-temp">' + R.number(w.temp) + '°</div>' +
               '<div class="scene-cond">' + R.icon(w.icon) + ' ' + esc(w.label) + '</div>' +
-              '<div class="scene-place">' + R.icon('map-pin') + ' ' + esc(place) + '</div>' +
-      '<a class="scene-credit" href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" title="Live weather data by Open-Meteo">Weather by Open-Meteo</a>'
+              '<div class="scene-place">' + R.icon('map-pin') + ' ' + esc(place) + '</div>'
             : '<div class="scene-place" style="margin-top:auto">' + R.icon('map-pin') + ' ' + esc(place) + '</div>') +
         '</div>' +
       '</div>';
