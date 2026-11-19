@@ -140,7 +140,7 @@ test('today activities launch the full lesson workspace', () => {
   assert.ok(view.includes('Open lesson workspace'), 'up-next launches the workspace');
   assert.ok(app.includes('async openLesson(blockId)'), 'handler exists');
   assert.ok(app.includes('_lessonBlock'), 'block is passed into the guide');
-  assert.ok(app.includes('toolkitOpen: Boolean(pendingBlock)'), 'toolkit opens with the lesson');
+  assert.ok(app.includes('toolkitOpen: Boolean(block)'), 'toolkit opens with the lesson');
   assert.ok(app.includes('lessonObjectives()') && app.includes('lessonMaterials()'));
   assert.ok(app.includes('lessonCapture(') && app.includes('lessonParticipation()') && app.includes('lessonWhiteboard()'));
   const html = read('apps/web/index.html');
@@ -159,4 +159,16 @@ test('today shows what is coming after today instead of a dead end', () => {
   assert.ok(morning.includes('const upcomingRows'), 'API returns upcoming activities');
   assert.ok(morning.includes('starts_at >= $2::timestamptz'), 'upcoming starts after today');
   assert.ok(morning.includes('upcoming,') && morning.includes('status IN (\'scheduled\',\'in_progress\')'), 'only live/scheduled upcoming');
+});
+
+test('the lesson workspace paints instantly and hydrates steps in the background', () => {
+  const appSource = app;
+  assert.ok(appSource.includes('buildGuideState('), 'shared guide state builder');
+  assert.ok(appSource.includes('shell.loading = Boolean(planId)'), 'shell marks loading state');
+  assert.ok(appSource.includes('this.guide = shell'), 'shell is shown before the fetch');
+  assert.ok(appSource.includes('hydrateLessonGuide(planId, block)'), 'hydration is deferred');
+  assert.ok(appSource.includes("localStorage.getItem('reel.guide.' + planId)"), 'cache-first hydration');
+  assert.ok(appSource.includes('duration: 180'), 'fast entry animation');
+  const html = read('apps/web/index.html');
+  assert.ok(html.includes("'Opening your lesson…'"), 'loading message in the workspace');
 });

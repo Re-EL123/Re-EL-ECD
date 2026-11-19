@@ -2891,6 +2891,35 @@
         }
       },
 
+      /** Build the complete Alpine guide state from a payload. Shared by the
+       *  normal guide flow and the instant lesson-workspace shell. */
+      buildGuideState(planId, data, block) {
+        const steps = (data.steps || []).slice().sort((a, b) => (a.position || 0) - (b.position || 0));
+        let downloaded = false;
+        try {
+          const saved = JSON.parse(localStorage.getItem('reel.guidesDownloaded') || '[]');
+          downloaded = saved.some((entry) => entry && entry.id === planId);
+        } catch (error) { downloaded = false; }
+        const savedPosition = (data.guidePosition && typeof data.guidePosition.step_index === 'number') ? data.guidePosition.step_index : 0;
+        const clampedPosition = Math.max(0, Math.min(Math.max(0, steps.length - 1), savedPosition || 0));
+        return {
+          planId, title: (data.plan && data.plan.title) || 'Lesson guide',
+          theme: (data.plan && data.plan.theme) || '', moduleTitle: (data.module && data.module.title) || '',
+          steps, index: clampedPosition, downloaded,
+          isOfficial: Boolean(data.plan && data.plan.isOfficial),
+          block: block || null,
+          toolkit: Boolean(block),
+          toolkitOpen: Boolean(block),
+          canEdit: !Boolean(data.plan && data.plan.isOfficial) && this.has('curriculum.create.daycare'),
+          session: null, roster: null, answerLearner: {}, lastSessionId: null,
+          interactiveResults: {}, participantName: (this.session && this.session.user && this.session.user.displayName) || '',
+          answerByStep: {}, placementsByStep: {}, others: [], audioStep: null,
+          autoplay: (() => { try { return localStorage.getItem('reel.guideAutoplay') === '1'; } catch (error) { return false; } })(),
+          resumed: clampedPosition > 0, stepIndex: clampedPosition,
+          loading: false
+        };
+      },
+
       async openGuide(planId) {        try {
         const pendingBlock = this._lessonBlock || null;
         this._lessonBlock = null;
@@ -2906,47 +2935,15 @@
             if (!payload) throw error;
           }
           const data = payload.data || {};
-          const steps = (data.steps || []).slice().sort((a, b) => (a.position || 0) - (b.position || 0));
-          let downloaded = false;
-          try {
-            const saved = JSON.parse(localStorage.getItem('reel.guidesDownloaded') || '[]');
-            downloaded = saved.some((entry) => entry && entry.id === planId);
-          } catch { downloaded = false; }
-          // Resume where the teacher left off
-          const savedPosition = (data.guidePosition && typeof data.guidePosition.step_index === 'number') ? data.guidePosition.step_index : 0;
-          const clampedPosition = Math.max(0, Math.min(steps.length - 1, savedPosition || 0));
-          const isResumed = clampedPosition > 0;
-          this.guide = {
-            planId, title: (data.plan && data.plan.title) || 'Lesson guide',
-            theme: (data.plan && data.plan.theme) || '', moduleTitle: (data.module && data.module.title) || '',
-            steps, index: clampedPosition, downloaded,
-            isOfficial: Boolean(data.plan && data.plan.isOfficial),
-            block: pendingBlock,
-            toolkit: Boolean(pendingBlock),
-            toolkitOpen: Boolean(pendingBlock),
-            canEdit: !Boolean(data.plan && data.plan.isOfficial) && this.has('curriculum.create.daycare'),
-            session: null,
-            roster: null,
-            answerLearner: {},
-            lastSessionId: null,
-            interactiveResults: {},
-            participantName: (this.session && this.session.user && this.session.user.displayName) || '',
-            answerByStep: {},
-            placementsByStep: {},
-            others: [],
-            audioStep: null,
-            autoplay: (() => { try { return localStorage.getItem('reel.guideAutoplay') === '1'; } catch { return false; } })(),
-            resumed: isResumed,
-            stepIndex: clampedPosition
-          };
+          this.guide = this.buildGuideState(planId, data, pendingBlock);
           this._guidePoll = null;
           // Tell the server this teacher opened the guide (and where they left off).
           Reel.api('PATCH', '/curriculum/lesson-plans/' + encodeURIComponent(planId) + '/guide-position', {
-            stepIndex: clampedPosition, mode: 'open'
+            stepIndex: this.guide.stepIndex, mode: 'open'
           }).catch(() => { /* offline — not critical */ });
-          if (isResumed) this.toast('Picking up from step ' + (clampedPosition + 1) + ' of ' + steps.length + '.');
+          if (this.guide.resumed) this.toast('Picking up from step ' + (this.guide.stepIndex + 1) + ' of ' + this.guide.steps.length + '.');
           this.nextTick(() => {
-            if (window.Reel && window.Reel.anim) window.Reel.anim.windowIn(document.querySelector('.guide-backdrop .guide-modal'), { duration: 500 });
+            if (window.Reel && window.Reel.anim) window.Reel.anim.windowIn(document.querySelector('.guide-backdrop .guide-modal'), { duration: 220 });
             this.guideBindSwipe();
             this.guideBindDragDrop();
             this.guideStartPresence();
@@ -3126,28 +3123,52 @@
       async openLesson(blockId) {
         const block = (((this.page || {}).today || {}).timeline || []).find((b) => b.id === blockId) || null;
         if (!block) { this.toast('This activity is no longer available.', 'warn'); return; }
-        this._lessonBlock = block;
+        this._lessonBlock = null;
         this._lessonMaterials = new Set();
-        if (block.lessonPlanId) {
-          await this.openGuide(block.lessonPlanId);
-          return;
-        }
-        // No plan linked: still give the teacher a usable workspace with the
-        // activity context and every in-flow action.
-        this.guide = {
-          planId: null, title: block.title || 'Lesson workspace',
-          theme: block.module && block.module.title ? block.module.title : '',
-          moduleTitle: (block.module && block.module.title) || '',
-          steps: [], index: 0, stepIndex: 0, downloaded: false, isOfficial: false,
-          canEdit: false, block: block, toolkit: true, toolkitOpen: true,
-          session: null, roster: null, answerLearner: {}, lastSessionId: null,
-          interactiveResults: {}, participantName: (this.session && this.session.user && this.session.user.displayName) || '',
-          answerByStep: {}, placementsByStep: {}, others: [], audioStep: null, resumed: false,
-          autoplay: false
-        };
+        const planId = block.lessonPlanId || null;
+        // Paint the workspace immediately; steps arrive in the background.
+        const shell = this.buildGuideState(planId || '', {}, block);
+        shell.title = (block.lessonPlanTitle || block.title || 'Lesson workspace');
+        shell.theme = (block.module && block.module.title) || '';
+        shell.moduleTitle = (block.module && block.module.title) || '';
+        shell.loading = Boolean(planId);
+        this.guide = shell;
+        this._guidePoll = null;
         this.nextTick(() => {
-          if (window.Reel && Reel.anim) Reel.anim.windowIn(document.querySelector('.guide-backdrop .guide-modal'), { duration: 420 });
+          if (window.Reel && Reel.anim) Reel.anim.windowIn(document.querySelector('.guide-backdrop .guide-modal'), { duration: 180 });
           this.renderIconsNow();
+        });
+        if (planId) this.hydrateLessonGuide(planId, block);
+      },
+
+      /** Fill the already-visible workspace with steps, cache-first. */
+      async hydrateLessonGuide(planId, block) {
+        let payload = null;
+        try {
+          const saved = localStorage.getItem('reel.guide.' + planId);
+          if (saved) payload = { data: JSON.parse(saved) };
+        } catch (error) { /* ignore corrupt cache */ }
+        try {
+          payload = await Reel.api('GET', '/curriculum/lesson-plans/' + encodeURIComponent(planId) + '/guide');
+        } catch (error) {
+          if (!payload) {
+            if (this.guide && this.guide.planId === planId) this.guide.loading = false;
+            this.toast(error.message || 'The lesson steps could not be loaded.', 'warn');
+            return;
+          }
+        }
+        if (!this.guide || this.guide.planId !== planId) return; // closed or switched
+        const data = (payload && payload.data) || {};
+        Object.assign(this.guide, this.buildGuideState(planId, data, block));
+        Reel.api('PATCH', '/curriculum/lesson-plans/' + encodeURIComponent(planId) + '/guide-position', {
+          stepIndex: this.guide.stepIndex, mode: 'open'
+        }).catch(() => { /* offline — not critical */ });
+        this.nextTick(() => {
+          this.guideBindSwipe();
+          this.guideBindDragDrop();
+          this.guideStartPresence();
+          this.renderIconsNow();
+          if (this.guide.resumed) this.toast('Picking up from step ' + (this.guide.stepIndex + 1) + '.');
         });
       },
 
