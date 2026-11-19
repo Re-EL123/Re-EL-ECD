@@ -377,6 +377,30 @@ function (`api/[...path].js`), so adding routes does not add functions.
 `npm run check:functions` asserts this and verifies every route declares
 access rules.
 
+### SMS delivery
+
+SMS is optional and opt-in per organisation. Without credentials every send is
+recorded as `skipped` and the platform continues with in-app, email and push
+notifications. See `.env.example` for all variables.
+
+- **Dev/staging (free):** set `SMS_PROVIDER=textbee`, add `SMS_TEXTBEE_API_KEY`
+  from [textbee.dev](https://textbee.dev), pair an Android phone in the app, and
+  optionally set `SMS_TEXTBEE_DEVICE_ID`. The free tier is 300 messages/month
+  (50/day) and the carrier still pays for the texts.
+- **Production (South Africa):** `SMS_PROVIDER=africastalking` with
+  `SMS_AT_USERNAME`, `SMS_AT_API_KEY` and optionally `SMS_AT_FROM` (alphanumeric
+  sender ID). Global alternative: `SMS_PROVIDER=twilio` with
+  `SMS_TWILIO_SID`, `SMS_TWILIO_TOKEN`, `SMS_TWILIO_FROM`.
+- Centres enable **Settings → Operations → SMS — high/critical safety
+  incidents** and **SMS — pickup brief**. Guardian/staff phone numbers are
+  normalised to international format (`082…` → `+2782…`).
+
+Every attempt against a notification is written to `notification_deliveries`
+with channel `sms` (`sent` = provider accepted, not carrier-confirmed delivery;
+`failed` carries the provider error). Check that table first when texts don't
+arrive. Keep SMS to incidents and time-critical pickup notes — daily reports and
+digests go by email/in-app.
+
 ## 5. Frontend on GitHub Pages
 
 The web app is a no-build classic-script SPA. To publish it:
@@ -467,6 +491,7 @@ the CI check before merging.
 | `SSL_ERROR_BAD_CERT_DOMAIN` on a `<slug>.re-el.co.za` tenant site | The wildcard certificate is missing. A `CNAME` to the GitHub Pages host presents `CN=*.github.io`, which does not cover `*.re-el.co.za`. Point `*.re-el.co.za` at the hosting provider and attach the wildcard domain there. |
 | Migrations did not run on Vercel | Check the function logs for the migration error; run `npm run migrate` manually against the database. |
 | Emails are not arriving | Check `email_deliveries` for the row: `skipped` means `RESEND_API_KEY` is unset or `EMAIL_ENABLED=false`; `failed` carries the Resend error. A verified sender domain is required for `EMAIL_FROM`. |
+| SMS is not arriving | Check `notification_deliveries` (channel `sms`): `skipped` means no provider or the centre hasn't opted in; `failed` carries the provider error. With textbee, confirm the paired phone is online with SMS permission granted. |
 | Password reset or invitation links point at the wrong host | Set `APP_BASE_URL` (or `FRONTEND_ORIGIN`) to the public web origin; links are built from it. |
 | "Online payments are not configured" | `PAYFAST_MERCHANT_ID` and `PAYFAST_MERCHANT_KEY` are unset in the API environment. |
 | PayFast ITNs never arrive | PayFast must reach the public API; set `API_BASE_URL` to the deployed API origin. `GET /api/v1/platform/health` reports the PayFast mode. |

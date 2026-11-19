@@ -4,6 +4,7 @@ const { validate } = require('../../../../packages/contracts/validate');
 const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
 const { createNotification } = require('../services/notification-service');
+const { sendSms, smsPreference } = require('../services/sms-service');
 const { sendTemplate } = require('../services/email-service');
 const { parsePagination } = require('../utils/http');
 const bulk = require('../services/bulk-service');
@@ -105,7 +106,7 @@ function register(router) {
       attachmentUrls: { type: 'array', of: 'string', max: 20, optional: true },
       actions: { type: 'array', max: 20, optional: true }
     });
-    const branch = await ctx.db.one('SELECT id FROM branches WHERE id = $1 AND organisation_id = $2',
+    const branch = await ctx.db.one('SELECT id, name FROM branches WHERE id = $1 AND organisation_id = $2',
       [body.branchId, ctx.organisationId]);
     if (!branch) fail('VALIDATION', [{ field: 'branchId', message: 'Unknown branch.' }]);
     const result = await ctx.db.withTransaction(async (client) => {
@@ -151,7 +152,7 @@ function register(router) {
     });
     if (['high', 'critical'].includes(body.severity)) {
       const leaders = await ctx.db.many(
-        `SELECT DISTINCT m.user_id, u.email FROM memberships m
+        `SELECT DISTINCT m.user_id, u.email, u.phone FROM memberships m
          JOIN users u ON u.id = m.user_id
          JOIN membership_roles mr ON mr.membership_id = m.id
          JOIN roles r ON r.id = mr.role_id
@@ -159,8 +160,9 @@ function register(router) {
            AND r.role_key IN ('principal','daycare_administrator','daycare_manager','organisation_owner')`,
         [ctx.organisationId]
       );
+      let notified = [];
       if (leaders.length) {
-        await createNotification(ctx.db, ctx, {
+        notified = await createNotification(ctx.db, ctx, {
           recipientUserIds: leaders.map((l) => l.user_id), type: 'incident_high_severity',
           title: `${body.severity === 'critical' ? 'Critical' : 'High severity'} incident reported`,
           body: body.description.slice(0, 300),
@@ -184,6 +186,21 @@ function register(router) {
             occurredAt: new Date(body.occurredAt || Date.now()).toLocaleString('en-ZA')
           }
         });
+      }
+      // SMS is opt-in per organisation and reserved for high/critical safety
+      // incidents. No child's name goes into the text — it lands on a phone.
+      if (await smsPreference(ctx.db, ctx.organisationId, 'smsIncidents')) {
+        const message = 'Re-EL ECD: ' + body.severity + ' incident at ' + (branch.name || 'your centre') +
+          ' (' + body.incidentType + '). ' + body.description.slice(0, 110) + ' — open the app.';
+        await Promise.allSettled(
+          leaders.filter((leader) => leader.phone).map((leader) => {
+            const delivery = (notified || []).find((row) => row.recipient_user_id === leader.user_id);
+            return sendSms(ctx.db, {
+              to: leader.phone, message, organisationId: ctx.organisationId,
+              notificationId: delivery && delivery.id, kind: 'incident'
+            });
+          })
+        );
       }
     }
     await recordAudit(ctx.db, ctx, {

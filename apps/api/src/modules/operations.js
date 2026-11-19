@@ -5,6 +5,7 @@ const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { safeEqual } = require('../../../../packages/auth/password');
 const { recordAudit } = require('../services/audit-service');
 const { createNotification } = require('../services/notification-service');
+const { sendSms, smsPreference } = require('../services/sms-service');
 const { parsePagination } = require('../utils/http');
 const exportService = require('../services/export-service');
 const bulk = require('../services/bulk-service');
@@ -987,6 +988,8 @@ function register(router) {
         [organisation.id]
       );
       let orgSent = 0;
+      const smsJobs = [];
+      const pickupSms = await smsPreference(innerCtx.db, organisation.id, 'smsPickupBrief');
       for (const child of candidates) {
         const report = await innerCtx.db.one(
           'SELECT * FROM daily_reports WHERE learner_id = $1 AND report_date = CURRENT_DATE',
@@ -1004,8 +1007,9 @@ function register(router) {
           [child.learner_id, organisation.id]
         );
         const guardians = await innerCtx.db.many(
-          `SELECT DISTINCT g.user_id, g.first_name
+          `SELECT DISTINCT g.user_id, g.first_name, u.phone
            FROM learner_guardians lg JOIN guardians g ON g.id = lg.guardian_id
+           JOIN users u ON u.id = g.user_id
            WHERE lg.learner_id = $1 AND lg.organisation_id = $2 AND lg.portal_access_status = 'active'
              AND lg.can_receive_reports = true AND g.user_id IS NOT NULL`,
           [child.learner_id, organisation.id]
@@ -1032,15 +1036,26 @@ function register(router) {
             [guardian.user_id, title]
           ).catch(() => null);
           if (dupe) continue;
-          await createNotification(innerCtx.db, innerCtx, {
+          const created = await createNotification(innerCtx.db, innerCtx, {
             recipientUserIds: [guardian.user_id], type: 'pickup_brief', organisationId: organisation.id,
             title, body, url: '/parent/activities',
             resourceType: moment ? 'learner_observation' : 'daily_report',
             resourceId: moment ? moment.id : (report && report.id) || null
           });
+          if (pickupSms && guardian.phone) {
+            const sms = 'Re-EL ECD: Tonight at pickup — ' + first + ' had ' +
+              (report && report.mood ? 'a ' + report.mood + ' day' : 'a lovely day') + '. ' +
+              (subject ? 'Ask about ' + subject + '.' : 'Ask them to show you something from today.');
+            const delivery = (created || []).find((row) => row.recipient_user_id === guardian.user_id);
+            smsJobs.push(sendSms(innerCtx.db, {
+              to: guardian.phone, message: sms, organisationId: organisation.id,
+              notificationId: delivery && delivery.id, kind: 'pickup_brief'
+            }));
+          }
           orgSent += 1;
         }
       }
+      await Promise.allSettled(smsJobs);
       detail.push({ organisation: organisation.name, sent: orgSent });
       sent += orgSent;
     }

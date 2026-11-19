@@ -298,7 +298,8 @@ window.Reel.renderGateQr = function (targetId) {
         R.card('Notification preferences', '<div class="detail-list">' +
           R.detailItem('Email announcements', yesNo(notifications.emailAnnouncements)) +
           R.detailItem('Email invoices', yesNo(notifications.emailInvoices)) +
-          R.detailItem('SMS incidents', yesNo(notifications.smsIncidents)) +
+          R.detailItem('SMS incidents (high/critical)', yesNo(notifications.smsIncidents)) +
+          R.detailItem('SMS pickup brief', yesNo(notifications.smsPickupBrief)) +
           '</div>') +
         renderPushCard(myPush, canManage) +
         '</div><div class="stack">' +
@@ -615,7 +616,8 @@ window.Reel.renderGateQr = function (targetId) {
             { name: 'allowExcusedAbsence', label: 'Allow excused absence', type: 'checkbox', value: attendance.allowExcusedAbsence !== false },
             { name: 'emailAnnouncements', label: 'Email announcements', type: 'checkbox', value: notifications.emailAnnouncements !== false },
             { name: 'emailInvoices', label: 'Email invoices', type: 'checkbox', value: notifications.emailInvoices !== false },
-            { name: 'smsIncidents', label: 'SMS incidents', type: 'checkbox', value: notifications.smsIncidents === true },
+            { name: 'smsIncidents', label: 'SMS — high/critical safety incidents', type: 'checkbox', value: notifications.smsIncidents === true, help: 'Texts centre leaders when a serious incident is reported.' },
+            { name: 'smsPickupBrief', label: 'SMS — pickup brief', type: 'checkbox', value: notifications.smsPickupBrief === true, help: 'Texts guardians a short version of the 15:00 pickup note.' },
             { name: 'showFees', label: 'Show fees publicly', type: 'checkbox', value: (settings.publicWebsite || {}).showFees === true },
             { name: 'learnerRecordsYears', label: 'Learner record retention (years)', type: 'number', value: retention.learnerRecordsYears || 7 },
             { name: 'financeYears', label: 'Financial record retention (years)', type: 'number', value: retention.financeYears || 7 },
@@ -626,7 +628,7 @@ window.Reel.renderGateQr = function (targetId) {
               academicYear: Number(data.academicYear),
               operatingHours: { open: data.open, close: data.close },
               attendancePolicy: { lateAfter: data.lateAfter, autoAbsentAfter: data.autoAbsentAfter, allowExcusedAbsence: data.allowExcusedAbsence === true },
-              notificationPreferences: { emailAnnouncements: data.emailAnnouncements === true, emailInvoices: data.emailInvoices === true, smsIncidents: data.smsIncidents === true },
+              notificationPreferences: { emailAnnouncements: data.emailAnnouncements === true, emailInvoices: data.emailInvoices === true, smsIncidents: data.smsIncidents === true, smsPickupBrief: data.smsPickupBrief === true },
               publicWebsite: { enabled: true, showFees: data.showFees === true },
               dataRetention: { learnerRecordsYears: Number(data.learnerRecordsYears), financeYears: Number(data.financeYears) },
               weather: { city: String(data.weatherCity || '').trim() }

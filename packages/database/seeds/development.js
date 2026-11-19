@@ -137,11 +137,14 @@ async function seedDevelopment({ force = false } = {}) {
 
   const passwordHash = await hashPassword(DEMO_PASSWORD);
   const userIds = {};
-  for (const [email, name, role] of USERS) {
+  for (const [index, [email, name, role]] of USERS.entries()) {
+    // Dummy, non-routable-looking SA numbers so SMS opt-ins have a recipient
+    // in demos. No real phone number is ever shipped in the seed.
+    const phone = '+2782000' + String(1000 + index);
     const row = await pool.query(
-      `INSERT INTO users (email, email_normalized, display_name, password_hash, status, auth_provider, auth_subject)
-       VALUES ($1,$2,$3,$4,'active','local',$5) RETURNING id`,
-      [email, email.toLowerCase(), name, passwordHash, email]
+      `INSERT INTO users (email, email_normalized, display_name, phone, password_hash, status, auth_provider, auth_subject)
+       VALUES ($1,$2,$3,$4,$5,'active','local',$6) RETURNING id`,
+      [email, email.toLowerCase(), name, phone, passwordHash, email]
     );
     userIds[email] = row.rows[0].id;
   }
@@ -167,7 +170,7 @@ async function seedDevelopment({ force = false } = {}) {
     academicYear: 2026,
     operatingHours: { open: '06:30', close: '18:00' },
     attendancePolicy: { lateAfter: '08:30', autoAbsentAfter: '10:00', allowExcusedAbsence: true },
-    notificationPreferences: { emailAnnouncements: true, emailInvoices: true, smsIncidents: false },
+    notificationPreferences: { emailAnnouncements: true, emailInvoices: true, smsIncidents: false, smsPickupBrief: false },
     publicWebsite: { enabled: true, showFees: false },
     dataRetention: { learnerRecordsYears: 7, financeYears: 7 },
     ncf: { enabled: true }
