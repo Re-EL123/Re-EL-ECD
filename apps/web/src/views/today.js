@@ -101,6 +101,13 @@
       '<div class="today-collapse-body" x-show="open" x-cloak>' + inner + '</div></div>';
   }
 
+  function upcomingWhen(event, page) {
+    const start = new Date(event.starts_at);
+    const today = new Date((page && page.nowIso) || Date.now());
+    if (start.toDateString() === today.toDateString()) return R.time(event.starts_at);
+    return R.date(event.starts_at) + ' · ' + R.time(event.starts_at);
+  }
+
   function statPill(label, value, icon) {
     return '<div class="row today-pill" style="gap:8px;align-items:center;padding:8px 12px;border-radius:12px">' +
       R.icon(icon) + '<div><div class="strong" style="font-size:0.95rem;line-height:1.1">' + esc(value) + '</div><div class="muted small">' + esc(label) + '</div></div></div>';
@@ -586,7 +593,7 @@
         '</div>';
       html += '<div class="grid grid-2 section today-dash-grid">' +
         R.card('Tasks needing attention', tasks.length ? '<div class="stack">' + tasks.map((t) => '<div class="row" style="gap:10px;align-items:flex-start"><span class="badge ' + R.priorityTone(t.priority) + '">' + esc(t.priority) + '</span><div style="flex:1;min-width:0"><div class="strong" style="font-size:0.88rem">' + esc(t.title) + '</div><div class="muted small">' + esc(t.assignee_name || 'Unassigned') + ' · due ' + R.date(t.due_at) + '</div></div><button class="btn btn-sm btn-secondary" @click="actUndoable(\'PATCH\',\'/tasks/' + R.attr(t.id) + '\',{status:\'done\'},{successMessage:\'Task completed\'},{status:\'' + R.attr(t.status) + '\'})">Done</button></div>').join('') + '</div>' : R.emptyState('No open tasks', 'Everything assigned is complete.', '', 'check-circle'), '<a class="btn btn-sm btn-ghost" href="#/app/tasks">All tasks ' + R.icon('arrow-right') + '</a>') +
-        R.card('Coming up', upcoming.length ? '<div class="timeline">' + upcoming.map((event) => '<div class="timeline-item"><div class="t-time">' + R.time(event.starts_at) + ' · ' + esc(event.classroom_name || '') + '</div><div class="t-title">' + esc(event.title) + '</div><div class="t-body">' + esc(R.titleCase(event.status || 'scheduled')) + '</div></div>').join('') + '</div>' : R.emptyState('Nothing coming up', 'The rest of the day is clear — nothing needs to start.', '<a class="btn btn-sm btn-secondary" href="#/app/calendar">Open calendar</a>', 'calendar'), '<a class="btn btn-sm btn-ghost" href="#/app/calendar">Calendar ' + R.icon('arrow-right') + '</a>') +
+        R.card('Coming up', upcoming.length ? '<div class="timeline">' + upcoming.map((event) => '<div class="timeline-item"><div class="t-time">' + esc(upcomingWhen(event, page)) + ' · ' + esc(event.classroom_name || '') + '</div><div class="t-title">' + esc(event.title) + '</div><div class="t-body">' + esc(R.titleCase(event.status || 'scheduled')) + '</div></div>').join('') + '</div>' : R.emptyState('Nothing coming up', 'The rest of the day is clear — nothing needs to start.', '<a class="btn btn-sm btn-secondary" href="#/app/calendar">Open calendar</a>', 'calendar'), '<a class="btn btn-sm btn-ghost" href="#/app/calendar">Calendar ' + R.icon('arrow-right') + '</a>') +
         R.card('At a glance', '<div class="kpi-list">' +
           '<div class="kpi-row"><span class="kpi-label">Staff on record</span><span class="kpi-value">' + R.number((d.staff || {}).total) + '</span></div>' +
           '<div class="kpi-row"><span class="kpi-label">Applications in progress</span><span class="kpi-value">' + R.number((d.applications || {}).total) + '</span></div>' +

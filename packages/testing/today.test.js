@@ -47,6 +47,7 @@ test('empty data is shown honestly', () => {
   assert.ok(view.includes("attendance.marked ? R.percent(attendance.rate) : '—'"));
   assert.ok(view.includes('Awaiting register — no data yet'));
   assert.ok(view.includes('Nothing coming up'), 'past/completed events are filtered');
+  assert.ok(view.includes('upcomingWhen(event, page)'), 'future events show their date, not just a time');
   assert.ok(view.includes("e.status === 'completed' || e.status === 'cancelled'"), 'completed events excluded');
   assert.ok(view.includes('noTodayData'), 'chart gap for today');
   assert.ok(view.includes('the open gap marks today'), 'today has no fake zero — the gap is explained in the subtitle');
