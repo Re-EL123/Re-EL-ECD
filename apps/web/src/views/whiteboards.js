@@ -982,7 +982,7 @@
     const shellEl = document.querySelector('.wb-teach-shell');
     function sizeShell() {
       if (!shellEl) return;
-      const top = shellEl.getBoundingClientRect().top;
+      const top = shellEl.offsetTop || shellEl.getBoundingClientRect().top;
       shellEl.style.height = Math.max(320, window.innerHeight - top) + 'px';
     }
     sizeShell();
