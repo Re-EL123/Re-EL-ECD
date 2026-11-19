@@ -632,6 +632,8 @@
         state.objects.splice(to, 0, obj); render(); notify();
       },
       getObjects() { return objectsSummary(); },
+      getState() { return JSON.parse(JSON.stringify(state)); },
+      redraw() { render(); },
       getSelected() { return selectedId ? state.objects.find((o) => o.id === selectedId) || null : null; },
       getCursor() { return lastCursor; },
       moveSelected,
@@ -1285,6 +1287,12 @@
     heartbeat();
     const presenceBeat = setInterval(heartbeat, 15000);
 
+    let themeObserver = null;
+    if (typeof MutationObserver !== 'undefined') {
+      themeObserver = new MutationObserver(() => { if (engine) engine.redraw(); });
+      themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    }
+
     // ---- Live presentation -------------------------------------------------
     let presentCleanup = null;
     function closePresentation() {
@@ -1405,6 +1413,7 @@
     wrap._wbCleanup = () => {
       document.body.classList.remove('wb-teaching');
       window.removeEventListener('resize', sizeShell);
+      if (themeObserver) themeObserver.disconnect();
       clearInterval(autosave); clearInterval(statusTick); clearInterval(poll);
       clearInterval(presencePoll); clearInterval(presenceBeat);
       document.removeEventListener('keydown', documentShortcuts);
