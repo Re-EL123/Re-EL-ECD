@@ -3231,3 +3231,6 @@ a:focus-visible, input:focus-visible, select:focus-visible {
   .reader-line { transition: none; }
   .rhyme-compact:hover, .np-icon:hover, .np-play:hover { transform: none; }
 }
+
+/* [hidden] must win over the component's display rules. */
+.rhyme-now-playing[hidden], .rhyme-queue-panel[hidden], .rhyme-reader-backdrop[hidden] { display: none !important; }

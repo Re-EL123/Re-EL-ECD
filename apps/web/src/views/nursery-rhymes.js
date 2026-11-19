@@ -113,8 +113,10 @@
       '</div>';
 
       // ---- Pinned personal sections ----------------------------------------
-      const favs = (m.favourites || []).map((id) => lib.find(id)).filter(Boolean);
-      const recents = (m.recents || []).map((id) => lib.find(id)).filter(Boolean);
+      const favIds = typeof m.favourites === 'function' ? m.favourites() : [];
+      const recentIds = typeof m.recents === 'function' ? m.recents() : [];
+      const favs = favIds.map((id) => lib.find(id)).filter(Boolean);
+      const recents = recentIds.map((id) => lib.find(id)).filter(Boolean);
       if (favs.length || recents.length) {
         html += '<div class="rhyme-pinned">';
         if (favs.length) html += '<div class="card glass section rhyme-pin"><div class="pin-head"><h2>' + R.icon('star') + ' Your favourites</h2><span class="muted small">' + R.number(favs.length) + ' pinned</span></div><div class="rhyme-compact-row">' + favs.map(compactCard).join('') + '</div></div>';
@@ -132,7 +134,7 @@
       list.forEach((rhyme) => {
         const id = R.attr(rhyme.id);
         const url = audio[rhyme.id] || '';
-        const isFav = (m.favourites || []).indexOf(rhyme.id) !== -1;
+        const isFav = favIds.indexOf(rhyme.id) !== -1;
         const isSelected = selected.indexOf(rhyme.id) !== -1;
         const preview = (rhyme.lyrics || []).filter(Boolean).slice(0, 2).join(' ');
         const tags = m.tagsFor(rhyme);
