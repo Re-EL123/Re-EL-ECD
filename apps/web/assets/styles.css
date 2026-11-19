@@ -2881,3 +2881,5 @@ a.crumb:hover { color: var(--text-strong); background: var(--surface-2); text-de
 @media print {
   #rhyme-print-sheet { display: block; padding: 24px; }
 }
+.rhyme-player { margin: 6px 0 10px; }
+.rhyme-player audio { width: 100%; max-width: 420px; height: 38px; }

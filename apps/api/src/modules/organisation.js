@@ -1,7 +1,7 @@
 'use strict';
 
 const { validate } = require('../../../../packages/contracts/validate');
-const { AppError } = require('../../../../packages/contracts/errors');
+const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
 const { parsePagination } = require('../utils/http');
 const branding = require('../services/branding-service');
@@ -183,9 +183,9 @@ function register(router) {
   // a raw client object merged into the security config.
   const ALLOWED_SETTINGS = new Set([
     'academicYear', 'operatingHours', 'attendancePolicy', 'notificationPreferences',
-    'publicWebsite', 'dataRetention', 'weather', 'ncf', 'collection.lateCutoff'
+    'publicWebsite', 'dataRetention', 'weather', 'ncf', 'collection.lateCutoff', 'nurseryRhymeAudio'
   ]);
-  const OBJECT_SETTINGS = new Set(['operatingHours', 'attendancePolicy', 'notificationPreferences', 'publicWebsite', 'dataRetention', 'weather', 'ncf']);
+  const OBJECT_SETTINGS = new Set(['operatingHours', 'attendancePolicy', 'notificationPreferences', 'publicWebsite', 'dataRetention', 'weather', 'ncf', 'nurseryRhymeAudio']);
   router.patch('/organisations/current/settings', async (ctx) => {
     const body = validate(ctx.body, {
       settings: { type: 'object' }

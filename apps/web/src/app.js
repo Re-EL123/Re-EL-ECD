@@ -1059,6 +1059,42 @@
         window.print();
       },
 
+      async attachRhymeAudio(event, id) {
+        const input = event && event.target;
+        const file = input && input.files && input.files[0];
+        if (!file) return;
+        if (!/^audio\//.test(file.type || '') && !/\.(mp3|m4a|aac|ogg|wav|webm)$/i.test(file.name || '')) {
+          this.toast('Choose an audio file (MP3, M4A, OGG or WAV).', 'error');
+          return;
+        }
+        try {
+          const asset = await Reel.uploadMedia(file, { scope: 'nursery_rhyme' });
+          if (!asset || !asset.url) throw new Error('The upload did not return a playable URL.');
+          const map = Object.assign({}, (this.page && this.page.rhymeAudio) || {});
+          map[id] = asset.url;
+          await Reel.api('PATCH', '/organisations/current/settings', { settings: { nurseryRhymeAudio: map } });
+          const rhyme = window.Reel.nurseryRhymes.find(id);
+          this.toast('Audio attached' + (rhyme ? ' to ' + rhyme.title : '') + '.');
+          await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'The audio could not be attached.', 'error');
+        } finally {
+          if (input) input.value = '';
+        }
+      },
+
+      async removeRhymeAudio(id) {
+        try {
+          const map = Object.assign({}, (this.page && this.page.rhymeAudio) || {});
+          delete map[id];
+          await Reel.api('PATCH', '/organisations/current/settings', { settings: { nurseryRhymeAudio: map } });
+          this.toast('Audio removed.');
+          await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'The audio could not be removed.', 'error');
+        }
+      },
+
       /**
        * Alpine handler for in-page jumps inside Today (suggested next steps
        * scroll to the wrap-up card, etc.). Never touches the hash router.

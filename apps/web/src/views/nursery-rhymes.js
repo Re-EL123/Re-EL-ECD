@@ -6,8 +6,20 @@
   const V = R.views;
 
   V.nurseryRhymes = {
-    render(ctx) {
+    async load(ctx) {
+      let audio = {};
+      if (ctx.has('organisation.read.daycare')) {
+        try {
+          const res = await R.api('GET', '/organisations/current/settings');
+          audio = (res.data && res.data.nurseryRhymeAudio) || {};
+        } catch { /* teachers still get the lyrics without org settings access */ }
+      }
+      return { rhymeAudio: audio };
+    },
+
+    render(ctx, params, page) {
       const lib = R.nurseryRhymes;
+      const audio = (page && page.rhymeAudio) || {};
       const filters = ctx.filters || {};
       const query = String(filters.q || '').trim().toLowerCase();
       const category = String(filters.category || '');
@@ -45,12 +57,20 @@
             '<div class="card-actions"><span class="badge badge-muted">' + R.esc(rhyme.category) + '</span></div></div>' +
           '<p class="muted small">' + R.esc(R.truncate(preview, 110)) + '…</p>' +
           (rhyme.actions ? '<div class="muted small" style="margin-bottom:8px">' + R.icon('hand') + ' ' + R.esc(rhyme.actions) + '</div>' : '') +
+          (audio[rhyme.id]
+            ? '<div class="rhyme-player"><audio controls preload="none" src="' + R.attr(audio[rhyme.id]) + '" aria-label="Play ' + R.attr(rhyme.title) + '"></audio></div>'
+            : '<div class="muted small" style="margin-bottom:8px">' + R.icon('headphones') + ' No audio attached yet — licence a recording and upload it below.</div>') +
           '<details class="rhyme-lyrics"><summary>Read lyrics</summary><pre class="rhyme-text">' + R.esc(rhyme.lyrics.join('\n')) + '</pre>' +
             '<a class="btn btn-sm btn-ghost" href="' + R.attr(rhyme.source) + '" target="_blank" rel="noopener noreferrer">' + R.icon('external-link') + ' Licensed audio / sheet music</a>' +
           '</details>' +
           '<div class="row" style="gap:8px;margin-top:12px">' +
             '<button class="btn btn-sm btn-primary" @click="downloadRhymeLyrics(\'' + R.attr(rhyme.id) + '\')">' + R.icon('download') + ' Download lyrics (.txt)</button>' +
             '<button class="btn btn-sm btn-ghost" @click="printRhymeLyrics(\'' + R.attr(rhyme.id) + '\')">' + R.icon('printer') + ' Print</button>' +
+            (ctx.has('organisation.settings.manage')
+              ? '<label class="btn btn-sm btn-secondary" style="cursor:pointer">' + R.icon('upload') + ' Attach audio' +
+                  '<input type="file" accept="audio/*" style="display:none" @change="attachRhymeAudio($event,\'' + R.attr(rhyme.id) + '\')"></label>' +
+                (audio[rhyme.id] ? '<button class="btn btn-sm btn-ghost" @click="removeRhymeAudio(\'' + R.attr(rhyme.id) + '\')">' + R.icon('trash-2') + ' Remove</button>' : '')
+              : '') +
           '</div>' +
         '</div>';
       });
