@@ -317,7 +317,7 @@
       const dr = t.dailyReports || { missing: 0, draft: 0 };
       const tasksDue = ((t.unfinished || {}).tasksDueToday) || 0;
       const orgName = (ctx.activeOrganisation && ctx.activeOrganisation.name) || '';
-      const place = (w && w.city) || orgName || 'Your centre';
+      const place = (w && w.city) ? ((w.approximate ? 'near ' : '') + w.city) : (orgName || 'Your centre');
       const h = now.getHours() + now.getMinutes() / 60;
 
       // Sun (or moon) position: when the forecast gives us sunrise/sunset, ride
@@ -424,7 +424,8 @@
           (w
             ? '<div class="scene-temp">' + R.number(w.temp) + '°</div>' +
               '<div class="scene-cond">' + R.icon(w.icon) + ' ' + esc(w.label) + '</div>' +
-              '<div class="scene-place">' + R.icon('map-pin') + ' ' + esc(place) + '</div>'
+              '<div class="scene-place">' + R.icon('map-pin') + ' ' + esc(place) + '</div>' +
+      '<a class="scene-credit" href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" title="Live weather data by Open-Meteo">Weather by Open-Meteo</a>'
             : '<div class="scene-place" style="margin-top:auto">' + R.icon('map-pin') + ' ' + esc(place) + '</div>') +
         '</div>' +
       '</div>';

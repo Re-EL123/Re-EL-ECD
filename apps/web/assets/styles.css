@@ -2443,6 +2443,8 @@ a.crumb:hover { color: var(--text-strong); background: var(--surface-2); text-de
 .scene-cond svg { width: 16px; height: 16px; }
 .scene-place { display: flex; align-items: center; gap: 5px; font-size: 0.76rem; opacity: 0.9; margin-top: 3px; }
 .scene-place svg { width: 12px; height: 12px; }
+.scene-credit { color: inherit; font-size: 0.62rem; line-height: 1; opacity: 0.6; margin-top: 3px; text-decoration: none; }
+.scene-credit:hover { opacity: 0.95; text-decoration: underline; }
 /* Valuable info rows under the scene. */
 .day-info { display: grid; grid-template-columns: 1fr; gap: 2px; padding: 14px 18px 16px; }
 .day-info-row { display: flex; align-items: center; gap: 11px; padding: 7px 2px; }

@@ -517,7 +517,14 @@
                   </div>
                 </template>
                 <template x-if="!field.type || !['textarea','select','checkbox','checkboxes','formfile','media','colour','multiselect','searchselect','repeater','preset','radio','signature'].includes(field.type)">
-                  <input class="input" :id="'modal-' + field.name" :name="field.name" :type="field.type || 'text'" :required="field.required === true" :placeholder="field.placeholder || ''" :min="field.min" :max="field.max" :step="field.step" :maxlength="field.maxlength || undefined" :inputmode="field.inputmode || undefined" x-model="modal.data[field.name]">
+                  <div>
+                    <input class="input" :id="'modal-' + field.name" :name="field.name" :type="field.type || 'text'" :required="field.required === true" :placeholder="field.placeholder || ''" :min="field.min" :max="field.max" :step="field.step" :maxlength="field.maxlength || undefined" :inputmode="field.inputmode || undefined" :list="field.datalist ? 'modal-list-' + field.name : undefined" x-model="modal.data[field.name]">
+                    <template x-if="field.datalist">
+                      <datalist :id="'modal-list-' + field.name">
+                        <template x-for="suggestion in field.datalist" :key="suggestion"><option :value="suggestion"></option></template>
+                      </datalist>
+                    </template>
+                  </div>
                 </template>
                 <div class="hint" x-show="field.help && field.type !== 'checkbox'" x-text="field.type === 'media' && modal.mediaBusy && modal.mediaBusy[field.name] ? 'Uploading…' : (field.help || '')"></div>
               </div>

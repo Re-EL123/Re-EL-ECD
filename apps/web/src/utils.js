@@ -789,6 +789,43 @@
   const WEATHER_CACHE_KEY = 'reel.weather.v1';
   const WEATHER_GEO_KEY = 'reel.geo.v1';
 
+  // Open-Meteo's geocoder knows most South African townships, but a few only
+  // resolve to a nearby suburb (or not at all). This small gazetteer gives
+  // those names reliable centroid coordinates — the weather is still fetched
+  // live from Open-Meteo, only the lookup is local. Kept deliberately short:
+  // it is a fallback for the townships this platform actually serves.
+  const WEATHER_TOWNSHIPS = [
+    { name: 'Soweto', lat: -26.2453, lon: 28.0469 },
+    { name: 'Alexandra', lat: -26.1150, lon: 28.0730 },
+    { name: 'Tembisa', lat: -25.9917, lon: 28.2242 },
+    { name: 'Diepsloot', lat: -25.9153, lon: 28.0147 },
+    { name: 'Mamelodi', lat: -25.7069, lon: 28.3581 },
+    { name: 'Atteridgeville', lat: -25.7625, lon: 28.0581 },
+    { name: 'Ga-Rankuwa', lat: -25.6167, lon: 28.0000 },
+    { name: 'Mabopane', lat: -25.6000, lon: 28.0167 },
+    { name: 'Sebokeng', lat: -26.4000, lon: 27.8833 },
+    { name: 'Evaton', lat: -26.4167, lon: 27.8500 },
+    { name: 'Sharpeville', lat: -26.4750, lon: 27.8833 },
+    { name: 'Kagiso', lat: -26.2000, lon: 27.9167 },
+    { name: 'Khayelitsha', lat: -33.9636, lon: 18.6833 },
+    { name: 'Mitchells Plain', lat: -34.0356, lon: 18.5981 },
+    { name: 'Nyanga', lat: -33.9500, lon: 18.6333 },
+    { name: 'Langa', lat: -33.9333, lon: 18.6167 },
+    { name: 'Gugulethu', lat: -33.9667, lon: 18.6333 },
+    { name: 'Manenberg', lat: -34.0167, lon: 18.6167 },
+    { name: 'Umlazi', lat: -29.9667, lon: 30.9167 },
+    { name: 'KwaMashu', lat: -29.7500, lon: 30.9000 },
+    { name: 'Ntuzuma', lat: -29.7167, lon: 30.9333 },
+    { name: 'Inanda', lat: -29.7167, lon: 31.0167 },
+    { name: 'Thabong', lat: -27.0000, lon: 28.4500 },
+    { name: 'Botshabelo', lat: -29.2167, lon: 26.7500 }
+  ];
+  const townshipCoords = (name) => {
+    const key = String(name || '').trim().toLowerCase();
+    return WEATHER_TOWNSHIPS.find((t) => t.name.toLowerCase() === key) || null;
+  };
+  function weatherTownshipNames() { return WEATHER_TOWNSHIPS.map((t) => t.name); }
+
   const WEATHER_CODES = {
     0: { label: 'Clear sky', icon: 'sun', night: 'moon' },
     1: { label: 'Mostly clear', icon: 'sun', night: 'moon' },
@@ -869,13 +906,22 @@
       const lon = Number(loc.lon !== undefined ? loc.lon : loc.longitude);
       let coords = Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null;
       if (!coords && city) {
+        // Curated township centroids first: reliable even where the geocoder
+        // only has a nearby suburb or no entry for the name at all.
+        const known = townshipCoords(city);
+        if (known) coords = { lat: known.lat, lon: known.lon };
+      }
+      if (!coords && city) {
         const geoCache = readLocalJson(WEATHER_GEO_KEY, {});
         const hit = geoCache[city.toLowerCase()];
         if (hit && Number.isFinite(hit.lat)) coords = hit;
       }
       if (!coords && city) {
-        const geo = await weatherFetchJson('https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(city) + '&count=1&language=en&format=json', 4500);
-        const first = geo && geo.results && geo.results[0];
+        const geo = await weatherFetchJson('https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(city) + '&count=5&language=en&format=json', 4500);
+        const results = (geo && geo.results) || [];
+        // Prefer a South African match for SA township names; otherwise keep
+        // the first result (other countries' towns remain supported).
+        const first = results.find((r) => r.country_code === 'ZA') || results[0];
         if (first && Number.isFinite(first.latitude)) {
           coords = { lat: first.latitude, lon: first.longitude };
           const geoCache = readLocalJson(WEATHER_GEO_KEY, {});
@@ -883,9 +929,11 @@
           writeLocalJson(WEATHER_GEO_KEY, geoCache);
         }
       }
+      let approximate = false;
       if (!coords) {
         coords = weatherDefaultCoords();
         city = city || coords.city;
+        approximate = true; // never claim a township's weather came from its own coordinates
       }
       const cache = readLocalJson(WEATHER_CACHE_KEY, null);
       if (cache && cache.coords && cache.data && cache.coords.lat === coords.lat && cache.coords.lon === coords.lon
@@ -902,6 +950,7 @@
       const isDay = raw.current.is_day !== 0;
       const data = {
         city: city || coords.city || null,
+        approximate,
         temp: Math.round(raw.current.temperature_2m),
         feels: Math.round(raw.current.apparent_temperature),
         humidity: raw.current.relative_humidity_2m,
@@ -923,7 +972,7 @@
     }
   }
 
-  Reel.weather = { load: weatherLoad, defaultCoords: weatherDefaultCoords };
+  Reel.weather = { load: weatherLoad, defaultCoords: weatherDefaultCoords, townshipNames: weatherTownshipNames };
 
   function mediaList(value) {
     if (Array.isArray(value)) return value.filter(Boolean);
