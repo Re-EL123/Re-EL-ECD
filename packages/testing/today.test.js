@@ -147,3 +147,16 @@ test('today activities launch the full lesson workspace', () => {
   assert.ok(html.includes('lesson-toolkit'), 'toolkit markup exists');
   assert.match(css, /\.lesson-toolkit-grid \{ display: grid; grid-template-columns: repeat\(2/, 'toolkit grid');
 });
+
+test('today shows what is coming after today instead of a dead end', () => {
+  assert.ok(view.includes('renderUpcoming(page)'), 'upcoming section rendered');
+  assert.ok(view.includes("id=\"today-upcoming\""), 'upcoming section has an anchor');
+  assert.ok(view.includes('Nothing more today'), 'up next shows the next future activity');
+  assert.ok(view.includes('nothing left today'), 'deck summary is scoped to today');
+  assert.ok(view.includes('deck-next-hint'), 'compact empty state hints at the next activity');
+  assert.ok(view.includes('Next 14 days'), 'upcoming window is labelled');
+  const morning = read('apps/api/src/modules/morning.js');
+  assert.ok(morning.includes('const upcomingRows'), 'API returns upcoming activities');
+  assert.ok(morning.includes('starts_at >= $2::timestamptz'), 'upcoming starts after today');
+  assert.ok(morning.includes('upcoming,') && morning.includes('status IN (\'scheduled\',\'in_progress\')'), 'only live/scheduled upcoming');
+});

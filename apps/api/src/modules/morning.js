@@ -644,6 +644,39 @@ async function buildToday(ctx) {
     c.todayActivities = activityByChild.get(c.id) || [];
   }
 
+  // The next few activities after today, scoped exactly like today's events.
+  // Teachers need to know that "nothing left today" is not "nothing ever".
+  const horizonIso = new Date(bounds.endUtc + 14 * 24 * 3600 * 1000).toISOString();
+  const upcomingRows = await ctx.db.many(
+    restrictEvents
+      ? `SELECT sa.id, sa.title, sa.starts_at, sa.ends_at, sa.status, sa.lesson_plan_id,
+                c.name AS classroom_name, lp.title AS lesson_plan_title, a.title AS activity_title
+         FROM scheduled_activities sa
+         LEFT JOIN classrooms c ON c.id = sa.classroom_id
+         LEFT JOIN lesson_plans lp ON lp.id = sa.lesson_plan_id
+         LEFT JOIN activities a ON a.id = sa.activity_id
+         WHERE sa.organisation_id = $1 AND sa.starts_at >= $2::timestamptz AND sa.starts_at < $3::timestamptz
+           AND (sa.classroom_id IS NULL OR sa.classroom_id = ANY($4::uuid[]) OR sa.assigned_staff_id IN (SELECT id FROM staff_profiles WHERE user_id = $5 AND organisation_id = $1))
+           AND sa.status IN ('scheduled','in_progress')
+         ORDER BY sa.starts_at LIMIT 8`
+      : `SELECT sa.id, sa.title, sa.starts_at, sa.ends_at, sa.status, sa.lesson_plan_id,
+                c.name AS classroom_name, lp.title AS lesson_plan_title, a.title AS activity_title
+         FROM scheduled_activities sa
+         LEFT JOIN classrooms c ON c.id = sa.classroom_id
+         LEFT JOIN lesson_plans lp ON lp.id = sa.lesson_plan_id
+         LEFT JOIN activities a ON a.id = sa.activity_id
+         WHERE sa.organisation_id = $1 AND sa.starts_at >= $2::timestamptz AND sa.starts_at < $3::timestamptz
+           AND sa.status IN ('scheduled','in_progress')
+         ORDER BY sa.starts_at LIMIT 8`,
+    restrictEvents ? [ctx.organisationId, endIso, horizonIso, assignedForEvents, ctx.user.id] : [ctx.organisationId, endIso, horizonIso]
+  );
+  const upcoming = upcomingRows.map((e) => ({
+    id: e.id, title: e.title, startsAt: e.starts_at, endsAt: e.ends_at,
+    status: e.status, classroom: e.classroom_name || null,
+    lessonPlanId: e.lesson_plan_id || null, lessonPlanTitle: e.lesson_plan_title || null,
+    activityTitle: e.activity_title || null
+  }));
+
   const base = Object.assign({}, morning);
   delete base._ids;
   delete base._presence;
@@ -651,6 +684,7 @@ async function buildToday(ctx) {
   return Object.assign(base, {
     date: today,
     timeline,
+    upcoming,
     nextBlock: nextBlock ? { id: nextBlock.id, title: nextBlock.title, startsAt: nextBlock.startsAt, status: nextBlock.status } : null,
     dailyReports: {
       presentCount: presentChildren.length,

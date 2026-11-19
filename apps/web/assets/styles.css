@@ -3444,3 +3444,6 @@ a:focus-visible, input:focus-visible, select:focus-visible {
   .lesson-toolkit-label { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .lesson-toolkit { box-shadow: none; } }
+
+.deck-next-hint { margin-top: 6px; color: var(--reel-sky-700); font-weight: 650; font-size: .82rem; }
+.today-upcoming .card-head h3 { font-size: 1rem; }

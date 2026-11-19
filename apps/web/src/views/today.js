@@ -308,9 +308,14 @@
       }
 
       // Subtitles render raw HTML — escape everything sourced from user data.
+      const upcoming = (t.upcoming || []).slice();
+      const nextSoon = upcoming[0];
+      const upcomingHint = nextSoon
+        ? ' Next up: ' + esc(nextSoon.title) + ' on ' + esc(R.date(nextSoon.startsAt)) + ' at ' + esc(time(nextSoon.startsAt)) + '.'
+        : '';
       const headerSub = timeline.length
-        ? (next ? ('Up next: ' + esc(next.title) + ' at ' + esc(time(next.startsAt)) + '.') : 'All planned blocks are complete — nice work.')
-        : (page.canDashboard ? 'Your centre at a glance for ' + R.date(page.date) + '.' : 'Nothing scheduled on the calendar yet. Schedule your day and it will appear here.');
+        ? (next ? ('Up next: ' + esc(next.title) + ' at ' + esc(time(next.startsAt)) + '.') : 'All planned blocks for today are complete — nice work.' + upcomingHint)
+        : (page.canDashboard ? 'Your centre at a glance for ' + R.date(page.date) + '.' + upcomingHint : 'Nothing scheduled today yet.' + upcomingHint);
 
       const timeLine = '<span class="today-time-badge">' + R.icon(tod.icon) + ' ' + esc(tod.label) + ' · ' + R.time(now.toISOString()) + '</span>' +
         '<span class="today-live" id="today-live" data-since="' + Date.now() + '" title="Today refreshes itself automatically — the blocks, register, reports and suggestions below stay current."><span class="today-live-dot"></span>Live</span>';
@@ -329,9 +334,9 @@
       // Today's activities are the point of the page: they come first, directly
       // under the scene, so a teacher is teaching within one scroll.
       const phaseOrder = (phase) => {
-        if (phase === 'dawn' || phase === 'morning') return ['hero', 'timeline', 'upNext', 'stats', 'suggestions', 'register', 'dashboard', 'prep', 'focus', 'insights', 'wrapup'];
-        if (phase === 'dusk' || phase === 'night') return ['hero', 'timeline', 'wrapup', 'upNext', 'stats', 'suggestions', 'register', 'dashboard', 'focus', 'insights', 'prep'];
-        return ['hero', 'timeline', 'upNext', 'stats', 'suggestions', 'register', 'dashboard', 'focus', 'insights', 'wrapup', 'prep'];
+        if (phase === 'dawn' || phase === 'morning') return ['hero', 'timeline', 'upNext', 'upcoming', 'stats', 'suggestions', 'register', 'dashboard', 'prep', 'focus', 'insights', 'wrapup'];
+        if (phase === 'dusk' || phase === 'night') return ['hero', 'timeline', 'wrapup', 'upNext', 'upcoming', 'stats', 'suggestions', 'register', 'dashboard', 'focus', 'insights', 'prep'];
+        return ['hero', 'timeline', 'upNext', 'upcoming', 'stats', 'suggestions', 'register', 'dashboard', 'focus', 'insights', 'wrapup', 'prep'];
       };
       const order = phaseOrder(tod.phase).filter((key) => key !== 'dashboard' || page.canDashboard);
       const parts = {
@@ -344,6 +349,7 @@
         focus: this.renderFocus(ctx, page),
         upNext: this.renderUpNext(ctx, page, next),
         timeline: this.renderTimeline(ctx, page, timeline, nextIdx, nowMs),
+        upcoming: this.renderUpcoming(page),
         wrapup: this.renderWrapUp(ctx, page),
         prep: this.renderPrepList(page)
       };
@@ -366,7 +372,7 @@
         hero: ['Today', 'today-hero'], stats: ['Numbers', 'today-stats'], suggestions: ['Next steps', 'today-suggestions'],
         dashboard: ['Dashboard', 'today-dashboard'], prep: ['Prep list', 'today-prep'], register: ['Register', 'today-register'],
         insights: ['Insights', 'today-insights'], focus: ['Observe', 'today-focus'], upNext: ['Up next', 'today-upnext'],
-        timeline: ['Timeline', 'today-schedule'], wrapup: ['Wrap-up', 'today-wrapup']
+        timeline: ['Today’s activities', 'today-schedule'], upcoming: ['Coming up', 'today-upcoming'], wrapup: ['Wrap-up', 'today-wrapup']
       };
       return '<nav class="today-jump" id="today-jump" aria-label="Jump to a Today section"><div class="today-jump-scroll">' +
         order.map((key, i) => {
@@ -712,8 +718,34 @@
           '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'observationFor\',\'' + R.attr(c.id) + '\')">' + R.icon('plus') + ' Observe</button></div></div>').join('') + '</div></div>';
     },
 
+    /** The next activities after today — so "nothing left today" is not a dead end. */
+    renderUpcoming(page) {
+      const rows = (((page || {}).today || {}).upcoming || []).slice(0, 3);
+      if (!rows.length) return '';
+      return '<div class="card glass section today-upcoming anim-in" id="today-upcoming">' +
+        '<div class="card-head"><h3>' + R.icon('calendar-clock') + ' Coming up after today</h3>' +
+          '<span class="muted small">Next 14 days</span></div>' +
+        '<div class="stack">' + rows.map((u) => {
+          const when = R.date(u.startsAt) + ' · ' + time(u.startsAt) + (u.endsAt ? ' – ' + time(u.endsAt) : '');
+          return '<div class="row" style="gap:10px;justify-content:space-between;align-items:center;padding:9px 11px;background:var(--surface-2);border-radius:12px">' +
+            '<div style="min-width:0"><div class="strong" style="font-size:.9rem">' + esc(u.title) + '</div>' +
+              '<div class="muted small">' + esc(when) + (u.classroom ? ' · ' + esc(u.classroom) : '') +
+              (u.activityTitle ? ' · ' + esc(R.truncate(u.activityTitle, 40)) : '') + '</div></div>' +
+            '<a class="btn btn-sm btn-ghost" href="#/app/calendar">' + R.icon('calendar-days') + ' Calendar ' + R.icon('arrow-right') + '</a></div>';
+        }).join('') + '</div></div>';
+    },
+
     renderUpNext(ctx, page, next) {
-      if (!next) return '';
+      if (!next) {
+        const soon = (((page || {}).today || {}).upcoming || [])[0];
+        if (!soon) return '';
+        return '<div class="card glass today-next section anim-in" id="today-upnext"><div class="row next-row" style="justify-content:space-between;gap:14px;align-items:center">' +
+          '<div class="row" style="gap:12px;align-items:center;min-width:0"><span class="next-ico">' + R.icon('calendar-clock') + '</span>' +
+            '<div style="min-width:0"><div class="muted small" style="text-transform:uppercase;letter-spacing:.1em;font-weight:700;color:var(--reel-sky-700)">Nothing more today</div>' +
+              '<div class="strong" style="font-size:1.02rem;margin:1px 0">' + esc(soon.title) + '</div>' +
+              '<div class="muted small">' + esc(R.date(soon.startsAt)) + ' at ' + esc(time(soon.startsAt)) + (soon.classroom ? ' · ' + esc(soon.classroom) : '') + '</div></div></div>' +
+          '<a class="btn btn-sm btn-secondary" href="#/app/calendar">' + R.icon('calendar-days') + ' View on calendar</a></div></div>';
+      }
       const nowMs = new Date(page.nowIso || Date.now()).getTime();
       const mins = Math.round((new Date(next.startsAt).getTime() - nowMs) / 60000);
       let nudge = '';
@@ -759,7 +791,7 @@
       let html = '<section class="section deck-section" id="today-schedule" aria-label="Today’s timeline">' +
         '<div class="deck-head">' +
           '<h2>Today’s timeline</h2>' +
-          '<span class="deck-summary">' + (hasBlocks ? (R.number(deckBlocks.length) + ' to go' + (done ? ' · ' + R.number(done) + ' done' : '')) : (done ? R.number(done) + ' done — nothing left' : 'Nothing scheduled')) + '</span>' +
+          '<span class="deck-summary">' + (hasBlocks ? (R.number(deckBlocks.length) + ' to go' + (done ? ' · ' + R.number(done) + ' done' : '')) : (done ? R.number(done) + ' done — nothing left today' : 'Nothing scheduled today')) + '</span>' +
           '<div class="deck-head-actions">' +
             (hasBlocks
               ? '<button class="btn btn-sm btn-ghost deck-recenter" type="button" data-deck-recenter title="Jump back to the block that needs you right now">' + R.icon('locate-fixed') + ' Back to now</button>' +
@@ -779,10 +811,13 @@
       if (!hasBlocks) {
         const evTotal = timeline.reduce((n, b) => n + (((b.momentsCaptured || {}).total) || 0), 0);
         const evDone = timeline.reduce((n, b) => n + (((b.momentsCaptured || {}).captured) || 0), 0);
+        const soon = (((page || {}).today || {}).upcoming || [])[0];
         html += '<div class="card glass section today-deck-empty" id="today-deck-empty">' +
           '<div class="deck-empty-top">' + R.icon('check-circle') +
             '<div><div class="strong">All blocks complete</div><div class="muted small">' + R.number(done) + ' of ' + R.number(timeline.length) + ' blocks · ' +
-              R.number(evDone) + ' of ' + R.number(evTotal) + ' moments captured</div></div></div>' +
+              R.number(evDone) + ' of ' + R.number(evTotal) + ' moments captured</div>' +
+              (soon ? '<div class="deck-next-hint">Next: ' + esc(soon.title) + ' · ' + esc(R.date(soon.startsAt)) + ' at ' + esc(time(soon.startsAt)) + '</div>' : '') +
+            '</div></div>' +
           '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:12px">' +
             '<button class="btn btn-sm btn-primary" @click="scrollToTodayBlock(\'today-wrapup\')">' + R.icon('sunset') + ' Wrap up the day</button>' +
             '<button type="button" class="btn btn-sm btn-ghost" @click="toggleTodayDeckDetails()">Show completed blocks</button>' +
