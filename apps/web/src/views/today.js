@@ -326,10 +326,12 @@
 
       // Sections are assembled in the order a teacher actually needs them:
       // prep in the morning, capture at midday, wrap-up in the evening.
+      // Today's activities are the point of the page: they come first, directly
+      // under the scene, so a teacher is teaching within one scroll.
       const phaseOrder = (phase) => {
-        if (phase === 'dawn' || phase === 'morning') return ['hero', 'stats', 'suggestions', 'dashboard', 'prep', 'register', 'insights', 'focus', 'upNext', 'timeline', 'wrapup'];
-        if (phase === 'dusk' || phase === 'night') return ['hero', 'stats', 'suggestions', 'dashboard', 'wrapup', 'timeline', 'register', 'focus', 'insights', 'prep'];
-        return ['hero', 'stats', 'suggestions', 'dashboard', 'register', 'upNext', 'timeline', 'focus', 'insights', 'wrapup', 'prep'];
+        if (phase === 'dawn' || phase === 'morning') return ['hero', 'timeline', 'upNext', 'stats', 'suggestions', 'register', 'dashboard', 'prep', 'focus', 'insights', 'wrapup'];
+        if (phase === 'dusk' || phase === 'night') return ['hero', 'timeline', 'wrapup', 'upNext', 'stats', 'suggestions', 'register', 'dashboard', 'focus', 'insights', 'prep'];
+        return ['hero', 'timeline', 'upNext', 'stats', 'suggestions', 'register', 'dashboard', 'focus', 'insights', 'wrapup', 'prep'];
       };
       const order = phaseOrder(tod.phase).filter((key) => key !== 'dashboard' || page.canDashboard);
       const parts = {
@@ -730,7 +732,8 @@
         '<div style="min-width:0"><div class="muted small" style="text-transform:uppercase;letter-spacing:0.1em;font-weight:700;color:var(--reel-green-700)">Up next</div><div class="strong" style="font-size:1.06rem;margin:1px 0">' + esc(next.title) + '</div>' +
         '<div class="muted small">' + esc(nudge) + (next.classroom ? ' · ' + esc(next.classroom) : '') + (nextMod && nextMod.title ? ' · ' + esc(nextMod.title) : '') + '</div></div></div>' +
         '<div class="btn-group next-actions">' +
-          (next.lessonPlanId ? '<button class="btn btn-sm btn-secondary" @click="openGuide(\'' + R.attr(next.lessonPlanId) + '\')">' + R.icon('book-open') + ' ' + (nextResume || 'Teach / Guide') + '</button>' : '') +
+          '<button class="btn btn-sm btn-primary" @click="openLesson(\'' + R.attr(next.id) + '\')">' + R.icon('presentation') + ' Open lesson workspace</button>' +
+          (next.lessonPlanId ? '<button class="btn btn-sm btn-ghost" @click="openGuide(\'' + R.attr(next.lessonPlanId) + '\')">' + R.icon('book-open') + ' ' + (nextResume || 'Guide only') + '</button>' : '') +
           (nextMod && nextMod.id ? '<button class="btn btn-sm btn-ghost" @click="downloadExport(\'/learning-modules/' + R.attr(nextMod.id) + '/teacher-guide\')">' + R.icon('file-down') + ' Teacher guide</button>' : '') +
           (next.status === 'scheduled' ? '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/curriculum/calendar/events/' + R.attr(next.id) + '/start\',{},{successMessage:\'Block started — enjoy teaching.\'})">' + R.icon('play') + ' Start</button>' : '') +
           (next.status === 'in_progress' ? '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'completeBlock\',\'' + R.attr(next.id) + '\')">' + R.icon('check') + ' Complete</button>' : '') +
@@ -861,10 +864,11 @@
           '<div class="muted small">' + esc(b.classroom || 'Whole centre') + (b.staffName ? ' · ' + esc(b.staffName) : '') + '</div>' +
         '</div>' +
         '<div class="btn-group" style="flex-wrap:wrap">' +
+          '<button class="btn btn-sm btn-primary" @click="openLesson(\'' + R.attr(b.id) + '\')" title="Open the full lesson workspace for this activity">' + R.icon('presentation') + ' Teach full lesson</button>' +
           (b.lessonPlanId && interactiveCount > 0 && firstInteractiveIndex != null ? '<button class="btn btn-sm btn-secondary" @click="openGuideInteractive(\'' + R.attr(b.lessonPlanId) + '\',' + firstInteractiveIndex + ')" title="Jump straight to the first interactive slide">' + R.icon('zap') + ' Interactive slides · ' + R.number(interactiveCount) + '</button>' : '') +
-          (b.lessonPlanId ? '<button class="btn btn-sm btn-secondary" @click="openGuide(\'' + R.attr(b.lessonPlanId) + '\')">' + R.icon('book-open') + ' ' + (resumedLabel || (b.guide && b.guide.available ? 'Teach / Guide' : 'Guide')) + '</button>' : '') +
+          (b.lessonPlanId ? '<button class="btn btn-sm btn-ghost" @click="openGuide(\'' + R.attr(b.lessonPlanId) + '\')">' + R.icon('book-open') + ' ' + (resumedLabel || (b.guide && b.guide.available ? 'Guide only' : 'Guide')) + '</button>' : '') +
           (mod && mod.id ? '<button class="btn btn-sm btn-ghost" @click="downloadExport(\'/learning-modules/' + R.attr(mod.id) + '/teacher-guide\')" title="Download module teacher guide (PDF)">' + R.icon('file-down') + ' Teacher guide</button>' : '') +
-          (b.status === 'scheduled' ? '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/curriculum/calendar/events/' + R.attr(b.id) + '/start\',{},{successMessage:\'Block started — enjoy teaching.\'})">' + R.icon('play') + ' ' + (state === 'missed' ? 'Start late' : state === 'now' ? 'Start now' : 'Start') + '</button>' : '') +
+          (b.status === 'scheduled' ? '<button class="btn btn-sm btn-secondary" @click="act(\'POST\',\'/curriculum/calendar/events/' + R.attr(b.id) + '/start\',{},{successMessage:\'Block started — enjoy teaching.\'})">' + R.icon('play') + ' ' + (state === 'missed' ? 'Start late' : state === 'now' ? 'Start now' : 'Start') + '</button>' : '') +
           (b.status === 'in_progress' ? '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'completeBlock\',\'' + R.attr(b.id) + '\')">' + R.icon('check-circle') + ' ' + (state === 'overdue' ? 'Wrap up' : 'Complete') + '</button>' : '') +
           (b.status === 'completed' ? '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'completeBlock\',\'' + R.attr(b.id) + '\')" title="Edit participation">' + R.icon('edit-2') + ' Participation</button>' : '') +
         '</div></div>';

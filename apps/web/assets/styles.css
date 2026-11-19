@@ -3417,3 +3417,30 @@ a:focus-visible, input:focus-visible, select:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .today-jump-link, .today-collapse-btn svg, .suggest-row { transition: none; }
 }
+
+/* ---- Full lesson workspace (guide + teaching toolkit) -------------------- */
+.modal.modal-wide.guide-modal { width: min(1120px, 100%); }
+.lesson-toolkit-label { font-size: .82rem; }
+.lesson-toolkit {
+  margin: 6px 0 16px; padding: 14px; border-radius: 14px;
+  background: var(--surface-glass-strong); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border-subtle); box-shadow: var(--glass-shadow);
+}
+.lesson-toolkit-head { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 12px; }
+.lesson-toolkit-head strong { font-size: 1rem; }
+.lesson-toolkit-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.lesson-toolkit-card { padding: 12px; border-radius: 12px; background: var(--surface-1); border: 1px solid var(--border-subtle); }
+.lesson-toolkit-card h5 { display: flex; gap: 7px; align-items: center; margin: 0 0 8px; font-size: .82rem; font-weight: 750; }
+.lesson-toolkit-card h5 svg { width: 16px; height: 16px; color: var(--reel-green-700); }
+.lesson-toolkit-card h5 .muted { margin-left: auto; font-weight: 500; }
+.lesson-objective { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 6px; font-size: .84rem; }
+.lesson-objective .badge { flex: 0 0 auto; }
+.lesson-material { display: flex; gap: 8px; align-items: center; padding: 3px 0; font-size: .86rem; cursor: pointer; }
+.lesson-material span.is-done { text-decoration: line-through; opacity: .6; }
+@media (max-width: 760px) {
+  .lesson-toolkit-grid { grid-template-columns: 1fr; }
+  .lesson-toolkit-head .btn-group { width: 100%; }
+  .lesson-toolkit-head .btn { flex: 1 1 auto; justify-content: center; min-height: 44px; }
+  .lesson-toolkit-label { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .lesson-toolkit { box-shadow: none; } }

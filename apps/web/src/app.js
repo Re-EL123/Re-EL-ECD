@@ -1034,7 +1034,8 @@
           if (!block) return;
           Reel.feedback.swipe(card, { threshold: 90, onRight: () => {
             const actions = [];
-            if (block.lessonPlanId) actions.push({ label: 'Teach / Guide', icon: 'book-open', run: () => this.openGuide(block.lessonPlanId) });
+            actions.push({ label: 'Teach full lesson', icon: 'presentation', run: () => this.openLesson(block.id) });
+            if (block.lessonPlanId) actions.push({ label: 'Guide only', icon: 'book-open', run: () => this.openGuide(block.lessonPlanId) });
             if (block.status === 'scheduled') actions.push({ label: 'Start block', icon: 'play', run: () => this.act('POST', '/curriculum/calendar/events/' + id + '/start', {}, { successMessage: 'Block started — enjoy teaching.' }) });
             if (block.status === 'in_progress') actions.push({ label: 'Complete block', icon: 'check-circle', run: () => this.openNamedModal('completeBlock', id) });
             actions.push({ label: 'Capture a moment', icon: 'camera', run: () => this.openNamedModal('blockObserve', id) });
@@ -2891,6 +2892,8 @@
       },
 
       async openGuide(planId) {        try {
+        const pendingBlock = this._lessonBlock || null;
+        this._lessonBlock = null;
           let payload;
           try {
             payload = await Reel.api('GET', '/curriculum/lesson-plans/' + encodeURIComponent(planId) + '/guide');
@@ -2918,6 +2921,9 @@
             theme: (data.plan && data.plan.theme) || '', moduleTitle: (data.module && data.module.title) || '',
             steps, index: clampedPosition, downloaded,
             isOfficial: Boolean(data.plan && data.plan.isOfficial),
+            block: pendingBlock,
+            toolkit: Boolean(pendingBlock),
+            toolkitOpen: Boolean(pendingBlock),
             canEdit: !Boolean(data.plan && data.plan.isOfficial) && this.has('curriculum.create.daycare'),
             session: null,
             roster: null,
@@ -3107,6 +3113,88 @@
         const step = this.guide.steps[this.guide.index];
         if (step && step.narration_url) this.guidePlayNarration(step);
         else this.guideStopNarration();
+      },
+
+      /* ---- Full lesson workspace ------------------------------------------ */
+
+      /**
+       * Open a scheduled activity in the immersive lesson workspace: the full
+       * step-by-step guide plus a teaching toolkit (objectives, materials,
+       * safety, participation, moments and the whiteboard) beside it. Works
+       * even for activities that have no lesson plan linked.
+       */
+      async openLesson(blockId) {
+        const block = (((this.page || {}).today || {}).timeline || []).find((b) => b.id === blockId) || null;
+        if (!block) { this.toast('This activity is no longer available.', 'warn'); return; }
+        this._lessonBlock = block;
+        this._lessonMaterials = new Set();
+        if (block.lessonPlanId) {
+          await this.openGuide(block.lessonPlanId);
+          return;
+        }
+        // No plan linked: still give the teacher a usable workspace with the
+        // activity context and every in-flow action.
+        this.guide = {
+          planId: null, title: block.title || 'Lesson workspace',
+          theme: block.module && block.module.title ? block.module.title : '',
+          moduleTitle: (block.module && block.module.title) || '',
+          steps: [], index: 0, stepIndex: 0, downloaded: false, isOfficial: false,
+          canEdit: false, block: block, toolkit: true, toolkitOpen: true,
+          session: null, roster: null, answerLearner: {}, lastSessionId: null,
+          interactiveResults: {}, participantName: (this.session && this.session.user && this.session.user.displayName) || '',
+          answerByStep: {}, placementsByStep: {}, others: [], audioStep: null, resumed: false,
+          autoplay: false
+        };
+        this.nextTick(() => {
+          if (window.Reel && Reel.anim) Reel.anim.windowIn(document.querySelector('.guide-backdrop .guide-modal'), { duration: 420 });
+          this.renderIconsNow();
+        });
+      },
+
+      lessonObjectives() {
+        const block = this.guide && this.guide.block;
+        return (block && block.plan && block.plan.objectives) || [];
+      },
+
+      lessonMaterials() {
+        const block = this.guide && this.guide.block;
+        if (!block) return [];
+        const source = String((block.activity && block.activity.materials) || '');
+        return source.split(/\n|,|•|·/).map((s) => s.trim()).filter(Boolean);
+      },
+
+      lessonToggleMaterial(item) {
+        const set = this._lessonMaterials || (this._lessonMaterials = new Set());
+        if (set.has(item)) set.delete(item); else set.add(item);
+      },
+
+      lessonMaterialDone(item) {
+        return Boolean((this._lessonMaterials || new Set()).has(item));
+      },
+
+      lessonCapture(learnerId) {
+        const block = this.guide && this.guide.block;
+        if (!block) return;
+        if (learnerId) this.openNamedModal('blockObserveFor', block.id + ':' + learnerId);
+        else this.openNamedModal('blockObserve', block.id);
+      },
+
+      lessonParticipation() {
+        const block = this.guide && this.guide.block;
+        if (block) this.openNamedModal('completeBlock', block.id);
+      },
+
+      lessonWhiteboard() {
+        const block = this.guide && this.guide.block;
+        if (!block) return;
+        this.closeGuide();
+        this.openWhiteboardForStep({ id: 'block-' + block.id, title: block.title });
+      },
+
+      lessonTeacherGuide() {
+        const block = this.guide && this.guide.block;
+        if (block && block.module && block.module.id) this.downloadExport('/learning-modules/' + block.module.id + '/teacher-guide');
+        else this.toast('No teacher guide is linked to this activity.', 'info');
       },
 
       /* ---- Swipe left / right between steps (phones & tablets) ---- */

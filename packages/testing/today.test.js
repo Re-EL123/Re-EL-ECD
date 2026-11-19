@@ -72,6 +72,7 @@ test('a sticky jump rail navigates the long page', () => {
 
 test('sections are ordered by time of day and can be folded away', () => {
   assert.ok(view.includes('phaseOrder(tod.phase)'), 'phase-based ordering');
+  assert.ok(view.includes("['hero', 'timeline', 'upNext'"), 'today activities lead the page');
   assert.ok(view.includes("phase === 'dawn' || phase === 'morning'"), 'morning order');
   assert.ok(view.includes("phase === 'dusk' || phase === 'night'"), 'evening order');
   assert.ok(view.includes('collapsible('), 'collapsible wrapper');
@@ -131,4 +132,18 @@ test('accessibility fixes and the day print pack are present', () => {
 
 test('the API writes grammatical alert copy', () => {
   assert.match(organisation, /application\$\{applications\.total === 1 \? '' : 's'\} await\$\{applications\.total === 1 \? 's' : ''\} review/);
+});
+
+test('today activities launch the full lesson workspace', () => {
+  assert.ok(view.includes('openLesson('), 'cards launch the lesson workspace');
+  assert.ok(view.includes('Teach full lesson'), 'primary card action is teaching');
+  assert.ok(view.includes('Open lesson workspace'), 'up-next launches the workspace');
+  assert.ok(app.includes('async openLesson(blockId)'), 'handler exists');
+  assert.ok(app.includes('_lessonBlock'), 'block is passed into the guide');
+  assert.ok(app.includes('toolkitOpen: Boolean(pendingBlock)'), 'toolkit opens with the lesson');
+  assert.ok(app.includes('lessonObjectives()') && app.includes('lessonMaterials()'));
+  assert.ok(app.includes('lessonCapture(') && app.includes('lessonParticipation()') && app.includes('lessonWhiteboard()'));
+  const html = read('apps/web/index.html');
+  assert.ok(html.includes('lesson-toolkit'), 'toolkit markup exists');
+  assert.match(css, /\.lesson-toolkit-grid \{ display: grid; grid-template-columns: repeat\(2/, 'toolkit grid');
 });
