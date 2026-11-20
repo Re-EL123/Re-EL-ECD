@@ -976,6 +976,7 @@
           '<div class="wb-history-list"><span class="muted small">Loading…</span></div>' +
         '</section>' +
       '</div></aside>';
+      html += '<button type="button" class="wb-dock-reopen" id="wb-dock-reopen" hidden>' + R.icon('panel-right-open') + ' Controls</button>';
 
       // Canvas sits beside the dock, never underneath it.
       html += '<div class="wb-canvas-wrap" id="wb-canvas-wrap">' +
@@ -1013,6 +1014,8 @@
       const dock = document.getElementById('wb-dock');
       if (!dock) return;
       dock.classList.remove('is-collapsed');
+      const reopen = document.getElementById('wb-dock-reopen');
+      if (reopen) reopen.hidden = true;
       if (shellEl) shellEl.classList.remove('wb-dock-collapsed');
       document.querySelectorAll('[data-dock-panel]').forEach((panel) => {
         panel.hidden = panel.getAttribute('data-dock-panel') !== tab;
@@ -1037,9 +1040,13 @@
       }
       if (dock) dock.classList.add('is-collapsed');
       if (shellEl) shellEl.classList.add('wb-dock-collapsed');
+      const reopen = document.getElementById('wb-dock-reopen');
+      if (reopen) reopen.hidden = false;
       dockCollapse.setAttribute('aria-label', 'Show panel');
       dockCollapse.title = 'Show panel';
     });
+    const reopenBtn = document.getElementById('wb-dock-reopen');
+    if (reopenBtn) reopenBtn.addEventListener('click', () => openDock('style'));
     const statusEl = document.getElementById('wb-status');
     const verEl = document.getElementById('wb-version');
     let version = Number(board.version || 1);

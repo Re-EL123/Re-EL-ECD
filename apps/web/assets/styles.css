@@ -3640,3 +3640,12 @@ body.wb-teaching .content { padding-bottom: 0 !important; }
   .wb-dock { width: min(300px, 86vw); top: 100px; box-shadow: var(--shadow-lg); }
   .wb-teach-shell.wb-dock-collapsed .wb-canvas-wrap { right: 0; }
 }
+.wb-dock-reopen {
+  position: absolute; z-index: 31; top: 112px; right: 0; display: inline-flex; gap: 6px; align-items: center;
+  padding: 8px 12px; border: 1px solid var(--border-strong); border-right: 0;
+  border-radius: 12px 0 0 12px; background: var(--surface-glass-strong);
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  color: var(--text); font-size: .78rem; font-weight: 700; cursor: pointer; box-shadow: var(--shadow-md);
+}
+.wb-dock-reopen[hidden] { display: none !important; }
+.wb-dock-reopen svg { width: 15px; height: 15px; }
