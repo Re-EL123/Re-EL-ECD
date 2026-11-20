@@ -49,7 +49,7 @@ test('the tool strip is a single scrollable row', () => {
 });
 
 test('layers panel supports select, hide, lock, reorder and grouping', () => {
-  assert.match(view, /id="wb-layers"/);
+  assert.match(view, /data-dock-panel="layers"/);
   assert.match(view, /wb-layer-row/);
   assert.match(view, /data-layer-hide/);
   assert.match(view, /data-layer-lock/);
@@ -99,4 +99,24 @@ test('read-only mode is explicit', () => {
   assert.match(view, /View only — you can look around but cannot edit/);
   assert.match(css, /\.wb-readonly \.wb-tool/);
   assert.match(view, /engine\.setReadOnly\(!canEdit\)/);
+});
+
+test('controls live in a labelled dock instead of floating over the canvas', () => {
+  assert.match(view, /class="wb-dock" id="wb-dock"/);
+  assert.match(view, /data-dock-tab="style"/);
+  assert.match(view, /data-dock-tab="layers"/);
+  assert.match(view, /data-dock-tab="history"/);
+  assert.match(view, /id="wb-dock-collapse"/);
+  assert.match(view, /openDock\(tab\)/);
+  assert.match(view, /Sets the colour and thickness for new marks/);
+  assert.match(view, /Click a row to select it\. Drag to change what sits on top/);
+  assert.match(view, /Versions save automatically as you work/);
+  assert.match(view, /Overview · click to jump/);
+  assert.match(view, /Space \+ drag to pan/);
+  assert.match(css, /\.wb-canvas-wrap \{ right: 288px; \}/);
+  assert.match(css, /\.wb-teach-shell\.wb-dock-collapsed \.wb-canvas-wrap \{ right: 0; \}/);
+  assert.match(css, /\.wb-dock-panel\[hidden\]/);
+  assert.match(css, /\.wb-actions-labelled \.btn/);
+  assert.match(view, /aria-label="Undo"/);
+  assert.match(view, /aria-label="Redo"/);
 });

@@ -3581,3 +3581,62 @@ body.wb-teaching { overflow: hidden; }
 body.wb-teaching .main { overflow: hidden; padding-bottom: 0 !important; }
 body.wb-teaching .content { padding-bottom: 0 !important; }
 .wb-tool-strip .wb-tool-group { flex-direction: row; flex-wrap: nowrap; }
+
+/* ---- Whiteboard side dock: controls beside the canvas, never over it ------ */
+.wb-canvas-wrap { right: 288px; }
+.wb-teach-shell.wb-dock-collapsed .wb-canvas-wrap { right: 0; }
+.wb-dock {
+  position: absolute; top: 100px; right: 0; bottom: 0; z-index: 30; width: 288px;
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--surface-glass-strong); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  border-left: 1px solid var(--border-subtle); box-shadow: -10px 0 30px -24px rgba(0,0,0,.5);
+}
+.wb-dock.is-collapsed { display: none; }
+.wb-dock-tabs { display: flex; gap: 2px; align-items: center; padding: 6px; border-bottom: 1px solid var(--border-subtle); }
+.wb-dock-tab {
+  flex: 1 1 auto; display: inline-flex; gap: 5px; align-items: center; justify-content: center;
+  min-height: 34px; padding: 5px 6px; border: 0; border-radius: 9px; background: transparent;
+  color: var(--text); font-size: .77rem; font-weight: 700; cursor: pointer;
+}
+.wb-dock-tab svg { width: 15px; height: 15px; }
+.wb-dock-tab:hover { background: var(--surface-3); }
+.wb-dock-tab.active { background: var(--reel-green-700); color: #fff; }
+.wb-dock-tab:focus-visible, .wb-dock-collapse:focus-visible { outline: 3px solid var(--reel-green-600); outline-offset: 2px; }
+.wb-dock-collapse {
+  flex: 0 0 auto; width: 30px; height: 30px; display: grid; place-items: center;
+  border: 0; border-radius: 8px; background: transparent; color: var(--text-muted); cursor: pointer;
+}
+.wb-dock-collapse svg { width: 16px; height: 16px; }
+.wb-dock-body { flex: 1 1 auto; overflow-y: auto; padding: 12px; }
+.wb-dock-panel[hidden], .wb-object-fields[hidden], #wb-inspector-object[hidden] { display: none !important; }
+.wb-dock-intro { display: flex; gap: 9px; align-items: flex-start; margin-bottom: 12px; }
+.wb-dock-intro > svg { flex: 0 0 auto; width: 18px; height: 18px; color: var(--reel-green-700); margin-top: 2px; }
+.wb-dock-intro strong { display: block; font-size: .86rem; }
+.wb-dock-intro span { display: block; margin-top: 3px; font-size: .74rem; line-height: 1.45; color: var(--text-muted); }
+.wb-field-label { margin: 10px 0 5px; font-size: .67rem; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); }
+.wb-dock-divider { height: 1px; background: var(--border-subtle); margin: 12px 0; }
+.wb-actions-labelled .btn { justify-content: flex-start; gap: 6px; flex: 1 1 44%; }
+.wb-actions-labelled .btn svg { width: 15px; height: 15px; }
+.wb-wide-btn { width: 100%; justify-content: center; margin-bottom: 8px; }
+.wb-dock .wb-layer-list { margin: 0; max-height: none; }
+.wb-dock .wb-layer-row { padding: 6px 8px; }
+.wb-dock .wb-history-list { display: flex; flex-direction: column; gap: 6px; }
+.wb-dock .wb-history-row { grid-template-columns: 64px 1fr auto; padding: 6px; }
+.wb-dock .wb-history-thumb { width: 64px; height: 42px; }
+
+.wb-minimap-wrap { position: absolute; right: 12px; bottom: 12px; z-index: 6; text-align: center; }
+.wb-minimap-wrap span { display: block; margin-bottom: 3px; font-size: .68rem; color: var(--text-muted); }
+.wb-minimap-wrap .wb-minimap { display: block; border-radius: 10px; border: 1px solid var(--border-strong); box-shadow: var(--shadow-md); cursor: pointer; background: var(--surface-1); }
+.wb-hint { display: inline-flex; gap: 6px; align-items: center; }
+.wb-hint svg { width: 13px; height: 13px; }
+.wb-presence { right: 12px; top: 12px; }
+
+@media (max-width: 1100px) {
+  .wb-canvas-wrap { right: 256px; }
+  .wb-dock { width: 256px; }
+}
+@media (max-width: 820px) {
+  .wb-canvas-wrap { right: 0; }
+  .wb-dock { width: min(300px, 86vw); top: 100px; box-shadow: var(--shadow-lg); }
+  .wb-teach-shell.wb-dock-collapsed .wb-canvas-wrap { right: 0; }
+}
