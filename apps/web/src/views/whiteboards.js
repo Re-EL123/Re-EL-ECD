@@ -90,7 +90,7 @@
   function safeImageSrc(value) {
     const src = String(value || '').trim();
     if (!src || src.length > 1000) return null;
-    if (/^https?:\/\//i.test(src) || /^\/api\/v1\/media\/object\?key=org\/[0-9a-f-]{36}\//i.test(src)) return src;
+    if (/^https?:\/\//i.test(src) || /^\/api\/v1\/media\/object\?key=org(?:%2F|\/)[0-9a-f-]{36}(?:%2F|\/)/i.test(src)) return src;
     return null;
   }
 

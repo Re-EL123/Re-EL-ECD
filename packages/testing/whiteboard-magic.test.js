@@ -63,5 +63,7 @@ test('whiteboard image sources accept uploaded media proxy URLs', () => {
   assert.match(api, /safeImageSrc\(raw\.src\)/);
   assert.doesNotMatch(api, /if \(!\/\^https\?:\\\/\\\/\/\.test\(String\(raw\.src/);
   assert.match(view, /function safeImageSrc\(value\)/);
+  assert.match(view, /org\(\?:%2F\|\\\/\)\[0-9a-f-\]\{36\}\(\?:%2F\|\\\/\)\/i/);
+  assert.match(api, /org\(\?:%2F\|\\\/\)\[0-9a-f-\]\{36\}\(\?:%2F\|\\\/\)\/i/);
   assert.match(view, /addImage\(url, \{ at, w, h \}\)/);
 });

@@ -26,7 +26,7 @@ const HEX = /^#[0-9a-f]{6}$/i;
 const FILL_HEX = /^#[0-9a-f]{6}$/i;
 // Uploaded images are served through the authenticated media proxy, whose URL
 // is site-relative. Accept those alongside ordinary public http(s) URLs.
-const MEDIA_PROXY = /^\/api\/v1\/media\/object\?key=org\/[0-9a-f-]{36}\//i;
+const MEDIA_PROXY = /^\/api\/v1\/media\/object\?key=org(?:%2F|\/)[0-9a-f-]{36}(?:%2F|\/)/i;
 function safeImageSrc(value) {
   const src = String(value || '').trim();
   if (!src || src.length > 1000) return null;
