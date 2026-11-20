@@ -106,7 +106,7 @@ test('controls live in a labelled dock instead of floating over the canvas', () 
   assert.match(view, /data-dock-tab="layers"/);
   assert.match(view, /data-dock-tab="history"/);
   assert.match(view, /id="wb-dock-collapse"/);
-  assert.match(view, /openDock\(tab\)/);
+  assert.match(view, /openDock\(tab, persist\)/);
   assert.match(view, /Style stays with the tools and is always visible/);
   assert.match(view, /Click a row to select it\. Drag to change what sits on top/);
   assert.match(view, /Versions save automatically as you work/);
@@ -127,4 +127,53 @@ test('changing the selection never resets the board style controls', () => {
   assert.match(view, /objectFields\.hidden = selected\.length === 0/);
   assert.match(css, /\.wb-selection-bar\[hidden\] \{ display: none !important; \}/);
   assert.match(css, /\.wb-style-bar \{[\s\S]{0,220}overflow-x: auto/);
+});
+
+test('the Objects list uses content labels, search, groups and clear states', () => {
+  assert.match(view, /function describeObject\(o\)/);
+  assert.match(view, /label: first \|\| 'Sticky note'/);
+  assert.match(view, /label: 'Freehand stroke'/);
+  assert.match(view, /id="wb-layer-search"/);
+  assert.match(view, /id="wb-layer-filter"/);
+  assert.match(view, /id="wb-layer-count"/);
+  assert.match(view, /class="wb-layer-grip"/);
+  assert.match(view, /data-group-toggle/);
+  assert.match(view, /is-selected/);
+  assert.match(view, /is-hidden/);
+  assert.match(view, /data-layer-menu/);
+  assert.match(view, /Bring to front/);
+  assert.match(view, /Duplicate/);
+  assert.match(css, /\.wb-layer-row\.is-selected \{ background: var\(--reel-green-100\); box-shadow: inset 3px 0 0 var\(--reel-green-700\); \}/);
+  assert.match(css, /\.wb-layer-row\.is-hidden \{ opacity: \.5; \}/);
+  assert.match(css, /\.wb-dock \.wb-layer-list \{[\s\S]{0,140}overflow-y: auto/);
+});
+
+test('selected-object properties live in the dock, not the style bar', () => {
+  assert.match(view, /class="wb-properties"/);
+  assert.match(view, /id="wb-properties-empty"/);
+  assert.match(view, /id="wb-sel-summary"/);
+  assert.match(view, /describeObject\(first\)\.label/);
+  const styleStart = view.indexOf('class="wb-style-bar"');
+  const styleEnd = view.indexOf("// Reference dock", styleStart);
+  assert.ok(view.slice(styleStart, styleEnd).indexOf('wb-object-fields') === -1, 'style bar has no object controls');
+  assert.match(css, /\.wb-selection-bar \{ display: block; \}/);
+});
+
+test('primary tools are pinned and secondary tools live in a More flyout', () => {
+  assert.match(view, /const PRIMARY_TOOLS = \[/);
+  assert.match(view, /const SECONDARY_TOOLS = \[/);
+  assert.match(view, /id="wb-more-menu"/);
+  assert.match(view, /class="wb-tool-group-name"/);
+  assert.ok(!view.includes('wb-group-label'), 'group captions use a distinct class');
+  assert.match(css, /@media \(pointer: coarse\)/);
+  assert.match(css, /\.wb-more-menu\[hidden\] \{ display: none !important; \}/);
+});
+
+test('undo/redo state and the dock layout are remembered', () => {
+  assert.match(view, /function updateHistoryState\(\)/);
+  assert.match(view, /u\.disabled = !engine \|\| !engine\.canUndo\(\)/);
+  assert.match(view, /r\.disabled = !engine \|\| !engine\.canRedo\(\)/);
+  assert.match(view, /const dockKey = 'reel-wb-dock-' \+ board\.id/);
+  assert.match(view, /localStorage\.setItem\(dockKey/);
+  assert.match(view, /localStorage\.getItem\(dockKey\)/);
 });
