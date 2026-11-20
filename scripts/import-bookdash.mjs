@@ -24,7 +24,7 @@ const EMAIL = process.env.REEL_IMPORT_EMAIL || 'platform@re-el-ecd.local';
 const PASSWORD = process.env.REEL_IMPORT_PASSWORD || 'Re-EL-Demo-2026!';
 
 const LANG = {
-  en_english: 'English', 'en-english': 'English', e_book_en_english: 'English',
+  en_english: 'English', 'en-english': 'English', e_book_en_english: 'English', 'e-book_en_english': 'English',
   af_afrikaans: 'Afrikaans', 'af-afrikaans': 'Afrikaans',
   nr_ndebele: 'isiNdebele', nr_isindebele: 'isiNdebele',
   nso_sepedi: 'Sepedi', ss_siswati: 'SiSwati',
@@ -195,7 +195,7 @@ async function main() {
       uploaded.push({ language: LANG[edition.lang] || edition.lang, pdfUrl: pdf, coverUrl: cover });
       console.log('ok');
     }
-    uploaded.sort((a, b) => a.language.localeCompare(b.language));
+    uploaded.sort((a, b) => (/^english$/i.test(a.language) ? -1 : /^english$/i.test(b.language) ? 1 : a.language.localeCompare(b.language)));
     books.push({
       id: 'bookdash-' + slug,
       title: meta.title,

@@ -8,8 +8,16 @@
 
   const LOGO = 'https://bookdash.org/wp-content/themes/bd/assets/images/logo-bookdash.svg';
 
+  function sortEditions(list) {
+    return (list || []).slice().sort((a, b) => {
+      const la = String((a && a.language) || ''), lb = String((b && b.language) || '');
+      const ea = /^english$/i.test(la), eb = /^english$/i.test(lb);
+      if (ea !== eb) return ea ? -1 : 1;
+      return la.localeCompare(lb);
+    });
+  }
   function editions(book) {
-    if (Array.isArray(book.editions) && book.editions.length) return book.editions;
+    if (Array.isArray(book.editions) && book.editions.length) return sortEditions(book.editions);
     return book.pdfUrl ? [{ language: book.language || 'English', pdfUrl: book.pdfUrl, coverUrl: book.coverUrl }] : [];
   }
   function coverFor(book) {
@@ -25,12 +33,12 @@
   function allLanguages(books) {
     const set = new Set();
     books.forEach((b) => editions(b).forEach((e) => set.add(e.language || 'English')));
-    return Array.from(set).sort();
+    return Array.from(set).sort((a, b) => (/^english$/i.test(a) ? -1 : /^english$/i.test(b) ? 1 : String(a).localeCompare(String(b))));
   }
   function allThemes(books) {
     const set = new Set();
     books.forEach((b) => String(b.theme || '').split(',').map((t) => t.trim()).filter(Boolean).forEach((t) => set.add(t)));
-    return Array.from(set).sort();
+    return Array.from(set).sort((a, b) => (/^english$/i.test(a) ? -1 : /^english$/i.test(b) ? 1 : String(a).localeCompare(String(b))));
   }
   function media(url) {
     const safe = R.resolveMediaUrl(url);

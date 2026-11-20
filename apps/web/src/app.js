@@ -1436,7 +1436,8 @@
         const book = books[Number(index)];
         if (!book) return;
         const editions = (Array.isArray(book.editions) && book.editions.length)
-          ? book.editions : [{ language: book.language || 'English', pdfUrl: book.pdfUrl, coverUrl: book.coverUrl }];
+          ? book.editions.slice().sort((a, b) => (/^english$/i.test(a.language) ? -1 : /^english$/i.test(b.language) ? 1 : String(a.language).localeCompare(String(b.language))))
+          : [{ language: book.language || 'English', pdfUrl: book.pdfUrl, coverUrl: book.coverUrl }];
         if (!editions.length) return;
         this.closeReader();
         const reader = { book, editions, edition: 0, page: 1, cleanup: [] };
@@ -1530,7 +1531,8 @@
         const book = books[Number(index)];
         if (!book) return;
         const editions = (Array.isArray(book.editions) && book.editions.length)
-          ? book.editions : [{ language: book.language || 'English', pdfUrl: book.pdfUrl, coverUrl: book.coverUrl }];
+          ? book.editions.slice().sort((a, b) => (/^english$/i.test(a.language) ? -1 : /^english$/i.test(b.language) ? 1 : String(a.language).localeCompare(String(b.language))))
+          : [{ language: book.language || 'English', pdfUrl: book.pdfUrl, coverUrl: book.coverUrl }];
         const cover = book.coverUrl || (editions.find((e) => e.coverUrl) || {}).coverUrl || '';
         const bid = Reel.attr(book.id);
         const canManage = Boolean(this.page && this.page.canManage);

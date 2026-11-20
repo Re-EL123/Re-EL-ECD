@@ -1,5 +1,5 @@
 'use strict';
-/** Book Dash CC BY 4.0 defaults, imported 2026-11-20T10:44:21.982Z. */
+/** Book Dash CC BY 4.0 defaults, imported 2026-11-20T11:07:45.103Z. */
 (function () {
   const R = window.Reel || (window.Reel = {});
   R.bookDefaults = [
@@ -17,14 +17,14 @@
     "kind": "bookdash",
     "editions": [
       {
-        "language": "Afrikaans",
-        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwop6ji6-a93c123c62d5bd1711017eeb.pdf",
-        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwop6reu-60e742bdfbe4b3be7e293309.jpg"
-      },
-      {
         "language": "English",
         "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwop6vhs-63a6ef57a1b5634f77b677ab.pdf",
         "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwop6x9t-ea0c177a6a1ed954ee85b95a.jpg"
+      },
+      {
+        "language": "Afrikaans",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwop6ji6-a93c123c62d5bd1711017eeb.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwop6reu-60e742bdfbe4b3be7e293309.jpg"
       },
       {
         "language": "isiNdebele",
@@ -92,14 +92,14 @@
     "kind": "bookdash",
     "editions": [
       {
-        "language": "Afrikaans",
-        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwop963o-e649e37e374b084a4a8a9776.pdf",
-        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwop98l2-d6f0a582dc2b2237fb69b0c2.jpg"
-      },
-      {
         "language": "English",
         "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwop9a46-a428a730ecd4ab1cc70f01d1.pdf",
         "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwop9c3g-563a033ef6525ab13e99d3ab.jpg"
+      },
+      {
+        "language": "Afrikaans",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwop963o-e649e37e374b084a4a8a9776.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwop98l2-d6f0a582dc2b2237fb69b0c2.jpg"
       },
       {
         "language": "isiXhosa",
@@ -127,14 +127,14 @@
     "kind": "bookdash",
     "editions": [
       {
-        "language": "Afrikaans",
-        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopsebx-54a73f2c0b0f7bf8f9c3e861.pdf",
-        "coverUrl": ""
-      },
-      {
         "language": "English",
         "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwop9k8f-8f156e7d2fdeb51d77ea2572.pdf",
         "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwop9lnd-7b2f683e03e56f1e1d45ca4d.jpg"
+      },
+      {
+        "language": "Afrikaans",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoposlc-0b18019c8712a009040233e9.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovfslf-a454bb080f73039d098c0aee.jpg"
       },
       {
         "language": "isiNdebele",
@@ -197,14 +197,14 @@
     "kind": "bookdash",
     "editions": [
       {
-        "language": "Afrikaans",
-        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopaytn-9aaa9447a83af6a3802715c4.pdf",
-        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopb0rk-fcda302635e7ab3abef613e9.jpg"
-      },
-      {
         "language": "English",
         "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopb2tq-91f372a591036bd6a5783964.pdf",
         "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopb484-ebb2e787f519bb4a59270123.jpg"
+      },
+      {
+        "language": "Afrikaans",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopaytn-9aaa9447a83af6a3802715c4.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopb0rk-fcda302635e7ab3abef613e9.jpg"
       },
       {
         "language": "isiNdebele",
@@ -250,176 +250,6 @@
         "language": "Xitsonga",
         "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopbrya-8e9a92cd2fdcedd0762c47d8.pdf",
         "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopbtm4-3e01890af45711e3f6cf8a5d.jpg"
-      }
-    ]
-  },
-  {
-    "id": "bookdash-amo-and-the-missing-mielies",
-    "title": "Amo and the missing mielies",
-    "description": "Amo loves her mielie garden. One day the mielies start to disappear.",
-    "theme": "Animals, Let’s learn!, Nature and our planet",
-    "author": "Makgethwa Phala",
-    "illustrator": "Neil Badenhorst",
-    "designer": "Luke Mateman",
-    "editor": "David Mann",
-    "sourceUrl": "https://bookdash.org/books/amo-and-the-missing-mielies/",
-    "licence": "CC BY 4.0",
-    "kind": "bookdash",
-    "editions": [
-      {
-        "language": "English",
-        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopc5o4-d4dd99dbd801bfc97c3d5aa5.pdf",
-        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopc7zd-4b2a1ecb76f3f05db29c070b.jpg"
-      }
-    ]
-  },
-  {
-    "id": "bookdash-can-we-eat-a-rainbow",
-    "title": "Can we eat a rainbow?",
-    "description": "Pabi and Boo want to eat a rainbow. Can they find one?",
-    "theme": "Animals, Food and eating, Let’s learn!",
-    "author": "Marion Drew",
-    "illustrator": "Kelly Brown",
-    "designer": "Katlego Modubu",
-    "editor": "Ester Levinrad",
-    "sourceUrl": "https://bookdash.org/books/can-we-eat-a-rainbow/",
-    "licence": "CC BY 4.0",
-    "kind": "bookdash",
-    "editions": [
-      {
-        "language": "English",
-        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopcib8-6f48f60acaf251b6b5aca70a.pdf",
-        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopck3q-284410b707cbfbce51423f44.jpg"
-      }
-    ]
-  },
-  {
-    "id": "bookdash-ga-mohana-the-hill-of-wonders",
-    "title": "Ga-Mohana – The Hill of Wonders",
-    "description": "Luvo explores Ga-Mohana Hill and finds new creatures — and a surprise treasure.",
-    "theme": "Animals, Nature and our planet",
-    "author": "Pelonomi Itumeleng",
-    "illustrator": "Oratiloe Lebethe",
-    "designer": "Bronwyn Webb",
-    "editor": "David Mann",
-    "sourceUrl": "https://bookdash.org/books/ga-mohana-the-hill-of-wonders/",
-    "licence": "CC BY 4.0",
-    "kind": "bookdash",
-    "editions": [
-      {
-        "language": "English",
-        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopclnp-1326ca8c865e40e0e26ec981.pdf",
-        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopcngb-be3d1c047c71da8a3e0287f9.jpg"
-      },
-      {
-        "language": "Setswana",
-        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopcp4h-7bf33e631e025296d30a07ae.pdf",
-        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopcrdi-9738849e5d3c6ef37b16e432.jpg"
-      }
-    ]
-  },
-  {
-    "id": "bookdash-i-can-do-it",
-    "title": "I can do it!",
-    "description": "Livhu is thankful for help, but sometimes she just wants to do things herself.",
-    "theme": "Emotions and life skills, Diversity and inclusivity",
-    "author": "Wandile Mathe",
-    "illustrator": "Elliot Taylor",
-    "designer": "Terri Lourens",
-    "editor": "Cherie Wright",
-    "sourceUrl": "https://bookdash.org/books/i-can-do-it/",
-    "licence": "CC BY 4.0",
-    "kind": "bookdash",
-    "editions": [
-      {
-        "language": "English",
-        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopct19-488daccd96a6b4dbbf7ddf35.pdf",
-        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopcwyv-862e68bcd3fd9339d83ca982.jpg"
-      }
-    ]
-  },
-  {
-    "id": "bookdash-khumos-big-trip",
-    "title": "Khumo’s Big Trip",
-    "description": "Khumo, Mum and Dad are driving to Kimberley. What will they discover?",
-    "theme": "Diversity and inclusivity, Adventure",
-    "author": "Mogale Sedibe",
-    "illustrator": "Musonda Kabwe",
-    "designer": "Tamsin Lotz",
-    "editor": "Ester Levinrad",
-    "sourceUrl": "https://bookdash.org/books/khumos-big-trip/",
-    "licence": "CC BY 4.0",
-    "kind": "bookdash",
-    "editions": [
-      {
-        "language": "English",
-        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopcygu-62271d14459ecf677cf578c0.pdf",
-        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopd1ok-a2d4b8dd5723a1b1d96cea80.jpg"
-      },
-      {
-        "language": "Setswana",
-        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopd3bv-23a9f05243ad6e7a8a2d9e3e.pdf",
-        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopd6rw-b1406e085e8191818034e552.jpg"
-      }
-    ]
-  },
-  {
-    "id": "bookdash-play-with-me",
-    "title": "Play with me",
-    "description": "All Jabu wants to do is play diketo. But everyone is busy.",
-    "theme": "Emotions and life skills, Family, friends and home, Let’s play!",
-    "author": "Sabina Mutangadura Seldon",
-    "illustrator": "Heleen Steyn van der Merwe",
-    "designer": "Jamie Calf",
-    "editor": "David Mann",
-    "sourceUrl": "https://bookdash.org/books/play-with-me/",
-    "licence": "CC BY 4.0",
-    "kind": "bookdash",
-    "editions": [
-      {
-        "language": "e-book_en_english",
-        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopd8ne-2dbb95b7e004fbce64807a6d.pdf",
-        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopdb65-c1a9868f82902ee1722c15b4.jpg"
-      }
-    ]
-  },
-  {
-    "id": "bookdash-who-ate-my-hat",
-    "title": "Who ate my hat?",
-    "description": "I love my hat. But who ate my hat?",
-    "theme": "Animals, Emotions and life skills, Food and eating",
-    "author": "Griffin Shea",
-    "illustrator": "El Marto",
-    "designer": "Thembelihle Radebe",
-    "editor": "Tiffany Mac Sherry",
-    "sourceUrl": "https://bookdash.org/books/who-ate-my-hat/",
-    "licence": "CC BY 4.0",
-    "kind": "bookdash",
-    "editions": [
-      {
-        "language": "English",
-        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopdeys-b2afe2157f2ca66835ef2d08.pdf",
-        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopdh01-08f687692e6cbd7d757cc5f7.jpg"
-      }
-    ]
-  },
-  {
-    "id": "bookdash-zuko-and-the-crying-tap",
-    "title": "Zuko and the crying tap",
-    "description": "Zuko hears a tap tap tap outside his window. What could it be?",
-    "theme": "Emotions and life skills, Nature and our planet",
-    "author": "Sewela Langeni",
-    "illustrator": "Linta Anish",
-    "designer": "Heath White",
-    "editor": "David Mann",
-    "sourceUrl": "https://bookdash.org/books/zuko-and-the-crying-tap/",
-    "licence": "CC BY 4.0",
-    "kind": "bookdash",
-    "editions": [
-      {
-        "language": "English",
-        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopdigy-acfa9f7a357724c797194d16.pdf",
-        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopdls7-108832e05e006df0fd4ac5f6.jpg"
       }
     ]
   },
@@ -512,14 +342,14 @@
     "kind": "bookdash",
     "editions": [
       {
-        "language": "Afrikaans",
-        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwouhcsi-b20dd349b840345abd5d9e5e.pdf",
-        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwouhew5-83502a0eb849726c2de75516.jpg"
-      },
-      {
         "language": "English",
         "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwouhg4y-d4d20ccac25c05b3105bc2ea.pdf",
         "coverUrl": ""
+      },
+      {
+        "language": "Afrikaans",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwouhcsi-b20dd349b840345abd5d9e5e.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwouhew5-83502a0eb849726c2de75516.jpg"
       },
       {
         "language": "isiNdebele",
@@ -570,6 +400,26 @@
         "language": "Tshivenḓa",
         "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwouijg6-5e236c8e2c2748b1b7cbc59c.pdf",
         "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwouiniz-951aac90c6ce7b309b442480.jpg"
+      }
+    ]
+  },
+  {
+    "id": "bookdash-amo-and-the-missing-mielies",
+    "title": "Amo and the missing mielies",
+    "description": "Amo loves her mielie garden. One day the mielies start to disappear.",
+    "theme": "Animals, Let’s learn!, Nature and our planet",
+    "author": "Makgethwa Phala",
+    "illustrator": "Neil Badenhorst",
+    "designer": "Luke Mateman",
+    "editor": "David Mann",
+    "sourceUrl": "https://bookdash.org/books/amo-and-the-missing-mielies/",
+    "licence": "CC BY 4.0",
+    "kind": "bookdash",
+    "editions": [
+      {
+        "language": "English",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopc5o4-d4dd99dbd801bfc97c3d5aa5.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopc7zd-4b2a1ecb76f3f05db29c070b.jpg"
       }
     ]
   },
@@ -662,14 +512,14 @@
     "kind": "bookdash",
     "editions": [
       {
-        "language": "Afrikaans",
-        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoujuia-46643b214ab9867ba140e503.pdf",
-        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoujvs1-5c1afdded525d1ac0f70f73f.jpg"
-      },
-      {
         "language": "English",
         "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoujx5x-b1b81087848965d90f2c1876.pdf",
         "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoujzc6-25cbfe2d4be1852a76aa985b.jpg"
+      },
+      {
+        "language": "Afrikaans",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoujuia-46643b214ab9867ba140e503.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoujvs1-5c1afdded525d1ac0f70f73f.jpg"
       },
       {
         "language": "isiZulu",
@@ -727,14 +577,14 @@
     "kind": "bookdash",
     "editions": [
       {
-        "language": "Afrikaans",
-        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoul7eo-2e75f73a111b95e99d6359f3.pdf",
-        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoula1z-0e2c540a93b9e9d0b19e4f3e.jpg"
-      },
-      {
         "language": "English",
         "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoulckf-47d26d80a986d84d89f2bf43.pdf",
         "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoulf6n-d57eb5fe5a742c9e90ddad79.jpg"
+      },
+      {
+        "language": "Afrikaans",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoul7eo-2e75f73a111b95e99d6359f3.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoula1z-0e2c540a93b9e9d0b19e4f3e.jpg"
       },
       {
         "language": "isiNdebele",
@@ -784,6 +634,26 @@
     ]
   },
   {
+    "id": "bookdash-can-we-eat-a-rainbow",
+    "title": "Can we eat a rainbow?",
+    "description": "Pabi and Boo want to eat a rainbow. Can they find one?",
+    "theme": "Animals, Food and eating, Let’s learn!",
+    "author": "Marion Drew",
+    "illustrator": "Kelly Brown",
+    "designer": "Katlego Modubu",
+    "editor": "Ester Levinrad",
+    "sourceUrl": "https://bookdash.org/books/can-we-eat-a-rainbow/",
+    "licence": "CC BY 4.0",
+    "kind": "bookdash",
+    "editions": [
+      {
+        "language": "English",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopcib8-6f48f60acaf251b6b5aca70a.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopck3q-284410b707cbfbce51423f44.jpg"
+      }
+    ]
+  },
+  {
     "id": "bookdash-circles",
     "title": "Circles",
     "description": "Mother Vulture shows Little Vulture the cycle of life on their first flight.",
@@ -797,14 +667,14 @@
     "kind": "bookdash",
     "editions": [
       {
-        "language": "Afrikaans",
-        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoumg45-63bc6b6ff0d6ce7cdca3eee2.pdf",
-        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoumidn-1e513c33b407cb796872cfcf.jpg"
-      },
-      {
         "language": "English",
         "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoumkgq-4a755d99db4d9eb8622f20b6.pdf",
         "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoummhr-d3ef3b3d088d131c007f166f.jpg"
+      },
+      {
+        "language": "Afrikaans",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoumg45-63bc6b6ff0d6ce7cdca3eee2.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoumidn-1e513c33b407cb796872cfcf.jpg"
       },
       {
         "language": "isiXhosa",
@@ -872,14 +742,19 @@
     "kind": "bookdash",
     "editions": [
       {
+        "language": "English",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwounjai-dd9a67da400dadc31b8e3d51.pdf",
+        "coverUrl": ""
+      },
+      {
         "language": "Afrikaans",
         "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwounfk5-586abfa6392a2f94d4ab9424.pdf",
         "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoungz5-0333bc84eaa3574f168cdbf8.jpg"
       },
       {
-        "language": "English",
-        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwounjai-dd9a67da400dadc31b8e3d51.pdf",
-        "coverUrl": ""
+        "language": "isiNdebele",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovfw8e-23bf348991c2a549fbf6ee4b.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovfyzk-e4d3c8044510e687e1bdb94a.jpg"
       },
       {
         "language": "isiXhosa",
@@ -902,9 +777,24 @@
         "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwounrn3-bcf66a4053d42d2119ae99ba.jpg"
       },
       {
+        "language": "Setswana",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovg0vt-9ac023673f1ddb5892779b55.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovg2al-d099237c7b46241e622bd366.jpg"
+      },
+      {
         "language": "ss-siswati",
         "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwounnfa-b628e4887c6a2f058ed6b6e3.pdf",
         "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwounouy-fde7a16ff7187907db2f07b8.jpg"
+      },
+      {
+        "language": "ts-xitsonga",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovg49r-7adff7faaf15eb379f852b49.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovg6pn-483bdc0faebc298b22eb1c9a.jpg"
+      },
+      {
+        "language": "Tshivenḓa",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovg8mh-64c34bda77c60843683e29af.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovgbc2-122e211baeab541951c93736.jpg"
       }
     ]
   },
@@ -922,14 +812,14 @@
     "kind": "bookdash",
     "editions": [
       {
-        "language": "Afrikaans",
-        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwounynu-d3f10c4a4f58e9007c22b474.pdf",
-        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwouo0zr-0a1adb01d528d664f8527773.jpg"
-      },
-      {
         "language": "English",
         "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwouo3oa-dedd149603f9ee3d1976b3b7.pdf",
         "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwouo651-7683150acdd1a1c8b4aa90bd.jpg"
+      },
+      {
+        "language": "Afrikaans",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwounynu-d3f10c4a4f58e9007c22b474.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwouo0zr-0a1adb01d528d664f8527773.jpg"
       },
       {
         "language": "isiNdebele",
@@ -955,6 +845,51 @@
         "language": "Sesotho",
         "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwouoeno-a38bac5ef200931ce96b978e.pdf",
         "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwouog1w-3d5b6593517e15de933b4dd3.jpg"
+      },
+      {
+        "language": "Setswana",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovgik6-06a20811e82d4986e34fd306.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovglca-0689a41df24bf2ad695824b3.jpg"
+      },
+      {
+        "language": "SiSwati",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovgdws-2dbc0bfd2874f1a3bcf8f810.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovgftp-47da00171364d084c9d4123d.jpg"
+      },
+      {
+        "language": "Tshivenḓa",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovgws7-d48395930f5191f82ea78c82.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovgzbl-15a3bd7d58182416b7b53698.jpg"
+      },
+      {
+        "language": "Xitsonga",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovgrsj-6ebdb9505c9c774d1a502b7c.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovgufa-88f3d2f3ffc126be4d05d1fa.jpg"
+      }
+    ]
+  },
+  {
+    "id": "bookdash-ga-mohana-the-hill-of-wonders",
+    "title": "Ga-Mohana – The Hill of Wonders",
+    "description": "Luvo explores Ga-Mohana Hill and finds new creatures — and a surprise treasure.",
+    "theme": "Animals, Nature and our planet",
+    "author": "Pelonomi Itumeleng",
+    "illustrator": "Oratiloe Lebethe",
+    "designer": "Bronwyn Webb",
+    "editor": "David Mann",
+    "sourceUrl": "https://bookdash.org/books/ga-mohana-the-hill-of-wonders/",
+    "licence": "CC BY 4.0",
+    "kind": "bookdash",
+    "editions": [
+      {
+        "language": "English",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopclnp-1326ca8c865e40e0e26ec981.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopcngb-be3d1c047c71da8a3e0287f9.jpg"
+      },
+      {
+        "language": "Setswana",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopcp4h-7bf33e631e025296d30a07ae.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopcrdi-9738849e5d3c6ef37b16e432.jpg"
       }
     ]
   },
@@ -972,6 +907,21 @@
     "kind": "bookdash",
     "editions": [
       {
+        "language": "English",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovh5n7-06a4d741ec0cc984d2337304.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovh7um-4bda50299f8ec7f70adf4596.jpg"
+      },
+      {
+        "language": "Afrikaans",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovh1ls-59dd27cd2a1779d2f8882cfb.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovh3o9-d7cbb36241ba0285ae7640b6.jpg"
+      },
+      {
+        "language": "isiNdebele",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovh99u-ee04da8d466c43dc3e591470.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovhbw1-4576bfdd146bb44c33e0aa8d.jpg"
+      },
+      {
         "language": "isiXhosa",
         "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoup41i-d6f25abb0bf7b659e6b284ed.pdf",
         "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoup6pm-fd54b010221a93e5a28ff9b0.jpg"
@@ -982,6 +932,11 @@
         "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoupb3g-9217e7695e8a44770646243a.jpg"
       },
       {
+        "language": "SiSwati",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovhd8d-2c330abad1492d5abd81bd02.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovhinv-0055786129626ac3e4ee6e97.jpg"
+      },
+      {
         "language": "Tshivenḓa",
         "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwouowwc-c5c42129658e1dc282ed6f54.pdf",
         "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoup2i0-2dc80e6e0d5ad65b70716c16.jpg"
@@ -990,6 +945,96 @@
         "language": "Xitsonga",
         "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwouonlj-23f0a861e02eea2a1adb3667.pdf",
         "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwouovkd-752c53a8946e7f4019adaab9.jpg"
+      }
+    ]
+  },
+  {
+    "id": "bookdash-how-do-you-sleep",
+    "title": "How Do You Sleep",
+    "description": "",
+    "theme": "",
+    "author": "",
+    "illustrator": "",
+    "designer": "",
+    "editor": "",
+    "sourceUrl": "https://bookdash.org/books/how-do-you-sleep/",
+    "licence": "CC BY 4.0",
+    "kind": "bookdash",
+    "editions": [
+      {
+        "language": "English",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovhoi5-b5d4a828ff9e5f9cbb80c360.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovhqwg-9f1efee7b828e11c1f3eedca.jpg"
+      },
+      {
+        "language": "Afrikaans",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovhkf9-d99dc13bfb6bf32369a2fee4.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovhn2j-676aa8be14cdde65678b48d5.jpg"
+      },
+      {
+        "language": "isiNdebele",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovhsyn-8942b7d11f47cffcd396674c.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovhz0q-2a9c33b64659904c04343727.jpg"
+      },
+      {
+        "language": "isiXhosa",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovj4f7-cabc449d2057257fdaa7825c.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovjb36-456c1c2f1dbe4bfb7a0b074d.jpg"
+      },
+      {
+        "language": "isiZulu",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovjd3x-43edfb696718656e3b48bce7.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovji4f-9625828448fd5e52c2012251.jpg"
+      },
+      {
+        "language": "Sepedi",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovi1bu-51231000d2a9ab39b7a643bb.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovi52z-64ed1946ec46bbb436e1e33b.jpg"
+      },
+      {
+        "language": "Setswana",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovifn1-235a06172f2bbc679381c37e.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovik8o-01ca5290a600364d75af6b18.jpg"
+      },
+      {
+        "language": "SiSwati",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovi770-1dd5f569e2e9af1c5a02ff5d.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoviaks-72e1aa57230119b10dc6a94d.jpg"
+      },
+      {
+        "language": "st_sesotho",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovic0i-d74edfdd24c4ee08a20a3b4e.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovie4r-359b0a1c4a95d01cbdb37d25.jpg"
+      },
+      {
+        "language": "Tshivenḓa",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoviwvy-90f6b0fbab932fc56cc4c11e.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovj1q1-b6a65948624f29eac25192ea.jpg"
+      },
+      {
+        "language": "Xitsonga",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwovinet-df5ed807765f05ad3b710521.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoviv06-f70cd9a4dcd6fbf6a3d2c379.jpg"
+      }
+    ]
+  },
+  {
+    "id": "bookdash-i-can-do-it",
+    "title": "I can do it!",
+    "description": "Livhu is thankful for help, but sometimes she just wants to do things herself.",
+    "theme": "Emotions and life skills, Diversity and inclusivity",
+    "author": "Wandile Mathe",
+    "illustrator": "Elliot Taylor",
+    "designer": "Terri Lourens",
+    "editor": "Cherie Wright",
+    "sourceUrl": "https://bookdash.org/books/i-can-do-it/",
+    "licence": "CC BY 4.0",
+    "kind": "bookdash",
+    "editions": [
+      {
+        "language": "English",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopct19-488daccd96a6b4dbbf7ddf35.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopcwyv-862e68bcd3fd9339d83ca982.jpg"
       }
     ]
   },
@@ -1007,14 +1052,14 @@
     "kind": "bookdash",
     "editions": [
       {
-        "language": "Afrikaans",
-        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoupceh-38f6d10233b50222667f405e.pdf",
-        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoupdwh-c95db53cba807c35e77d6b16.jpg"
-      },
-      {
         "language": "English",
         "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoupfrc-d5bef46107824ff132557a01.pdf",
         "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwouphgx-0e1758e669af0fd90182933d.jpg"
+      },
+      {
+        "language": "Afrikaans",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoupceh-38f6d10233b50222667f405e.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwoupdwh-c95db53cba807c35e77d6b16.jpg"
       },
       {
         "language": "isiNdebele",
@@ -1060,6 +1105,91 @@
         "language": "Xitsonga",
         "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwouq3c7-2767ea9f4fdc5dc417813689.pdf",
         "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwouq5s4-2cca313713845016eaa08060.jpg"
+      }
+    ]
+  },
+  {
+    "id": "bookdash-khumos-big-trip",
+    "title": "Khumo’s Big Trip",
+    "description": "Khumo, Mum and Dad are driving to Kimberley. What will they discover?",
+    "theme": "Diversity and inclusivity, Adventure",
+    "author": "Mogale Sedibe",
+    "illustrator": "Musonda Kabwe",
+    "designer": "Tamsin Lotz",
+    "editor": "Ester Levinrad",
+    "sourceUrl": "https://bookdash.org/books/khumos-big-trip/",
+    "licence": "CC BY 4.0",
+    "kind": "bookdash",
+    "editions": [
+      {
+        "language": "English",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopcygu-62271d14459ecf677cf578c0.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopd1ok-a2d4b8dd5723a1b1d96cea80.jpg"
+      },
+      {
+        "language": "Setswana",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopd3bv-23a9f05243ad6e7a8a2d9e3e.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopd6rw-b1406e085e8191818034e552.jpg"
+      }
+    ]
+  },
+  {
+    "id": "bookdash-play-with-me",
+    "title": "Play with me",
+    "description": "All Jabu wants to do is play diketo. But everyone is busy.",
+    "theme": "Emotions and life skills, Family, friends and home, Let’s play!",
+    "author": "Sabina Mutangadura Seldon",
+    "illustrator": "Heleen Steyn van der Merwe",
+    "designer": "Jamie Calf",
+    "editor": "David Mann",
+    "sourceUrl": "https://bookdash.org/books/play-with-me/",
+    "licence": "CC BY 4.0",
+    "kind": "bookdash",
+    "editions": [
+      {
+        "language": "English",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopd8ne-2dbb95b7e004fbce64807a6d.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopdb65-c1a9868f82902ee1722c15b4.jpg"
+      }
+    ]
+  },
+  {
+    "id": "bookdash-who-ate-my-hat",
+    "title": "Who ate my hat?",
+    "description": "I love my hat. But who ate my hat?",
+    "theme": "Animals, Emotions and life skills, Food and eating",
+    "author": "Griffin Shea",
+    "illustrator": "El Marto",
+    "designer": "Thembelihle Radebe",
+    "editor": "Tiffany Mac Sherry",
+    "sourceUrl": "https://bookdash.org/books/who-ate-my-hat/",
+    "licence": "CC BY 4.0",
+    "kind": "bookdash",
+    "editions": [
+      {
+        "language": "English",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopdeys-b2afe2157f2ca66835ef2d08.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopdh01-08f687692e6cbd7d757cc5f7.jpg"
+      }
+    ]
+  },
+  {
+    "id": "bookdash-zuko-and-the-crying-tap",
+    "title": "Zuko and the crying tap",
+    "description": "Zuko hears a tap tap tap outside his window. What could it be?",
+    "theme": "Emotions and life skills, Nature and our planet",
+    "author": "Sewela Langeni",
+    "illustrator": "Linta Anish",
+    "designer": "Heath White",
+    "editor": "David Mann",
+    "sourceUrl": "https://bookdash.org/books/zuko-and-the-crying-tap/",
+    "licence": "CC BY 4.0",
+    "kind": "bookdash",
+    "editions": [
+      {
+        "language": "English",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopdigy-acfa9f7a357724c797194d16.pdf",
+        "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopdls7-108832e05e006df0fd4ac5f6.jpg"
       }
     ]
   }

@@ -136,3 +136,19 @@ test('the importer includes the expanded Book Dash catalogue and dedupes platfor
   assert.match(imp, /tn_tswana: 'Setswana'/);
   assert.match(api, /isPlatformOrg \? \{\} : await readSettings/);
 });
+
+test('English is always the first language edition', () => {
+  assert.match(view, /function sortEditions\(list\)/);
+  assert.ok(view.includes('/^english$/i'));
+  assert.ok(app.includes('/^english$/i'));
+  assert.ok(importer.includes('/^english$/i'));
+  assert.match(view, /ea \? -1 : 1/);
+});
+
+test('every imported default book starts with the English edition', () => {
+  const src = read('apps/web/src/books-data.js');
+  const books = JSON.parse(src.match(/R\.bookDefaults = ([\s\S]*);\n\}\)\(\);/)[1]);
+  assert.ok(books.length >= 29, 'expanded catalogue imported');
+  assert.ok(books.every((b) => /^english$/i.test(b.editions[0].language)), 'English first in every book');
+  assert.ok(books.every((b) => b.sourceUrl && b.licence), 'attribution present on every book');
+});
