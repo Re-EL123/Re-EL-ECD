@@ -24,7 +24,7 @@ test('shared media keys need no schema migration', () => {
 test('uploads can be marked shared, admin-gated and only for rhyme audio', () => {
   assert.match(media, /shared: \{ type: 'boolean', optional: true \}/);
   assert.match(media, /body\.shared === true && \['nursery-rhyme', 'book'\]\.includes\(scope\)/);
-  assert.match(media, /hasPermission\(ctx\.access && ctx\.access\.permissions, 'organisation\.settings\.manage'\)/);
+  assert.match(media, /hasPermission\(ctx\.access && ctx\.access\.permissions, 'organisation\.settings\.manage'\)[\s\S]{0,120}platform\.settings\.manage/);
   assert.match(media, /shared: mayShare/);
   assert.match(media, /metadata: \{ scope, kind: described\.kind, mimeType: described\.mime, shared: mayShare \}/);
 });
