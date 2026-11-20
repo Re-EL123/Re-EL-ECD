@@ -56,3 +56,8 @@ test('the browser uploads, reads and removes shared rhyme audio', () => {
   assert.match(view, /R\.api\('PATCH', '\/nursery-rhyme-audio', \{ id: rhyme\.id, url: rhyme\.audioUrl \}\)/);
   assert.match(view, /Shared with every centre/);
 });
+
+test('every teaching role that can open rhymes can load the shared audio', () => {
+  const org = read('apps/api/src/modules/organisation.js');
+  assert.match(org, /return \{ audio \};\s*\}, \{ permission: \['curriculum\.read\.daycare', 'platform\.settings\.manage'\], permissionMode: 'any' \}/);
+});

@@ -322,7 +322,7 @@ function register(router) {
     const own = await readOrganisationSettings(ctx.db, ctx.organisationId);
     Object.assign(audio, plainObject(own.nurseryRhymeAudio));
     return { audio };
-  }, { permission: 'organisation.read.daycare' });
+  }, { permission: ['curriculum.read.daycare', 'platform.settings.manage'], permissionMode: 'any' });
 
   router.patch('/nursery-rhyme-audio', async (ctx) => {
     const body = validate(ctx.body, {
