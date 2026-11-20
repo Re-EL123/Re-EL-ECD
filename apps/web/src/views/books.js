@@ -62,7 +62,7 @@
       return {
         books: defaults.map((b) => Object.assign({}, b, { source: 'default' }))
           .concat(custom.map((b) => Object.assign({}, b, { source: 'custom' }))),
-        canManage: ctx.has('organisation.settings.manage'),
+        canManage: ctx.has('organisation.settings.manage') || Boolean(api.canPublish),
         canPublish: Boolean(api.canPublish)
       };
     },
