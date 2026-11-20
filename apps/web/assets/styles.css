@@ -3817,3 +3817,4 @@ body.wb-teaching .content { padding-bottom: 0 !important; }
 .wb-align-btns .btn { justify-content: center; padding: 4px 2px; font-size: .7rem; }
 .wb-layer-row.drop-before { box-shadow: inset 0 2px 0 var(--reel-green-700); }
 .wb-layer-row.drop-after { box-shadow: inset 0 -2px 0 var(--reel-green-700); }
+.wb-eraser-group[hidden] { display: none !important; }

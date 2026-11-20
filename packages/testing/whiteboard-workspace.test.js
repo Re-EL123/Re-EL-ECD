@@ -238,6 +238,7 @@ test('properties are type-aware and the eraser has its own settings', () => {
   assert.match(view, /show\('fill', types\.has\('sticky'\)\)/);
   assert.match(view, /id="wb-properties-select"/);
   assert.match(view, /id="wb-eraser-group"/);
+  assert.match(css, /\.wb-eraser-group\[hidden\] \{ display: none !important; \}/);
   assert.match(view, /setEraserMode\(e\.target\.value\)/);
   assert.match(view, /id="wb-recent-colours"/);
   assert.match(view, /const ringTool = !readOnly && \['pen', 'highlighter', 'eraser'\]/);
