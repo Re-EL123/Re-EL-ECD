@@ -3580,3 +3580,4 @@ body.wb-teaching { overflow: hidden; }
 }
 body.wb-teaching .main { overflow: hidden; padding-bottom: 0 !important; }
 body.wb-teaching .content { padding-bottom: 0 !important; }
+.wb-tool-strip .wb-tool-group { flex-direction: row; flex-wrap: nowrap; }
