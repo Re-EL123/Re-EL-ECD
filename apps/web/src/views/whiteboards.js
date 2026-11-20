@@ -128,13 +128,20 @@
   function resolvedColor(o, pal) { return o.color === '#1f3b2a' ? pal.ink : (o.color || pal.ink); }
 
   const imageCache = new Map();
+  function resolveImageSrc(src) {
+    // Uploaded media uses a site-relative proxy path. On split deployments the
+    // API lives on another origin, so point the <img> at that origin instead.
+    if (/^\/api\/v1\/media\/object\?/i.test(src) && R.apiBase && R.apiBase()) return R.apiBase() + src;
+    return src;
+  }
   function cachedImage(src, onLoad) {
-    let img = imageCache.get(src);
+    const resolved = resolveImageSrc(src);
+    let img = imageCache.get(resolved);
     if (!img) {
       img = new Image();
       img.onload = () => { if (onLoad) onLoad(); };
-      img.src = src;
-      imageCache.set(src, img);
+      img.src = resolved;
+      imageCache.set(resolved, img);
     }
     return img;
   }
