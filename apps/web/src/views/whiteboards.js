@@ -766,7 +766,10 @@
       if (panning && panStart) { vp().x = spt.x - panStart.x; vp().y = spt.y - panStart.y; render(); return; }
       if (marquee) { marquee.current = wpt; render(); return; }
       if (!drawing) {
-        hoverHandle = tool === 'select' ? handleAt(spt) : null;
+        const next = tool === 'select' ? handleAt(spt) : null;
+        const changed = (next && next.key) !== (hoverHandle && hoverHandle.key);
+        hoverHandle = next;
+        if (changed) render();
         return;
       }
       hoverHandle = null;
