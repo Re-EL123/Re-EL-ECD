@@ -3678,3 +3678,4 @@ body.wb-teaching .content { padding-bottom: 0 !important; }
   .wb-canvas-wrap { top: 150px; }
   .wb-dock { top: 150px; }
 }
+.wb-selection-bar { position: sticky; right: 0; z-index: 2; box-shadow: -10px 0 14px -12px rgba(0,0,0,.5); }
