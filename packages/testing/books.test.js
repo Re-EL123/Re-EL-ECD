@@ -126,3 +126,13 @@ test('language management is reachable from both the card and the reader', () =>
   assert.match(app, /openNamedModal\('bookEditionAdd', book\.id\)/);
   assert.match(css, /\.book-reading \.modal-backdrop \{ z-index: 520; \}/);
 });
+
+test('the importer includes the expanded Book Dash catalogue and dedupes platform admin lists', () => {
+  const imp = read('scripts/import-bookdash.mjs');
+  ['a-very-busy-day', 'amazing-daisy', 'brave-bora', 'circles', 'fifi-and-teddy', 'how-do-you-eat', 'is-there-anyone-like-me']
+    .forEach((slug) => assert.ok(imp.includes("'" + slug + "':"), 'metadata for ' + slug));
+  assert.match(imp, /ss_swati: 'SiSwati'/);
+  assert.match(imp, /ve_venda: 'Tshivenḓa'/);
+  assert.match(imp, /tn_tswana: 'Setswana'/);
+  assert.match(api, /isPlatformOrg \? \{\} : await readSettings/);
+});

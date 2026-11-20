@@ -79,7 +79,8 @@ function target(ctx) {
 function register(router) {
   router.get('/books', async (ctx) => {
     const shared = await readSettings(ctx.db, ctx.platformOrganisationId);
-    const own = await readSettings(ctx.db, ctx.organisationId);
+    const isPlatformOrg = String(ctx.organisationId) === String(ctx.platformOrganisationId);
+    const own = isPlatformOrg ? {} : await readSettings(ctx.db, ctx.organisationId);
     return {
       platform: Array.isArray(shared.books) ? shared.books : [],
       custom: Array.isArray(own.books) ? own.books : [],

@@ -31,8 +31,11 @@ const LANG = {
   st_sotho: 'Sesotho', 'st-LS_lesotho-sesotho': 'Sesotho',
   tn_setswana: 'Setswana', 'tn-setswana': 'Setswana',
   ts_xitsonga: 'Xitsonga', ve_tshivenda: 'Tshivenḓa',
-  xh_xhosa: 'isiXhosa', xh_isixhosa: 'isiXhosa', 'xh-xhosa': 'isiXhosa',
-  zu_zulu: 'isiZulu', zu_isizulu: 'isiZulu', 'zu-zulu': 'isiZulu'
+  xh_xhosa: 'isiXhosa', xh_isixhosa: 'isiXhosa', 'xh-xhosa': 'isiXhosa', 'xh-isixhosa': 'isiXhosa',
+  zu_zulu: 'isiZulu', zu_isizulu: 'isiZulu', 'zu-zulu': 'isiZulu', 'zu-isizulu': 'isiZulu',
+  ss_swati: 'SiSwati', ve_venda: 'Tshivenḓa', ts_tsonga: 'Xitsonga', tn_tswana: 'Setswana',
+  've-tshivenda': 'Tshivenḓa', 'nso-sepedi': 'Sepedi', 'st-sesotho': 'Sesotho',
+  'st sesotho lesotho': 'Sesotho', 'st_sesotho lesotho': 'Sesotho'
 };
 
 const META = {
@@ -95,7 +98,23 @@ const META = {
     title: 'Zuko and the crying tap', description: 'Zuko hears a tap tap tap outside his window. What could it be?',
     author: 'Sewela Langeni', illustrator: 'Linta Anish', designer: 'Heath White', editor: 'David Mann',
     themes: ['Emotions and life skills', 'Nature and our planet'], licence: 'CC BY 4.0'
-  }
+  },
+  'a-very-busy-day': { title: 'A very busy day!', description: 'Today is a very busy day. Come to town with Mama and me!', author: 'Chisanga Mukuka', illustrator: 'El Marto', designer: 'Christian Mokuba', editor: 'Joey Kok', themes: ['Adventure', 'Let’s learn!'] },
+  'a-very-important-tree': { title: 'A Very Important Tree', description: 'Busi loves the big tree outside her house, but her brother wants to cut it down.', author: 'Elana Bregin', illustrator: 'Liam Longland', designer: 'Heni Andrag', editor: 'Carla Lever', themes: ['Emotions and life skills', 'Nature and our planet'] },
+  'amahle-wants-to-help': { title: 'Amahle wants to help!', description: 'Amahle wants to help, but all she hears is “NO”.', author: 'Refilwe Nsibande', illustrator: 'Kelly Brown', designer: 'Monique Cleghorn', editor: 'Katie Huston', themes: ['Emotions and life skills', 'Family, friends and home'] },
+  'amazing-daisy': { title: 'Amazing Daisy!', description: 'Daisy is a little chicken who wishes she could fly.', author: 'Nozizwe Herero', illustrator: 'Siya Masuku', designer: 'Leona Ingram', editor: 'Ester Levinrad', themes: ['Animals', 'Emotions and life skills'] },
+  'an-unexpected-adventure': { title: 'An unexpected adventure', description: 'A boring afternoon turns into an exciting adventure when a little boy opens a book.', author: 'Carina Jooste', illustrator: 'Emma Bosman', designer: 'Nadene Kriel', editor: 'Melissa Fagan', themes: ['Adventure', 'Let’s learn!', 'Let’s play!'] },
+  'auntie-bois-gift': { title: 'Auntie Boi’s Gift', description: 'A present from Kenya — what a journey for Kopano and Rea!', author: 'Baeletsi Tsatsi', illustrator: 'Ndumiso Nyoni', designer: 'Bianca Wiesner', editor: 'Margot Bertelsmann', themes: ['Diversity and inclusivity', 'Adventure'] },
+  'baby-babble': { title: 'Baby Babble', description: 'Baby’s day is full of babble, from bath time to bed time.', author: 'Katherine Graham', illustrator: 'Nicola Anne Smith', designer: 'Sarah Slater', editor: 'Nicola Rijsdijk', themes: ['Emotions and life skills', 'Daily routines'] },
+  'baby-talk': { title: 'Baby Talk', description: 'Tayo’s baby sister Tinu is always crying. What could it mean?', author: 'Sope Martins', illustrator: 'Alex Latimer', designer: 'Thokozani Mkhize', editor: 'Zanri Kritzinger', themes: ['Emotions and life skills', 'Family, friends and home'] },
+  'babys-first-family-photo': { title: 'Baby’s First Family Photo', description: 'What will Mama, Papa, Big Sister, Baby and Gogo wear?', author: 'Edem Torkornoo', illustrator: 'Megan Andrews', designer: 'Nadene Kriel', editor: 'Glynis Lloyd', themes: ['Family, friends and home', 'Let’s learn!'] },
+  'brave-bora': { title: 'Brave Bora', description: 'Going to the doctor can be scary — can Bora overcome his fears?', author: 'Edna Gicovi', illustrator: 'Ellen Heydenrych', designer: 'Raeesah Vawda', editor: 'David Mann', themes: ['Emotions and life skills', 'Daily routines'] },
+  'circles': { title: 'Circles', description: 'Mother Vulture shows Little Vulture the cycle of life on their first flight.', author: 'Alex Latimer', illustrator: 'Patrick Latimer', designer: 'Gordon Latimer', editor: 'Diane Awerbuck', themes: ['Animals', 'Emotions and life skills'] },
+  'clever-pig': { title: 'Clever Pig', description: 'Pig loves to play. One day Pig is gone — will Pig come back?', author: 'Nathalie Koenig', illustrator: 'Josh Morgan', designer: 'Lee-Ann Knowles', editor: 'Carol Kagezi', themes: ['Animals', 'Family, friends and home', 'Let’s play!'] },
+  'come-back-cat': { title: 'Come back, cat!', description: 'A delightful tale about an independent cat.', author: 'Nicola Rijsdijk', illustrator: 'Karen Lilje', designer: 'Sam Scarborough', editor: '', themes: ['Animals', 'Let’s play!'] },
+  'fifi-and-teddy': { title: 'Fifi and Teddy', description: 'Fifi loves her brown teddy bear. But where is Teddy?', author: 'Tshepo Letsapa', illustrator: 'Alison de Villiers', designer: 'Fathima Kathrada', editor: 'Zanri Kritzinger', themes: ['Emotions and life skills', 'Let’s play!'] },
+  'how-do-you-eat': { title: 'How do you eat?', description: 'Do you nibble or munch or gulp? Miri wants to know how other creatures eat.', author: 'Diane Awerbuck', illustrator: 'Alex Latimer', designer: 'Georgia Demertzis', editor: 'Katie Huston', themes: ['Animals', 'Food and eating', 'Let’s learn!'] },
+  'is-there-anyone-like-me': { title: 'Is There Anyone Like Me?', description: 'I wonder if there’s another me somewhere in the world…', author: 'Fred Strydom', illustrator: 'Jess Jardim-Wedepohl', designer: 'Stephen Wallace', editor: '', themes: ['Emotions and life skills', 'Daily routines'] },
 };
 
 async function json(res, label) {
