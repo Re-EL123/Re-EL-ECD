@@ -1440,6 +1440,7 @@
         if (!editions.length) return;
         this.closeReader();
         const reader = { book, editions, edition: 0, page: 1, cleanup: [] };
+        const canManage = Boolean(this.page && this.page.canManage);
         const overlay = document.createElement('div');
         overlay.className = 'book-reader';
         overlay.setAttribute('role', 'dialog');
@@ -1457,6 +1458,7 @@
               '<button type="button" class="btn btn-sm btn-ghost" id="reader-full"><i data-lucide="maximize"></i> Fullscreen</button>' +
               '<a class="btn btn-sm btn-ghost" id="reader-open" target="_blank" rel="noopener"><i data-lucide="external-link"></i> New tab</a>' +
               '<button type="button" class="btn btn-sm btn-ghost" id="reader-print"><i data-lucide="printer"></i> Print</button>' +
+              (canManage ? '<button type="button" class="btn btn-sm btn-secondary" id="reader-lang-add"><i data-lucide="languages"></i> Add language</button>' : '') +
               '<button type="button" class="btn btn-ghost btn-icon btn-sm" id="reader-close" aria-label="Close reader"><i data-lucide="x"></i></button>' +
             '</div>' +
           '</div>' +
@@ -1508,6 +1510,8 @@
         overlay.querySelector('#reader-close').addEventListener('click', onClose);
         overlay.querySelector('#reader-full').addEventListener('click', onFull);
         overlay.querySelector('#reader-print').addEventListener('click', onPrint);
+        const addLang = overlay.querySelector('#reader-lang-add');
+        if (addLang) addLang.addEventListener('click', () => this.openNamedModal('bookEditionAdd', book.id));
         document.addEventListener('keydown', onKey);
         reader.cleanup.push(() => document.removeEventListener('keydown', onKey));
         this._reader = reader;

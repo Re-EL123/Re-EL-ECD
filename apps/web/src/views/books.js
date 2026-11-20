@@ -104,6 +104,7 @@
             '<div class="book-card-actions">' +
               '<button type="button" class="btn btn-sm btn-secondary" @click="openReader(' + i + ')">' + R.icon('book-open') + ' Read</button>' +
               '<a class="btn btn-sm btn-ghost" href="' + attr(pdfFor(b)) + '" target="_blank" rel="noopener" download>' + R.icon('download') + ' PDF</a>' +
+              (canManage ? '<button type="button" class="btn btn-sm btn-ghost" @click="openBook(' + i + ')">' + R.icon('settings-2') + ' Details</button>' : '') +
               (b.source === 'custom' && canManage ? '<button type="button" class="btn btn-sm btn-ghost" @click="deleteBook(\'' + bid + '\')">' + R.icon('trash-2') + '</button>' : '') +
             '</div>' +
           '</div></article>';

@@ -3939,3 +3939,4 @@ body.book-reading { overflow: hidden; }
   .book-reader-tools { justify-content: center; }
   .book-reader-title strong { text-align: center; }
 }
+.book-reading .modal-backdrop { z-index: 520; }
