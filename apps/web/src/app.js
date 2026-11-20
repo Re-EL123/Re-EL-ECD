@@ -1517,6 +1517,18 @@
         reader.cleanup.push(() => document.removeEventListener('keydown', onKey));
         this._reader = reader;
       },
+      openReaderAt(bookIndex, editionIndex) {
+        this.closeModal();
+        this.openReader(bookIndex);
+        const reader = this._reader;
+        if (!reader) return;
+        const idx = Math.max(0, Math.min(reader.editions.length - 1, Number(editionIndex) || 0));
+        reader.edition = idx;
+        reader.page = 1;
+        if (reader.pageLabel) reader.pageLabel.textContent = 'Page 1';
+        if (reader.lang) reader.lang.value = String(idx);
+        reader.load();
+      },
       closeReader() {
         const reader = this._reader;
         if (!reader) return;
@@ -1535,6 +1547,7 @@
           : [{ language: book.language || 'English', pdfUrl: book.pdfUrl, coverUrl: book.coverUrl }];
         const cover = book.coverUrl || (editions.find((e) => e.coverUrl) || {}).coverUrl || '';
         const bid = Reel.attr(book.id);
+        const bidx = Number(index);
         const canManage = Boolean(this.page && this.page.canManage);
         const body = '<div class="book-detail">' +
           (cover ? '<div class="book-detail-cover"><img src="' + Reel.attr(Reel.resolveMediaUrl(cover)) + '" alt=""></div>' : '') +
@@ -1542,8 +1555,8 @@
           '<p class="muted">' + Reel.esc(book.description || '') + '</p>' +
           '<div class="wb-field-label">Read in a language</div><div class="book-editions">' +
             editions.map((e, i) => '<span class="book-edition">' +
-              '<a class="btn btn-sm ' + (i === 0 ? 'btn-primary' : 'btn-secondary') + '" href="' + Reel.attr(Reel.resolveMediaUrl(e.pdfUrl)) + '" target="_blank" rel="noopener">' +
-                Reel.icon('book-open') + ' ' + Reel.esc(e.language) + '</a>' +
+              '<button type="button" class="btn btn-sm ' + (i === 0 ? 'btn-primary' : 'btn-secondary') + '" @click="openReaderAt(' + bidx + ', ' + i + ')">' +
+                Reel.icon('book-open') + ' ' + Reel.esc(e.language) + '</button>' +
               (canManage && editions.length > 1 ? '<button type="button" class="btn btn-sm btn-ghost btn-icon" @click="removeBookEdition(\'' + bid + '\', ' + i + ')" aria-label="Remove ' + Reel.attr(e.language) + '">' + Reel.icon('x') + '</button>' : '') +
               '</span>').join('') +
             (canManage ? '<button type="button" class="btn btn-sm btn-secondary" @click="openNamedModal(\'bookEditionAdd\',\'' + bid + '\')">' + Reel.icon('plus') + ' Add a language</button>' : '') +

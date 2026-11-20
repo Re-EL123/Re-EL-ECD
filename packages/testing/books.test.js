@@ -85,7 +85,7 @@ test('stored media URLs resolve against the API origin for covers and PDFs', () 
   assert.match(utils, /Reel\.resolveMediaUrl = resolveMediaUrl/);
   assert.match(view, /R\.resolveMediaUrl\(book\.coverUrl\)/);
   assert.match(view, /R\.resolveMediaUrl\(\(found \|\| list\[0\]/);
-  assert.match(app, /Reel\.resolveMediaUrl\(e\.pdfUrl\)/);
+  assert.match(app, /openReaderAt\(' \+ bidx \+ ', ' \+ i \+ '\)/);
 });
 
 test('centres and platform admins can add and remove language editions', () => {
@@ -152,4 +152,12 @@ test('every imported default book starts with the English edition', () => {
   assert.ok(books.length >= 29, 'expanded catalogue imported');
   assert.ok(books.every((b) => /^english$/i.test(b.editions[0].language)), 'English first in every book');
   assert.ok(books.every((b) => b.sourceUrl && b.licence), 'attribution present on every book');
+});
+
+test('language buttons open the in-app reader at the chosen edition', () => {
+  const application = read('apps/web/src/app.js');
+  assert.match(application, /openReaderAt\(bookIndex, editionIndex\)/);
+  assert.match(application, /this\.closeModal\(\);[\s\S]{0,80}this\.openReader\(bookIndex\)/);
+  assert.match(application, /reader\.edition = idx/);
+  assert.match(application, /reader\.lang\.value = String\(idx\)/);
 });
