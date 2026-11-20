@@ -141,3 +141,14 @@ test('unknown routes render a branded 404 for signed-in and signed-out visitors'
   assert.match(styles, /\.not-found\b/, '404 styles must be present');
   assert.match(styles, /\.not-found-code\b/, 'the large 404 numeral must be styled');
 });
+
+test('QR mounting cannot hang on a slow logo or fail silently', () => {
+  const utils = fs.readFileSync(path.join(webRoot, 'src', 'utils.js'), 'utf8');
+  const application = fs.readFileSync(path.join(webRoot, 'src', 'app.js'), 'utf8');
+  assert.match(utils, /setTimeout\(\(\) => finish\(null\), 1200\)/);
+  assert.match(utils, /if \(!logoImage\) return resolve\(initialsBadge\(\)\)/);
+  assert.match(utils, /if \(!container\.isConnected\) return null;/);
+  assert.match(utils, /return fallback\('QR code unavailable\.'\)/);
+  assert.match(utils, /Open share link/);
+  assert.match(application, /Alpine\.destroyTree\(root\);[\s\S]{0,120}root\.innerHTML = view\.render/);
+});

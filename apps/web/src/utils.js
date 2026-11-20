@@ -1285,7 +1285,7 @@
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
-    const context = canvas.getContext('2d');
+    const context = canvas.getContext && canvas.getContext('2d');
     const drawBadge = (logoImage) => {
       context.clearRect(0, 0, size, size);
       // White outer ring keeps the mark readable on any background.
@@ -1315,28 +1315,35 @@
       context.textBaseline = 'middle';
       context.fillText(initials(opts.name || 'R'), size / 2, size / 2 + 2);
     };
-    if (!opts.logoUrl) {
-      drawBadge(null);
-      return Promise.resolve(canvas.toDataURL('image/png'));
-    }
+    const initialsBadge = () => {
+      if (!context) return '';
+      try { drawBadge(null); return canvas.toDataURL('image/png'); }
+      catch (error) { return ''; }
+    };
+    if (!context || !opts.logoUrl) return Promise.resolve(initialsBadge());
     return new Promise((resolve) => {
-      const image = new Image();
-      image.crossOrigin = 'anonymous';
-      image.onload = () => {
+      let settled = false;
+      let timer = null;
+      const finish = (logoImage) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        if (!logoImage) return resolve(initialsBadge());
         try {
-          drawBadge(image);
+          drawBadge(logoImage);
           resolve(canvas.toDataURL('image/png'));
         } catch (error) {
           // A CORS-tainted logo cannot be used inside the QR, so fall back to
           // the centre's initials instead of failing the whole code.
-          drawBadge(null);
-          resolve(canvas.toDataURL('image/png'));
+          resolve(initialsBadge());
         }
       };
-      image.onerror = () => {
-        drawBadge(null);
-        resolve(canvas.toDataURL('image/png'));
-      };
+      const image = new Image();
+      image.crossOrigin = 'anonymous';
+      image.onload = () => finish(image);
+      image.onerror = () => finish(null);
+      // A slow or hanging logo request must never block the QR forever.
+      timer = setTimeout(() => finish(null), 1200);
       image.src = opts.logoUrl;
     });
   }
@@ -1364,22 +1371,34 @@
 
   async function mountQr(container, options) {
     if (!container) return null;
-    if (!window.QRCodeStyling) {
-      container.innerHTML = '<div class="muted small">QR code unavailable.</div>';
-      return null;
-    }
-    container.innerHTML = '';
     const opts = options || {};
-    const primary = isHex(opts.primary) ? opts.primary : PLATFORM_BRAND.theme.primary;
-    const image = await qrLogoDataUrl(Object.assign({}, opts, {
-      primary,
-      onPrimary: isHex(opts.onPrimary) ? opts.onPrimary : onColour(primary)
-    }));
-    const config = qrOptions(Object.assign({}, opts, { primary }), 'canvas', opts.size || 220);
-    config.image = image;
-    const qr = new window.QRCodeStyling(config);
-    qr.append(container);
-    return qr;
+    const data = String(opts.data || '');
+    const fallback = (message) => {
+      try {
+        container.innerHTML = '<div class="muted small">' + esc(message) +
+          (data ? '<br><a href="' + attr(data) + '" target="_blank" rel="noopener">Open share link</a>' : '') + '</div>';
+      } catch (error) { /* container is gone */ }
+      return null;
+    };
+    if (!window.QRCodeStyling) return fallback('QR code unavailable.');
+    if (!data) return fallback('No share link is available for this page yet.');
+    try {
+      container.innerHTML = '';
+      const primary = isHex(opts.primary) ? opts.primary : PLATFORM_BRAND.theme.primary;
+      const image = await qrLogoDataUrl(Object.assign({}, opts, {
+        primary,
+        onPrimary: isHex(opts.onPrimary) ? opts.onPrimary : onColour(primary)
+      }));
+      // The visitor may have navigated away while the logo was loading.
+      if (!container.isConnected) return null;
+      const config = qrOptions(Object.assign({}, opts, { primary }), 'canvas', opts.size || 220);
+      if (image) config.image = image;
+      const qr = new window.QRCodeStyling(config);
+      qr.append(container);
+      return qr;
+    } catch (error) {
+      return fallback('QR code unavailable.');
+    }
   }
 
   function qrOptionsFromElement(element) {

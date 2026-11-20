@@ -4905,6 +4905,7 @@
         try {
           const page = view && view.load ? await view.load(this, params) : {};
           if (seq && seq !== this._navSeq) return;
+          if (window.Alpine && window.Alpine.destroyTree) window.Alpine.destroyTree(root);
           root.innerHTML = view.render(this, params, page);
           if (Reel.applySeo) {
             const site = (page && page.site) || page || {};
@@ -4941,6 +4942,7 @@
           window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
         } catch (error) {
           const homeLink = params && params.slug ? '#/site/' + encodeURIComponent(params.slug) : '#/login';
+          if (window.Alpine && window.Alpine.destroyTree) window.Alpine.destroyTree(root);
           root.innerHTML = '<div style="min-height:100vh;display:grid;place-items:center;padding:24px"><div class="card" style="max-width:520px;text-align:center"><h2>Website unavailable</h2><p class="muted">' + Reel.esc(error.message) + '</p><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px"><a class="btn btn-primary" href="#/login">Parent sign-in</a><a class="btn btn-secondary" href="' + homeLink + '">Back to website</a></div></div></div>';
           window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
         }
