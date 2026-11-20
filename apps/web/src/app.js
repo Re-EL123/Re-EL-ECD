@@ -1438,13 +1438,19 @@
         const editions = (Array.isArray(book.editions) && book.editions.length)
           ? book.editions : [{ language: book.language || 'English', pdfUrl: book.pdfUrl, coverUrl: book.coverUrl }];
         const cover = book.coverUrl || (editions.find((e) => e.coverUrl) || {}).coverUrl || '';
+        const bid = Reel.attr(book.id);
+        const canManage = Boolean(this.page && this.page.canManage);
         const body = '<div class="book-detail">' +
           (cover ? '<div class="book-detail-cover"><img src="' + Reel.attr(Reel.resolveMediaUrl(cover)) + '" alt=""></div>' : '') +
           '<div class="book-detail-main"><h3>' + Reel.esc(book.title) + '</h3>' +
           '<p class="muted">' + Reel.esc(book.description || '') + '</p>' +
           '<div class="wb-field-label">Read in a language</div><div class="book-editions">' +
-            editions.map((e, i) => '<a class="btn btn-sm ' + (i === 0 ? 'btn-primary' : 'btn-secondary') + '" href="' + Reel.attr(Reel.resolveMediaUrl(e.pdfUrl)) + '" target="_blank" rel="noopener">' +
-              Reel.icon('book-open') + ' ' + Reel.esc(e.language) + '</a>').join('') +
+            editions.map((e, i) => '<span class="book-edition">' +
+              '<a class="btn btn-sm ' + (i === 0 ? 'btn-primary' : 'btn-secondary') + '" href="' + Reel.attr(Reel.resolveMediaUrl(e.pdfUrl)) + '" target="_blank" rel="noopener">' +
+                Reel.icon('book-open') + ' ' + Reel.esc(e.language) + '</a>' +
+              (canManage && editions.length > 1 ? '<button type="button" class="btn btn-sm btn-ghost btn-icon" @click="removeBookEdition(\'' + bid + '\', ' + i + ')" aria-label="Remove ' + Reel.attr(e.language) + '">' + Reel.icon('x') + '</button>' : '') +
+              '</span>').join('') +
+            (canManage ? '<button type="button" class="btn btn-sm btn-secondary" @click="openNamedModal(\'bookEditionAdd\',\'' + bid + '\')">' + Reel.icon('plus') + ' Add a language</button>' : '') +
           '</div>' +
           '<div class="book-detail-actions">' +
             '<a class="btn btn-sm btn-ghost" href="' + Reel.attr(Reel.resolveMediaUrl(editions[0] && editions[0].pdfUrl)) + '" target="_blank" rel="noopener" download>' + Reel.icon('download') + ' Download PDF</a>' +
@@ -1475,6 +1481,23 @@
         });
         const count = document.getElementById('book-count');
         if (count) count.textContent = shown + ' books';
+      },
+      async removeBookEdition(id, index) {
+        try {
+          const res = await Reel.api('GET', '/books');
+          const all = [].concat((res.data && res.data.platform) || [], (res.data && res.data.custom) || []);
+          const book = all.find((b) => b.id === id);
+          if (!book) return;
+          const editions = (book.editions || []).slice();
+          if (editions.length <= 1) return;
+          editions.splice(Number(index), 1);
+          await Reel.api('PATCH', '/books/' + encodeURIComponent(id), { book: { editions } });
+          this.toast('Language removed.');
+          Reel.closeModal();
+          await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'Could not remove the language.', 'error');
+        }
       },
       async deleteBook(id) {
         if (!confirm('Remove this book from your centre?')) return;

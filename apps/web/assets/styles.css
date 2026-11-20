@@ -3903,3 +3903,6 @@ body.wb-teaching .content { padding-bottom: 0 !important; }
   .book-detail-cover { max-width: 200px; margin: 0 auto; }
   .book-toolbar .muted { margin-left: 0; }
 }
+.book-edition { display: inline-flex; gap: 2px; align-items: center; }
+.book-edition .btn-icon { width: 26px; min-height: 28px; padding: 2px; }
+.book-edition .btn-icon svg { width: 13px; height: 13px; }

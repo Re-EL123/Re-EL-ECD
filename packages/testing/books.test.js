@@ -56,7 +56,7 @@ test('centres can add books and platform admins can publish more', () => {
   assert.match(view, /name !== 'bookAdd'/);
   assert.match(view, /type: 'media', accept: 'application\/pdf', scope: 'book'/);
   assert.match(view, /R\.api\('POST', '\/books', \{ book: body \}\)/);
-  assert.match(view, /Platform admins can publish a book for every centre/);
+  assert.match(view, /Platform admins publish for every centre/);
   assert.match(app, /DELETE', '\/books\/' \+ encodeURIComponent\(id\)/);
   assert.match(app, /\['nursery-rhyme', 'book'\]\.includes\(field\.scope\)/);
 });
@@ -86,4 +86,16 @@ test('stored media URLs resolve against the API origin for covers and PDFs', () 
   assert.match(view, /R\.resolveMediaUrl\(book\.coverUrl\)/);
   assert.match(view, /R\.resolveMediaUrl\(\(found \|\| list\[0\]/);
   assert.match(app, /Reel\.resolveMediaUrl\(e\.pdfUrl\)/);
+});
+
+test('centres and platform admins can add and remove language editions', () => {
+  const bview = read('apps/web/src/views/books.js');
+  const bapp = read('apps/web/src/app.js');
+  assert.match(bview, /name === 'bookEditionAdd'/);
+  assert.match(bview, /Upload another PDF for a different language/);
+  assert.match(bview, /R\.api\('PATCH', '\/books\/' \+ encodeURIComponent\(book\.id\)/);
+  assert.match(bapp, /bookEditionAdd/);
+  assert.match(bapp, /removeBookEdition\(id, index\)/);
+  assert.match(bapp, /editions\.splice\(Number\(index\), 1\)/);
+  assert.match(css, /\.book-edition \{ display: inline-flex/);
 });

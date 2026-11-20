@@ -114,10 +114,45 @@
     },
 
     openModal(ctx, name, id) {
+      if (name === 'bookEditionAdd') {
+        const book = ((ctx.page || {}).books || []).find((b) => b.id === id);
+        if (!book) return false;
+        const languages = ['Afrikaans', 'English', 'isiNdebele', 'isiXhosa', 'isiZulu', 'Sepedi',
+          'Sesotho', 'Setswana', 'SiSwati', 'Tshivenḓa', 'Xitsonga'];
+        ctx.openModal({
+          title: 'Add a language — ' + book.title,
+          description: 'Upload another PDF for a different language of this book. It will appear beside the existing languages for every centre that can see this book.',
+          size: 'wide',
+          submitLabel: 'Add language',
+          fields: [
+            { name: 'language', label: 'Language', type: 'select', options: languages, required: true },
+            { name: 'pdfUrl', label: 'Book PDF for this language', type: 'media', accept: 'application/pdf', scope: 'book', required: true },
+            { name: 'coverUrl', label: 'Cover image for this language (optional)', type: 'media', accept: 'image/*', scope: 'book' }
+          ],
+          transform(data) {
+            return {
+              language: data.language,
+              pdfUrl: data.pdfUrl || '', coverUrl: data.coverUrl || ''
+            };
+          },
+          async onSubmit(body) {
+            const res = await R.api('GET', '/books');
+            const all = [].concat((res.data && res.data.platform) || [], (res.data && res.data.custom) || []);
+            const fresh = all.find((b) => b.id === book.id) || book;
+            const list = (fresh.editions || []).slice();
+            const at = list.findIndex((e) => e.language === body.language);
+            if (at >= 0) list[at] = body; else list.push(body);
+            list.sort((a, b) => String(a.language).localeCompare(String(b.language)));
+            return R.api('PATCH', '/books/' + encodeURIComponent(book.id), { book: { editions: list } });
+          },
+          onSuccess() { ctx.navigate(true); }
+        });
+        return true;
+      }
       if (name !== 'bookAdd') return false;
       ctx.openModal({
         title: 'Add a book',
-        description: 'Upload a PDF and its details. Platform admins can publish a book for every centre; other books stay at your centre.',
+        description: 'Upload a PDF and its details. You can add more language versions afterwards from the book. Platform admins publish for every centre; other books stay at your centre.',
         size: 'wide',
         submitLabel: 'Add book',
         fields: [
