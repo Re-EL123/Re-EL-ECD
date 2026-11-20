@@ -87,6 +87,12 @@
   function rectsIntersect(a, b) {
     return a.x <= b.x + b.w && a.x + a.w >= b.x && a.y <= b.y + b.h && a.y + a.h >= b.y;
   }
+  function safeImageSrc(value) {
+    const src = String(value || '').trim();
+    if (!src || src.length > 1000) return null;
+    if (/^https?:\/\//i.test(src) || /^\/api\/v1\/media\/object\?key=org\/[0-9a-f-]{36}\//i.test(src)) return src;
+    return null;
+  }
 
   const TOOLS = {
     select: { label: 'Select', icon: 'mouse-pointer-2', key: 'V', group: 'Navigate' },
@@ -94,6 +100,7 @@
     pen: { label: 'Pen', icon: 'pencil', key: 'P', group: 'Draw' },
     highlighter: { label: 'Highlighter', icon: 'highlighter', key: 'K', group: 'Draw' },
     eraser: { label: 'Eraser', icon: 'eraser', key: 'E', group: 'Draw' },
+    magic: { label: 'Magic writing', icon: 'wand-sparkles', key: 'G', group: 'Draw' },
     line: { label: 'Line', icon: 'minus', key: 'L', group: 'Shape' },
     arrow: { label: 'Arrow', icon: 'arrow-right', key: 'A', group: 'Shape' },
     rect: { label: 'Rectangle', icon: 'square', key: 'R', group: 'Shape' },
@@ -106,7 +113,7 @@
   const TOOL_GROUPS = ['Navigate', 'Draw', 'Shape', 'Insert'];
   // The most-used tools stay pinned in the strip; the rest live in a "More"
   // flyout so nothing scrolls off-screen on a classroom laptop or touch display.
-  const PRIMARY_TOOLS = ['select', 'hand', 'pen', 'highlighter', 'eraser', 'line', 'arrow', 'rect', 'circle', 'text', 'sticky'];
+  const PRIMARY_TOOLS = ['select', 'hand', 'pen', 'highlighter', 'eraser', 'magic', 'line', 'arrow', 'rect', 'circle', 'text', 'sticky'];
   const SECONDARY_TOOLS = ['math', 'image'];
   const MATH_SYMBOLS = ['+', '−', '×', '÷', '=', '≠', '≈', '<', '>', '≤', '≥', 'π', '√', 'x²', 'x³', '½', '¼', '°', 'α', 'β', 'θ', 'Δ', '∑', '∞', '→', '↔', 'H₂O', 'CO₂', 'O₂', 'NaCl', 'E=mc²'];
   const SWATCHES = ['#1f3b2a', '#B73A3A', '#1f5f7a', '#8a4b32', '#5b3f6e', '#a8620a', '#ffffff'];
@@ -445,7 +452,12 @@
       holder.style.top = Math.max(8, Math.min(container.clientHeight - 180, position.y)) + 'px';
       const multi = kind === 'sticky';
       holder.innerHTML = (kind === 'image'
-        ? '<input class="wb-inline-input" type="url" placeholder="Paste an image URL…" value="' + esc(seed || '') + '">'
+        ? '<input class="wb-inline-input" type="url" placeholder="Paste an image URL…" value="' + esc(seed || '') + '">' +
+          '<div class="wb-image-import">' +
+            '<button type="button" class="btn btn-sm btn-secondary" data-wb-upload>' + R.icon('upload') + ' Upload image</button>' +
+            '<input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" hidden>' +
+            '<span class="muted small">or drop / paste on the canvas</span>' +
+          '</div>'
         : '<textarea class="wb-inline-input" rows="' + (multi ? 4 : 2) + '" placeholder="' +
           (multi ? 'Write your note…' : kind === 'math' ? 'Expression or symbol…' : 'Type here…') + '">' + esc(seed || '') + '</textarea>') +
         (kind === 'text' || kind === 'sticky' || kind === 'math'
@@ -464,16 +476,29 @@
         const size = holder.querySelector('.wb-inline-size') && Number(holder.querySelector('.wb-inline-size').value);
         closeEditor();
         if (!value || readOnly || !target) return;
+        if (kind === 'image') { addImage(value, { at: target }); return; }
         pushUndo();
         if (kind === 'sticky') state.objects.push({ id: uid(), type: 'sticky', x: target.x, y: target.y, w: 180, h: 140, text: value, fill: palette().stickyFill, font: font || 'sans' });
         else if (kind === 'math') state.objects.push({ id: uid(), type: 'math', color, size: size || 28, x: target.x, y: target.y, text: value, font: font || 'sans' });
         else if (kind === 'text') state.objects.push({ id: uid(), type: 'text', color, size: size || 22, x: target.x, y: target.y, text: value, font: font || 'sans' });
-        else if (kind === 'image') state.objects.push({ id: uid(), type: 'image', x: target.x, y: target.y, w: 280, h: 180, src: value });
         render(); notify();
       }
       function cancel() { closeEditor(); }
       holder.querySelector('[data-wb-done]').addEventListener('click', commit);
       holder.querySelector('[data-wb-cancel]').addEventListener('click', cancel);
+      if (kind === 'image') {
+        const fileInput = holder.querySelector('input[type="file"]');
+        const uploadBtn = holder.querySelector('[data-wb-upload]');
+        if (uploadBtn && fileInput) {
+          uploadBtn.addEventListener('click', () => fileInput.click());
+          fileInput.addEventListener('change', () => {
+            const file = fileInput.files && fileInput.files[0];
+            if (!file) return;
+            closeEditor();
+            if (opts.onImageFile) opts.onImageFile(file, wpt);
+          });
+        }
+      }
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') { e.preventDefault(); cancel(); }
         if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); commit(); }
@@ -482,6 +507,50 @@
     function closeEditor() { if (editor) { editor.holder.remove(); editor = null; } }
 
     function canDraw() { return !readOnly && !isEditing(); }
+
+    // --- Magic writing: turn a freehand mark into a clean vector object -----
+    function recognisedObject(result) {
+      const b = result.bounds;
+      const base = { color, width: Math.max(2, strokeW) };
+      if (result.kind === 'shape') {
+        if (result.shape === 'line' || result.shape === 'arrow') {
+          return Object.assign({ id: uid(), type: result.shape }, base, { x1: b.x, y1: b.y + b.h / 2, x2: b.x + b.w, y2: b.y + b.h / 2 });
+        }
+        if (result.shape === 'rect' || result.shape === 'square') {
+          return Object.assign({ id: uid(), type: 'rect' }, base, { x: b.x, y: b.y, w: b.w, h: b.h });
+        }
+        if (result.shape === 'circle' || result.shape === 'ellipse') {
+          return Object.assign({ id: uid(), type: 'circle' }, base, { cx: b.x + b.w / 2, cy: b.y + b.h / 2, rx: b.w / 2, ry: b.h / 2 });
+        }
+        if (result.shape === 'triangle') {
+          return Object.assign({ id: uid(), type: 'path' }, base, {
+            points: [{ x: b.x + b.w / 2, y: b.y }, { x: b.x + b.w, y: b.y + b.h }, { x: b.x, y: b.y + b.h }, { x: b.x + b.w / 2, y: b.y }]
+          });
+        }
+      }
+      const size = Math.max(16, Math.min(120, Math.round(b.h * 0.9)));
+      const symbolic = /^[+−=<>×÷√π∞→←↑↓?!]$/.test(result.label);
+      return {
+        id: uid(), type: symbolic ? 'math' : 'text', color, size,
+        x: b.x, y: b.y, text: result.label, font: 'sans'
+      };
+    }
+    function applyRecognition(strokes, removeIds) {
+      if (readOnly || !R.wbRecognition) return null;
+      const result = R.wbRecognition.recognise(strokes);
+      if (!result) return null;
+      pushUndo();
+      if (removeIds && removeIds.length) {
+        const removed = new Set(removeIds);
+        state.objects = state.objects.filter((o) => !removed.has(o.id));
+      }
+      const object = recognisedObject(result);
+      state.objects.push(object);
+      selectedIds = new Set([object.id]); selectedId = object.id;
+      render(); notify();
+      if (opts.onNotice) opts.onNotice('Recognised ' + result.label + ' — undo to keep your drawing');
+      return result;
+    }
 
     function onPointerDown(e) {
       if (isEditing()) return;
@@ -529,8 +598,11 @@
         }
         drawing = { erasing: true, moved: false, _did: eraserMode === 'objects' }; return;
       }
-      if (tool === 'pen' || tool === 'highlighter') {
-        drawing = { id: uid(), type: tool === 'highlighter' ? 'highlighter' : 'path', color, width: tool === 'highlighter' ? 16 : strokeW, points: [wpt] };
+      if (tool === 'pen' || tool === 'highlighter' || tool === 'magic') {
+        drawing = {
+          id: uid(), type: tool === 'highlighter' ? 'highlighter' : 'path',
+          color, width: tool === 'highlighter' ? 16 : strokeW, points: [wpt], magic: tool === 'magic'
+        };
       } else if (tool === 'line' || tool === 'arrow') {
         drawing = { id: uid(), type: tool, color, width: strokeW, x1: wpt.x, y1: wpt.y, x2: wpt.x, y2: wpt.y };
       } else if (tool === 'rect') {
@@ -633,7 +705,10 @@
       if (drawing.drag || drawing.resize) { notify(); drawing = null; render(); return; }
       if (drawing.erasing) { drawing = null; return; }
       if (drawing.type === 'path' || drawing.type === 'highlighter') {
-        if ((drawing.points || []).length > 1) { pushUndo(); state.objects.push(drawing); notify(); }
+        if ((drawing.points || []).length > 1) {
+          if (drawing.magic && applyRecognition([drawing.points], [])) { drawing = null; render(); return; }
+          pushUndo(); state.objects.push(drawing); notify();
+        }
       } else if (drawing.type === 'line' || drawing.type === 'arrow') {
         if (Math.hypot(drawing.x2 - drawing.x1, drawing.y2 - drawing.y1) > 2) { pushUndo(); state.objects.push(drawing); notify(); }
       } else if (drawing.type === 'rect' || drawing.type === 'image') {
@@ -740,10 +815,18 @@
         state.objects.push({ id: uid(), type: 'math', color, size: 32, x: (rect.width / 2 - v.x) / v.zoom, y: (rect.height / 2 - v.y) / v.zoom, text: sym, font: 'sans' });
         render(); notify();
       },
-      addImage(src) {
-        if (readOnly || !/^https?:\/\//i.test(src)) return;
-        pushUndo(); const v = vp(); const rect = canvas.getBoundingClientRect();
-        state.objects.push({ id: uid(), type: 'image', x: (rect.width / 2 - v.x) / v.zoom, y: (rect.height / 2 - v.y) / v.zoom, w: 280, h: 180, src });
+      addImage(src, options) {
+        const url = safeImageSrc(src);
+        if (readOnly || !url) return;
+        const o = options || {};
+        const v = vp(); const rect = canvas.getBoundingClientRect();
+        const at = o.at || { x: (rect.width / 2 - v.x) / v.zoom, y: (rect.height / 2 - v.y) / v.zoom };
+        const w = Math.max(20, Math.min(2000, Number(o.w) || 280));
+        const h = Math.max(20, Math.min(2000, Number(o.h) || 180));
+        pushUndo();
+        state.objects.push({ id: uid(), type: 'image', x: at.x - w / 2, y: at.y - h / 2, w, h, src: url });
+        selectedIds = new Set([state.objects[state.objects.length - 1].id]);
+        selectedId = state.objects[state.objects.length - 1].id;
         render(); notify();
       },
       insertTemplate(kind) {
@@ -865,6 +948,24 @@
       canRedo() { return !readOnly && redo.length > 0; },
       duplicateObject(id) { if (readOnly) return; cloneObjects([id]); },
       duplicateSelected() { if (readOnly || !selectedIds.size) return; cloneObjects(selectedIds); },
+      recogniseSelected() {
+        if (readOnly || !selectedIds.size || !R.wbRecognition) return 0;
+        const paths = state.objects.filter((o) => selectedIds.has(o.id) && (o.type === 'path' || o.type === 'highlighter'));
+        if (!paths.length) return 0;
+        const replacements = [], remove = [];
+        paths.forEach((o) => {
+          const result = R.wbRecognition.recognise([o.points || []]);
+          if (result) { replacements.push(recognisedObject(result)); remove.push(o.id); }
+        });
+        if (!replacements.length) return 0;
+        pushUndo();
+        const removed = new Set(remove);
+        state.objects = state.objects.filter((o) => !removed.has(o.id)).concat(replacements);
+        selectedIds = new Set(replacements.map((o) => o.id)); selectedId = replacements[0].id;
+        render(); notify();
+        if (opts.onNotice) opts.onNotice('Recognised ' + replacements.length + ' mark' + (replacements.length === 1 ? '' : 's'));
+        return replacements.length;
+      },
       removeObject(id) {
         if (readOnly) return;
         const ids = expandIds([id]);
@@ -1288,6 +1389,7 @@
               '<label class="wb-inline-row" data-field="size"><span>Size</span><input type="range" id="wb-obj-size" min="8" max="120" value="20" aria-label="Object size"></label>' +
               '<label class="wb-inline-row" data-field="fill"><span>Sticky fill</span><input type="color" id="wb-obj-fill" value="#fff4b8" aria-label="Sticky note fill"></label>' +
               '<label class="wb-inline-row" data-field="font"><span>Font</span><select id="wb-obj-font" class="wb-select"><option value="sans">Sans</option><option value="serif">Serif</option><option value="mono">Mono</option></select></label>' +
+              '<button type="button" class="btn btn-sm btn-secondary wb-wide-btn" id="wb-recognise" hidden>' + R.icon('wand-sparkles') + ' Clean up selected strokes</button>' +
               '<div class="wb-field-label">Order</div><div class="wb-layer-btns wb-order-btns">' +
                 '<button type="button" class="btn btn-sm btn-ghost" data-layer="front" title="Bring to front">' + R.icon('chevrons-up') + ' Front</button>' +
                 '<button type="button" class="btn btn-sm btn-ghost" data-layer="forward" title="Move forward">' + R.icon('chevron-up') + ' Up</button>' +
@@ -1430,6 +1532,32 @@
       badge(secs < 8 ? 'Saved just now' : 'Saved ' + R.relative(new Date(Date.now() - secs * 1000).toISOString()), 'good');
     }
 
+    function imageDimensions(file) {
+      return new Promise((resolve) => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => { URL.revokeObjectURL(url); resolve({ w: img.naturalWidth, h: img.naturalHeight }); };
+        img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+        img.src = url;
+      });
+    }
+    async function uploadImageFile(file, at) {
+      if (!file || !/^image\//i.test(file.type) || !R.uploadMedia) return;
+      if (ctx.toast) ctx.toast('Uploading image…');
+      try {
+        const dims = await imageDimensions(file);
+        const asset = await R.uploadMedia(file, { scope: 'whiteboard', ownerType: 'whiteboard', ownerId: board.id });
+        const url = asset && (asset.url || asset.publicUrl);
+        if (!url) throw new Error('No image URL was returned.');
+        let w = (dims && dims.w) || 480, h = (dims && dims.h) || 320;
+        const scale = Math.min(1, 900 / Math.max(w, h));
+        w = Math.round(w * scale); h = Math.round(h * scale);
+        engine.addImage(url, { at, w, h });
+        if (ctx.toast) ctx.toast('Image added.');
+      } catch (e) {
+        if (ctx.toast) ctx.toast((e && e.message) || 'Could not upload the image.', 'error');
+      }
+    }
     const objectFields = document.getElementById('wb-object-fields');
     const layersPanel = document.querySelector('[data-dock-panel="layers"]');
     const layersList = layersPanel && layersPanel.querySelector('.wb-layer-list');
@@ -1468,6 +1596,8 @@
       if (ungroup) ungroup.hidden = !objs.some((o) => o.groupId);
       const align = document.getElementById('wb-align-tools');
       if (align) align.hidden = objs.length < 2;
+      const recognise = document.getElementById('wb-recognise');
+      if (recognise) recognise.hidden = !objs.some((o) => o.type === 'path' || o.type === 'highlighter');
     }
     function ensureSelectedVisible() {
       if (!layersList || !selectedIds.length || syncingSelection) return;
@@ -1491,6 +1621,8 @@
       dirty = true; badge('Editing…', 'warn');
     }, {
       readOnly: !canEdit,
+      onNotice(message) { if (ctx.toast) ctx.toast(message); },
+      onImageFile(file, at) { uploadImageFile(file, at); },
       onObjects(list) {
         layerObjects = list;
         renderLayers();
@@ -1655,6 +1787,10 @@
     objectFields && objectFields.querySelectorAll('[data-layer]').forEach((b) => b.addEventListener('click', () => engine.moveSelected(b.getAttribute('data-layer'))));
     const groupBtn = document.getElementById('wb-group'); if (groupBtn) groupBtn.addEventListener('click', () => engine.groupSelected());
     const ungroupBtn = document.getElementById('wb-ungroup'); if (ungroupBtn) ungroupBtn.addEventListener('click', () => engine.ungroupSelected());
+    const recogniseBtn = document.getElementById('wb-recognise');
+    if (recogniseBtn) recogniseBtn.addEventListener('click', () => {
+      if (!engine.recogniseSelected() && ctx.toast) ctx.toast('No marks here could be recognised. Try a neater stroke.', 'error');
+    });
     document.querySelectorAll('[data-align]').forEach((b) => b.addEventListener('click', () => engine.alignSelected(b.getAttribute('data-align'))));
     document.querySelectorAll('[data-distribute]').forEach((b) => b.addEventListener('click', () => engine.distributeSelected(b.getAttribute('data-distribute'))));
     const selectToolBtn = document.getElementById('wb-properties-select');
@@ -2054,6 +2190,47 @@
       if (input) input.value = '';
     });
 
+    // Images can also be dropped or pasted straight onto the canvas.
+    function imageFilesFrom(event) {
+      const files = [];
+      if (event.dataTransfer && event.dataTransfer.files) {
+        Array.from(event.dataTransfer.files).forEach((f) => { if (/^image\//i.test(f.type)) files.push(f); });
+      }
+      if (event.clipboardData && event.clipboardData.items) {
+        Array.from(event.clipboardData.items).forEach((item) => {
+          if (item.type && /^image\//i.test(item.type)) { const f = item.getAsFile(); if (f) files.push(f); }
+        });
+      }
+      return files;
+    }
+    function onCanvasDragOver(e) {
+      if (!e.dataTransfer || !Array.from(e.dataTransfer.types || []).includes('Files')) return;
+      e.preventDefault(); wrap.classList.add('wb-drop-target');
+    }
+    function onCanvasDragLeave() { wrap.classList.remove('wb-drop-target'); }
+    function onCanvasDrop(e) {
+      const files = imageFilesFrom(e);
+      if (!files.length) return;
+      e.preventDefault(); wrap.classList.remove('wb-drop-target');
+      const rect = wrap.getBoundingClientRect(), v = engine.getViewport();
+      const at = { x: (e.clientX - rect.left - v.x) / v.zoom, y: (e.clientY - rect.top - v.y) / v.zoom };
+      files.forEach((f, i) => uploadImageFile(f, { x: at.x + i * 24, y: at.y + i * 24 }));
+    }
+    function onCanvasPaste(e) {
+      const tag = (e.target && e.target.tagName) || '';
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || (e.target && e.target.isContentEditable)) return;
+      const files = imageFilesFrom(e);
+      if (!files.length) return;
+      e.preventDefault();
+      const rect = wrap.getBoundingClientRect(), v = engine.getViewport();
+      const at = { x: (rect.width / 2 - v.x) / v.zoom, y: (rect.height / 2 - v.y) / v.zoom };
+      files.forEach((f, i) => uploadImageFile(f, { x: at.x + i * 24, y: at.y + i * 24 }));
+    }
+    wrap.addEventListener('dragover', onCanvasDragOver);
+    wrap.addEventListener('dragleave', onCanvasDragLeave);
+    wrap.addEventListener('drop', onCanvasDrop);
+    document.addEventListener('paste', onCanvasPaste);
+
     wrap._wbCleanup = () => {
       document.body.classList.remove('wb-teaching');
       window.removeEventListener('resize', sizeShell);
@@ -2063,6 +2240,10 @@
       document.removeEventListener('keydown', documentShortcuts);
       document.removeEventListener('click', onDocClick);
       document.removeEventListener('click', onSwatchClick);
+      wrap.removeEventListener('dragover', onCanvasDragOver);
+      wrap.removeEventListener('dragleave', onCanvasDragLeave);
+      wrap.removeEventListener('drop', onCanvasDrop);
+      document.removeEventListener('paste', onCanvasPaste);
       closePresentation();
       engine.destroy();
     };

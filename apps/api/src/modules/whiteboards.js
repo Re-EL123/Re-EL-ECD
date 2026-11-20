@@ -24,6 +24,15 @@ const MAX_SNAPSHOTS = 30;
 const TYPES = new Set(['path', 'highlighter', 'line', 'arrow', 'rect', 'circle', 'text', 'math', 'sticky', 'image']);
 const HEX = /^#[0-9a-f]{6}$/i;
 const FILL_HEX = /^#[0-9a-f]{6}$/i;
+// Uploaded images are served through the authenticated media proxy, whose URL
+// is site-relative. Accept those alongside ordinary public http(s) URLs.
+const MEDIA_PROXY = /^\/api\/v1\/media\/object\?key=org\/[0-9a-f-]{36}\//i;
+function safeImageSrc(value) {
+  const src = String(value || '').trim();
+  if (!src || src.length > 1000) return null;
+  if (/^https?:\/\//i.test(src) || MEDIA_PROXY.test(src)) return src;
+  return null;
+}
 
 function num(value, fallback, min, max) {
   const n = Number(value);
@@ -91,11 +100,12 @@ function cleanObject(raw) {
         font: ['sans', 'serif', 'mono'].includes(raw.font) ? raw.font : 'sans'
       });
     case 'image': {
-      if (!/^https?:\/\//i.test(String(raw.src || ''))) return null;
+      const src = safeImageSrc(raw.src);
+      if (!src) return null;
       return Object.assign(base, {
         x: num(raw.x, 0, -100000, 100000), y: num(raw.y, 0, -100000, 100000),
         w: num(raw.w, 240, 20, 2000), h: num(raw.h, 160, 20, 2000),
-        src: String(raw.src).slice(0, 1000)
+        src
       });
     }
     default:

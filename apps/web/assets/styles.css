@@ -3818,3 +3818,14 @@ body.wb-teaching .content { padding-bottom: 0 !important; }
 .wb-layer-row.drop-before { box-shadow: inset 0 2px 0 var(--reel-green-700); }
 .wb-layer-row.drop-after { box-shadow: inset 0 -2px 0 var(--reel-green-700); }
 .wb-eraser-group[hidden] { display: none !important; }
+
+/* ---- Image upload and magic writing --------------------------------------- */
+.wb-image-import { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+.wb-image-import .muted { font-size: .7rem; }
+.wb-canvas-wrap.wb-drop-target { outline: 3px dashed var(--reel-green-600); outline-offset: -8px; }
+.wb-canvas-wrap.wb-drop-target::after {
+  content: 'Drop images to add them to the board'; position: absolute; z-index: 9;
+  top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 12px 20px;
+  border-radius: 14px; background: var(--surface-glass-strong); color: var(--text);
+  font-weight: 700; font-size: .9rem; box-shadow: var(--shadow-lg); pointer-events: none;
+}
