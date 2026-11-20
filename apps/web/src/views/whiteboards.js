@@ -1479,8 +1479,11 @@
       if (changed) { syncingSelection = true; renderLayers(); syncingSelection = false; }
       const row = layersList.querySelector('.wb-layer-row.is-selected');
       if (row) {
+        // Scroll only the list — scrollIntoView would also scroll the dock body
+        // and hide the Properties panel we just updated.
         const listRect = layersList.getBoundingClientRect(), rowRect = row.getBoundingClientRect();
-        if (rowRect.top < listRect.top || rowRect.bottom > listRect.bottom) row.scrollIntoView({ block: 'nearest' });
+        if (rowRect.top < listRect.top) layersList.scrollTop -= (listRect.top - rowRect.top) + 4;
+        else if (rowRect.bottom > listRect.bottom) layersList.scrollTop += (rowRect.bottom - listRect.bottom) + 4;
       }
     }
 
@@ -1544,7 +1547,7 @@
     try { recentColours = JSON.parse((window.localStorage && localStorage.getItem(colourKey)) || '[]') || []; } catch (e) { /* storage unavailable */ }
     function renderRecentColours() {
       if (!recentEl) return;
-      recentEl.innerHTML = recentColours.filter((c) => c.toLowerCase() !== '#1f3b2a').map((c) =>
+      recentEl.innerHTML = recentColours.filter((c) => !SWATCHES.some((s) => s.toLowerCase() === c.toLowerCase())).map((c) =>
         '<button type="button" class="wb-swatch wb-recent-swatch" data-swatch="' + attr(c) + '" style="background:' + attr(c) +
         '" title="Recent colour ' + attr(c) + '" aria-label="Recent colour ' + attr(c) + '"></button>').join('');
     }

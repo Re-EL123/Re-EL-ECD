@@ -228,7 +228,7 @@ test('objects list supports range select and keeps the selected row visible', ()
   assert.match(view, /e\.shiftKey && rowAnchor/);
   assert.match(view, /e\.ctrlKey \|\| e\.metaKey/);
   assert.match(view, /function ensureSelectedVisible\(\)/);
-  assert.match(view, /scrollIntoView\(\{ block: 'nearest' \}\)/);
+  assert.match(view, /layersList\.scrollTop \+= \(rowRect\.bottom - listRect\.bottom\) \+ 4/);
   assert.match(view, /collapsedGroups\.delete\(o\.groupId\)/);
 });
 
