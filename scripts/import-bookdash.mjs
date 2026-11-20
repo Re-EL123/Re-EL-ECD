@@ -15,11 +15,12 @@
  * the licence are stored with every book and shown in the UI.
  */
 
-const fs = require('node:fs');
-const path = require('node:path');
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
 
 const API = process.env.REEL_API_URL || 'https://re-el-ecd-api.vercel.app/api/v1';
-const EMAIL = process.env.REEL_IMPORT_EMAIL || 'principal@littlesprouts.local';
+const EMAIL = process.env.REEL_IMPORT_EMAIL || 'platform@re-el-ecd.local';
 const PASSWORD = process.env.REEL_IMPORT_PASSWORD || 'Re-EL-Demo-2026!';
 
 const LANG = {
@@ -121,7 +122,11 @@ async function api(method, urlPath, body, extraHeaders = {}) {
   return parsed;
 }
 
+let cache = {}, cachePath = '';
+function saveCache() { fs.writeFileSync(cachePath, JSON.stringify(cache, null, 2)); }
 async function upload(file, lang) {
+  const key = path.basename(file);
+  if (cache[key]) return cache[key];
   const stat = fs.statSync(file);
   const mime = /\.pdf$/i.test(file) ? 'application/pdf'
     : /\.png$/i.test(file) ? 'image/png' : 'image/jpeg';
@@ -137,6 +142,8 @@ async function upload(file, lang) {
   const done = await api('POST', '/media/assets/' + encodeURIComponent(payload.asset.id) + '/complete', {});
   const asset = done.data || {};
   if (!asset.url) throw new Error('No media URL for ' + file);
+  cache[key] = asset.url;
+  saveCache();
   return asset.url;
 }
 
@@ -144,6 +151,8 @@ async function main() {
   const dir = process.argv[2];
   if (!dir) throw new Error('Usage: node scripts/import-bookdash.mjs /path/to/extracted-books');
   const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
+  cachePath = path.join(dir, '.upload-cache.json');
+  if (fs.existsSync(cachePath)) cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
 
   await api('POST', '/auth/login', { email: EMAIL, password: PASSWORD });
   if (!csrf) throw new Error('Login did not return a CSRF token.');

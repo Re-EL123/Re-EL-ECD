@@ -82,7 +82,7 @@ function register(router) {
       custom: Array.isArray(own.books) ? own.books : [],
       canPublish: platform(ctx)
     };
-  }, { permission: 'organisation.read.daycare' });
+  }, { permission: ['organisation.read.daycare', 'platform.settings.manage'], permissionMode: 'any' });
 
   router.post('/books', async (ctx) => {
     const body = validate(ctx.body, { book: { type: 'object' } });
