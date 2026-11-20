@@ -44,8 +44,8 @@ test('the tool strip is a single scrollable row', () => {
   assert.match(view, /class="wb-tool-strip"/);
   assert.match(css, /\.wb-tool-strip \{[\s\S]{0,220}overflow-x: auto/);
   assert.ok(!view.includes('wb-group-label'), 'group labels moved out of the strip');
-  assert.match(view, /wb-inspector-board/);
-  assert.match(view, /wb-inspector-object/);
+  assert.match(view, /class="wb-style-bar"/);
+  assert.match(view, /id="wb-object-fields"/);
 });
 
 test('layers panel supports select, hide, lock, reorder and grouping', () => {
@@ -103,12 +103,11 @@ test('read-only mode is explicit', () => {
 
 test('controls live in a labelled dock instead of floating over the canvas', () => {
   assert.match(view, /class="wb-dock" id="wb-dock"/);
-  assert.match(view, /data-dock-tab="style"/);
   assert.match(view, /data-dock-tab="layers"/);
   assert.match(view, /data-dock-tab="history"/);
   assert.match(view, /id="wb-dock-collapse"/);
   assert.match(view, /openDock\(tab\)/);
-  assert.match(view, /Sets the colour and thickness for new marks/);
+  assert.match(view, /Style stays with the tools and is always visible/);
   assert.match(view, /Click a row to select it\. Drag to change what sits on top/);
   assert.match(view, /Versions save automatically as you work/);
   assert.match(view, /Overview · click to jump/);
@@ -119,4 +118,13 @@ test('controls live in a labelled dock instead of floating over the canvas', () 
   assert.match(css, /\.wb-actions-labelled \.btn/);
   assert.match(view, /aria-label="Undo"/);
   assert.match(view, /aria-label="Redo"/);
+});
+
+test('changing the selection never resets the board style controls', () => {
+  assert.match(view, /Style stays with the tools and is always visible/);
+  assert.ok(!view.includes('inspectorBoard.hidden'), 'board style is never hidden on selection');
+  assert.ok(!view.includes('inspectorObject.hidden'), 'style section is never replaced');
+  assert.match(view, /objectFields\.hidden = selected\.length === 0/);
+  assert.match(css, /\.wb-selection-bar\[hidden\] \{ display: none !important; \}/);
+  assert.match(css, /\.wb-style-bar \{[\s\S]{0,220}overflow-x: auto/);
 });

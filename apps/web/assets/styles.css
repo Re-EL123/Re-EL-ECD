@@ -3649,3 +3649,32 @@ body.wb-teaching .content { padding-bottom: 0 !important; }
 }
 .wb-dock-reopen[hidden] { display: none !important; }
 .wb-dock-reopen svg { width: 15px; height: 15px; }
+
+/* Style lives with the tools and never disappears when a selection changes. */
+.wb-canvas-wrap { top: 144px; }
+.wb-dock { top: 144px; }
+.wb-dock-reopen { top: 156px; }
+.wb-mathbar { top: 148px; }
+.wb-style-bar {
+  position: relative; z-index: 49; display: flex; gap: 8px; align-items: center;
+  height: 44px; padding: 4px 10px; overflow-x: auto; scrollbar-width: none;
+  background: var(--surface-glass-strong); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid var(--border-subtle); touch-action: pan-x;
+}
+.wb-style-bar::-webkit-scrollbar { display: none; }
+.wb-style-group { flex: 0 0 auto; display: flex; gap: 6px; align-items: center; padding-right: 8px; border-right: 1px solid var(--border-subtle); }
+.wb-style-label { font-size: .68rem; font-weight: 750; letter-spacing: .07em; text-transform: uppercase; color: var(--text-muted); white-space: nowrap; }
+.wb-style-bar .wb-swatches { display: flex; gap: 4px; margin: 0; }
+.wb-style-bar .wb-actions { display: flex; flex-wrap: nowrap; gap: 4px; margin: 0; }
+.wb-style-bar .wb-actions .btn { flex: 0 0 auto; }
+.wb-selection-bar {
+  flex: 0 0 auto; display: flex; gap: 8px; align-items: center; padding-left: 10px;
+  border-left: 1px dashed var(--border-strong); background: var(--surface-2); border-radius: 10px; margin-left: 4px;
+}
+.wb-selection-bar[hidden] { display: none !important; }
+.wb-selection-bar .wb-inline-row { margin: 0; }
+.wb-order-btns { flex-wrap: nowrap; margin: 0; }
+@media (max-width: 1100px) {
+  .wb-canvas-wrap { top: 150px; }
+  .wb-dock { top: 150px; }
+}

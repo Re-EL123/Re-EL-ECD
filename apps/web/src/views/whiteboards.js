@@ -922,49 +922,46 @@
       html += '<div class="wb-mathbar" id="wb-mathbar" hidden>' + MATH_SYMBOLS.map((s) =>
         '<button type="button" class="btn btn-sm btn-ghost wb-math" data-sym="' + attr(s) + '" aria-label="Insert ' + attr(s) + '">' + esc(s) + '</button>').join('') + '</div>';
 
-      // A single labelled dock to the right of the canvas — nothing floats over the art.
+      // Style stays with the tools and is always visible — switching between
+      // the board and a selected object must never reset what you just chose.
+      html += '<div class="wb-style-bar" id="wb-style-bar">' +
+        '<div class="wb-style-group"><span class="wb-style-label">Colour</span><div class="wb-swatches">' +
+          SWATCHES.map((c) => '<button type="button" class="wb-swatch' + (c === '#1f3b2a' ? ' active' : '') + '" data-swatch="' + c + '" style="background:' + c + '" title="Use ' + c + '" aria-label="Use colour ' + c + '"></button>').join('') +
+          '<input type="color" id="wb-color" value="#1f3b2a" aria-label="Custom colour" title="Custom colour">' +
+        '</div></div>' +
+        '<label class="wb-style-group wb-inline-row"><span>Width</span><select id="wb-width" class="wb-select">' +
+          '<option value="2">Thin</option><option value="3" selected>Medium</option><option value="6">Thick</option><option value="10">Bold</option></select></label>' +
+        '<div class="wb-style-group wb-actions wb-actions-labelled">' +
+          '<button type="button" class="btn btn-sm btn-ghost" id="wb-undo" title="Undo (Ctrl+Z)" aria-label="Undo">' + R.icon('undo-2') + ' Undo</button>' +
+          '<button type="button" class="btn btn-sm btn-ghost" id="wb-redo" title="Redo (Ctrl+Y)" aria-label="Redo">' + R.icon('redo-2') + ' Redo</button>' +
+          '<button type="button" class="btn btn-sm btn-ghost" id="wb-del" title="Delete selected items" aria-label="Delete selected">' + R.icon('trash-2') + ' Delete</button>' +
+          '<button type="button" class="btn btn-sm btn-ghost" id="wb-clear" title="Clear the whole canvas" aria-label="Clear canvas">' + R.icon('file-x-2') + ' Clear</button>' +
+          '<button type="button" class="btn btn-sm btn-ghost" id="wb-snap" title="Snap marks to the grid" aria-pressed="false">' + R.icon('grid-3x3') + ' Snap</button>' +
+          '<button type="button" class="btn btn-sm btn-ghost" id="wb-keys" title="See keyboard shortcuts">' + R.icon('keyboard') + ' Shortcuts</button>' +
+        '</div>' +
+        '<div class="wb-selection-bar" id="wb-object-fields" hidden><span class="wb-style-label">Selected <b id="wb-sel-count"></b></span>' +
+          '<label class="wb-inline-row"><span>Colour</span><input type="color" id="wb-obj-color" aria-label="Object colour"></label>' +
+          '<label class="wb-inline-row"><span>Size</span><input type="range" id="wb-obj-size" min="8" max="120" value="20" aria-label="Object size"></label>' +
+          '<label class="wb-inline-row"><span>Fill</span><input type="color" id="wb-obj-fill" value="#fff4b8" aria-label="Sticky note fill"></label>' +
+          '<label class="wb-inline-row"><span>Font</span><select id="wb-obj-font" class="wb-select"><option value="sans">Sans</option><option value="serif">Serif</option><option value="mono">Mono</option></select></label>' +
+          '<div class="wb-layer-btns wb-order-btns">' +
+            '<button type="button" class="btn btn-sm btn-ghost" data-layer="front" title="Bring to front">' + R.icon('chevrons-up') + ' Front</button>' +
+            '<button type="button" class="btn btn-sm btn-ghost" data-layer="forward" title="Move forward">' + R.icon('chevron-up') + ' Up</button>' +
+            '<button type="button" class="btn btn-sm btn-ghost" data-layer="backward" title="Move backward">' + R.icon('chevron-down') + ' Down</button>' +
+            '<button type="button" class="btn btn-sm btn-ghost" data-layer="back" title="Send to back">' + R.icon('chevrons-down') + ' Back</button>' +
+            '<button type="button" class="btn btn-sm btn-ghost" id="wb-group" title="Group selected items">' + R.icon('group') + ' Group</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+      // Dock holds only reference panels — Objects and History.
       html += '<aside class="wb-dock" id="wb-dock">' +
         '<div class="wb-dock-tabs" role="tablist" aria-label="Whiteboard panels">' +
-          '<button type="button" class="wb-dock-tab active" data-dock-tab="style" role="tab" aria-selected="true">' + R.icon('palette') + ' Style</button>' +
-          '<button type="button" class="wb-dock-tab" data-dock-tab="layers" role="tab" aria-selected="false">' + R.icon('layers') + ' Objects</button>' +
+          '<button type="button" class="wb-dock-tab active" data-dock-tab="layers" role="tab" aria-selected="true">' + R.icon('layers') + ' Objects</button>' +
           '<button type="button" class="wb-dock-tab" data-dock-tab="history" role="tab" aria-selected="false">' + R.icon('history') + ' History</button>' +
           '<button type="button" class="wb-dock-collapse" id="wb-dock-collapse" aria-label="Hide panel" title="Hide panel">' + R.icon('panel-right-close') + '</button>' +
         '</div><div class="wb-dock-body">' +
-        '<section class="wb-dock-panel" data-dock-panel="style">' +
-          '<div class="wb-dock-intro">' + R.icon('palette') + '<div><strong>Drawing style</strong><span>Sets the colour and thickness for new marks. Select something on the board to change just that item.</span></div></div>' +
-          '<div id="wb-inspector-board">' +
-            '<div class="wb-field-label">Colour</div>' +
-            '<div class="wb-swatches">' + SWATCHES.map((c) => '<button type="button" class="wb-swatch' + (c === '#1f3b2a' ? ' active' : '') + '" data-swatch="' + c + '" style="background:' + c + '" title="Use ' + c + '" aria-label="Use colour ' + c + '"></button>').join('') +
-              '<input type="color" id="wb-color" value="#1f3b2a" aria-label="Choose a custom colour" title="Custom colour"></div>' +
-            '<label class="wb-inline-row"><span>Stroke width</span><select id="wb-width" class="wb-select"><option value="2">Thin</option><option value="3" selected>Medium</option><option value="6">Thick</option><option value="10">Bold</option></select></label>' +
-          '</div>' +
-          '<div class="wb-dock-divider"></div>' +
-          '<div class="wb-dock-intro" id="wb-inspector-object" hidden>' + R.icon('mouse-pointer-click') +
-            '<div><strong>Selected item <span id="wb-sel-count"></span></strong><span>Change only the item you picked. Use the order buttons to bring it forward or send it back.</span></div></div>' +
-          '<div class="wb-object-fields" id="wb-object-fields" hidden>' +
-            '<label class="wb-inline-row"><span>Colour</span><input type="color" id="wb-obj-color" aria-label="Object colour"></label>' +
-            '<label class="wb-inline-row"><span>Text size</span><input type="range" id="wb-obj-size" min="8" max="120" value="20" aria-label="Object size"></label>' +
-            '<label class="wb-inline-row"><span>Sticky fill</span><input type="color" id="wb-obj-fill" value="#fff4b8" aria-label="Sticky note fill"></label>' +
-            '<label class="wb-inline-row"><span>Font</span><select id="wb-obj-font" class="wb-select"><option value="sans">Sans</option><option value="serif">Serif</option><option value="mono">Mono</option></select></label>' +
-            '<div class="wb-field-label">Stacking order</div><div class="wb-layer-btns">' +
-              '<button type="button" class="btn btn-sm btn-ghost" data-layer="front" title="Bring to front">' + R.icon('chevrons-up') + ' Front</button>' +
-              '<button type="button" class="btn btn-sm btn-ghost" data-layer="forward" title="Move forward">' + R.icon('chevron-up') + ' Up</button>' +
-              '<button type="button" class="btn btn-sm btn-ghost" data-layer="backward" title="Move backward">' + R.icon('chevron-down') + ' Down</button>' +
-              '<button type="button" class="btn btn-sm btn-ghost" data-layer="back" title="Send to back">' + R.icon('chevrons-down') + ' Back</button>' +
-              '<button type="button" class="btn btn-sm btn-ghost" id="wb-group" title="Group selected items">' + R.icon('group') + ' Group</button>' +
-            '</div>' +
-          '</div>' +
-          '<div class="wb-dock-divider"></div>' +
-          '<div class="wb-field-label">Board actions</div><div class="wb-actions wb-actions-labelled">' +
-            '<button type="button" class="btn btn-sm btn-ghost" id="wb-undo" title="Undo (Ctrl+Z)" aria-label="Undo">' + R.icon('undo-2') + ' Undo</button>' +
-            '<button type="button" class="btn btn-sm btn-ghost" id="wb-redo" title="Redo (Ctrl+Y)" aria-label="Redo">' + R.icon('redo-2') + ' Redo</button>' +
-            '<button type="button" class="btn btn-sm btn-ghost" id="wb-del" title="Delete selected items" aria-label="Delete selected">' + R.icon('trash-2') + ' Delete</button>' +
-            '<button type="button" class="btn btn-sm btn-ghost" id="wb-clear" title="Clear the whole canvas" aria-label="Clear canvas">' + R.icon('file-x-2') + ' Clear</button>' +
-            '<button type="button" class="btn btn-sm btn-ghost" id="wb-snap" title="Snap marks to the grid" aria-pressed="false">' + R.icon('grid-3x3') + ' Snap</button>' +
-            '<button type="button" class="btn btn-sm btn-ghost" id="wb-keys" title="See keyboard shortcuts">' + R.icon('keyboard') + ' Shortcuts</button>' +
-          '</div>' +
-        '</section>' +
-        '<section class="wb-dock-panel" data-dock-panel="layers" hidden>' +
+        '<section class="wb-dock-panel" data-dock-panel="layers">' +
           '<div class="wb-dock-intro">' + R.icon('layers') + '<div><strong>Objects on this board</strong><span>Click a row to select it. Drag to change what sits on top. Use the eye to hide and the lock to protect.</span></div></div>' +
           '<button type="button" class="btn btn-sm btn-secondary wb-wide-btn" id="wb-select-all">' + R.icon('square-check') + ' Select all objects</button>' +
           '<div class="wb-layer-list"></div>' +
@@ -976,7 +973,7 @@
           '<div class="wb-history-list"><span class="muted small">Loading…</span></div>' +
         '</section>' +
       '</div></aside>';
-      html += '<button type="button" class="wb-dock-reopen" id="wb-dock-reopen" hidden>' + R.icon('panel-right-open') + ' Controls</button>';
+      html += '<button type="button" class="wb-dock-reopen" id="wb-dock-reopen" hidden>' + R.icon('panel-right-open') + ' Objects</button>';
 
       // Canvas sits beside the dock, never underneath it.
       html += '<div class="wb-canvas-wrap" id="wb-canvas-wrap">' +
@@ -1033,7 +1030,7 @@
     if (dockCollapse) dockCollapse.addEventListener('click', () => {
       const dock = document.getElementById('wb-dock');
       if (dock && dock.classList.contains('is-collapsed')) {
-        openDock('style');
+        openDock('layers');
         dockCollapse.setAttribute('aria-label', 'Hide panel');
         dockCollapse.title = 'Hide panel';
         return;
@@ -1046,7 +1043,7 @@
       dockCollapse.title = 'Show panel';
     });
     const reopenBtn = document.getElementById('wb-dock-reopen');
-    if (reopenBtn) reopenBtn.addEventListener('click', () => openDock('style'));
+    if (reopenBtn) reopenBtn.addEventListener('click', () => openDock('layers'));
     const statusEl = document.getElementById('wb-status');
     const verEl = document.getElementById('wb-version');
     let version = Number(board.version || 1);
@@ -1071,8 +1068,6 @@
       badge(secs < 8 ? 'Saved just now' : 'Saved ' + R.relative(new Date(Date.now() - secs * 1000).toISOString()), 'good');
     }
 
-    const inspectorBoard = document.getElementById('wb-inspector-board');
-    const inspectorObject = document.getElementById('wb-inspector-object');
     const objectFields = document.getElementById('wb-object-fields');
     let engine = null;
     engine = newBoardCanvas(wrap, board.state || { objects: [], viewport: { x: 0, y: 0, zoom: 1 } }, () => {
@@ -1086,8 +1081,6 @@
       },
       onSelection(obj, ids) {
         const selected = Array.isArray(ids) ? ids : (obj ? [obj.id] : []);
-        if (inspectorBoard) inspectorBoard.hidden = selected.length > 0;
-        if (inspectorObject) inspectorObject.hidden = selected.length === 0;
         if (objectFields) objectFields.hidden = selected.length === 0;
         if (!selected.length || !engine) return;
         const first = engine.getSelected() || {};
@@ -1099,7 +1092,7 @@
         if (fill) fill.value = /^#[0-9a-f]{6}$/i.test(first.fill || '') ? first.fill : '#fff4b8';
         if (size) size.value = String(first.size || 20);
         if (font) font.value = first.font || 'sans';
-        const count = inspectorObject.querySelector('#wb-sel-count');
+        const count = objectFields && objectFields.querySelector('#wb-sel-count');
         if (count) count.textContent = selected.length > 1 ? '(' + selected.length + ')' : '';
         (objectFields ? objectFields.querySelectorAll('button') : []).forEach((b) => { b.disabled = !canEdit; });
       },
