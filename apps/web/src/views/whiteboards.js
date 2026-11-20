@@ -1364,8 +1364,7 @@
           '<span class="wb-layer-grip" title="Drag to reorder" aria-hidden="true">' + R.icon('grip-vertical') + '</span>' +
           '<span class="wb-layer-index">' + (i + 1) + '</span>' +
           '<span class="wb-layer-type"' + colour + '>' + R.icon(objectTypeIcon(o)) + '</span>' +
-          '<span class="wb-layer-name">' + esc(o.label || o.type) + '</span>' +
-          '<span class="wb-layer-kind">' + esc(o.kind || '') + '</span>' +
+          '<span class="wb-layer-name" title="' + attr(o.label || o.type) + ' · ' + attr(o.kind || o.type) + '">' + esc(o.label || o.type) + '</span>' +
           '<button type="button" class="btn btn-ghost btn-icon btn-sm" data-layer-hide="' + attr(o.id) + '" title="' + (o.hidden ? 'Show' : 'Hide') + '" aria-label="' + (o.hidden ? 'Show' : 'Hide') + '">' + R.icon(o.hidden ? 'eye-off' : 'eye') + '</button>' +
           '<button type="button" class="btn btn-ghost btn-icon btn-sm" data-layer-lock="' + attr(o.id) + '" title="' + (o.locked ? 'Unlock' : 'Lock') + '" aria-label="' + (o.locked ? 'Unlock' : 'Lock') + '">' + R.icon(o.locked ? 'lock' : 'unlock') + '</button>' +
           '<button type="button" class="btn btn-ghost btn-icon btn-sm wb-layer-menu" data-layer-menu="' + attr(o.id) + '" title="Object actions" aria-label="Object actions">' + R.icon('more-vertical') + '</button>' +
