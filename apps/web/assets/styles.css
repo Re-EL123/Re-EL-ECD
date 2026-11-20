@@ -3799,3 +3799,21 @@ body.wb-teaching .content { padding-bottom: 0 !important; }
   .wb-layer-kind { display: none; }
   .wb-tool-group-name { display: none; }
 }
+
+/* ---- Eraser settings, recent colours and align tools ---------------------- */
+.wb-recent-colours {
+  display: inline-flex; gap: 4px; align-items: center; margin-left: 7px; padding-left: 8px;
+  border-left: 1px solid var(--border-subtle);
+}
+.wb-recent-swatch { width: 20px; height: 20px; border-radius: 6px; }
+.wb-recent-swatch.active::after { font-size: 10px; }
+.wb-eraser-group { gap: 6px; }
+.wb-eraser-group .wb-select { width: 88px; }
+.wb-eraser-group input[type="range"] { width: 70px; accent-color: var(--reel-green-700); }
+.wb-selection-bar [data-field][hidden] { display: none !important; }
+.wb-select-tool { margin-top: 6px; }
+#wb-align-tools[hidden], #wb-ungroup[hidden] { display: none !important; }
+.wb-align-btns { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.wb-align-btns .btn { justify-content: center; padding: 4px 2px; font-size: .7rem; }
+.wb-layer-row.drop-before { box-shadow: inset 0 2px 0 var(--reel-green-700); }
+.wb-layer-row.drop-after { box-shadow: inset 0 -2px 0 var(--reel-green-700); }

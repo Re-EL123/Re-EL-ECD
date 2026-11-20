@@ -55,7 +55,7 @@ test('layers panel supports select, hide, lock, reorder and grouping', () => {
   assert.match(view, /data-layer-lock/);
   assert.match(view, /toggleHidden\(id\)/);
   assert.match(view, /toggleLocked\(id\)/);
-  assert.match(view, /reorderObject\(id, targetId\)/);
+  assert.match(view, /reorderObject\(id, targetId, after\)/);
   assert.match(view, /groupSelected\(\)/);
   assert.match(view, /setSelectedIds\(ids\)/);
   assert.match(view, /e\.shiftKey && hit/);
@@ -176,4 +176,69 @@ test('undo/redo state and the dock layout are remembered', () => {
   assert.match(view, /const dockKey = 'reel-wb-dock-' \+ board\.id/);
   assert.match(view, /localStorage\.setItem\(dockKey/);
   assert.match(view, /localStorage\.getItem\(dockKey\)/);
+});
+
+test('drag and resize snapshot before mutation and undo keeps selection', () => {
+  assert.ok(view.indexOf('if (!drawing.moved) { pushUndo(); drawing.moved = true; }') !== -1, 'undo snapshot on first move');
+  assert.match(view, /if \(drawing\.drag \|\| drawing\.resize\) \{ notify\(\); drawing = null; render\(\); return; \}/);
+  assert.match(view, /const prior = Array\.from\(selectedIds\);\s*redo\.push/);
+  assert.match(view, /selectedIds = new Set\(prior\.filter\(\(id\) => alive\.has\(id\)\)\)/);
+});
+
+test('groups behave as a unit and can be ungrouped', () => {
+  assert.match(view, /function expandIds\(ids\)/);
+  assert.match(view, /const ids = expandIds\(selectedIds\)/);
+  assert.match(view, /ungroupSelected\(\)/);
+  assert.match(view, /id="wb-ungroup"/);
+  assert.match(view, /selectedIds = expandIds\(\[hit\.id\]\)/);
+  assert.match(view, /o\.groupId \? 'This item belongs to a group/);
+});
+
+test('reorder drops at the indicated position', () => {
+  assert.match(view, /const insert = \(from < to \? to - 1 : to\) \+ \(after \? 1 : 0\)/);
+  assert.match(view, /classList\.add\(e\.clientY > rect\.top \+ rect\.height \/ 2 \? 'drop-after' : 'drop-before'\)/);
+  assert.match(css, /\.wb-layer-row\.drop-before \{ box-shadow: inset 0 2px 0 var\(--reel-green-700\); \}/);
+});
+
+test('labels keep the first line of multi-line text', () => {
+  assert.match(view, /String\(\(o && o\.text\) \|\| ''\)\.split\('\\n'\)\[0\]/);
+});
+
+test('hit testing follows strokes instead of bounding boxes', () => {
+  assert.match(view, /function pointSegmentDistance\(p, a, b\)/);
+  assert.match(view, /function strokeHit\(o, p, tol\)/);
+  assert.match(view, /function rectsIntersect\(a, b\)/);
+  assert.match(view, /if \(strokeHit\(o, wpt, tol\)\) return o;/);
+});
+
+test('marquee selection, nudging, duplication and align/distribute are wired', () => {
+  assert.match(view, /let marquee = null;/);
+  assert.match(view, /if \(marquee\) \{ marquee\.current = wpt; render\(\); return; \}/);
+  assert.match(view, /rectsIntersect\(b, box\)/);
+  assert.match(view, /nudgeSelected\(dx, dy\)/);
+  assert.match(view, /arrows\[e\.key\]/);
+  assert.match(view, /e\.key\.toLowerCase\(\) === 'd'/);
+  assert.match(view, /alignSelected\(mode\)/);
+  assert.match(view, /distributeSelected\(axis\)/);
+  assert.match(view, /data-align="left"/);
+  assert.match(view, /data-distribute="h"/);
+});
+
+test('objects list supports range select and keeps the selected row visible', () => {
+  assert.match(view, /e\.shiftKey && rowAnchor/);
+  assert.match(view, /e\.ctrlKey \|\| e\.metaKey/);
+  assert.match(view, /function ensureSelectedVisible\(\)/);
+  assert.match(view, /scrollIntoView\(\{ block: 'nearest' \}\)/);
+  assert.match(view, /collapsedGroups\.delete\(o\.groupId\)/);
+});
+
+test('properties are type-aware and the eraser has its own settings', () => {
+  assert.match(view, /function updateTypeFields\(first\)/);
+  assert.match(view, /data-field="fill"/);
+  assert.match(view, /show\('fill', types\.has\('sticky'\)\)/);
+  assert.match(view, /id="wb-properties-select"/);
+  assert.match(view, /id="wb-eraser-group"/);
+  assert.match(view, /setEraserMode\(e\.target\.value\)/);
+  assert.match(view, /id="wb-recent-colours"/);
+  assert.match(view, /const ringTool = !readOnly && \['pen', 'highlighter', 'eraser'\]/);
 });

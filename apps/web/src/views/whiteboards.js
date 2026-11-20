@@ -17,8 +17,9 @@
   // tell a teacher nothing; content and intent do.
   function describeObject(o) {
     const t = (o && o.type) || 'object';
-    const text = String((o && o.text) || '').trim().replace(/\s+/g, ' ');
-    const first = text.split('\n')[0].slice(0, 48);
+    // Keep the first *line* before collapsing other whitespace, so a sticky
+    // with four lines is labelled by its heading, not a mashed paragraph.
+    const first = String((o && o.text) || '').split('\n')[0].trim().replace(/\s+/g, ' ').slice(0, 48);
     if (t === 'sticky') return { label: first || 'Sticky note', kind: 'note' };
     if (t === 'text') return { label: first || 'Text', kind: 'text' };
     if (t === 'math') return { label: first || 'Math symbol', kind: 'math' };
@@ -38,6 +39,53 @@
     if (t === 'text' || t === 'math') return 'type';
     if (t === 'path' || t === 'highlighter') return 'pencil';
     return 'square';
+  }
+
+  // Move any object type by a delta — shared by nudging, align and distribute.
+  function translateObject(o, dx, dy) {
+    if (!o || (!dx && !dy)) return;
+    if (o.type === 'path' || o.type === 'highlighter') (o.points || []).forEach((p) => { p.x += dx; p.y += dy; });
+    else if (o.type === 'line' || o.type === 'arrow') { o.x1 += dx; o.y1 += dy; o.x2 += dx; o.y2 += dy; }
+    else if (o.type === 'circle') { o.cx += dx; o.cy += dy; }
+    else { o.x = (o.x || 0) + dx; o.y = (o.y || 0) + dy; }
+  }
+  function pointSegmentDistance(p, a, b) {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy;
+    if (!len2) return Math.hypot(p.x - a.x, p.y - a.y);
+    let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+  }
+  // Stroke-aware hit testing: unfilled shapes only count near their outline,
+  // and freehand marks only count near the actual path.
+  function strokeHit(o, p, tol) {
+    const pts = o.points || [];
+    if (o.type === 'path' || o.type === 'highlighter') {
+      if (pts.length < 2) return pts.length ? Math.hypot(p.x - pts[0].x, p.y - pts[0].y) <= tol : false;
+      for (let i = 1; i < pts.length; i++) if (pointSegmentDistance(p, pts[i - 1], pts[i]) <= tol) return true;
+      return false;
+    }
+    if (o.type === 'line' || o.type === 'arrow') return pointSegmentDistance(p, { x: o.x1, y: o.y1 }, { x: o.x2, y: o.y2 }) <= tol;
+    if (o.type === 'rect') {
+      const x1 = Math.min(o.x, o.x + o.w), x2 = Math.max(o.x, o.x + o.w);
+      const y1 = Math.min(o.y, o.y + o.h), y2 = Math.max(o.y, o.y + o.h);
+      const edges = [
+        [{ x: x1, y: y1 }, { x: x2, y: y1 }], [{ x: x2, y: y1 }, { x: x2, y: y2 }],
+        [{ x: x2, y: y2 }, { x: x1, y: y2 }], [{ x: x1, y: y2 }, { x: x1, y: y1 }]
+      ];
+      return edges.some(([a, b]) => pointSegmentDistance(p, a, b) <= tol);
+    }
+    if (o.type === 'circle') {
+      const rx = Math.abs(o.rx) || 1, ry = Math.abs(o.ry) || 1;
+      const d = Math.hypot((p.x - o.cx) / rx, (p.y - o.cy) / ry);
+      return Math.abs(d - 1) * Math.min(rx, ry) <= tol;
+    }
+    const b = objectBounds(o);
+    return Boolean(b && p.x >= b.x - tol && p.x <= b.x + b.w + tol && p.y >= b.y - tol && p.y <= b.y + b.h + tol);
+  }
+  function rectsIntersect(a, b) {
+    return a.x <= b.x + b.w && a.x + a.w >= b.x && a.y <= b.y + b.h && a.y + a.h >= b.y;
   }
 
   const TOOLS = {
@@ -236,6 +284,9 @@
     let tool = 'pen';
     let color = '#1f3b2a';
     let strokeW = 3;
+    let eraserSize = 24;
+    let eraserMode = 'objects';
+    let marquee = null;
     let drawing = null;
     let panning = false;
     let panStart = null;
@@ -319,18 +370,42 @@
           ctx.restore();
         }
       }
+      if (marquee) {
+        const bx = Math.min(marquee.start.x, marquee.current.x), by = Math.min(marquee.start.y, marquee.current.y);
+        const bw = Math.abs(marquee.current.x - marquee.start.x), bh = Math.abs(marquee.current.y - marquee.start.y);
+        ctx.save(); ctx.fillStyle = pal.selected; ctx.globalAlpha = 0.12; ctx.fillRect(bx, by, bw, bh);
+        ctx.globalAlpha = 1; ctx.strokeStyle = pal.selected; ctx.lineWidth = 1 / v.zoom;
+        ctx.setLineDash([5 / v.zoom, 4 / v.zoom]); ctx.strokeRect(bx, by, bw, bh); ctx.restore();
+      }
       ctx.restore();
-      canvas.style.cursor = panning || spacePan || tool === 'hand' ? 'grab' : (readOnly && !['select', 'hand', 'laser'].includes(tool) ? 'not-allowed' : (tool === 'select' ? 'default' : 'crosshair'));
+      const ringTool = !readOnly && ['pen', 'highlighter', 'eraser'].includes(tool);
+      canvas.style.cursor = panning || spacePan || tool === 'hand' ? 'grab'
+        : (readOnly && !['select', 'hand', 'laser'].includes(tool) ? 'not-allowed'
+          : (ringTool ? 'none' : (tool === 'select' ? 'default' : 'crosshair')));
+      if (ringTool && lastCursor) {
+        const size = tool === 'highlighter' ? 16 : tool === 'eraser' ? eraserSize : strokeW;
+        const at = toScreen(lastCursor);
+        ctx.save(); ctx.beginPath(); ctx.arc(at.x, at.y, Math.max(4, size * v.zoom / 2), 0, Math.PI * 2);
+        ctx.strokeStyle = pal.selected; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]); ctx.stroke(); ctx.restore();
+      }
       if (opts.onSelection) opts.onSelection(selectedId ? state.objects.find((o) => o.id === selectedId) || null : null, Array.from(selectedIds));
       if (opts.onViewport) opts.onViewport(vp());
     }
 
+    // Expand a selection to whole groups so a group behaves like one object.
+    function expandIds(ids) {
+      const result = new Set(ids || []);
+      const gids = new Set();
+      state.objects.forEach((o) => { if (result.has(o.id) && o.groupId) gids.add(o.groupId); });
+      if (gids.size) state.objects.forEach((o) => { if (o.groupId && gids.has(o.groupId)) result.add(o.id); });
+      return result;
+    }
     function hitTest(wpt) {
+      const tol = Math.max(6, (strokeW || 3) + 4) / vp().zoom;
       for (let i = state.objects.length - 1; i >= 0; i -= 1) {
         const o = state.objects[i];
         if (o.hidden || o.locked) continue;
-        const b = objectBounds(o);
-        if (b && wpt.x >= b.x - 6 && wpt.x <= b.x + b.w + 6 && wpt.y >= b.y - 6 && wpt.y <= b.y + b.h + 6) return o;
+        if (strokeHit(o, wpt, tol)) return o;
       }
       return null;
     }
@@ -422,27 +497,37 @@
         const handle = handleAt(spt);
         if (handle && canDraw()) {
           const orig = state.objects.find((o) => o.id === selectedId);
-          drawing = { resize: true, handle: handle.key, orig: JSON.parse(JSON.stringify(orig)), start: wpt, from: objectBounds(orig) };
+          drawing = { resize: true, handle: handle.key, orig: JSON.parse(JSON.stringify(orig)), start: wpt, from: objectBounds(orig), moved: false };
           return;
         }
         const hit = hitTest(wpt);
         if (e.shiftKey && hit) {
-          if (selectedIds.has(hit.id)) selectedIds.delete(hit.id); else selectedIds.add(hit.id);
-          selectedId = hit.id; render(); return;
+          const next = new Set(selectedIds);
+          expandIds([hit.id]).forEach((id) => { if (next.has(id)) next.delete(id); else next.add(id); });
+          selectedIds = next; selectedId = hit.id; render(); return;
         }
         if (hit) {
-          if (!selectedIds.has(hit.id)) selectedIds = new Set([hit.id]);
+          selectedIds = expandIds([hit.id]);
           selectedId = hit.id;
           const origs = state.objects.filter((o) => selectedIds.has(o.id)).map((o) => ({ id: o.id, obj: JSON.parse(JSON.stringify(o)) }));
-          if (canDraw()) drawing = { drag: true, start: wpt, origs };
-        } else { selectedIds = new Set(); selectedId = null; }
+          if (canDraw()) drawing = { drag: true, start: wpt, origs, moved: false };
+        } else {
+          marquee = { start: wpt, current: wpt, additive: e.shiftKey || e.ctrlKey || e.metaKey, base: new Set(selectedIds) };
+          if (!marquee.additive) { selectedIds = new Set(); selectedId = null; }
+        }
         render(); return;
       }
       if (!canDraw()) return;
       if (tool === 'eraser') {
         const hit = hitTest(wpt);
-        if (hit) { pushUndo(); state.objects = state.objects.filter((o) => o.id !== hit.id); selectedIds.delete(hit.id); render(); notify(); }
-        drawing = { erasing: true }; return;
+        if (hit && eraserMode === 'objects') {
+          pushUndo();
+          const ids = expandIds([hit.id]);
+          state.objects = state.objects.filter((o) => !ids.has(o.id));
+          ids.forEach((id) => selectedIds.delete(id));
+          render(); notify();
+        }
+        drawing = { erasing: true, moved: false, _did: eraserMode === 'objects' }; return;
       }
       if (tool === 'pen' || tool === 'highlighter') {
         drawing = { id: uid(), type: tool === 'highlighter' ? 'highlighter' : 'path', color, width: tool === 'highlighter' ? 16 : strokeW, points: [wpt] };
@@ -465,13 +550,38 @@
       lastCursor = wpt;
       if (tool === 'laser') { laser.push({ x: wpt.x, y: wpt.y, t: Date.now() }); render(); return; }
       if (panning && panStart) { vp().x = spt.x - panStart.x; vp().y = spt.y - panStart.y; render(); return; }
+      if (marquee) { marquee.current = wpt; render(); return; }
       if (!drawing) return;
       if (drawing.erasing) {
-        const hit = hitTest(wpt);
-        if (hit) { if (!drawing._did) { pushUndo(); drawing._did = true; } state.objects = state.objects.filter((o) => o.id !== hit.id); render(); notify(); }
-        return;
+        if (eraserMode === 'strokes') {
+          const radius = eraserSize / 2;
+          const near = (p) => Math.hypot(p.x - wpt.x, p.y - wpt.y) <= radius;
+          const hits = state.objects.filter((o) => !o.hidden && !o.locked && (o.type === 'path' || o.type === 'highlighter') && (o.points || []).some(near));
+          if (!hits.length) return;
+          if (!drawing._did) { pushUndo(); drawing._did = true; }
+          hits.forEach((o) => {
+            const groups = []; let run = [];
+            (o.points || []).forEach((p) => { if (near(p)) { if (run.length) groups.push(run); run = []; } else run.push(p); });
+            if (run.length) groups.push(run);
+            const at = state.objects.findIndex((x) => x.id === o.id);
+            if (at === -1) return;
+            const replacements = groups.filter((pts) => pts.length >= 2).map((pts, i) => {
+              const copy = JSON.parse(JSON.stringify(o)); copy.id = i === 0 ? o.id : uid(); copy.points = pts; return copy;
+            });
+            state.objects.splice(at, 1, ...replacements);
+          });
+        } else {
+          const hit = hitTest(wpt);
+          if (!hit) return;
+          if (!drawing._did) { pushUndo(); drawing._did = true; }
+          const ids = expandIds([hit.id]);
+          state.objects = state.objects.filter((o) => !ids.has(o.id));
+          ids.forEach((id) => selectedIds.delete(id));
+        }
+        render(); notify(); return;
       }
       if (drawing.resize) {
+        if (!drawing.moved) { pushUndo(); drawing.moved = true; }
         const from = drawing.from; const key = drawing.handle;
         let x1 = from.x, y1 = from.y, x2 = from.x + from.w, y2 = from.y + from.h;
         if (key.indexOf('w') !== -1) x1 = wpt.x;
@@ -484,6 +594,7 @@
         render(); return;
       }
       if (drawing.drag) {
+        if (!drawing.moved) { pushUndo(); drawing.moved = true; }
         const dx = wpt.x - drawing.start.x, dy = wpt.y - drawing.start.y;
         drawing.origs.forEach(({ id, obj }) => {
           const at = state.objects.findIndex((o) => o.id === id);
@@ -505,8 +616,21 @@
 
     function onPointerUp() {
       if (panning) { panning = false; panStart = null; notify(); return; }
+      if (marquee) {
+        const box = {
+          x: Math.min(marquee.start.x, marquee.current.x), y: Math.min(marquee.start.y, marquee.current.y),
+          w: Math.abs(marquee.current.x - marquee.start.x), h: Math.abs(marquee.current.y - marquee.start.y)
+        };
+        const hits = (box.w > 3 || box.h > 3) ? state.objects.filter((o) => {
+          if (o.hidden || o.locked) return false;
+          const b = objectBounds(o); return b && rectsIntersect(b, box);
+        }).map((o) => o.id) : [];
+        selectedIds = marquee.additive ? new Set([...marquee.base, ...hits]) : expandIds(hits);
+        selectedId = Array.from(selectedIds)[0] || null;
+        marquee = null; render(); return;
+      }
       if (!drawing) return;
-      if (drawing.drag || drawing.resize) { pushUndo(); notify(); drawing = null; render(); return; }
+      if (drawing.drag || drawing.resize) { notify(); drawing = null; render(); return; }
       if (drawing.erasing) { drawing = null; return; }
       if (drawing.type === 'path' || drawing.type === 'highlighter') {
         if ((drawing.points || []).length > 1) { pushUndo(); state.objects.push(drawing); notify(); }
@@ -554,7 +678,7 @@
     function moveSelected(direction) {
       if (readOnly || !selectedIds.size) return;
       pushUndo();
-      const ids = new Set(selectedIds);
+      const ids = expandIds(selectedIds);
       const picked = state.objects.filter((o) => ids.has(o.id));
       state.objects = state.objects.filter((o) => !ids.has(o.id));
       if (direction === 'front') state.objects.push(...picked);
@@ -566,6 +690,24 @@
         state.objects.splice(insert, 0, ...picked);
       }
       render(); notify();
+    }
+
+    function cloneObjects(ids) {
+      const set = expandIds(ids);
+      const originals = state.objects.filter((o) => set.has(o.id));
+      if (!originals.length) return [];
+      pushUndo();
+      const gid = originals.some((o) => o.groupId) ? 'g' + Date.now().toString(36) : null;
+      const copies = originals.map((o) => {
+        const copy = JSON.parse(JSON.stringify(o));
+        copy.id = uid(); translateObject(copy, 24, 24);
+        if (gid) copy.groupId = gid;
+        return copy;
+      });
+      state.objects.push(...copies);
+      selectedIds = new Set(copies.map((o) => o.id)); selectedId = copies[0].id;
+      render(); notify();
+      return copies;
     }
 
     function diffOps(previous) {
@@ -622,16 +764,35 @@
       updateSelected(patch) {
         if (readOnly || !selectedIds.size) return;
         pushUndo();
-        state.objects.forEach((o) => { if (selectedIds.has(o.id)) Object.assign(o, patch); });
+        const ids = expandIds(selectedIds);
+        state.objects.forEach((o) => { if (ids.has(o.id)) Object.assign(o, patch); });
         render(); notify();
       },
       deleteSelected() {
         if (readOnly || !selectedIds.size) return;
-        pushUndo(); state.objects = state.objects.filter((o) => !selectedIds.has(o.id));
+        pushUndo();
+        const ids = expandIds(selectedIds);
+        state.objects = state.objects.filter((o) => !ids.has(o.id));
         selectedIds = new Set(); selectedId = null; render(); notify();
       },
-      undo() { if (!undo.length || readOnly) return; redo.push(JSON.stringify(state.objects)); state.objects = JSON.parse(undo.pop()); selectedIds = new Set(); selectedId = null; render(); notify(); },
-      redo() { if (!redo.length || readOnly) return; undo.push(JSON.stringify(state.objects)); state.objects = JSON.parse(redo.pop()); selectedIds = new Set(); selectedId = null; render(); notify(); },
+      undo() {
+        if (!undo.length || readOnly) return;
+        const prior = Array.from(selectedIds);
+        redo.push(JSON.stringify(state.objects)); state.objects = JSON.parse(undo.pop());
+        const alive = new Set(state.objects.map((o) => o.id));
+        selectedIds = new Set(prior.filter((id) => alive.has(id)));
+        selectedId = selectedIds.has(selectedId) ? selectedId : (Array.from(selectedIds)[0] || null);
+        render(); notify();
+      },
+      redo() {
+        if (!redo.length || readOnly) return;
+        const prior = Array.from(selectedIds);
+        undo.push(JSON.stringify(state.objects)); state.objects = JSON.parse(redo.pop());
+        const alive = new Set(state.objects.map((o) => o.id));
+        selectedIds = new Set(prior.filter((id) => alive.has(id)));
+        selectedId = selectedIds.has(selectedId) ? selectedId : (Array.from(selectedIds)[0] || null);
+        render(); notify();
+      },
       clear() { if (!state.objects.length || readOnly) return; pushUndo(); state.objects = []; selectedIds = new Set(); selectedId = null; render(); notify(); },
       zoomIn() { this.setZoom(vp().zoom * 1.2); },
       zoomOut() { this.setZoom(vp().zoom / 1.2); },
@@ -653,57 +814,130 @@
       setViewport(next) { state.viewport = Object.assign({}, next); render(); },
       getViewport() { return Object.assign({}, vp()); },
       getSelectedIds() { return Array.from(selectedIds); },
-      setSelectedIds(ids) { selectedIds = new Set(ids || []); selectedId = ids && ids[0] ? ids[0] : null; render(); },
+      setSelectedIds(ids) {
+        selectedIds = expandIds(ids || []);
+        selectedId = selectedIds.has(selectedId) ? selectedId : (ids && ids[0]) || Array.from(selectedIds)[0] || null;
+        render();
+      },
       selectAll() { selectedIds = new Set(state.objects.map((o) => o.id)); render(); },
-      toggleHidden(id) { const o = state.objects.find((x) => x.id === id); if (o && !readOnly) { pushUndo(); o.hidden = !o.hidden; render(); notify(); } },
-      toggleLocked(id) { const o = state.objects.find((x) => x.id === id); if (o && !readOnly) { pushUndo(); o.locked = !o.locked; render(); notify(); } },
+      toggleHidden(id) {
+        if (readOnly) return;
+        const ids = expandIds([id]); const targets = state.objects.filter((o) => ids.has(o.id));
+        if (!targets.length) return;
+        pushUndo(); const next = !targets[0].hidden;
+        targets.forEach((o) => { o.hidden = next; }); render(); notify();
+      },
+      toggleLocked(id) {
+        if (readOnly) return;
+        const ids = expandIds([id]); const targets = state.objects.filter((o) => ids.has(o.id));
+        if (!targets.length) return;
+        pushUndo(); const next = !targets[0].locked;
+        targets.forEach((o) => { o.locked = next; }); render(); notify();
+      },
       groupSelected() {
         if (readOnly || selectedIds.size < 2) return;
-        const already = state.objects.filter((o) => selectedIds.has(o.id)).every((o) => o.groupId && o.groupId === state.objects.find((x) => selectedIds.has(x.id)).groupId);
+        const ids = expandIds(selectedIds);
+        const groupObjects = state.objects.filter((o) => ids.has(o.id));
+        if (groupObjects.length < 2) return;
+        const already = groupObjects.every((o) => o.groupId && o.groupId === groupObjects[0].groupId);
         const gid = already ? null : 'g' + Date.now().toString(36);
-        pushUndo(); state.objects.forEach((o) => { if (selectedIds.has(o.id)) o.groupId = gid; });
+        pushUndo(); groupObjects.forEach((o) => { o.groupId = gid; });
         render(); notify();
       },
-      reorderObject(id, targetId) {
+      ungroupSelected() {
+        if (readOnly || !selectedIds.size) return;
+        const ids = expandIds(selectedIds);
+        if (!state.objects.some((o) => ids.has(o.id) && o.groupId)) return;
+        pushUndo(); state.objects.forEach((o) => { if (ids.has(o.id)) o.groupId = null; });
+        render(); notify();
+      },
+      reorderObject(id, targetId, after) {
         if (readOnly || id === targetId) return;
         const from = state.objects.findIndex((o) => o.id === id);
         const to = state.objects.findIndex((o) => o.id === targetId);
         if (from === -1 || to === -1) return;
         pushUndo(); const [obj] = state.objects.splice(from, 1);
-        state.objects.splice(to, 0, obj); render(); notify();
+        const insert = (from < to ? to - 1 : to) + (after ? 1 : 0);
+        state.objects.splice(insert, 0, obj); render(); notify();
       },
       getObjects() { return objectsSummary(); },
       canUndo() { return !readOnly && undo.length > 0; },
       canRedo() { return !readOnly && redo.length > 0; },
-      duplicateObject(id) {
-        if (readOnly) return;
-        const at = state.objects.findIndex((o) => o.id === id);
-        if (at === -1) return;
-        pushUndo();
-        const copy = JSON.parse(JSON.stringify(state.objects[at]));
-        copy.id = uid(); copy.x = (copy.x || 0) + 24; copy.y = (copy.y || 0) + 24;
-        state.objects.push(copy);
-        selectedIds = new Set([copy.id]); selectedId = copy.id;
-        render(); notify();
-      },
+      duplicateObject(id) { if (readOnly) return; cloneObjects([id]); },
+      duplicateSelected() { if (readOnly || !selectedIds.size) return; cloneObjects(selectedIds); },
       removeObject(id) {
         if (readOnly) return;
-        const at = state.objects.findIndex((o) => o.id === id);
-        if (at === -1) return;
-        pushUndo(); state.objects.splice(at, 1);
-        if (selectedIds.has(id)) { selectedIds.delete(id); selectedId = null; }
+        const ids = expandIds([id]);
+        if (!state.objects.some((o) => ids.has(o.id))) return;
+        pushUndo(); state.objects = state.objects.filter((o) => !ids.has(o.id));
+        ids.forEach((x) => selectedIds.delete(x));
+        if (!selectedIds.size) selectedId = null;
         render(); notify();
       },
       bringToFront(id) {
         if (readOnly) return;
-        const at = state.objects.findIndex((o) => o.id === id);
-        if (at === -1 || at === state.objects.length - 1) return;
-        pushUndo(); const [obj] = state.objects.splice(at, 1); state.objects.push(obj);
+        const ids = expandIds([id]);
+        const picked = state.objects.filter((o) => ids.has(o.id));
+        if (!picked.length) return;
+        pushUndo();
+        state.objects = state.objects.filter((o) => !ids.has(o.id)).concat(picked);
         render(); notify();
       },
+      nudgeSelected(dx, dy) {
+        if (readOnly || !selectedIds.size || (!dx && !dy)) return;
+        pushUndo();
+        const ids = expandIds(selectedIds);
+        state.objects.forEach((o) => { if (ids.has(o.id) && !o.locked) translateObject(o, dx, dy); });
+        render(); notify();
+      },
+      alignSelected(mode) {
+        if (readOnly || selectedIds.size < 2) return;
+        const ids = expandIds(selectedIds);
+        const bounds = state.objects.filter((o) => ids.has(o.id) && !o.locked)
+          .map((o) => ({ o, b: objectBounds(o) })).filter((x) => x.b);
+        if (bounds.length < 2) return;
+        const minX = Math.min(...bounds.map((x) => x.b.x));
+        const maxR = Math.max(...bounds.map((x) => x.b.x + x.b.w));
+        const minY = Math.min(...bounds.map((x) => x.b.y));
+        const maxB = Math.max(...bounds.map((x) => x.b.y + x.b.h));
+        let tx, ty;
+        if (mode === 'left') tx = minX;
+        else if (mode === 'right') tx = maxR;
+        else if (mode === 'centre') tx = (minX + maxR) / 2;
+        else if (mode === 'top') ty = minY;
+        else if (mode === 'bottom') ty = maxB;
+        else if (mode === 'middle') ty = (minY + maxB) / 2;
+        else return;
+        pushUndo();
+        bounds.forEach(({ o, b }) => {
+          if (tx != null) translateObject(o, tx - (mode === 'right' ? b.x + b.w : mode === 'centre' ? b.x + b.w / 2 : b.x), 0);
+          if (ty != null) translateObject(o, 0, ty - (mode === 'bottom' ? b.y + b.h : mode === 'middle' ? b.y + b.h / 2 : b.y));
+        });
+        render(); notify();
+      },
+      distributeSelected(axis) {
+        if (readOnly || selectedIds.size < 3) return;
+        const ids = expandIds(selectedIds);
+        const bounds = state.objects.filter((o) => ids.has(o.id) && !o.locked)
+          .map((o) => ({ o, b: objectBounds(o) })).filter((x) => x.b);
+        if (bounds.length < 3) return;
+        const key = axis === 'h' ? 'x' : 'y';
+        bounds.sort((a, b) => (a.b[key] + (axis === 'h' ? a.b.w : a.b.h) / 2) - (b.b[key] + (axis === 'h' ? b.b.w : b.b.h) / 2));
+        const first = bounds[0].b[key], last = bounds[bounds.length - 1].b[key];
+        const step = (last - first) / (bounds.length - 1);
+        pushUndo();
+        bounds.forEach(({ o, b }, i) => {
+          const delta = first + step * i - b[key];
+          translateObject(o, axis === 'h' ? delta : 0, axis === 'v' ? delta : 0);
+        });
+        render(); notify();
+      },
+      setEraserSize(n) { eraserSize = Math.max(6, Math.min(120, Number(n) || 24)); },
+      setEraserMode(mode) { eraserMode = mode === 'strokes' ? 'strokes' : 'objects'; },
       getState() { return JSON.parse(JSON.stringify(state)); },
       redraw() { render(); },
       getSelected() { return selectedId ? state.objects.find((o) => o.id === selectedId) || null : null; },
+      getSelectedObjects() { const ids = expandIds(selectedIds); return state.objects.filter((o) => ids.has(o.id)); },
       getCursor() { return lastCursor; },
       moveSelected,
       diffOps,
@@ -1016,9 +1250,15 @@
         '<div class="wb-style-group"><span class="wb-style-label">Colour</span><div class="wb-swatches">' +
           SWATCHES.map((c) => '<button type="button" class="wb-swatch' + (c === '#1f3b2a' ? ' active' : '') + '" data-swatch="' + c + '" style="background:' + c + '" title="Use ' + c + '" aria-label="Use colour ' + c + '"></button>').join('') +
           '<input type="color" id="wb-color" value="#1f3b2a" aria-label="Custom colour" title="Custom colour">' +
+          '<span class="wb-recent-colours" id="wb-recent-colours" aria-label="Recently used colours"></span>' +
         '</div></div>' +
         '<label class="wb-style-group wb-inline-row"><span>Width</span><select id="wb-width" class="wb-select">' +
           '<option value="2">Thin</option><option value="3" selected>Medium</option><option value="6">Thick</option><option value="10">Bold</option></select></label>' +
+        '<div class="wb-style-group wb-eraser-group" id="wb-eraser-group" hidden>' +
+          '<span class="wb-style-label">Erase</span><select id="wb-eraser-mode" class="wb-select" aria-label="Erase mode">' +
+          '<option value="objects">Objects</option><option value="strokes">Strokes</option></select>' +
+          '<input type="range" id="wb-eraser-size" min="6" max="120" value="24" aria-label="Eraser size" title="Eraser size">' +
+        '</div>' +
         '<div class="wb-style-group wb-actions wb-actions-labelled">' +
           '<button type="button" class="btn btn-sm btn-ghost" id="wb-undo" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>' + R.icon('undo-2') + ' Undo</button>' +
           '<button type="button" class="btn btn-sm btn-ghost" id="wb-redo" title="Redo (Ctrl+Y)" aria-label="Redo" disabled>' + R.icon('redo-2') + ' Redo</button>' +
@@ -1041,18 +1281,32 @@
 
           '<div class="wb-properties">' +
             '<div class="wb-properties-head"><strong>Selected object</strong><span class="muted small" id="wb-sel-summary">Nothing selected</span></div>' +
-            '<p class="wb-properties-empty" id="wb-properties-empty">Pick an object on the canvas or a row below to change its colour, size and order.</p>' +
+            '<p class="wb-properties-empty" id="wb-properties-empty">Pick an object on the canvas or a row below to change its colour, size and order. ' +
+              '<button type="button" class="btn btn-sm btn-ghost wb-select-tool" id="wb-properties-select">Use Select tool</button></p>' +
             '<div class="wb-selection-bar" id="wb-object-fields" hidden>' +
-              '<label class="wb-inline-row"><span>Colour</span><input type="color" id="wb-obj-color" aria-label="Object colour"></label>' +
-              '<label class="wb-inline-row"><span>Size</span><input type="range" id="wb-obj-size" min="8" max="120" value="20" aria-label="Object size"></label>' +
-              '<label class="wb-inline-row"><span>Fill</span><input type="color" id="wb-obj-fill" value="#fff4b8" aria-label="Sticky note fill"></label>' +
-              '<label class="wb-inline-row"><span>Font</span><select id="wb-obj-font" class="wb-select"><option value="sans">Sans</option><option value="serif">Serif</option><option value="mono">Mono</option></select></label>' +
+              '<label class="wb-inline-row" data-field="colour"><span>Colour</span><input type="color" id="wb-obj-color" aria-label="Object colour"></label>' +
+              '<label class="wb-inline-row" data-field="size"><span>Size</span><input type="range" id="wb-obj-size" min="8" max="120" value="20" aria-label="Object size"></label>' +
+              '<label class="wb-inline-row" data-field="fill"><span>Sticky fill</span><input type="color" id="wb-obj-fill" value="#fff4b8" aria-label="Sticky note fill"></label>' +
+              '<label class="wb-inline-row" data-field="font"><span>Font</span><select id="wb-obj-font" class="wb-select"><option value="sans">Sans</option><option value="serif">Serif</option><option value="mono">Mono</option></select></label>' +
               '<div class="wb-field-label">Order</div><div class="wb-layer-btns wb-order-btns">' +
                 '<button type="button" class="btn btn-sm btn-ghost" data-layer="front" title="Bring to front">' + R.icon('chevrons-up') + ' Front</button>' +
                 '<button type="button" class="btn btn-sm btn-ghost" data-layer="forward" title="Move forward">' + R.icon('chevron-up') + ' Up</button>' +
                 '<button type="button" class="btn btn-sm btn-ghost" data-layer="backward" title="Move backward">' + R.icon('chevron-down') + ' Down</button>' +
                 '<button type="button" class="btn btn-sm btn-ghost" data-layer="back" title="Send to back">' + R.icon('chevrons-down') + ' Back</button>' +
                 '<button type="button" class="btn btn-sm btn-ghost" id="wb-group" title="Group selected items">' + R.icon('group') + ' Group</button>' +
+                '<button type="button" class="btn btn-sm btn-ghost" id="wb-ungroup" title="Ungroup" hidden>' + R.icon('ungroup') + ' Ungroup</button>' +
+              '</div>' +
+              '<div id="wb-align-tools" hidden>' +
+                '<div class="wb-field-label">Align selected</div><div class="wb-layer-btns wb-align-btns">' +
+                  '<button type="button" class="btn btn-sm btn-ghost" data-align="left" title="Align left">Left</button>' +
+                  '<button type="button" class="btn btn-sm btn-ghost" data-align="centre" title="Centre horizontally">Centre</button>' +
+                  '<button type="button" class="btn btn-sm btn-ghost" data-align="right" title="Align right">Right</button>' +
+                  '<button type="button" class="btn btn-sm btn-ghost" data-align="top" title="Align top">Top</button>' +
+                  '<button type="button" class="btn btn-sm btn-ghost" data-align="middle" title="Centre vertically">Middle</button>' +
+                  '<button type="button" class="btn btn-sm btn-ghost" data-align="bottom" title="Align bottom">Bottom</button>' +
+                  '<button type="button" class="btn btn-sm btn-ghost" data-distribute="h" title="Space evenly across">Space ↔</button>' +
+                  '<button type="button" class="btn btn-sm btn-ghost" data-distribute="v" title="Space evenly down">Space ↕</button>' +
+                '</div>' +
               '</div>' +
             '</div>' +
           '</div>' +
@@ -1191,11 +1445,43 @@
       if (u) u.disabled = !engine || !engine.canUndo();
       if (r) r.disabled = !engine || !engine.canRedo();
     }
+    let rowAnchor = null;
+    let syncingSelection = false;
     function syncSelectedRows() {
       if (!layersList) return;
       layersList.querySelectorAll('.wb-layer-row').forEach((row) => {
         row.classList.toggle('is-selected', selectedIds.indexOf(row.getAttribute('data-id')) !== -1);
       });
+    }
+    function updateTypeFields(first) {
+      const objs = (engine && engine.getSelectedObjects) ? engine.getSelectedObjects() : (first ? [first] : []);
+      const types = new Set(objs.map((o) => o.type));
+      const show = (name, on) => {
+        const el = objectFields && objectFields.querySelector('[data-field="' + name + '"]');
+        if (el) el.hidden = !on;
+      };
+      show('colour', Array.from(types).some((t) => !['sticky', 'image'].includes(t)));
+      show('size', types.has('text') || types.has('math'));
+      show('fill', types.has('sticky'));
+      show('font', types.has('text') || types.has('math') || types.has('sticky'));
+      const ungroup = document.getElementById('wb-ungroup');
+      if (ungroup) ungroup.hidden = !objs.some((o) => o.groupId);
+      const align = document.getElementById('wb-align-tools');
+      if (align) align.hidden = objs.length < 2;
+    }
+    function ensureSelectedVisible() {
+      if (!layersList || !selectedIds.length || syncingSelection) return;
+      let changed = false;
+      selectedIds.forEach((id) => {
+        const o = (layerObjects || []).find((x) => x.id === id);
+        if (o && o.groupId && collapsedGroups.has(o.groupId)) { collapsedGroups.delete(o.groupId); changed = true; }
+      });
+      if (changed) { syncingSelection = true; renderLayers(); syncingSelection = false; }
+      const row = layersList.querySelector('.wb-layer-row.is-selected');
+      if (row) {
+        const listRect = layersList.getBoundingClientRect(), rowRect = row.getBoundingClientRect();
+        if (rowRect.top < listRect.top || rowRect.bottom > listRect.bottom) row.scrollIntoView({ block: 'nearest' });
+      }
     }
 
     engine = newBoardCanvas(wrap, board.state || { objects: [], viewport: { x: 0, y: 0, zoom: 1 } }, () => {
@@ -1216,10 +1502,11 @@
         if (empty) empty.hidden = selected.length > 0;
         const summary = document.getElementById('wb-sel-summary');
         const first = (obj && !Array.isArray(obj) && obj.id ? obj : (engine && engine.getSelected())) || null;
-        if (summary) summary.textContent = selected.length
-          ? describeObject(first).label + (selected.length > 1 ? ' · ' + selected.length + ' selected' : '')
-          : 'Nothing selected';
+        if (summary) summary.textContent = !selected.length ? 'Nothing selected'
+          : (selected.length > 1 ? selected.length + ' objects selected' : describeObject(first).label);
+        updateTypeFields(first);
         syncSelectedRows();
+        ensureSelectedVisible();
         if (!selected.length || !engine) return;
         const colour = objectFields && objectFields.querySelector('#wb-obj-color');
         const fill = objectFields && objectFields.querySelector('#wb-obj-fill');
@@ -1243,18 +1530,52 @@
       if (banner) banner.hidden = false;
     }
 
+    const eraserGroup = document.getElementById('wb-eraser-group');
     function setActiveTool(t) {
       engine.setTool(t);
       document.querySelectorAll('.wb-tool[data-tool]').forEach((btn) => btn.classList.toggle('active', btn.getAttribute('data-tool') === t));
+      if (eraserGroup) eraserGroup.hidden = t !== 'eraser';
     }
     document.querySelectorAll('.wb-tool[data-tool]').forEach((btn) => btn.addEventListener('click', () => setActiveTool(btn.getAttribute('data-tool'))));
-    document.querySelectorAll('[data-swatch]').forEach((btn) => btn.addEventListener('click', () => {
-      engine.setColor(btn.getAttribute('data-swatch'));
+
+    const colourKey = 'reel-wb-colours-' + board.id;
+    const recentEl = document.getElementById('wb-recent-colours');
+    let recentColours = [];
+    try { recentColours = JSON.parse((window.localStorage && localStorage.getItem(colourKey)) || '[]') || []; } catch (e) { /* storage unavailable */ }
+    function renderRecentColours() {
+      if (!recentEl) return;
+      recentEl.innerHTML = recentColours.filter((c) => c.toLowerCase() !== '#1f3b2a').map((c) =>
+        '<button type="button" class="wb-swatch wb-recent-swatch" data-swatch="' + attr(c) + '" style="background:' + attr(c) +
+        '" title="Recent colour ' + attr(c) + '" aria-label="Recent colour ' + attr(c) + '"></button>').join('');
+    }
+    function rememberColour(c) {
+      if (!/^#[0-9a-f]{6}$/i.test(c || '')) return;
+      const value = c.toLowerCase();
+      recentColours = [value].concat(recentColours.filter((x) => x !== value)).slice(0, 6);
+      try { if (window.localStorage) localStorage.setItem(colourKey, JSON.stringify(recentColours)); } catch (e) { /* storage unavailable */ }
+      renderRecentColours();
+    }
+    function onSwatchClick(e) {
+      const btn = e.target && e.target.closest && e.target.closest('[data-swatch]');
+      if (!btn) return;
+      const c = btn.getAttribute('data-swatch');
+      engine.setColor(c);
       document.querySelectorAll('[data-swatch]').forEach((b) => b.classList.toggle('active', b === btn));
       const picker = document.getElementById('wb-color');
-      if (picker) picker.value = btn.getAttribute('data-swatch');
-    }));
-    const colorEl = document.getElementById('wb-color'); if (colorEl) colorEl.addEventListener('input', (e) => engine.setColor(e.target.value));
+      if (picker) picker.value = c;
+      rememberColour(c);
+    }
+    document.addEventListener('click', onSwatchClick);
+    renderRecentColours();
+    const colorEl = document.getElementById('wb-color');
+    if (colorEl) {
+      colorEl.addEventListener('input', (e) => engine.setColor(e.target.value));
+      colorEl.addEventListener('change', (e) => rememberColour(e.target.value));
+    }
+    const eraserModeEl = document.getElementById('wb-eraser-mode');
+    if (eraserModeEl) eraserModeEl.addEventListener('change', (e) => engine.setEraserMode(e.target.value));
+    const eraserSizeEl = document.getElementById('wb-eraser-size');
+    if (eraserSizeEl) eraserSizeEl.addEventListener('input', (e) => engine.setEraserSize(e.target.value));
     const widthEl = document.getElementById('wb-width'); if (widthEl) widthEl.addEventListener('change', (e) => engine.setWidth(Number(e.target.value) || 3));
     const undoBtn = document.getElementById('wb-undo'); if (undoBtn) undoBtn.addEventListener('click', () => engine.undo());
     const redoBtn = document.getElementById('wb-redo'); if (redoBtn) redoBtn.addEventListener('click', () => engine.redo());
@@ -1273,7 +1594,12 @@
       if (R.feedback) R.feedback.sheet({
         title: 'Whiteboard shortcuts', message: 'Work faster with the keyboard.',
         actions: Object.entries(TOOLS).filter(([k]) => k !== 'image').map(([k, t]) => ({ label: t.label, icon: t.icon, run: () => setActiveTool(k) }))
-          .concat([{ label: 'Undo / Redo — Ctrl+Z / Ctrl+Y', icon: 'undo-2', run: () => {} }, { label: 'Delete — Delete key', icon: 'trash-2', run: () => engine.deleteSelected() }])
+          .concat([
+            { label: 'Undo / Redo — Ctrl+Z / Ctrl+Y', icon: 'undo-2', run: () => {} },
+            { label: 'Duplicate — Ctrl+D', icon: 'copy', run: () => engine.duplicateSelected() },
+            { label: 'Nudge — arrow keys, Shift for 10px', icon: 'move', run: () => {} },
+            { label: 'Delete — Delete key', icon: 'trash-2', run: () => engine.deleteSelected() }
+          ])
       });
     });
     const zin = document.getElementById('wb-zin'); if (zin) zin.addEventListener('click', () => engine.zoomIn());
@@ -1325,6 +1651,14 @@
     if (objFont) objFont.addEventListener('change', (e) => engine.updateSelected({ font: e.target.value }));
     objectFields && objectFields.querySelectorAll('[data-layer]').forEach((b) => b.addEventListener('click', () => engine.moveSelected(b.getAttribute('data-layer'))));
     const groupBtn = document.getElementById('wb-group'); if (groupBtn) groupBtn.addEventListener('click', () => engine.groupSelected());
+    const ungroupBtn = document.getElementById('wb-ungroup'); if (ungroupBtn) ungroupBtn.addEventListener('click', () => engine.ungroupSelected());
+    document.querySelectorAll('[data-align]').forEach((b) => b.addEventListener('click', () => engine.alignSelected(b.getAttribute('data-align'))));
+    document.querySelectorAll('[data-distribute]').forEach((b) => b.addEventListener('click', () => engine.distributeSelected(b.getAttribute('data-distribute'))));
+    const selectToolBtn = document.getElementById('wb-properties-select');
+    if (selectToolBtn) selectToolBtn.addEventListener('click', () => {
+      setActiveTool('select');
+      if (ctx.toast) ctx.toast('Click an object on the canvas to edit it.');
+    });
 
     // ---- Layers panel ------------------------------------------------------
     function renderLayers() {
@@ -1374,19 +1708,49 @@
       layersList.querySelectorAll('.wb-layer-row').forEach((row) => {
         row.addEventListener('click', (e) => {
           if (e.target.closest('button')) return;
-          engine.setSelectedIds([row.getAttribute('data-id')]);
+          const id = row.getAttribute('data-id');
+          if (e.shiftKey && rowAnchor) {
+            const rows = [...layersList.querySelectorAll('.wb-layer-row')];
+            const a = rows.indexOf(rowAnchor), b = rows.indexOf(row);
+            if (a !== -1 && b !== -1) {
+              const lo = Math.min(a, b), hi = Math.max(a, b);
+              engine.setSelectedIds(rows.slice(lo, hi + 1).map((r) => r.getAttribute('data-id')));
+              return;
+            }
+          }
+          if (e.ctrlKey || e.metaKey) {
+            const next = new Set(selectedIds);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            engine.setSelectedIds([...next]);
+            rowAnchor = row;
+            return;
+          }
+          rowAnchor = row;
+          engine.setSelectedIds([id]);
         });
         row.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', row.getAttribute('data-id')); });
-        row.addEventListener('dragover', (e) => e.preventDefault());
+        row.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          layersList.querySelectorAll('.wb-layer-row').forEach((r) => r.classList.remove('drop-before', 'drop-after'));
+          const rect = row.getBoundingClientRect();
+          row.classList.add(e.clientY > rect.top + rect.height / 2 ? 'drop-after' : 'drop-before');
+        });
+        row.addEventListener('dragleave', () => row.classList.remove('drop-before', 'drop-after'));
         row.addEventListener('drop', (e) => {
           e.preventDefault();
-          engine.reorderObject(e.dataTransfer.getData('text/plain'), row.getAttribute('data-id'));
+          const after = row.classList.contains('drop-after');
+          layersList.querySelectorAll('.wb-layer-row').forEach((r) => r.classList.remove('drop-before', 'drop-after'));
+          engine.reorderObject(e.dataTransfer.getData('text/plain'), row.getAttribute('data-id'), after);
         });
       });
       layersList.querySelectorAll('[data-layer-hide]').forEach((b) => b.addEventListener('click', () => engine.toggleHidden(b.getAttribute('data-layer-hide'))));
       layersList.querySelectorAll('[data-layer-lock]').forEach((b) => b.addEventListener('click', () => engine.toggleLocked(b.getAttribute('data-layer-lock'))));
-      layersList.querySelectorAll('[data-group-toggle]').forEach((b) => b.addEventListener('click', () => {
+      layersList.querySelectorAll('[data-group-toggle]').forEach((b) => b.addEventListener('click', (e) => {
         const id = b.getAttribute('data-group-toggle');
+        if (e.shiftKey) {
+          engine.setSelectedIds(engine.getState().objects.filter((o) => o.groupId === id).map((o) => o.id));
+          return;
+        }
         if (collapsedGroups.has(id)) collapsedGroups.delete(id); else collapsedGroups.add(id);
         renderLayers();
       }));
@@ -1394,15 +1758,20 @@
         const id = b.getAttribute('data-layer-menu');
         const o = all.find((x) => x.id === id) || {};
         if (!R.feedback || !R.feedback.sheet) return;
+        const actions = [
+          { label: 'Bring to front', icon: 'chevrons-up', run: () => engine.bringToFront(id) },
+          { label: 'Duplicate', icon: 'copy', run: () => engine.duplicateObject(id) },
+          { label: o.hidden ? 'Show' : 'Hide', icon: o.hidden ? 'eye' : 'eye-off', run: () => engine.toggleHidden(id) },
+          { label: o.locked ? 'Unlock' : 'Lock', icon: o.locked ? 'unlock' : 'lock', run: () => engine.toggleLocked(id) }
+        ];
+        if (o.groupId) actions.push({ label: 'Ungroup', icon: 'ungroup', run: () => {
+          engine.setSelectedIds([id]); engine.ungroupSelected();
+        } });
+        actions.push({ label: 'Delete', icon: 'trash-2', tone: 'danger', run: () => engine.removeObject(id) });
         R.feedback.sheet({
-          title: 'Object actions', message: 'These actions apply to this item only.',
-          actions: [
-            { label: 'Bring to front', icon: 'chevrons-up', run: () => engine.bringToFront(id) },
-            { label: 'Duplicate', icon: 'copy', run: () => engine.duplicateObject(id) },
-            { label: o.hidden ? 'Show' : 'Hide', icon: o.hidden ? 'eye' : 'eye-off', run: () => engine.toggleHidden(id) },
-            { label: o.locked ? 'Unlock' : 'Lock', icon: o.locked ? 'unlock' : 'lock', run: () => engine.toggleLocked(id) },
-            { label: 'Delete', icon: 'trash-2', tone: 'danger', run: () => engine.removeObject(id) }
-          ]
+          title: 'Object actions',
+          message: o.groupId ? 'This item belongs to a group — actions affect the whole group.' : 'These actions apply to this item only.',
+          actions
         });
       }));
       syncSelectedRows();
@@ -1458,7 +1827,10 @@
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); engine.undo(); return; }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); engine.redo(); return; }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') { e.preventDefault(); engine.duplicateSelected(); return; }
       if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); engine.deleteSelected(); return; }
+      const arrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+      if (arrows[e.key]) { e.preventDefault(); const step = e.shiftKey ? 10 : 1; engine.nudgeSelected(arrows[e.key][0] * step, arrows[e.key][1] * step); return; }
       if (e.key === '+' || e.key === '=') { e.preventDefault(); engine.zoomIn(); return; }
       if (e.key === '-') { e.preventDefault(); engine.zoomOut(); return; }
       if (e.key === '0') { e.preventDefault(); engine.resetView(); return; }
@@ -1687,6 +2059,7 @@
       clearInterval(presencePoll); clearInterval(presenceBeat);
       document.removeEventListener('keydown', documentShortcuts);
       document.removeEventListener('click', onDocClick);
+      document.removeEventListener('click', onSwatchClick);
       closePresentation();
       engine.destroy();
     };
