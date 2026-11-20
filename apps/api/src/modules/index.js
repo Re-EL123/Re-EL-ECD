@@ -27,6 +27,7 @@ const modules = [
   require('./morning'),
   require('./gate'),
   require('./whiteboards'),
+  require('./books'),
   require('./interactions')
 ];
 

@@ -56,6 +56,7 @@
     route('/app/curriculum', 'app', 'curriculum', 'curriculum.read.daycare', 'Curriculum'),
     route('/app/activities', 'app', 'activities', 'curriculum.read.daycare', 'Activities'),
     route('/app/nursery-rhymes', 'app', 'nurseryRhymes', 'curriculum.read.daycare', 'Nursery rhymes'),
+    route('/app/books', 'app', 'books', 'curriculum.read.daycare', 'Books'),
     route('/app/calendar', 'app', 'calendar', 'curriculum.read.daycare', 'Calendar'),
     route('/app/modules', 'app', 'modules', 'curriculum.read.daycare', 'Learning modules'),
     route('/app/modules/:id', 'app', 'moduleDetail', 'curriculum.read.daycare', 'Learning module'),
@@ -151,6 +152,7 @@
         { path: '/app/curriculum', label: 'Curriculum', icon: 'book-open', permission: 'curriculum.read.daycare' },
         { path: '/app/activities', label: 'Activities', icon: 'puzzle', permission: 'curriculum.read.daycare' },
         { path: '/app/nursery-rhymes', label: 'Nursery rhymes', icon: 'music-2', permission: 'curriculum.read.daycare' },
+        { path: '/app/books', label: 'Books', icon: 'book-open', permission: 'curriculum.read.daycare' },
         { path: '/app/assessments', label: 'Assessments', icon: 'clipboard-list', permission: ['assessments.read.daycare', 'assessments.read.assigned'] }
       ] },
       { label: 'Children', items: [
@@ -1425,6 +1427,63 @@
           await this.navigate(true);
         } catch (error) {
           this.toast(error.message || 'The audio could not be removed.', 'error');
+        }
+      },
+
+      // --- Books -------------------------------------------------------------
+      openBook(index) {
+        const books = (this.page && this.page.books) || [];
+        const book = books[Number(index)];
+        if (!book) return;
+        const editions = (Array.isArray(book.editions) && book.editions.length)
+          ? book.editions : [{ language: book.language || 'English', pdfUrl: book.pdfUrl, coverUrl: book.coverUrl }];
+        const cover = book.coverUrl || (editions[0] && editions[0].coverUrl) || '';
+        const body = '<div class="book-detail">' +
+          (cover ? '<div class="book-detail-cover"><img src="' + Reel.attr(Reel.safeUrl(cover)) + '" alt=""></div>' : '') +
+          '<div class="book-detail-main"><h3>' + Reel.esc(book.title) + '</h3>' +
+          '<p class="muted">' + Reel.esc(book.description || '') + '</p>' +
+          '<div class="wb-field-label">Read in a language</div><div class="book-editions">' +
+            editions.map((e, i) => '<a class="btn btn-sm ' + (i === 0 ? 'btn-primary' : 'btn-secondary') + '" href="' + Reel.attr(Reel.safeUrl(e.pdfUrl)) + '" target="_blank" rel="noopener">' +
+              Reel.icon('book-open') + ' ' + Reel.esc(e.language) + '</a>').join('') +
+          '</div>' +
+          '<div class="book-detail-actions">' +
+            '<a class="btn btn-sm btn-ghost" href="' + Reel.attr(Reel.safeUrl(editions[0] && editions[0].pdfUrl)) + '" target="_blank" rel="noopener" download>' + Reel.icon('download') + ' Download PDF</a>' +
+          '</div>' +
+          '<div class="wb-field-label">Credits and licence</div>' +
+          '<div class="book-credit">' +
+            [['Writer', book.author], ['Illustrator', book.illustrator], ['Designer', book.designer], ['Editor', book.editor]]
+              .filter(([, name]) => name)
+              .map(([role, name]) => '<span><b>' + Reel.esc(role) + ':</b> ' + Reel.esc(name) + '</span>').join('') +
+            (book.sourceUrl ? '<a href="' + Reel.attr(book.sourceUrl) + '" target="_blank" rel="noopener">Read at Book Dash ' + Reel.icon('external-link') + '</a>' : '') +
+            '<span class="muted small">' + Reel.esc(book.licence || 'CC BY 4.0') + '</span>' +
+          '</div></div></div>';
+        this.openDetail(book.title, body, 'wide');
+      },
+      filterBooks() {
+        const q = (document.getElementById('book-search') || {}).value || '';
+        const lang = (document.getElementById('book-language') || {}).value || '';
+        const theme = (document.getElementById('book-theme') || {}).value || '';
+        let shown = 0;
+        document.querySelectorAll('.book-card').forEach((card) => {
+          const hay = (card.getAttribute('data-search') || '').toLowerCase();
+          const langs = (card.getAttribute('data-language') || '').split('|');
+          const themes = (card.getAttribute('data-theme') || '');
+          const ok = (!q || hay.indexOf(String(q).toLowerCase()) !== -1) &&
+            (!lang || langs.indexOf(lang) !== -1) && (!theme || themes.indexOf(theme) !== -1);
+          card.style.display = ok ? '' : 'none';
+          if (ok) shown++;
+        });
+        const count = document.getElementById('book-count');
+        if (count) count.textContent = shown + ' books';
+      },
+      async deleteBook(id) {
+        if (!confirm('Remove this book from your centre?')) return;
+        try {
+          await Reel.api('DELETE', '/books/' + encodeURIComponent(id));
+          this.toast('Book removed.');
+          await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'Could not remove the book.', 'error');
         }
       },
 
@@ -3803,7 +3862,7 @@
               scope: field.scope || 'general',
               ownerType: field.ownerType || undefined,
               ownerId: field.ownerId || undefined,
-              shared: field.scope === 'nursery-rhyme' ? true : undefined
+              shared: ['nursery-rhyme', 'book'].includes(field.scope) ? true : undefined
             });
             if (field.multiple) {
               const list = Array.isArray(this.modal.data[field.name]) ? this.modal.data[field.name] : [];

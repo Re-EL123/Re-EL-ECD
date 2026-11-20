@@ -76,7 +76,7 @@ function register(router) {
     const scope = body.scope || 'general';
     // Only nursery-rhyme recordings may be published across tenants, and only
     // by someone who can manage organisation settings.
-    const mayShare = body.shared === true && scope === 'nursery-rhyme' &&
+    const mayShare = body.shared === true && ['nursery-rhyme', 'book'].includes(scope) &&
       hasPermission(ctx.access && ctx.access.permissions, 'organisation.settings.manage');
     if (body.shared === true && !mayShare) {
       fail('VALIDATION', [{ field: 'shared', message: 'Only administrators can share nursery-rhyme audio with every centre.' }]);

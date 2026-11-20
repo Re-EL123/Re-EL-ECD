@@ -58,7 +58,7 @@ test('the image tool accepts uploads, drops and pastes', () => {
 });
 
 test('whiteboard image sources accept uploaded media proxy URLs', () => {
-  assert.match(storage, /'nursery-rhyme', 'whiteboard', 'general'/);
+  assert.match(storage, /'nursery-rhyme', 'whiteboard', 'book', 'general'/);
   assert.match(api, /MEDIA_PROXY = \/\^\\\/api\\\/v1\\\/media\\\/object/);
   assert.match(api, /safeImageSrc\(raw\.src\)/);
   assert.doesNotMatch(api, /if \(!\/\^https\?:\\\/\\\/\/\.test\(String\(raw\.src/);

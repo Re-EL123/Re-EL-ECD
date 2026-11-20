@@ -298,6 +298,7 @@
     { key: 'curriculum', path: '/app/curriculum', label: 'Curriculum', icon: 'book-open', permission: 'curriculum.read.daycare' },
     { key: 'activities', path: '/app/activities', label: 'Activities', icon: 'puzzle', permission: 'curriculum.read.daycare' },
     { key: 'nursery-rhymes', path: '/app/nursery-rhymes', label: 'Nursery rhymes', icon: 'music-2', permission: 'curriculum.read.daycare' },
+    { key: 'books', path: '/app/books', label: 'Books', icon: 'book-open', permission: 'curriculum.read.daycare' },
     { key: 'assessments', path: '/app/assessments', label: 'Assessments', icon: 'clipboard-list', permission: ['assessments.read.daycare', 'assessments.read.assigned'] }
   ];
 

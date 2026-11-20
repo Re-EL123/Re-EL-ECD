@@ -23,7 +23,7 @@ test('shared media keys need no schema migration', () => {
 
 test('uploads can be marked shared, admin-gated and only for rhyme audio', () => {
   assert.match(media, /shared: \{ type: 'boolean', optional: true \}/);
-  assert.match(media, /body\.shared === true && scope === 'nursery-rhyme'/);
+  assert.match(media, /body\.shared === true && \['nursery-rhyme', 'book'\]\.includes\(scope\)/);
   assert.match(media, /hasPermission\(ctx\.access && ctx\.access\.permissions, 'organisation\.settings\.manage'\)/);
   assert.match(media, /shared: mayShare/);
   assert.match(media, /metadata: \{ scope, kind: described\.kind, mimeType: described\.mime, shared: mayShare \}/);
@@ -50,7 +50,7 @@ test('the browser uploads, reads and removes shared rhyme audio', () => {
   assert.match(app, /Reel\.uploadMedia\(file, \{ scope: 'nursery-rhyme', shared: true \}\)/);
   assert.match(app, /Reel\.api\('PATCH', '\/nursery-rhyme-audio', \{ id, url: asset\.url \}\)/);
   assert.match(app, /Reel\.api\('DELETE', '\/nursery-rhyme-audio\/' \+ encodeURIComponent\(id\)\)/);
-  assert.match(app, /shared: field\.scope === 'nursery-rhyme' \? true : undefined/);
+  assert.match(app, /shared: \['nursery-rhyme', 'book'\]\.includes\(field\.scope\) \? true : undefined/);
   assert.match(view, /R\.api\('GET', '\/nursery-rhyme-audio'\)/);
   assert.match(view, /sharedRes && sharedRes\.data && sharedRes\.data\.audio/);
   assert.match(view, /R\.api\('PATCH', '\/nursery-rhyme-audio', \{ id: rhyme\.id, url: rhyme\.audioUrl \}\)/);

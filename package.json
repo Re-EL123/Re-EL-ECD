@@ -25,7 +25,8 @@
     "seed:catalog": "node scripts/seed-catalog.js",
     "docs:api": "node scripts/generate-api-docs.js",
     "check": "node scripts/lint.js && node scripts/check-migrations.js && node scripts/check-functions.js",
-    "purge:live-checks": "node scripts/purge-live-checks.mjs"
+    "purge:live-checks": "node scripts/purge-live-checks.mjs",
+    "import:books": "node scripts/import-bookdash.mjs"
   },
   "dependencies": {
     "pg": "^8.13.1"
