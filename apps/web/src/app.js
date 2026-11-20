@@ -1494,8 +1494,8 @@
           else if (overlay.requestFullscreen) overlay.requestFullscreen().catch(() => null);
         };
         const onPrint = () => {
-          try { reader.frame.contentWindow.postMessage({ type: 'print' }, '*'); }
-          catch (e) { /* browser PDF viewer handles printing itself */ }
+          try { reader.frame.contentWindow.print(); }
+          catch (e) { window.open(reader.openLink.href, '_blank', 'noopener'); }
         };
         const onKey = (e) => {
           if (e.key === 'Escape') { e.preventDefault(); this.closeReader(); }
