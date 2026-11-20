@@ -1392,9 +1392,24 @@
       // The visitor may have navigated away while the logo was loading.
       if (!container.isConnected) return null;
       const config = qrOptions(Object.assign({}, opts, { primary }), 'canvas', opts.size || 220);
-      if (image) config.image = image;
+      // This build of qr-code-styling renders a blank canvas when `image` is a
+      // data URL, so draw the centre badge ourselves once the QR is present.
       const qr = new window.QRCodeStyling(config);
       qr.append(container);
+      if (image) {
+        const badge = new Image();
+        badge.onload = () => {
+          try {
+            const cvs = container.querySelector('canvas');
+            if (!cvs || !cvs.isConnected) return;
+            const context = cvs.getContext('2d');
+            if (!context) return;
+            const side = Math.round((cvs.width || 220) * 0.3);
+            context.drawImage(badge, (cvs.width - side) / 2, (cvs.height - side) / 2, side, side);
+          } catch (error) { /* the QR itself is already usable without the badge */ }
+        };
+        badge.src = image;
+      }
       return qr;
     } catch (error) {
       return fallback('QR code unavailable.');
@@ -1425,12 +1440,9 @@
     const opts = qrOptionsFromElement(element);
     const ext = String(extension || 'png').toLowerCase();
     const primary = isHex(opts.primary) ? opts.primary : PLATFORM_BRAND.theme.primary;
-    const image = await qrLogoDataUrl(Object.assign({}, opts, {
-      primary,
-      onPrimary: isHex(opts.onPrimary) ? opts.onPrimary : onColour(primary)
-    }));
     const config = qrOptions(Object.assign({}, opts, { primary, size: 640 }), ext === 'svg' ? 'svg' : 'canvas', 640);
-    config.image = image;
+    // A data-URL centre image makes this QR library render nothing — export a
+    // clean, scannable code instead.
     const qr = new window.QRCodeStyling(config);
     const name = dataset.filename || 'website-qr';
     await qr.download({ name, extension: ext === 'svg' ? 'svg' : 'png' });

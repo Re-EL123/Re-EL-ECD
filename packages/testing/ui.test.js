@@ -152,3 +152,10 @@ test('QR mounting cannot hang on a slow logo or fail silently', () => {
   assert.match(utils, /Open share link/);
   assert.match(application, /Alpine\.destroyTree\(root\);[\s\S]{0,120}root\.innerHTML = view\.render/);
 });
+
+test('QR generation never passes a data-URL centre image to the library', () => {
+  const utils = fs.readFileSync(path.join(webRoot, 'src', 'utils.js'), 'utf8');
+  assert.ok(!/config\.image = image/.test(utils), 'no data-URL image on the QR config');
+  assert.match(utils, /draw the centre badge ourselves once the QR is present/);
+  assert.match(utils, /context\.drawImage\(badge/);
+});
