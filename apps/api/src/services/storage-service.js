@@ -450,7 +450,7 @@ function extensionFor(filename, contentType) {
  * Keys are tenant-scoped so one daycare can never overwrite another's media,
  * and the random component prevents guessing or accidental replacement.
  */
-function buildKey({ organisationId, scope = 'general', filename, contentType }) {
+function buildKey({ organisationId, scope = 'general', filename, contentType, shared = false }) {
   const tenant = safeSegment(organisationId, 'org');
   const area = SCOPES.includes(scope) ? scope : 'general';
   // The extension follows the validated MIME type, not the name the browser
@@ -458,6 +458,9 @@ function buildKey({ organisationId, scope = 'general', filename, contentType }) 
   const known = MIME_KINDS[String(contentType || '').split(';')[0].trim().toLowerCase()];
   const ext = known ? known.extension : extensionFor(filename, contentType);
   const random = crypto.randomBytes(12).toString('hex');
+  // Shared keys live outside any tenant prefix so the media proxy can serve
+  // them to every centre. The asset row still records the uploading org.
+  if (shared) return `shared/${area}/${Date.now().toString(36)}-${random}.${ext}`;
   return `org/${tenant}/${area}/${Date.now().toString(36)}-${random}.${ext}`;
 }
 

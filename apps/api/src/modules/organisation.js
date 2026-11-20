@@ -57,6 +57,26 @@ function normaliseCustomRhymes(value) {
   });
 }
 
+function safeRhymeAudioUrl(value) {
+  const url = String(value || '').trim();
+  if (!url || url.length > 500) return false;
+  return /^https?:\/\//i.test(url) || /^\/api\/v1\/media\/object\?key=(?:shared(?:%2F|\/)|org(?:%2F|\/)[0-9a-f-]{36}(?:%2F|\/))/i.test(url);
+}
+async function readOrganisationSettings(db, organisationId) {
+  const row = await db.one('SELECT settings FROM organisation_settings WHERE organisation_id = $1', [organisationId]);
+  return row && plainObject(row.settings) ? row.settings : {};
+}
+async function writeOrganisationSettings(db, organisationId, settings) {
+  const existing = await db.one('SELECT settings FROM organisation_settings WHERE organisation_id = $1', [organisationId]);
+  if (existing) {
+    await db.query('UPDATE organisation_settings SET settings = $1, updated_at = now() WHERE organisation_id = $2',
+      [JSON.stringify(settings), organisationId]);
+  } else {
+    await db.query('INSERT INTO organisation_settings (organisation_id, settings) VALUES ($1,$2)',
+      [organisationId, JSON.stringify(settings)]);
+  }
+}
+
 function register(router) {
   router.get('/organisations/current', async (ctx) => {
     const organisation = await ctx.db.one('SELECT * FROM organisations WHERE id = $1', [ctx.organisationId]);
@@ -279,6 +299,59 @@ function register(router) {
       metadata: { keys: Object.keys(body.settings) }
     });
     return merged;
+  }, { permission: 'organisation.settings.manage' });
+
+  // Nursery-rhyme recordings are a shared library: a recording uploaded by any
+  // centre is available to every centre by default. The current centre's own
+  // entries win if two centres recorded the same rhyme.
+  router.get('/nursery-rhyme-audio', async (ctx) => {
+    const rows = await ctx.db.many(
+      "SELECT organisation_id, settings->'nurseryRhymeAudio' AS audio FROM organisation_settings WHERE settings ? 'nurseryRhymeAudio'"
+    ).catch(() => []);
+    const audio = {};
+    rows.forEach((row) => {
+      if (row && plainObject(row.audio) && String(row.organisation_id) !== String(ctx.platformOrganisationId)) {
+        Object.assign(audio, row.audio);
+      }
+    });
+    rows.forEach((row) => {
+      if (row && plainObject(row.audio) && String(row.organisation_id) === String(ctx.platformOrganisationId)) {
+        Object.assign(audio, row.audio);
+      }
+    });
+    const own = await readOrganisationSettings(ctx.db, ctx.organisationId);
+    Object.assign(audio, plainObject(own.nurseryRhymeAudio));
+    return { audio };
+  }, { permission: 'organisation.read.daycare' });
+
+  router.patch('/nursery-rhyme-audio', async (ctx) => {
+    const body = validate(ctx.body, {
+      id: { type: 'string', min: 1, max: 120 },
+      url: { type: 'string', min: 1, max: 500 }
+    });
+    if (!safeRhymeAudioUrl(body.url)) {
+      fail('VALIDATION', [{ field: 'url', message: 'Enter a valid audio URL.' }]);
+    }
+    const settings = await readOrganisationSettings(ctx.db, ctx.platformOrganisationId);
+    const map = plainObject(settings.nurseryRhymeAudio);
+    map[body.id] = body.url;
+    settings.nurseryRhymeAudio = map;
+    await writeOrganisationSettings(ctx.db, ctx.platformOrganisationId, settings);
+    await recordAudit(ctx.db, ctx, {
+      action: 'nursery_rhyme.audio_shared', resourceType: 'organisation',
+      resourceId: ctx.platformOrganisationId, metadata: { rhymeId: body.id }
+    });
+    return { audio: map };
+  }, { permission: 'organisation.settings.manage' });
+
+  router.delete('/nursery-rhyme-audio/:id', async (ctx) => {
+    const id = String(ctx.params.id || '').slice(0, 120);
+    const settings = await readOrganisationSettings(ctx.db, ctx.platformOrganisationId);
+    const map = plainObject(settings.nurseryRhymeAudio);
+    delete map[id];
+    settings.nurseryRhymeAudio = map;
+    await writeOrganisationSettings(ctx.db, ctx.platformOrganisationId, settings);
+    return { audio: map };
   }, { permission: 'organisation.settings.manage' });
 
   router.get('/branches', async (ctx) => {

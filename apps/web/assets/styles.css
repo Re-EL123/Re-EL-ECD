@@ -3844,3 +3844,5 @@ body.wb-teaching .content { padding-bottom: 0 !important; }
 .wb-transform-rotate { margin: 6px 0; }
 .wb-flip-btns .btn { flex: 1 1 30%; justify-content: center; gap: 4px; }
 .wb-flip-btns .btn svg { width: 14px; height: 14px; }
+.rhyme-manage .rhyme-shared-hint { display: inline-flex; gap: 5px; align-items: center; font-size: .7rem; }
+.rhyme-manage .rhyme-shared-hint svg { width: 13px; height: 13px; }

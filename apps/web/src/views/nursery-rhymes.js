@@ -29,9 +29,13 @@
       let custom = [];
       if (ctx.has('organisation.read.daycare')) {
         try {
-          const res = await R.api('GET', '/organisations/current/settings');
-          const settings = (res && res.data) || {};
-          audio = settings.nurseryRhymeAudio || {};
+          const [sharedRes, settingsRes] = await Promise.all([
+            R.api('GET', '/nursery-rhyme-audio').catch(() => null),
+            R.api('GET', '/organisations/current/settings')
+          ]);
+          const settings = (settingsRes && settingsRes.data) || {};
+          // Every uploaded recording is shared across centres by default.
+          audio = (sharedRes && sharedRes.data && sharedRes.data.audio) || settings.nurseryRhymeAudio || {};
           custom = Array.isArray(settings.nurseryRhymes) ? settings.nurseryRhymes : [];
           // Stored media URLs are API-relative (/api/v1/media/object?…).
           // Resolve them against the API origin so <audio> works from the
@@ -160,7 +164,7 @@
                 '<button type="button" class="btn btn-sm btn-ghost rhyme-more" @click="rhymeMenu(\'' + id + '\', $event.currentTarget)" aria-label="More options for ' + R.attr(rhyme.title) + '">' + R.icon('more-horizontal') + '</button>' +
               '</div>'
             : '<div class="rhyme-no-audio">' +
-                '<span>' + R.icon('headphones') + ' No recording yet — the words are ready to sing.</span>' +
+                '<span>' + R.icon('headphones') + ' No recording yet — add one to share it with every centre.</span>' +
                 '<div class="row" style="gap:8px;flex-wrap:wrap">' +
                   '<button type="button" class="btn btn-sm btn-secondary" @click="requestRhyme(\'' + id + '\')">' + R.icon('bell') + ' Request this song</button>' +
                   '<button type="button" class="btn btn-sm btn-ghost" @click="recordRhymeAudio(\'' + id + '\')">' + R.icon('mic') + ' Record your own</button>' +
@@ -174,6 +178,7 @@
             (url ? '<button class="btn btn-sm btn-ghost" @click="removeRhymeAudio(\'' + id + '\')">' + R.icon('trash-2') + ' Remove audio</button>' : '') +
             (rhyme.custom ? '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'rhymeEdit\',\'' + id + '\')">' + R.icon('pencil') + ' Edit rhyme</button>' +
               '<button class="btn btn-sm btn-ghost is-danger" @click="deleteRhyme(\'' + id + '\')">' + R.icon('trash-2') + ' Delete rhyme</button>' : '') +
+            '<span class="muted small rhyme-shared-hint">' + R.icon('users') + ' Shared with every centre</span>' +
           '</div>' : '') +
         '</div>';
       });
@@ -246,9 +251,7 @@
     if (at === -1) list.push(rhyme); else list[at] = rhyme;
     await R.api('PATCH', '/organisations/current/settings', { settings: { nurseryRhymes: list } });
     if (rhyme.audioUrl) {
-      const map = Object.assign({}, ((ctx.page || {}).rhymeAudio) || {});
-      map[rhyme.id] = rhyme.audioUrl;
-      await R.api('PATCH', '/organisations/current/settings', { settings: { nurseryRhymeAudio: map } });
+      await R.api('PATCH', '/nursery-rhyme-audio', { id: rhyme.id, url: rhyme.audioUrl });
     }
     ctx.toast(existing ? 'Rhyme saved.' : 'Rhyme added to your centre’s library.');
     if (R.rhymePlayer && R.rhymePlayer.subscribe && R.feedback) R.feedback.cue('success');

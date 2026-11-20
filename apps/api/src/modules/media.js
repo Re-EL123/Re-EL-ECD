@@ -11,6 +11,7 @@
 const { validate } = require('../../../../packages/contracts/validate');
 const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
+const { hasPermission } = require('../../../../packages/auth/permissions');
 const { parsePagination } = require('../utils/http');
 const storage = require('../services/storage-service');
 
@@ -59,7 +60,8 @@ function register(router) {
       size: { type: 'number', min: 1, optional: true },
       scope: { type: 'string', enum: storage.SCOPES, optional: true },
       ownerType: { type: 'string', max: 40, optional: true },
-      ownerId: { type: 'string', uuid: true, optional: true }
+      ownerId: { type: 'string', uuid: true, optional: true },
+      shared: { type: 'boolean', optional: true }
     });
     const described = storage.describeUpload(body);
     if (!described.valid) {
@@ -72,11 +74,19 @@ function register(router) {
       }]);
     }
     const scope = body.scope || 'general';
+    // Only nursery-rhyme recordings may be published across tenants, and only
+    // by someone who can manage organisation settings.
+    const mayShare = body.shared === true && scope === 'nursery-rhyme' &&
+      hasPermission(ctx.access && ctx.access.permissions, 'organisation.settings.manage');
+    if (body.shared === true && !mayShare) {
+      fail('VALIDATION', [{ field: 'shared', message: 'Only administrators can share nursery-rhyme audio with every centre.' }]);
+    }
     const key = storage.buildKey({
       organisationId: ctx.organisationId,
       scope,
       filename: body.filename,
-      contentType: described.mime
+      contentType: described.mime,
+      shared: mayShare
     });
     // Clients load media through the authenticated proxy — the bucket never
     // needs a public base URL and children's photos are not publicly reachable.
@@ -92,7 +102,7 @@ function register(router) {
     );
     await recordAudit(ctx.db, ctx, {
       action: 'media.upload_requested', resourceType: 'media_asset', resourceId: asset.id,
-      metadata: { scope, kind: described.kind, mimeType: described.mime }
+      metadata: { scope, kind: described.kind, mimeType: described.mime, shared: mayShare }
     });
     ctx.status = 201;
     return {
@@ -108,18 +118,22 @@ function register(router) {
 
   // Authenticated media proxy: membership of the owning organisation is the
   // authorisation. Redirects to a short-lived signed URL; the bucket itself
-  // can stay private. Keys are tenant-scoped `org/<id>/...`.
+  // can stay private. Keys are tenant-scoped `org/<id>/...`, except shared
+  // content such as nursery-rhyme audio which uses `shared/<scope>/...`.
   router.get('/media/object', async (ctx) => {
     const key = String(ctx.query.key || '');
-    const match = /^org\/([0-9a-fA-F-]{36})\//.exec(key);
-    if (!match) throw new AppError('NOT_FOUND');
-    if (match[1].toLowerCase() !== String(ctx.organisationId).toLowerCase()) throw new AppError('FORBIDDEN');
+    const shared = /^shared\//.test(key);
+    const match = shared ? null : /^org\/([0-9a-fA-F-]{36})\//.exec(key);
+    if (!shared && !match) throw new AppError('NOT_FOUND');
+    const own = match && match[1].toLowerCase() === String(ctx.organisationId).toLowerCase();
     const asset = await ctx.db.one(
-      `SELECT status FROM media_assets WHERE storage_key = $1 AND organisation_id = $2`,
-      [key, ctx.organisationId]
+      `SELECT status, scope FROM media_assets WHERE storage_key = $1`, [key]
     ).catch(() => null);
-    // Deleted media must never be served again. Keys without an asset row are
-    // allowed — object keys are unguessable and scoped to the centre.
+    // Shared keys and any nursery-rhyme recording (including older uploads
+    // stored under a tenant prefix) are readable by every authenticated
+    // centre. Everything else stays tenant-isolated.
+    const publicRhyme = Boolean(asset && asset.scope === 'nursery-rhyme');
+    if (!own && !shared && !publicRhyme) throw new AppError('FORBIDDEN');
     if (asset && asset.status === 'deleted') throw new AppError('NOT_FOUND');
     const signed = storage.presignGet(key, { expires: 300 });
     ctx.rawResponse = true;

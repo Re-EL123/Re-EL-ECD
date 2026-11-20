@@ -997,7 +997,8 @@
       size: file.size,
       scope: opts.scope || 'general',
       ownerType: opts.ownerType || undefined,
-      ownerId: opts.ownerId || undefined
+      ownerId: opts.ownerId || undefined,
+      shared: opts.shared === true ? true : undefined
     });
     const payload = (created && created.data) || {};
     const upload = payload.upload || {};

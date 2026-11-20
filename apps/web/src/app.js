@@ -1405,13 +1405,11 @@
           return;
         }
         try {
-          const asset = await Reel.uploadMedia(file, { scope: 'nursery-rhyme' });
+          const asset = await Reel.uploadMedia(file, { scope: 'nursery-rhyme', shared: true });
           if (!asset || !asset.url) throw new Error('The upload did not return a playable URL.');
-          const map = Object.assign({}, (this.page && this.page.rhymeAudio) || {});
-          map[id] = asset.url;
-          await Reel.api('PATCH', '/organisations/current/settings', { settings: { nurseryRhymeAudio: map } });
+          await Reel.api('PATCH', '/nursery-rhyme-audio', { id, url: asset.url });
           const rhyme = window.Reel.nurseryRhymes.find(id);
-          this.toast('Audio attached' + (rhyme ? ' to ' + rhyme.title : '') + '.');
+          this.toast('Audio shared with every centre' + (rhyme ? ' for ' + rhyme.title : '') + '.');
           await this.navigate(true);
         } catch (error) {
           this.toast(error.message || 'The audio could not be attached.', 'error');
@@ -1422,10 +1420,8 @@
 
       async removeRhymeAudio(id) {
         try {
-          const map = Object.assign({}, (this.page && this.page.rhymeAudio) || {});
-          delete map[id];
-          await Reel.api('PATCH', '/organisations/current/settings', { settings: { nurseryRhymeAudio: map } });
-          this.toast('Audio removed.');
+          await Reel.api('DELETE', '/nursery-rhyme-audio/' + encodeURIComponent(id));
+          this.toast('Audio removed from every centre.');
           await this.navigate(true);
         } catch (error) {
           this.toast(error.message || 'The audio could not be removed.', 'error');
@@ -3806,7 +3802,8 @@
             const asset = await Reel.uploadMedia(file, {
               scope: field.scope || 'general',
               ownerType: field.ownerType || undefined,
-              ownerId: field.ownerId || undefined
+              ownerId: field.ownerId || undefined,
+              shared: field.scope === 'nursery-rhyme' ? true : undefined
             });
             if (field.multiple) {
               const list = Array.isArray(this.modal.data[field.name]) ? this.modal.data[field.name] : [];
