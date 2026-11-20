@@ -317,7 +317,7 @@
         '<div class="split forms-split"><div class="stack">' +
         R.card('Form library', toolbar + R.table({ rows: rows, selectable: canManage, columns: [
           { label: 'Form', render: (f) => '<div class="form-library-name"><span class="cell-strong">' + R.esc(f.name) + '</span> ' + statusChip(f) + '</div><span class="cell-sub mono">/' + R.esc(f.slug) + ' · v' + R.number(f.version_number) + '</span>' },
-          { label: statusHeader('Submissions', 'submissions'), align: 'right', render: (f) => '<span style="white-space:nowrap">' + R.number(f.submission_count) + (Number(f.pending_count) ? ' <span class="badge badge-sun">' + R.number(f.pending_count) + ' new</span>' : '') + '</span>' },
+          { label: 'Submissions', labelHtml: statusHeader('Submissions', 'submissions'), align: 'right', render: (f) => '<span style="white-space:nowrap">' + R.number(f.submission_count) + (Number(f.pending_count) ? ' <span class="badge badge-sun">' + R.number(f.pending_count) + ' new</span>' : '') + '</span>' },
           { label: 'Visibility', render: (f) => '<span class="form-visibility">' + visibilitySummary(f) + '</span>' },
           { label: '', align: 'right', render: (f) => '<button class="btn btn-sm btn-secondary" @click="setFilter(\'formId\',\'' + R.attr(f.id) + '\')">Open</button>' }
         ], emptyTitle: 'No matching forms', emptyMessage: 'Try a different search or filter, or create a new form.',

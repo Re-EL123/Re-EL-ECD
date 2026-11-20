@@ -4001,3 +4001,4 @@ body.book-reading { overflow: hidden; }
   .form-date-filter .input { width: 100%; }
   .form-detail-actions .btn span { display: none; }
 }
+.form-library-name .cell-strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }

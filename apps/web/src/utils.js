@@ -337,7 +337,7 @@
     const selectHead = selectable
       ? '<th class="select-col"><input type="checkbox" aria-label="Select every row on this page" @change="toggleSelectAll($event.target.checked, ' + attr(JSON.stringify(ids)) + ')"></th>'
       : '';
-    const head = selectHead + columns.map((c) => '<th' + (c.align ? ' style="text-align:' + c.align + '"' : '') + '>' + esc(c.label) + '</th>').join('');
+    const head = selectHead + columns.map((c) => '<th' + (c.align ? ' style="text-align:' + c.align + '"' : '') + '>' + (c.labelHtml || esc(c.label)) + '</th>').join('');
     const body = rows.map((row) => '<tr>' + (selectable
       ? '<td class="select-col" data-label="Select"><input type="checkbox" :checked="isSelected(' + attr(JSON.stringify(String(row[idKey]))) + ')" @change="toggleSelect(' + attr(JSON.stringify(String(row[idKey]))) + ', $event.target.checked)" aria-label="Select row"></td>'
       : '') + columns.map((c) => {

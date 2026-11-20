@@ -94,3 +94,10 @@ test('empty library uses its space and mobile stacks the split', () => {
   assert.match(css, /@media \(max-width: 960px\)[\s\S]{0,160}\.forms-split/);
   assert.match(css, /@media \(max-width: 560px\)/);
 });
+
+test('sortable column headers render as HTML, not escaped markup', () => {
+  const utils = read('apps/web/src/utils.js');
+  assert.match(utils, /c\.labelHtml \|\| esc\(c\.label\)/);
+  assert.match(view, /labelHtml: statusHeader/);
+  assert.match(css, /\.form-library-name \.cell-strong \{ display: block/);
+});
