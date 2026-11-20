@@ -59,7 +59,8 @@
   }
   // Stroke-aware hit testing: unfilled shapes only count near their outline,
   // and freehand marks only count near the actual path.
-  function strokeHit(o, p, tol) {
+  function strokeHit(o, point, tol) {
+    const p = toLocal(o, point);
     const pts = o.points || [];
     if (o.type === 'path' || o.type === 'highlighter') {
       if (pts.length < 2) return pts.length ? Math.hypot(p.x - pts[0].x, p.y - pts[0].y) <= tol : false;
@@ -92,6 +93,87 @@
     if (!src || src.length > 1000) return null;
     if (/^https?:\/\//i.test(src) || /^\/api\/v1\/media\/object\?key=org(?:%2F|\/)[0-9a-f-]{36}(?:%2F|\/)/i.test(src)) return src;
     return null;
+  }
+
+  // --- Transform geometry ----------------------------------------------------
+  function rotatePoint(p, c, deg) {
+    if (!deg) return { x: p.x, y: p.y };
+    const a = deg * Math.PI / 180, cos = Math.cos(a), sin = Math.sin(a);
+    const dx = p.x - c.x, dy = p.y - c.y;
+    return { x: c.x + dx * cos - dy * sin, y: c.y + dx * sin + dy * cos };
+  }
+  function objectCenter(o) {
+    const b = objectBounds(o);
+    return b ? { x: b.x + b.w / 2, y: b.y + b.h / 2 } : { x: 0, y: 0 };
+  }
+  // Convert a world point into the object's own (unrotated, unflipped) space.
+  function toLocal(o, p) {
+    const b = objectBounds(o);
+    if (!b) return p;
+    const c = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+    let q = p;
+    if (o.rotation) q = rotatePoint(q, c, -o.rotation);
+    if (o.flipX) q = { x: 2 * c.x - q.x, y: q.y };
+    if (o.flipY) q = { x: q.x, y: 2 * c.y - q.y };
+    return q;
+  }
+  // Axis-aligned bounds that include rotation and flipping.
+  function visualBounds(o) {
+    const b = objectBounds(o);
+    if (!b || (!o.rotation && !o.flipX && !o.flipY)) return b;
+    const c = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+    const corners = [
+      { x: b.x, y: b.y }, { x: b.x + b.w, y: b.y },
+      { x: b.x + b.w, y: b.y + b.h }, { x: b.x, y: b.y + b.h }
+    ].map((p) => {
+      let q = p;
+      if (o.flipX) q = { x: 2 * c.x - q.x, y: q.y };
+      if (o.flipY) q = { x: q.x, y: 2 * c.y - q.y };
+      return o.rotation ? rotatePoint(q, c, o.rotation) : q;
+    });
+    const xs = corners.map((p) => p.x), ys = corners.map((p) => p.y);
+    return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(1, Math.max(...xs) - Math.min(...xs)), h: Math.max(1, Math.max(...ys) - Math.min(...ys)) };
+  }
+  function selectionBox(objects) {
+    let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+    (objects || []).forEach((o) => {
+      const b = visualBounds(o); if (!b) return;
+      x1 = Math.min(x1, b.x); y1 = Math.min(y1, b.y);
+      x2 = Math.max(x2, b.x + b.w); y2 = Math.max(y2, b.y + b.h);
+    });
+    if (!Number.isFinite(x1)) return null;
+    return { x: x1, y: y1, w: Math.max(1, x2 - x1), h: Math.max(1, y2 - y1) };
+  }
+  function handlePoints(o) {
+    const b = objectBounds(o);
+    if (!b) return [];
+    const c = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+    const pad = 4;
+    const raw = [
+      { key: 'nw', x: b.x - pad, y: b.y - pad },
+      { key: 'n', x: c.x, y: b.y - pad },
+      { key: 'ne', x: b.x + b.w + pad, y: b.y - pad },
+      { key: 'e', x: b.x + b.w + pad, y: c.y },
+      { key: 'se', x: b.x + b.w + pad, y: b.y + b.h + pad },
+      { key: 's', x: c.x, y: b.y + b.h + pad },
+      { key: 'sw', x: b.x - pad, y: b.y + b.h + pad },
+      { key: 'w', x: b.x - pad, y: c.y }
+    ];
+    return raw.map((p) => {
+      let q = p;
+      if (o.flipX) q = { x: 2 * c.x - q.x, y: q.y };
+      if (o.flipY) q = { x: q.x, y: 2 * c.y - q.y };
+      return o.rotation ? Object.assign({ key: p.key }, rotatePoint(q, c, o.rotation)) : q;
+    });
+  }
+  function rotationHandlePoint(o, zoom) {
+    const b = objectBounds(o);
+    if (!b) return null;
+    const c = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+    let p = { x: c.x, y: b.y - 4 - 26 / Math.max(0.2, zoom || 1) };
+    if (o.flipX) p = { x: 2 * c.x - p.x, y: p.y };
+    if (o.flipY) p = { x: p.x, y: 2 * c.y - p.y };
+    return o.rotation ? rotatePoint(p, c, o.rotation) : p;
   }
 
   const TOOLS = {
@@ -171,6 +253,15 @@
     if (o.hidden) return;
     ctx.save();
     if (options.alpha != null) ctx.globalAlpha = options.alpha;
+    const tb = objectBounds(o);
+    if (tb && ((o.rotation || 0) || o.flipX || o.flipY)) {
+      const cx = tb.x + tb.w / 2, cy = tb.y + tb.h / 2;
+      ctx.translate(cx, cy);
+      if (o.rotation) ctx.rotate(o.rotation * Math.PI / 180);
+      if (o.flipX) ctx.scale(-1, 1);
+      if (o.flipY) ctx.scale(1, -1);
+      ctx.translate(-cx, -cy);
+    }
     const c = resolvedColor(o, pal);
     const w = o.width || 2;
     if (o.type === 'path' || o.type === 'highlighter') {
@@ -212,17 +303,31 @@
       if (img.complete && img.naturalWidth) ctx.drawImage(img, o.x, o.y, o.w || 240, o.h || 160);
       else { ctx.fillStyle = pal.grid; ctx.fillRect(o.x, o.y, o.w || 240, o.h || 160); }
     }
-    if (options.selected) {
-      const b = objectBounds(o);
-      if (b) {
-        ctx.strokeStyle = pal.selected; ctx.lineWidth = 1.5; ctx.setLineDash([5, 4]);
-        ctx.strokeRect(b.x - 4, b.y - 4, b.w + 8, b.h + 8); ctx.setLineDash([]);
-        if (options.handles) {
-          ctx.setLineDash([]); ctx.fillStyle = pal.bg; ctx.strokeStyle = pal.selected; ctx.lineWidth = 1.5;
-          [[b.x - 4, b.y - 4], [b.x + b.w + 4, b.y - 4], [b.x - 4, b.y + b.h + 4], [b.x + b.w + 4, b.y + b.h + 4]].forEach(([hx, hy]) => {
-            ctx.beginPath(); ctx.rect(hx - 5, hy - 5, 10, 10); ctx.fill(); ctx.stroke();
-          });
-        }
+    ctx.restore();
+  }
+
+  function drawSelection(ctx, obj, pal, zoom, withHandles) {
+    const pts = handlePoints(obj);
+    if (pts.length < 4) return;
+    const get = (key) => pts.find((h) => h.key === key);
+    const nw = get('nw'), ne = get('ne'), se = get('se'), sw = get('sw');
+    if (!nw || !ne || !se || !sw) return;
+    ctx.save();
+    ctx.strokeStyle = pal.selected; ctx.lineWidth = 1.5 / zoom;
+    ctx.setLineDash([5 / zoom, 4 / zoom]);
+    ctx.beginPath(); ctx.moveTo(nw.x, nw.y); ctx.lineTo(ne.x, ne.y); ctx.lineTo(se.x, se.y); ctx.lineTo(sw.x, sw.y); ctx.closePath(); ctx.stroke();
+    ctx.setLineDash([]);
+    if (withHandles) {
+      const s = 5 / zoom;
+      pts.forEach((h) => {
+        ctx.fillStyle = pal.bg; ctx.strokeStyle = pal.selected; ctx.lineWidth = 1.5 / zoom;
+        ctx.beginPath(); ctx.rect(h.x - s, h.y - s, s * 2, s * 2); ctx.fill(); ctx.stroke();
+      });
+      const rp = rotationHandlePoint(obj, zoom), n = get('n');
+      if (rp && n) {
+        ctx.strokeStyle = pal.selected; ctx.lineWidth = 1.2 / zoom;
+        ctx.beginPath(); ctx.moveTo(n.x, n.y); ctx.lineTo(rp.x, rp.y); ctx.stroke();
+        ctx.fillStyle = pal.bg; ctx.beginPath(); ctx.arc(rp.x, rp.y, 5 / zoom, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       }
     }
     ctx.restore();
@@ -231,7 +336,7 @@
   function boardBounds(objects) {
     let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
     (objects || []).forEach((o) => {
-      const b = objectBounds(o);
+      const b = visualBounds(o);
       if (!b) return;
       minx = Math.min(minx, b.x); miny = Math.min(miny, b.y);
       maxx = Math.max(maxx, b.x + b.w); maxy = Math.max(maxy, b.y + b.h);
@@ -315,6 +420,7 @@
     let laser = [];
     let lastCursor = null;
     let laserTimer = null;
+    let hoverHandle = null;
 
     function resize() {
       const dpr = window.devicePixelRatio || 1;
@@ -365,12 +471,15 @@
       drawGrid();
       const v = vp();
       ctx.save(); ctx.translate(v.x, v.y); ctx.scale(v.zoom, v.zoom);
-      state.objects.forEach((o) => drawObject(ctx, o, {
-        palette: pal, onLoad: render,
-        selected: selectedIds.has(o.id) || o.id === selectedId,
-        handles: o.id === selectedId && tool === 'select' && !readOnly
-      }));
-      if (drawing && !drawing.drag && !drawing.resize && !drawing.erasing) drawObject(ctx, drawing, { alpha: 0.9, palette: pal });
+      state.objects.forEach((o) => drawObject(ctx, o, { palette: pal, onLoad: render }));
+      if (selectedIds.size) {
+        state.objects.forEach((o) => { if (selectedIds.has(o.id)) drawSelection(ctx, o, pal, v.zoom, false); });
+        if (tool === 'select' && !readOnly) {
+          const active = activeTransformObject();
+          if (active) drawSelection(ctx, active, pal, v.zoom, true);
+        }
+      }
+      if (drawing && !drawing.drag && !drawing.resize && !drawing.rotating && !drawing.erasing) drawObject(ctx, drawing, { alpha: 0.9, palette: pal });
       if (laser.length) {
         const now = Date.now();
         laser = laser.filter((p) => now - p.t < 900);
@@ -393,9 +502,15 @@
       }
       ctx.restore();
       const ringTool = !readOnly && ['pen', 'highlighter', 'eraser'].includes(tool);
-      canvas.style.cursor = panning || spacePan || tool === 'hand' ? 'grab'
+      const hk = (tool === 'select' && !readOnly && hoverHandle) ? hoverHandle.key : null;
+      const handleCursor = hk === 'rotate' ? 'grab'
+        : (hk === 'nw' || hk === 'se') ? 'nwse-resize'
+          : (hk === 'ne' || hk === 'sw') ? 'nesw-resize'
+            : (hk === 'n' || hk === 's') ? 'ns-resize'
+              : (hk === 'e' || hk === 'w') ? 'ew-resize' : null;
+      canvas.style.cursor = handleCursor || (panning || spacePan || tool === 'hand' ? 'grab'
         : (readOnly && !['select', 'hand', 'laser'].includes(tool) ? 'not-allowed'
-          : (ringTool ? 'none' : (tool === 'select' ? 'default' : 'crosshair')));
+          : (ringTool ? 'none' : (tool === 'select' ? 'default' : 'crosshair'))));
       if (ringTool && lastCursor) {
         const size = tool === 'highlighter' ? 16 : tool === 'eraser' ? eraserSize : strokeW;
         const at = toScreen(lastCursor);
@@ -424,17 +539,28 @@
       return null;
     }
 
+    function activeTransformObject() {
+      if (selectedIds.size > 1) {
+        const b = selectionBox(state.objects.filter((o) => selectedIds.has(o.id)));
+        return b ? { id: '__multi', type: 'rect', x: b.x, y: b.y, w: b.w, h: b.h } : null;
+      }
+      return state.objects.find((o) => o.id === selectedId) || null;
+    }
     function handleAt(spt) {
-      const obj = state.objects.find((o) => o.id === selectedId);
-      if (!obj || obj.locked || tool !== 'select') return null;
-      const b = objectBounds(obj); if (!b) return null;
-      const corners = [
-        { key: 'nw', x: toScreen({ x: b.x, y: b.y }).x - 4, y: toScreen({ x: b.x, y: b.y }).y - 4 },
-        { key: 'ne', x: toScreen({ x: b.x + b.w, y: b.y }).x - 4, y: toScreen({ x: b.x + b.w, y: b.y }).y - 4 },
-        { key: 'sw', x: toScreen({ x: b.x, y: b.y + b.h }).x - 4, y: toScreen({ x: b.x, y: b.y + b.h }).y - 4 },
-        { key: 'se', x: toScreen({ x: b.x + b.w, y: b.y + b.h }).x - 4, y: toScreen({ x: b.x + b.w, y: b.y + b.h }).y - 4 }
-      ];
-      return corners.find((c) => Math.abs(c.x - spt.x) <= 9 && Math.abs(c.y - spt.y) <= 9) || null;
+      if (tool !== 'select') return null;
+      const obj = activeTransformObject();
+      if (!obj || obj.locked) return null;
+      const tol = 10;
+      const rp = rotationHandlePoint(obj, vp().zoom);
+      if (rp) {
+        const sh = toScreen(rp);
+        if (Math.hypot(sh.x - spt.x, sh.y - spt.y) <= tol) return { key: 'rotate', point: rp, center: objectCenter(obj) };
+      }
+      const found = handlePoints(obj).find((h) => {
+        const sh = toScreen(h);
+        return Math.abs(sh.x - spt.x) <= tol && Math.abs(sh.y - spt.y) <= tol;
+      });
+      return found || null;
     }
 
     function scaleObjectToBounds(base, from, to) {
@@ -572,8 +698,17 @@
       if (tool === 'select') {
         const handle = handleAt(spt);
         if (handle && canDraw()) {
-          const orig = state.objects.find((o) => o.id === selectedId);
-          drawing = { resize: true, handle: handle.key, orig: JSON.parse(JSON.stringify(orig)), start: wpt, from: objectBounds(orig), moved: false };
+          const active = activeTransformObject();
+          const origs = state.objects.filter((o) => selectedIds.has(o.id)).map((o) => ({ id: o.id, obj: JSON.parse(JSON.stringify(o)) }));
+          if (handle.key === 'rotate') {
+            drawing = {
+              rotating: true, center: handle.center || objectCenter(active),
+              startAngle: Math.atan2(wpt.y - (handle.center || objectCenter(active)).y, wpt.x - (handle.center || objectCenter(active)).x),
+              origs, moved: false
+            };
+          } else {
+            drawing = { resize: true, handle: handle.key, origs, active, from: objectBounds(active), start: wpt, moved: false };
+          }
           return;
         }
         const hit = hitTest(wpt);
@@ -630,7 +765,11 @@
       if (tool === 'laser') { laser.push({ x: wpt.x, y: wpt.y, t: Date.now() }); render(); return; }
       if (panning && panStart) { vp().x = spt.x - panStart.x; vp().y = spt.y - panStart.y; render(); return; }
       if (marquee) { marquee.current = wpt; render(); return; }
-      if (!drawing) return;
+      if (!drawing) {
+        hoverHandle = tool === 'select' ? handleAt(spt) : null;
+        return;
+      }
+      hoverHandle = null;
       if (drawing.erasing) {
         if (eraserMode === 'strokes') {
           const radius = eraserSize / 2;
@@ -659,17 +798,55 @@
         }
         render(); notify(); return;
       }
+      if (drawing.rotating) {
+        if (!drawing.moved) { pushUndo(); drawing.moved = true; }
+        const raw = (Math.atan2(wpt.y - drawing.center.y, wpt.x - drawing.center.x) - drawing.startAngle) * 180 / Math.PI;
+        const deg = e.shiftKey ? Math.round(raw / 15) * 15 : raw;
+        drawing.origs.forEach(({ id, obj }) => {
+          const at = state.objects.findIndex((o) => o.id === id);
+          if (at === -1) return;
+          const next = JSON.parse(JSON.stringify(obj));
+          const c = objectCenter(obj), nc = rotatePoint(c, drawing.center, deg);
+          translateObject(next, nc.x - c.x, nc.y - c.y);
+          next.rotation = ((Number(obj.rotation) || 0) + deg) % 360;
+          state.objects[at] = next;
+        });
+        render(); return;
+      }
       if (drawing.resize) {
         if (!drawing.moved) { pushUndo(); drawing.moved = true; }
-        const from = drawing.from; const key = drawing.handle;
+        const from = drawing.from, key = drawing.handle;
+        const isMulti = drawing.active.id === '__multi';
+        const lp = isMulti ? wpt : toLocal(drawing.origs[0].obj, wpt);
         let x1 = from.x, y1 = from.y, x2 = from.x + from.w, y2 = from.y + from.h;
-        if (key.indexOf('w') !== -1) x1 = wpt.x;
-        if (key.indexOf('e') !== -1) x2 = wpt.x;
-        if (key.indexOf('n') !== -1) y1 = wpt.y;
-        if (key.indexOf('s') !== -1) y2 = wpt.y;
+        if (key.indexOf('w') !== -1) x1 = lp.x;
+        if (key.indexOf('e') !== -1) x2 = lp.x;
+        if (key.indexOf('n') !== -1) y1 = lp.y;
+        if (key.indexOf('s') !== -1) y2 = lp.y;
+        if (e.shiftKey && key.length === 2) {
+          const ratio = Math.max(1, from.w) / Math.max(1, from.h);
+          const w = Math.max(4, Math.abs(x2 - x1)), h = Math.max(4, Math.abs(y2 - y1));
+          if (w / h > ratio) {
+            const cy = (y1 + y2) / 2, nh = w / ratio;
+            y1 = cy - nh / 2; y2 = cy + nh / 2;
+          } else {
+            const cx = (x1 + x2) / 2, nw = h * ratio;
+            x1 = cx - nw / 2; x2 = cx + nw / 2;
+          }
+        }
         const to = { x: Math.min(x1, x2), y: Math.min(y1, y2), w: Math.max(4, Math.abs(x2 - x1)), h: Math.max(4, Math.abs(y2 - y1)) };
-        const at = state.objects.findIndex((o) => o.id === drawing.orig.id);
-        if (at !== -1) state.objects[at] = scaleObjectToBounds(drawing.orig, from, to);
+        if (isMulti) {
+          const fsx = to.w / Math.max(1, from.w), fsy = to.h / Math.max(1, from.h);
+          drawing.origs.forEach(({ id, obj }) => {
+            const ob = visualBounds(obj); if (!ob) return;
+            const nb = { x: to.x + (ob.x - from.x) * fsx, y: to.y + (ob.y - from.y) * fsy, w: ob.w * fsx, h: ob.h * fsy };
+            const at = state.objects.findIndex((o) => o.id === id);
+            if (at !== -1) state.objects[at] = scaleObjectToBounds(obj, ob, nb);
+          });
+        } else {
+          const at = state.objects.findIndex((o) => o.id === drawing.origs[0].id);
+          if (at !== -1) state.objects[at] = scaleObjectToBounds(drawing.origs[0].obj, from, to);
+        }
         render(); return;
       }
       if (drawing.drag) {
@@ -694,6 +871,7 @@
     }
 
     function onPointerUp() {
+      hoverHandle = null;
       if (panning) { panning = false; panStart = null; notify(); return; }
       if (marquee) {
         const box = {
@@ -702,14 +880,14 @@
         };
         const hits = (box.w > 3 || box.h > 3) ? state.objects.filter((o) => {
           if (o.hidden || o.locked) return false;
-          const b = objectBounds(o); return b && rectsIntersect(b, box);
+          const b = visualBounds(o); return b && rectsIntersect(b, box);
         }).map((o) => o.id) : [];
         selectedIds = marquee.additive ? new Set([...marquee.base, ...hits]) : expandIds(hits);
         selectedId = Array.from(selectedIds)[0] || null;
         marquee = null; render(); return;
       }
       if (!drawing) return;
-      if (drawing.drag || drawing.resize) { notify(); drawing = null; render(); return; }
+      if (drawing.drag || drawing.resize || drawing.rotating) { notify(); drawing = null; render(); return; }
       if (drawing.erasing) { drawing = null; return; }
       if (drawing.type === 'path' || drawing.type === 'highlighter') {
         if ((drawing.points || []).length > 1) {
@@ -1038,6 +1216,47 @@
           const delta = first + step * i - b[key];
           translateObject(o, axis === 'h' ? delta : 0, axis === 'v' ? delta : 0);
         });
+        render(); notify();
+      },
+      setRotation(deg) {
+        if (readOnly || !selectedIds.size) return;
+        pushUndo();
+        state.objects.forEach((o) => { if (selectedIds.has(o.id)) o.rotation = Number(deg) || 0; });
+        render(); notify();
+      },
+      flipSelected(axis) {
+        if (readOnly || !selectedIds.size) return;
+        pushUndo();
+        const key = axis === 'y' ? 'flipY' : 'flipX';
+        state.objects.forEach((o) => { if (selectedIds.has(o.id)) o[key] = !o[key]; });
+        render(); notify();
+      },
+      resetTransform() {
+        if (readOnly || !selectedIds.size) return;
+        pushUndo();
+        state.objects.forEach((o) => {
+          if (!selectedIds.has(o.id)) return;
+          o.rotation = 0; o.flipX = false; o.flipY = false;
+        });
+        render(); notify();
+      },
+      transformBounds(patch) {
+        if (readOnly || selectedIds.size !== 1) return;
+        const at = state.objects.findIndex((o) => o.id === selectedId);
+        if (at === -1) return;
+        const orig = state.objects[at], b = objectBounds(orig);
+        if (!b) return;
+        pushUndo();
+        let next = JSON.parse(JSON.stringify(orig));
+        const nx = patch.x == null ? b.x : Number(patch.x);
+        const ny = patch.y == null ? b.y : Number(patch.y);
+        if (nx !== b.x || ny !== b.y) translateObject(next, nx - b.x, ny - b.y);
+        if (patch.w != null || patch.h != null) {
+          const nb = { x: nx, y: ny, w: Math.max(4, Number(patch.w) || b.w), h: Math.max(4, Number(patch.h) || b.h) };
+          next = scaleObjectToBounds(next, objectBounds(next), nb);
+        }
+        if (patch.rotation != null) next.rotation = Number(patch.rotation) || 0;
+        state.objects[at] = next;
         render(); notify();
       },
       setEraserSize(n) { eraserSize = Math.max(6, Math.min(120, Number(n) || 24)); },
@@ -1397,6 +1616,19 @@
               '<label class="wb-inline-row" data-field="fill"><span>Sticky fill</span><input type="color" id="wb-obj-fill" value="#fff4b8" aria-label="Sticky note fill"></label>' +
               '<label class="wb-inline-row" data-field="font"><span>Font</span><select id="wb-obj-font" class="wb-select"><option value="sans">Sans</option><option value="serif">Serif</option><option value="mono">Mono</option></select></label>' +
               '<button type="button" class="btn btn-sm btn-secondary wb-wide-btn" id="wb-recognise" hidden>' + R.icon('wand-sparkles') + ' Clean up selected strokes</button>' +
+              '<div class="wb-field-label">Transform</div>' +
+              '<div class="wb-transform-grid" id="wb-transform-size">' +
+                '<label>X <input type="number" id="wb-tx" step="1"></label>' +
+                '<label>Y <input type="number" id="wb-ty" step="1"></label>' +
+                '<label>W <input type="number" id="wb-tw" min="4" step="1"></label>' +
+                '<label>H <input type="number" id="wb-th" min="4" step="1"></label>' +
+              '</div>' +
+              '<label class="wb-transform-rotate">Rotate <input type="number" id="wb-tr" step="1"> °</label>' +
+              '<div class="wb-layer-btns wb-flip-btns">' +
+                '<button type="button" class="btn btn-sm btn-ghost" id="wb-flip-h">' + R.icon('flip-horizontal-2') + ' Flip H</button>' +
+                '<button type="button" class="btn btn-sm btn-ghost" id="wb-flip-v">' + R.icon('flip-vertical-2') + ' Flip V</button>' +
+                '<button type="button" class="btn btn-sm btn-ghost" id="wb-reset-transform">' + R.icon('rotate-ccw') + ' Reset</button>' +
+              '</div>' +
               '<div class="wb-field-label">Order</div><div class="wb-layer-btns wb-order-btns">' +
                 '<button type="button" class="btn btn-sm btn-ghost" data-layer="front" title="Bring to front">' + R.icon('chevrons-up') + ' Front</button>' +
                 '<button type="button" class="btn btn-sm btn-ghost" data-layer="forward" title="Move forward">' + R.icon('chevron-up') + ' Up</button>' +
@@ -1442,7 +1674,7 @@
 
       // Canvas sits beside the dock, never underneath it.
       html += '<div class="wb-canvas-wrap" id="wb-canvas-wrap">' +
-        '<div class="wb-hint muted small">' + R.icon('info') + ' Space + drag to pan · scroll to zoom · Shift-click to select several items</div>' +
+        '<div class="wb-hint muted small">' + R.icon('info') + ' Space + drag to pan · handles resize, top handle rotates (Shift snaps) · Shift-click to multi-select</div>' +
         '<div class="wb-readonly-banner" id="wb-readonly-banner" hidden>View only — you can look around but cannot edit this board.</div>' +
         '<div class="wb-presence" id="wb-presence"></div>' +
         '<div class="wb-minimap-wrap"><span>Overview · click to jump</span><canvas class="wb-minimap" id="wb-minimap" width="180" height="110" aria-label="Board minimap"></canvas></div></div>';
@@ -1605,6 +1837,8 @@
       if (align) align.hidden = objs.length < 2;
       const recognise = document.getElementById('wb-recognise');
       if (recognise) recognise.hidden = !objs.some((o) => o.type === 'path' || o.type === 'highlighter');
+      const sizeGrid = document.getElementById('wb-transform-size');
+      if (sizeGrid) sizeGrid.hidden = objs.length !== 1;
     }
     function ensureSelectedVisible() {
       if (!layersList || !selectedIds.length || syncingSelection) return;
@@ -1658,6 +1892,11 @@
         if (fill) fill.value = /^#[0-9a-f]{6}$/i.test(first.fill || '') ? first.fill : '#fff4b8';
         if (size) size.value = String(first.size || 20);
         if (font) font.value = first.font || 'sans';
+        const tb = objectBounds(first);
+        const setNumber = (id, value) => { const el = document.getElementById(id); if (el) el.value = value == null ? '' : String(Math.round(value)); };
+        setNumber('wb-tx', tb && tb.x); setNumber('wb-ty', tb && tb.y);
+        setNumber('wb-tw', tb && tb.w); setNumber('wb-th', tb && tb.h);
+        setNumber('wb-tr', (Number(first.rotation) || 0) % 360);
         (objectFields ? objectFields.querySelectorAll('button') : []).forEach((b) => { b.disabled = !canEdit; });
       },
       onViewport(vp) {
@@ -1798,6 +2037,18 @@
     if (recogniseBtn) recogniseBtn.addEventListener('click', () => {
       if (!engine.recogniseSelected() && ctx.toast) ctx.toast('No marks here could be recognised. Try a neater stroke.', 'error');
     });
+    const numberValue = (id) => { const el = document.getElementById(id); return el && el.value !== '' ? Number(el.value) : null; };
+    const applySizeTransform = () => engine.transformBounds({
+      x: numberValue('wb-tx'), y: numberValue('wb-ty'), w: numberValue('wb-tw'), h: numberValue('wb-th')
+    });
+    ['wb-tx', 'wb-ty', 'wb-tw', 'wb-th'].forEach((id) => {
+      const el = document.getElementById(id); if (el) el.addEventListener('change', applySizeTransform);
+    });
+    const rotateInput = document.getElementById('wb-tr');
+    if (rotateInput) rotateInput.addEventListener('change', () => engine.transformBounds({ rotation: Number(rotateInput.value) || 0 }));
+    const flipH = document.getElementById('wb-flip-h'); if (flipH) flipH.addEventListener('click', () => engine.flipSelected('x'));
+    const flipV = document.getElementById('wb-flip-v'); if (flipV) flipV.addEventListener('click', () => engine.flipSelected('y'));
+    const resetT = document.getElementById('wb-reset-transform'); if (resetT) resetT.addEventListener('click', () => engine.resetTransform());
     document.querySelectorAll('[data-align]').forEach((b) => b.addEventListener('click', () => engine.alignSelected(b.getAttribute('data-align'))));
     document.querySelectorAll('[data-distribute]').forEach((b) => b.addEventListener('click', () => engine.distributeSelected(b.getAttribute('data-distribute'))));
     const selectToolBtn = document.getElementById('wb-properties-select');

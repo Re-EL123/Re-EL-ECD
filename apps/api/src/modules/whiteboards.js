@@ -60,6 +60,9 @@ function cleanObject(raw) {
     width: num(raw.width, 3, 1, 40),
     hidden: raw.hidden === true,
     locked: raw.locked === true,
+    rotation: num(raw.rotation, 0, -3600, 3600),
+    flipX: raw.flipX === true,
+    flipY: raw.flipY === true,
     groupId: typeof raw.groupId === 'string' ? raw.groupId.slice(0, 80) : null
   };
   switch (type) {

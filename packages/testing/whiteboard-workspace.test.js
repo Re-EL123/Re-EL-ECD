@@ -180,7 +180,7 @@ test('undo/redo state and the dock layout are remembered', () => {
 
 test('drag and resize snapshot before mutation and undo keeps selection', () => {
   assert.ok(view.indexOf('if (!drawing.moved) { pushUndo(); drawing.moved = true; }') !== -1, 'undo snapshot on first move');
-  assert.match(view, /if \(drawing\.drag \|\| drawing\.resize\) \{ notify\(\); drawing = null; render\(\); return; \}/);
+  assert.match(view, /if \(drawing\.drag \|\| drawing\.resize \|\| drawing\.rotating\) \{ notify\(\); drawing = null; render\(\); return; \}/);
   assert.match(view, /const prior = Array\.from\(selectedIds\);\s*redo\.push/);
   assert.match(view, /selectedIds = new Set\(prior\.filter\(\(id\) => alive\.has\(id\)\)\)/);
 });
@@ -206,7 +206,7 @@ test('labels keep the first line of multi-line text', () => {
 
 test('hit testing follows strokes instead of bounding boxes', () => {
   assert.match(view, /function pointSegmentDistance\(p, a, b\)/);
-  assert.match(view, /function strokeHit\(o, p, tol\)/);
+  assert.match(view, /function strokeHit\(o, point, tol\)/);
   assert.match(view, /function rectsIntersect\(a, b\)/);
   assert.match(view, /if \(strokeHit\(o, wpt, tol\)\) return o;/);
 });
@@ -242,4 +242,47 @@ test('properties are type-aware and the eraser has its own settings', () => {
   assert.match(view, /setEraserMode\(e\.target\.value\)/);
   assert.match(view, /id="wb-recent-colours"/);
   assert.match(view, /const ringTool = !readOnly && \['pen', 'highlighter', 'eraser'\]/);
+});
+
+test('objects carry rotation and flip state through the API', () => {
+  assert.match(api, /rotation: num\(raw\.rotation, 0, -3600, 3600\)/);
+  assert.match(api, /flipX: raw\.flipX === true/);
+  assert.match(api, /flipY: raw\.flipY === true/);
+});
+
+test('selection exposes eight resize handles and a rotation handle', () => {
+  assert.match(view, /function handlePoints\(o\)/);
+  assert.match(view, /key: 'nw'/);
+  assert.match(view, /key: 'n'/);
+  assert.match(view, /key: 'e'/);
+  assert.match(view, /key: 'rotate'/);
+  assert.match(view, /function rotationHandlePoint\(o, zoom\)/);
+  assert.match(view, /function drawSelection\(ctx, obj, pal, zoom, withHandles\)/);
+  assert.match(view, /function activeTransformObject\(\)/);
+  assert.match(css, /\.wb-transform-grid \{ display: grid/);
+});
+
+test('rotation and resize transform the geometry and are undoable', () => {
+  assert.match(view, /drawing\.rotating/);
+  assert.match(view, /rotatePoint\(c, drawing\.center, deg\)/);
+  assert.match(view, /e\.shiftKey \? Math\.round\(raw \/ 15\) \* 15 : raw/);
+  assert.match(view, /toLocal\(drawing\.origs\[0\]\.obj, wpt\)/);
+  assert.match(view, /scaleObjectToBounds\(drawing\.origs\[0\]\.obj, from, to\)/);
+  assert.match(view, /setRotation\(deg\)/);
+  assert.match(view, /flipSelected\(axis\)/);
+  assert.match(view, /resetTransform\(\)/);
+  assert.match(view, /transformBounds\(patch\)/);
+});
+
+test('the transform inspector edits position, size and rotation', () => {
+  assert.match(view, /id="wb-transform-size"/);
+  assert.match(view, /id="wb-tx"/);
+  assert.match(view, /id="wb-tw"/);
+  assert.match(view, /id="wb-tr"/);
+  assert.match(view, /id="wb-flip-h"/);
+  assert.match(view, /id="wb-flip-v"/);
+  assert.match(view, /id="wb-reset-transform"/);
+  assert.match(view, /engine\.transformBounds\(\{ rotation: Number\(rotateInput\.value\) \|\| 0 \}\)/);
+  assert.match(view, /function visualBounds\(o\)/);
+  assert.match(view, /function rotatePoint\(p, c, deg\)/);
 });

@@ -3829,3 +3829,18 @@ body.wb-teaching .content { padding-bottom: 0 !important; }
   border-radius: 14px; background: var(--surface-glass-strong); color: var(--text);
   font-weight: 700; font-size: .9rem; box-shadow: var(--shadow-lg); pointer-events: none;
 }
+
+/* ---- Object transform inspector ------------------------------------------- */
+.wb-transform-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 8px; margin: 6px 0; }
+.wb-transform-grid[hidden] { display: none !important; }
+.wb-transform-grid label, .wb-transform-rotate {
+  display: flex; gap: 6px; align-items: center; font-size: .72rem; color: var(--text-muted);
+}
+.wb-transform-grid input, .wb-transform-rotate input {
+  width: 100%; min-width: 0; padding: 4px 6px; font-size: .74rem;
+  border: 1px solid var(--border-subtle); border-radius: 7px;
+  background: var(--surface-1); color: var(--text);
+}
+.wb-transform-rotate { margin: 6px 0; }
+.wb-flip-btns .btn { flex: 1 1 30%; justify-content: center; gap: 4px; }
+.wb-flip-btns .btn svg { width: 14px; height: 14px; }
