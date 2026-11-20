@@ -1519,6 +1519,7 @@
       },
       openReaderAt(bookIndex, editionIndex) {
         this.closeModal();
+        this.modal = null; // skip the window-out animation; the reader covers it
         this.openReader(bookIndex);
         const reader = this._reader;
         if (!reader) return;
