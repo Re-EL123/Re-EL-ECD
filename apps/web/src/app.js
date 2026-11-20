@@ -1439,15 +1439,15 @@
           ? book.editions : [{ language: book.language || 'English', pdfUrl: book.pdfUrl, coverUrl: book.coverUrl }];
         const cover = book.coverUrl || (editions[0] && editions[0].coverUrl) || '';
         const body = '<div class="book-detail">' +
-          (cover ? '<div class="book-detail-cover"><img src="' + Reel.attr(Reel.safeUrl(cover)) + '" alt=""></div>' : '') +
+          (cover ? '<div class="book-detail-cover"><img src="' + Reel.attr(Reel.resolveMediaUrl(cover)) + '" alt=""></div>' : '') +
           '<div class="book-detail-main"><h3>' + Reel.esc(book.title) + '</h3>' +
           '<p class="muted">' + Reel.esc(book.description || '') + '</p>' +
           '<div class="wb-field-label">Read in a language</div><div class="book-editions">' +
-            editions.map((e, i) => '<a class="btn btn-sm ' + (i === 0 ? 'btn-primary' : 'btn-secondary') + '" href="' + Reel.attr(Reel.safeUrl(e.pdfUrl)) + '" target="_blank" rel="noopener">' +
+            editions.map((e, i) => '<a class="btn btn-sm ' + (i === 0 ? 'btn-primary' : 'btn-secondary') + '" href="' + Reel.attr(Reel.resolveMediaUrl(e.pdfUrl)) + '" target="_blank" rel="noopener">' +
               Reel.icon('book-open') + ' ' + Reel.esc(e.language) + '</a>').join('') +
           '</div>' +
           '<div class="book-detail-actions">' +
-            '<a class="btn btn-sm btn-ghost" href="' + Reel.attr(Reel.safeUrl(editions[0] && editions[0].pdfUrl)) + '" target="_blank" rel="noopener" download>' + Reel.icon('download') + ' Download PDF</a>' +
+            '<a class="btn btn-sm btn-ghost" href="' + Reel.attr(Reel.resolveMediaUrl(editions[0] && editions[0].pdfUrl)) + '" target="_blank" rel="noopener" download>' + Reel.icon('download') + ' Download PDF</a>' +
           '</div>' +
           '<div class="wb-field-label">Credits and licence</div>' +
           '<div class="book-credit">' +

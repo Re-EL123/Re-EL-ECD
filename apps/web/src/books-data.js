@@ -1,5 +1,5 @@
 'use strict';
-/** Book Dash CC BY 4.0 defaults, imported 2026-11-20T08:15:58.961Z. */
+/** Book Dash CC BY 4.0 defaults, imported 2026-11-20T08:26:12.939Z. */
 (function () {
   const R = window.Reel || (window.Reel = {});
   R.bookDefaults = [
@@ -126,6 +126,11 @@
     "licence": "CC BY 4.0",
     "kind": "bookdash",
     "editions": [
+      {
+        "language": "Afrikaans",
+        "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwopsebx-54a73f2c0b0f7bf8f9c3e861.pdf",
+        "coverUrl": ""
+      },
       {
         "language": "English",
         "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwop9k8f-8f156e7d2fdeb51d77ea2572.pdf",

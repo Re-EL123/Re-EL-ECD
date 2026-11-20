@@ -13,12 +13,12 @@
     return book.pdfUrl ? [{ language: book.language || 'English', pdfUrl: book.pdfUrl, coverUrl: book.coverUrl }] : [];
   }
   function coverFor(book) {
-    return (book.coverUrl && R.safeUrl(book.coverUrl)) || (book.editions && book.editions[0] && R.safeUrl(book.editions[0].coverUrl)) || '';
+    return (book.coverUrl && R.resolveMediaUrl(book.coverUrl)) || (book.editions && book.editions[0] && R.resolveMediaUrl(book.editions[0].coverUrl)) || '';
   }
   function pdfFor(book, language) {
     const list = editions(book);
     const found = language ? list.find((e) => e.language === language) : null;
-    return (found || list[0] || {}).pdfUrl || '';
+    return R.resolveMediaUrl((found || list[0] || {}).pdfUrl) || '';
   }
   function allLanguages(books) {
     const set = new Set();
@@ -31,7 +31,7 @@
     return Array.from(set).sort();
   }
   function media(url) {
-    const safe = R.safeUrl(url);
+    const safe = R.resolveMediaUrl(url);
     if (!safe) return '<div class="book-cover-empty">' + R.icon('book-open') + '</div>';
     return '<img class="book-cover-img" src="' + attr(safe) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">';
   }

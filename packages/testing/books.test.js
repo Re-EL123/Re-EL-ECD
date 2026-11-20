@@ -77,3 +77,13 @@ test('the importer uploads PDFs, groups editions and publishes defaults', () => 
   assert.match(importer, /R\.bookDefaults = /);
   assert.match(importer, /Book Dash books are CC BY 4\.0/);
 });
+
+test('stored media URLs resolve against the API origin for covers and PDFs', () => {
+  const utils = read('apps/web/src/utils.js');
+  assert.match(utils, /function resolveMediaUrl\(value\)/);
+  assert.match(utils, /API_BASE \+ safe/);
+  assert.match(utils, /Reel\.resolveMediaUrl = resolveMediaUrl/);
+  assert.match(view, /R\.resolveMediaUrl\(book\.coverUrl\)/);
+  assert.match(view, /R\.resolveMediaUrl\(\(found \|\| list\[0\]/);
+  assert.match(app, /Reel\.resolveMediaUrl\(e\.pdfUrl\)/);
+});

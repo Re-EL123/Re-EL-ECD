@@ -712,6 +712,14 @@
     return '';
   }
 
+  /** Resolve stored media proxy paths against the API origin on split deployments. */
+  function resolveMediaUrl(value) {
+    const safe = safeUrl(value);
+    if (!safe) return '';
+    if (/^\/api\/v1\/media\/object\?/i.test(safe) && API_BASE) return API_BASE + safe;
+    return safe;
+  }
+
   function mediaHtml(url, kind, options) {
     if (!url) return '<span class="muted">No file</span>';
     const opts = options || {};
@@ -1071,6 +1079,7 @@
   Reel.attr = attr;
   Reel.jsString = jsString;
   Reel.safeUrl = safeUrl;
+  Reel.resolveMediaUrl = resolveMediaUrl;
   Reel.richText = richText;
   Reel.richParagraphs = richParagraphs;
   Reel.titleCase = titleCase;
