@@ -31,8 +31,8 @@ const LANG = {
   st_sotho: 'Sesotho', 'st-LS_lesotho-sesotho': 'Sesotho',
   tn_setswana: 'Setswana', 'tn-setswana': 'Setswana',
   ts_xitsonga: 'Xitsonga', ve_tshivenda: 'Tshivenḓa',
-  xh_xhosa: 'isiXhosa', xh_isixhosa: 'isiXhosa',
-  zu_zulu: 'isiZulu', zu_isizulu: 'isiZulu'
+  xh_xhosa: 'isiXhosa', xh_isixhosa: 'isiXhosa', 'xh-xhosa': 'isiXhosa',
+  zu_zulu: 'isiZulu', zu_isizulu: 'isiZulu', 'zu-zulu': 'isiZulu'
 };
 
 const META = {
@@ -192,7 +192,7 @@ async function main() {
   }
 
   const result = await api('POST', '/books/import', { books });
-  console.log('Imported', result.count, 'books (' + books.reduce((n, b) => n + b.editions.length, 0) + ' language editions).');
+  console.log('Imported', (result.data && result.data.count) || books.length, 'books (' + books.reduce((n, b) => n + b.editions.length, 0) + ' language editions).');
 
   const out = 'apps/web/src/books-data.js';
   fs.writeFileSync(out, "'use strict';\n/** Book Dash CC BY 4.0 defaults, imported " + new Date().toISOString() + ". */\n" +

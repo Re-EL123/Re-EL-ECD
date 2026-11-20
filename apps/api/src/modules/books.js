@@ -49,7 +49,10 @@ function cleanBook(raw) {
   })).filter((e) => e.pdfUrl).slice(0, 40);
   if (!book.title || (!book.pdfUrl && !book.editions.length)) return null;
   if (!book.pdfUrl && book.editions.length) book.pdfUrl = book.editions[0].pdfUrl;
-  if (!book.coverUrl && book.editions.length) book.coverUrl = book.editions[0].coverUrl;
+  if (!book.coverUrl && book.editions.length) {
+    const withCover = book.editions.find((e) => e.coverUrl);
+    book.coverUrl = withCover ? withCover.coverUrl : '';
+  }
   return book;
 }
 async function readSettings(db, organisationId) {

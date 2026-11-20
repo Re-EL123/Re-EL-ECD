@@ -1,5 +1,5 @@
 'use strict';
-/** Book Dash CC BY 4.0 defaults, imported 2026-11-20T08:26:12.939Z. */
+/** Book Dash CC BY 4.0 defaults, imported 2026-11-20T08:34:50.643Z. */
 (function () {
   const R = window.Reel || (window.Reel = {});
   R.bookDefaults = [
@@ -102,12 +102,12 @@
         "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwop9c3g-563a033ef6525ab13e99d3ab.jpg"
       },
       {
-        "language": "xh-xhosa",
+        "language": "isiXhosa",
         "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwop9dec-1a6d88a593015f883637df6d.pdf",
         "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwop9fld-f6ba5909bf501f0f1b3a3e1b.jpg"
       },
       {
-        "language": "zu-zulu",
+        "language": "isiZulu",
         "pdfUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwop9gza-612bc1347586409d1382bf11.pdf",
         "coverUrl": "/api/v1/media/object?key=shared%2Fbook%2Fmwop9j0g-909801f3b7fa11859f0f3048.jpg"
       }

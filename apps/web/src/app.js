@@ -1437,7 +1437,7 @@
         if (!book) return;
         const editions = (Array.isArray(book.editions) && book.editions.length)
           ? book.editions : [{ language: book.language || 'English', pdfUrl: book.pdfUrl, coverUrl: book.coverUrl }];
-        const cover = book.coverUrl || (editions[0] && editions[0].coverUrl) || '';
+        const cover = book.coverUrl || (editions.find((e) => e.coverUrl) || {}).coverUrl || '';
         const body = '<div class="book-detail">' +
           (cover ? '<div class="book-detail-cover"><img src="' + Reel.attr(Reel.resolveMediaUrl(cover)) + '" alt=""></div>' : '') +
           '<div class="book-detail-main"><h3>' + Reel.esc(book.title) + '</h3>' +

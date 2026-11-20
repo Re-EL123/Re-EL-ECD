@@ -13,7 +13,9 @@
     return book.pdfUrl ? [{ language: book.language || 'English', pdfUrl: book.pdfUrl, coverUrl: book.coverUrl }] : [];
   }
   function coverFor(book) {
-    return (book.coverUrl && R.resolveMediaUrl(book.coverUrl)) || (book.editions && book.editions[0] && R.resolveMediaUrl(book.editions[0].coverUrl)) || '';
+    if (book.coverUrl && R.resolveMediaUrl(book.coverUrl)) return R.resolveMediaUrl(book.coverUrl);
+    const withCover = (book.editions || []).find((e) => e.coverUrl);
+    return withCover ? R.resolveMediaUrl(withCover.coverUrl) : '';
   }
   function pdfFor(book, language) {
     const list = editions(book);
