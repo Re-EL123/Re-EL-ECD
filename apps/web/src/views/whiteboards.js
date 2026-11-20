@@ -280,7 +280,7 @@
       }
       ctx.restore();
       canvas.style.cursor = panning || spacePan || tool === 'hand' ? 'grab' : (readOnly && !['select', 'hand', 'laser'].includes(tool) ? 'not-allowed' : (tool === 'select' ? 'default' : 'crosshair'));
-      if (opts.onSelection) opts.onSelection(selectedId ? state.objects.find((o) => o.id === selectedId) || null : Array.from(selectedIds));
+      if (opts.onSelection) opts.onSelection(selectedId ? state.objects.find((o) => o.id === selectedId) || null : null, Array.from(selectedIds));
       if (opts.onViewport) opts.onViewport(vp());
     }
 
@@ -1080,10 +1080,10 @@
         drawMinimap();
       },
       onSelection(obj, ids) {
-        const selected = Array.isArray(ids) ? ids : (obj ? [obj.id] : []);
+        const selected = Array.isArray(ids) ? ids : (Array.isArray(obj) ? obj : (obj && obj.id ? [obj.id] : []));
         if (objectFields) objectFields.hidden = selected.length === 0;
         if (!selected.length || !engine) return;
-        const first = engine.getSelected() || {};
+        const first = (obj && !Array.isArray(obj) && obj.id ? obj : engine.getSelected()) || {};
         const colour = objectFields && objectFields.querySelector('#wb-obj-color');
         const fill = objectFields && objectFields.querySelector('#wb-obj-fill');
         const size = objectFields && objectFields.querySelector('#wb-obj-size');
@@ -1280,7 +1280,9 @@
                 if (verEl) verEl.value = String(version);
                 engine.setState(latest.state || { objects: [], viewport: { x: 0, y: 0, zoom: 1 } });
                 lastSaved = JSON.parse(JSON.stringify((latest.state || {}).objects || []));
+                layerObjects = engine.getObjects ? engine.getObjects() : [];
                 dirty = false; savedAt = Date.now(); badge('Updated from collaborator', 'good');
+                renderLayers(); drawMinimap();
               } }
             ]
           });
@@ -1319,7 +1321,9 @@
           version = Number(data.version); if (verEl) verEl.value = String(version);
           engine.setState(data.state || { objects: [], viewport: { x: 0, y: 0, zoom: 1 } });
           lastSaved = JSON.parse(JSON.stringify((data.state || {}).objects || []));
+          layerObjects = engine.getObjects ? engine.getObjects() : [];
           badge('Synced with collaborator', 'good');
+          renderLayers(); drawMinimap();
         }
       } catch (e) { badge('Offline — changes queued', 'warn'); }
     }, 5000);
