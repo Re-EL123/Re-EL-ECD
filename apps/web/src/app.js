@@ -1431,6 +1431,96 @@
       },
 
       // --- Books -------------------------------------------------------------
+      openReader(index) {
+        const books = (this.page && this.page.books) || [];
+        const book = books[Number(index)];
+        if (!book) return;
+        const editions = (Array.isArray(book.editions) && book.editions.length)
+          ? book.editions : [{ language: book.language || 'English', pdfUrl: book.pdfUrl, coverUrl: book.coverUrl }];
+        if (!editions.length) return;
+        this.closeReader();
+        const reader = { book, editions, edition: 0, page: 1, cleanup: [] };
+        const overlay = document.createElement('div');
+        overlay.className = 'book-reader';
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-modal', 'true');
+        overlay.setAttribute('aria-label', book.title + ' — reader');
+        const langOptions = editions.map((e, i) => '<option value="' + i + '">' + Reel.esc(e.language) + '</option>').join('');
+        overlay.innerHTML =
+          '<div class="book-reader-bar">' +
+            '<div class="book-reader-title"><i data-lucide="book-open"></i><strong>' + Reel.esc(book.title) + '</strong></div>' +
+            '<div class="book-reader-tools">' +
+              '<label class="book-reader-lang"><span>Language</span><select id="reader-language">' + langOptions + '</select></label>' +
+              '<div class="book-reader-pages"><button type="button" class="btn btn-ghost btn-icon btn-sm" id="reader-prev" aria-label="Previous page"><i data-lucide="chevron-left"></i></button>' +
+                '<span id="reader-page">Page 1</span>' +
+                '<button type="button" class="btn btn-ghost btn-icon btn-sm" id="reader-next" aria-label="Next page"><i data-lucide="chevron-right"></i></button></div>' +
+              '<button type="button" class="btn btn-sm btn-ghost" id="reader-full"><i data-lucide="maximize"></i> Fullscreen</button>' +
+              '<a class="btn btn-sm btn-ghost" id="reader-open" target="_blank" rel="noopener"><i data-lucide="external-link"></i> New tab</a>' +
+              '<button type="button" class="btn btn-sm btn-ghost" id="reader-print"><i data-lucide="printer"></i> Print</button>' +
+              '<button type="button" class="btn btn-ghost btn-icon btn-sm" id="reader-close" aria-label="Close reader"><i data-lucide="x"></i></button>' +
+            '</div>' +
+          '</div>' +
+          '<iframe class="book-reader-frame" id="reader-frame" title="' + Reel.attr(book.title) + '" allowfullscreen></iframe>' +
+          '<div class="book-reader-hint">Use the PDF toolbar for zoom and search · ← → to turn pages · Esc to close</div>';
+        document.body.appendChild(overlay);
+        reader.overlay = overlay;
+        reader.frame = overlay.querySelector('#reader-frame');
+        reader.pageLabel = overlay.querySelector('#reader-page');
+        reader.lang = overlay.querySelector('#reader-language');
+        reader.openLink = overlay.querySelector('#reader-open');
+        document.body.classList.add('book-reading');
+        if (window.lucide && lucide.createIcons) lucide.createIcons();
+
+        const load = () => {
+          const url = Reel.resolveMediaUrl(reader.editions[reader.edition].pdfUrl);
+          if (!url) return;
+          reader.frame.src = url + '#page=' + reader.page + '&zoom=page-fit';
+          reader.openLink.href = url;
+        };
+        reader.load = load;
+        load();
+
+        const onLang = () => {
+          reader.edition = Number(reader.lang.value) || 0;
+          reader.page = 1;
+          reader.pageLabel.textContent = 'Page 1';
+          load();
+        };
+        const onPrev = () => { if (reader.page > 1) { reader.page--; reader.pageLabel.textContent = 'Page ' + reader.page; load(); } };
+        const onNext = () => { reader.page++; reader.pageLabel.textContent = 'Page ' + reader.page; load(); };
+        const onClose = () => this.closeReader();
+        const onFull = () => {
+          if (document.fullscreenElement === overlay) document.exitFullscreen && document.exitFullscreen();
+          else if (overlay.requestFullscreen) overlay.requestFullscreen().catch(() => null);
+        };
+        const onPrint = () => {
+          try { reader.frame.contentWindow.postMessage({ type: 'print' }, '*'); }
+          catch (e) { /* browser PDF viewer handles printing itself */ }
+        };
+        const onKey = (e) => {
+          if (e.key === 'Escape') { e.preventDefault(); this.closeReader(); }
+          else if (e.key === 'ArrowLeft') { e.preventDefault(); onPrev(); }
+          else if (e.key === 'ArrowRight') { e.preventDefault(); onNext(); }
+        };
+        reader.lang.addEventListener('change', onLang);
+        overlay.querySelector('#reader-prev').addEventListener('click', onPrev);
+        overlay.querySelector('#reader-next').addEventListener('click', onNext);
+        overlay.querySelector('#reader-close').addEventListener('click', onClose);
+        overlay.querySelector('#reader-full').addEventListener('click', onFull);
+        overlay.querySelector('#reader-print').addEventListener('click', onPrint);
+        document.addEventListener('keydown', onKey);
+        reader.cleanup.push(() => document.removeEventListener('keydown', onKey));
+        this._reader = reader;
+      },
+      closeReader() {
+        const reader = this._reader;
+        if (!reader) return;
+        reader.cleanup.forEach((fn) => fn());
+        if (document.fullscreenElement === reader.overlay && document.exitFullscreen) document.exitFullscreen().catch(() => null);
+        if (reader.overlay && reader.overlay.parentNode) reader.overlay.parentNode.removeChild(reader.overlay);
+        document.body.classList.remove('book-reading');
+        this._reader = null;
+      },
       openBook(index) {
         const books = (this.page && this.page.books) || [];
         const book = books[Number(index)];

@@ -99,3 +99,23 @@ test('centres and platform admins can add and remove language editions', () => {
   assert.match(bapp, /editions\.splice\(Number\(index\), 1\)/);
   assert.match(css, /\.book-edition \{ display: inline-flex/);
 });
+
+test('books open in a full in-app reader with navigation and language switching', () => {
+  const bapp = read('apps/web/src/app.js');
+  const bview = read('apps/web/src/views/books.js');
+  assert.match(bapp, /openReader\(index\)/);
+  assert.match(bapp, /closeReader\(\)/);
+  assert.match(bapp, /className = 'book-reader'/);
+  assert.match(bapp, /book-reader-frame/);
+  assert.match(bapp, /reader-language/);
+  assert.match(bapp, /reader-prev/);
+  assert.match(bapp, /reader-next/);
+  assert.match(bapp, /reader-full/);
+  assert.match(bapp, /reader-print/);
+  assert.match(bapp, /#page=' \+ reader\.page \+ '&zoom=page-fit/);
+  assert.match(bapp, /e\.key === 'ArrowLeft'/);
+  assert.match(bapp, /e\.key === 'Escape'/);
+  assert.match(bview, /openReader\(' \+ i \+ '\)/);
+  assert.match(bview, /' Read<\/button>/);
+  assert.match(css, /\.book-reader \{[\s\S]{0,120}position: fixed; inset: 0/);
+});

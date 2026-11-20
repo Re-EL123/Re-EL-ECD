@@ -94,7 +94,7 @@
         return '<article class="book-card' + (b.source === 'custom' ? ' is-custom' : '') + '" data-index="' + i + '"' +
           ' data-search="' + attr(String(b.title || '') + ' ' + String(b.description || '') + ' ' + String(b.theme || '') + ' ' + eds.map((e) => e.language).join(' ')).toLowerCase() + '"' +
           ' data-language="' + attr(eds.map((e) => e.language).join('|')) + '" data-theme="' + attr(b.theme || '') + '">' +
-          '<button type="button" class="book-cover" @click="openBook(' + i + ')" aria-label="Open ' + attr(b.title) + '">' + media(coverFor(b)) +
+          '<button type="button" class="book-cover" @click="openReader(' + i + ')" aria-label="Read ' + attr(b.title) + '">' + media(coverFor(b)) +
             '<span class="book-lang-count">' + R.icon('languages') + ' ' + eds.length + '</span></button>' +
           '<div class="book-card-body">' +
             '<h3>' + esc(b.title) + '</h3>' +
@@ -102,7 +102,7 @@
             '<div class="book-chips">' + eds.slice(0, 4).map((e) => '<span class="book-chip">' + esc(e.language) + '</span>').join('') +
               (eds.length > 4 ? '<span class="book-chip">+' + (eds.length - 4) + '</span>' : '') + '</div>' +
             '<div class="book-card-actions">' +
-              '<button type="button" class="btn btn-sm btn-secondary" @click="openBook(' + i + ')">' + R.icon('book-open') + ' Open</button>' +
+              '<button type="button" class="btn btn-sm btn-secondary" @click="openReader(' + i + ')">' + R.icon('book-open') + ' Read</button>' +
               '<a class="btn btn-sm btn-ghost" href="' + attr(pdfFor(b)) + '" target="_blank" rel="noopener" download>' + R.icon('download') + ' PDF</a>' +
               (b.source === 'custom' && canManage ? '<button type="button" class="btn btn-sm btn-ghost" @click="deleteBook(\'' + bid + '\')">' + R.icon('trash-2') + '</button>' : '') +
             '</div>' +
