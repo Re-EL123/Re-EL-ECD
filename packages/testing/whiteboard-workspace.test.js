@@ -288,7 +288,7 @@ test('the transform inspector edits position, size and rotation', () => {
 });
 
 test('hovering a transform handle updates the cursor', () => {
-  assert.match(view, /hoverHandle = tool === 'select' \? handleAt\(spt\) : null/);
+  assert.match(view, /const next = tool === 'select' \? handleAt\(spt\) : null/);
   assert.match(view, /if \(changed\) render\(\);/);
   assert.match(view, /handleCursor \|\| \(panning/);
 });
