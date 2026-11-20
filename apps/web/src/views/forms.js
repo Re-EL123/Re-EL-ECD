@@ -217,6 +217,28 @@
     return found ? found.label : R.titleCase(type || 'text');
   }
 
+  function formStatus(form) {
+    if (String(form.status || '').toLowerCase() === 'archived') return 'Archived';
+    if (String(form.status || '').toLowerCase() === 'published') return 'Live';
+    return 'Draft';
+  }
+  function statusChip(form) {
+    const label = formStatus(form);
+    const tone = label === 'Live' ? 'badge-green' : label === 'Archived' ? 'badge-muted' : 'badge-sun';
+    return '<span class="badge ' + tone + '">' + label + '</span>';
+  }
+  function visibilitySummary(form) {
+    const bits = [form.is_public ? 'Public link' : 'Staff only'];
+    if (form.is_public) bits.push(form.display_on_website !== false ? 'On website' : 'Not on website');
+    bits.push(paymentSummary(form).label === 'Free' ? 'Free' : paymentSummary(form).label);
+    return R.esc(bits.join(' · '));
+  }
+  function submissionValues(submission) {
+    return Object.values((submission && submission.submission_data) || {}).map((v) =>
+      Array.isArray(v) ? v.join(', ') : typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v)
+    ).filter(Boolean);
+  }
+
   V.forms = {
     async load(ctx) {
       const [forms, consent, learners] = await Promise.all([
@@ -250,99 +272,198 @@
     renderForms(ctx, page) {
       const forms = page.rows || [];
       const canManage = ctx.has('forms.manage.daycare');
-      const gettingStarted = forms.length ? '' :
-        '<div class="card"><h3>Create your first form in three steps</h3>' +
-        '<ol class="muted small" style="margin:10px 0 0 18px;line-height:1.7">' +
-        '<li><strong>Pick a template</strong> — learner admission, medical, photo consent, incident or feedback.</li>' +
+      const filters = ctx.filters || {};
+      const search = String(filters.formSearch || '').trim().toLowerCase();
+      const statusFilter = filters.formStatus || '';
+      const sort = filters.formSort || 'name';
+      let rows = forms.filter((f) => {
+        if (search && !(String(f.name || '') + ' ' + String(f.slug || '')).toLowerCase().includes(search)) return false;
+        if (statusFilter === 'public' && !f.is_public) return false;
+        if (statusFilter && statusFilter !== 'public' && formStatus(f) !== statusFilter) return false;
+        return true;
+      });
+      rows = rows.slice().sort((a, b) => {
+        if (sort === 'submissions') return Number(b.submission_count || 0) - Number(a.submission_count || 0);
+        if (sort === 'recent') return String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || ''));
+        return String(a.name || '').localeCompare(String(b.name || ''));
+      });
+
+      const toolbar = R.filterBar(
+        R.searchFilter(ctx, 'formSearch', 'Search forms by name or link…') +
+        R.selectFilter(ctx, 'formStatus', [
+          { value: 'Live', label: 'Live' }, { value: 'Draft', label: 'Draft' },
+          { value: 'Archived', label: 'Archived' }, { value: 'public', label: 'Public only' }
+        ], 'All statuses') +
+        R.selectFilter(ctx, 'formSort', [
+          { value: 'name', label: 'Name A–Z' }, { value: 'submissions', label: 'Most submissions' },
+          { value: 'recent', label: 'Recently updated' }
+        ], 'Sort by')
+      );
+
+      const templateGallery = this.renderTemplateGallery(canManage, forms.length < 4);
+      const emptyHint = forms.length ? '' :
+        '<div class="card form-empty-guide"><h3>Create your first form in three steps</h3>' +
+        '<ol class="muted small"><li><strong>Pick a template</strong> — admission, medical, photo consent, incident or feedback.</li>' +
         '<li><strong>Adjust the questions</strong> — rename, reorder or remove anything. Keys are created for you.</li>' +
-        '<li><strong>Choose who can see it</strong> — staff-only, public link, or listed on your website.</li>' +
-        '</ol>' +
-        (canManage ? '<div style="margin-top:14px"><button class="btn btn-primary btn-sm" @click="openNamedModal(\'form\')">' + R.icon('plus') + ' Create a form</button></div>' : '') +
-        '</div>';
+        '<li><strong>Choose who can see it</strong> — staff-only, public link, or listed on your website.</li></ol></div>';
+
+      const statusHeader = (label, value) => '<button type="button" class="th-sort' + (sort === value ? ' active' : '') + '" @click="setFilter(\'formSort\',\'' + value + '\')">' + label +
+        (sort === value ? ' ' + R.icon(sort === 'submissions' ? 'arrow-down' : 'arrow-up') : '') + '</button>';
       return (canManage ? R.bulkBar([
         { label: 'Publish selected', icon: 'upload', path: '/forms/bulk', action: 'publish' },
         { label: 'Archive selected', icon: 'archive', path: '/forms/bulk', action: 'archive', tone: 'danger' }
       ], { hint: 'Forms without a version cannot be published.' }) : '') +
-        gettingStarted +
-        '<div class="split"><div class="stack">' +
-        R.card('Form library', R.table({ rows: forms, selectable: canManage, columns: [
-          { label: 'Form', render: (f) => '<div><span class="cell-strong" style="overflow-wrap:normal">' + R.esc(f.name) + '</span> ' + R.badge(f.status) + '</div><span class="cell-sub mono" style="overflow-wrap:normal">/' + R.esc(f.slug) + ' · v' + R.number(f.version_number) + '</span>' },
-          { label: 'Submissions', align: 'right', render: (f) => '<span style="white-space:nowrap">' + R.number(f.submission_count) + (Number(f.pending_count) ? ' <span class="badge badge-sun">' + R.number(f.pending_count) + ' new</span>' : '') + '</span>' },
-          { label: 'Visibility', render: (f) => '<span style="white-space:nowrap">' + (f.is_public ? '<span class="badge badge-green">Public</span>' : '<span class="badge badge-muted">Private</span>') + (f.is_public && f.display_on_website !== false ? ' <span class="badge badge-green">Website</span>' : '') + '</span>' },
+        emptyHint + templateGallery +
+        '<div class="split forms-split"><div class="stack">' +
+        R.card('Form library', toolbar + R.table({ rows: rows, selectable: canManage, columns: [
+          { label: 'Form', render: (f) => '<div class="form-library-name"><span class="cell-strong">' + R.esc(f.name) + '</span> ' + statusChip(f) + '</div><span class="cell-sub mono">/' + R.esc(f.slug) + ' · v' + R.number(f.version_number) + '</span>' },
+          { label: statusHeader('Submissions', 'submissions'), align: 'right', render: (f) => '<span style="white-space:nowrap">' + R.number(f.submission_count) + (Number(f.pending_count) ? ' <span class="badge badge-sun">' + R.number(f.pending_count) + ' new</span>' : '') + '</span>' },
+          { label: 'Visibility', render: (f) => '<span class="form-visibility">' + visibilitySummary(f) + '</span>' },
           { label: '', align: 'right', render: (f) => '<button class="btn btn-sm btn-secondary" @click="setFilter(\'formId\',\'' + R.attr(f.id) + '\')">Open</button>' }
-        ], emptyTitle: 'No forms yet', emptyMessage: 'Create an enrolment, medical or consent form to collect information.',
+        ], emptyTitle: 'No matching forms', emptyMessage: 'Try a different search or filter, or create a new form.',
           emptyAction: canManage ? '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'form\')">' + R.icon('plus') + ' Create a form</button>' : '' })) +
         '</div><div class="stack">' +
-        (page.detail ? this.renderDetail(ctx, page.detail, page.submissions.length, canManage) : R.card('Form details', '<p class="muted small">Select a form to see its questions, payment settings and public link.</p>')) +
+        (page.detail ? this.renderDetail(ctx, page.detail, page.submissions, canManage) : R.card('Form details', '<p class="muted small">Select a form to see its questions, payment settings and public link.</p>')) +
         '</div></div>';
     },
 
-    renderDetail(ctx, form, submissionCount, canManage) {
+    renderTemplateGallery(canManage, compact) {
+      if (!canManage) return '';
+      const presets = FORM_PRESETS.filter((p) => p.key !== 'blank');
+      return R.card(compact ? 'New from a template' : 'Start from a template',
+        '<div class="form-template-grid">' + presets.map((preset) =>
+          '<button type="button" class="form-template-card" @click="newFormFromPreset(\'' + R.attr(preset.key) + '\')">' +
+            '<span class="form-template-icon">' + R.icon(preset.key === 'medical' ? 'heart-pulse' : preset.key === 'consent' ? 'shield-check' : preset.key === 'incident' ? 'alert-triangle' : preset.key === 'feedback' ? 'message-circle' : 'user-plus') + '</span>' +
+            '<strong>' + R.esc(preset.label) + '</strong><span class="muted small">' + R.esc(preset.description) + '</span>' +
+            '<span class="form-template-cta">' + R.icon('plus') + ' Use template</span>' +
+          '</button>').join('') + '</div>');
+    },
+
+    renderDetail(ctx, form, submissions, canManage) {
       const orgSlug = ctx.activeMembership.organisation.slug;
       const latest = form.latest || form.current || null;
       const isDraft = Boolean(latest && form.current_version_id && latest.id !== form.current_version_id);
-      // Staff always see their newest saved fields — even when that version
-      // is still an unpublished draft — so nothing looks lost after a save.
       const fields = ((latest || {}).schema_json || {}).fields || [];
       const payment = paymentSummary(form);
       const publicUrl = absolutePublicHref(orgSlug, form.slug);
+      const status = formStatus(form);
+      const section = ctx.filters.formSection || 'overview';
+      const publish = '<button type="button" class="btn btn-sm btn-primary" @click="act(\'POST\',\'/forms/' + R.attr(form.id) + '/publish\',{versionId:\'' + R.attr((latest && latest.id) || form.current_version_id) + '\',isPublic:true},{successMessage:\'Form published\'})">' + R.icon('upload') + ' Publish</button>';
+      const archive = '<button type="button" class="btn btn-sm btn-ghost" title="Archive form" @click="act(\'POST\',\'/forms/' + R.attr(form.id) + '/archive\',{},{successMessage:\'Form archived\'})">' + R.icon('archive') + '</button>';
       const actions = canManage
-        ? '<div class="btn-group">' +
-          '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'formSettings\',\'' + R.attr(form.id) + '\')">' + R.icon('settings') + ' Settings</button>' +
-          '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'formFields\',\'' + R.attr(form.id) + '\')">' + R.icon('list-plus') + ' Edit fields</button>' +
-          (form.status !== 'published'
-            ? '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/forms/' + R.attr(form.id) + '/publish\',{versionId:\'' + R.attr((latest && latest.id) || form.current_version_id) + '\',isPublic:true},{successMessage:\'Form published\'})">' + R.icon('upload') + ' Publish</button>'
-            : '<button class="btn btn-sm btn-secondary" @click="act(\'POST\',\'/forms/' + R.attr(form.id) + '/archive\',{},{successMessage:\'Form archived\'})">Archive</button>') +
+        ? '<div class="form-detail-actions">' +
+            '<button type="button" class="btn btn-sm btn-ghost" title="Settings" @click="openNamedModal(\'formSettings\',\'' + R.attr(form.id) + '\')">' + R.icon('settings') + ' <span>Settings</span></button>' +
+            '<button type="button" class="btn btn-sm btn-ghost" title="Edit questions" @click="openNamedModal(\'formFields\',\'' + R.attr(form.id) + '\')">' + R.icon('list-plus') + ' <span>Questions</span></button>' +
+            (status === 'Live' ? archive : publish) +
           '</div>'
         : '';
-      return R.card(form.name,
-        '<div class="form-description muted small" style="margin-bottom:10px">' + R.richParagraphs(form.description || 'No description yet.') + '</div>' +
-        '<div class="form-badge-row">' + R.badge(form.status) +
-        (isDraft ? '<span class="badge badge-sun">Draft v' + R.number(latest.version_number) + ' — not live yet</span>' : '') +
-        (form.is_public ? '<span class="badge badge-green">Public</span>' : '<span class="badge badge-muted">Private</span>') +
-        (form.display_on_website !== false ? '<span class="badge badge-green">On website</span>' : '<span class="badge badge-muted">Not on website</span>') +
-        payment.html + '</div>' +
-        '<div class="form-meta-grid">' +
+
+      const badgeLine = '<div class="form-status-line">' + statusChip(form) +
+        '<span class="form-secondary">' + visibilitySummary(form) + '</span></div>';
+      const metaGrid = '<div class="form-meta-grid">' +
         '<div class="form-meta"><span>Version</span><strong>v' + R.number((latest && latest.version_number) || 1) + '</strong></div>' +
-        '<div class="form-meta"><span>Submissions</span><strong>' + R.number(submissionCount) + '</strong></div>' +
+        '<div class="form-meta"><span>Submissions</span><strong>' + R.number((submissions || []).length) + '</strong></div>' +
         '<div class="form-meta"><span>Type</span><strong>' + R.esc(R.titleCase(form.form_type)) + '</strong></div>' +
-        '<div class="form-meta"><span>Payment</span><strong>' + R.esc(payment.label) + '</strong></div>' +
-        '</div>' +
-        (isDraft ? '<div class="alert alert-warning" style="margin-top:12px"><i data-lucide="alert-triangle"></i><span>You have an unpublished draft (v' + R.number(latest.version_number) + '). The fields below are the draft — the public form still uses the last published version. Publish to take them live.</span></div>' : '') +
-        (form.payment_enabled ? '<div class="site-pay-summary">' + R.icon('credit-card') +
-          '<span>PayFast checkout · ' + R.esc(R.money(form.payment_amount, form.payment_currency || 'ZAR')) +
-          (form.payment_required === false ? ' (optional)' : ' (required)') + '</span></div>' : '') +
-        '<div class="section"></div><h3>' + (isDraft ? 'Draft fields (not live yet)' : 'Fields') + '</h3>' +
-        (fields.length
-          ? '<div class="form-field-list">' + fields.map((field) =>
-            '<div class="form-field-row"><span class="mono badge badge-muted">' + R.esc(field.key) + '</span>' +
-            '<span style="flex:1"><strong>' + R.esc(field.label) + '</strong>' +
-            '<span class="cell-sub">' + R.esc(fieldTypeLabel(field.type)) + (field.options && field.options.length ? ' · ' + field.options.length + ' choices' : '') + '</span></span>' +
-            (field.required ? '<span class="badge badge-sun">Required</span>' : '') + '</div>').join('') + '</div>'
-          : '<p class="muted small">No fields yet. Use Edit fields to build the form.</p>') +
-        (form.is_public ? '<div class="form-public-link"><input class="input" readonly value="' + R.attr(publicUrl) + '">' +
-          '<a class="btn btn-sm btn-secondary" href="' + R.attr(publicHref(orgSlug, form.slug)) + '" target="_blank" rel="noopener">' + R.icon('external-link') + ' View public</a></div>' : ''),
-        actions);
+        '<div class="form-meta"><span>Payment</span><strong>' + R.esc(payment.label) + '</strong></div></div>';
+      const draftWarning = isDraft && canManage
+        ? '<div class="alert alert-warning form-draft-alert"><i data-lucide="alert-triangle"></i>' +
+          '<span>Unpublished draft v' + R.number(latest.version_number) + ': the public form still uses the last published version.</span>' + publish + '</div>'
+        : '';
+      const paymentNote = form.payment_enabled ? '<div class="site-pay-summary">' + R.icon('credit-card') +
+        '<span>PayFast checkout · ' + R.esc(R.money(form.payment_amount, form.payment_currency || 'ZAR')) +
+        (form.payment_required === false ? ' (optional)' : ' (required)') + '</span></div>' : '';
+      const publicLink = form.is_public ? '<div class="form-public-block"><div class="wb-field-label">Public link</div>' +
+        '<div class="form-public-link"><input class="input" readonly value="' + R.attr(publicUrl) + '" onclick="this.select()">' +
+        '<button type="button" class="btn btn-sm btn-secondary" @click="copyToClipboard(\'' + R.attr(publicUrl) + '\',\'Public link\')">' + R.icon('copy') + ' Copy</button>' +
+        '<a class="btn btn-sm btn-ghost" href="' + R.attr(publicHref(orgSlug, form.slug)) + '" target="_blank" rel="noopener">' + R.icon('external-link') + ' View</a></div>' +
+        '<div class="form-public-qr" x-init="window.Reel.mountQr($el)" data-qr-data="' + R.attr(publicUrl) + '" data-size="120" data-name="' + R.attr(form.name) + '"></div>' +
+        '<p class="muted small">Scan to open the form — handy for posters and the front desk.</p></div>' : '';
+      const fieldList = fields.length
+        ? '<div class="form-field-list">' + fields.map((field) =>
+          '<div class="form-field-row"><span class="mono badge badge-muted">' + R.esc(field.key) + '</span>' +
+          '<span class="form-field-copy"><strong>' + R.esc(field.label) + '</strong>' +
+          '<span class="cell-sub">' + R.esc(fieldTypeLabel(field.type)) + (field.options && field.options.length ? ' · ' + field.options.length + ' choices' : '') + '</span></span>' +
+          (field.required ? '<span class="badge badge-sun">Required</span>' : '') + '</div>').join('') + '</div>'
+        : '<p class="muted small">No fields yet. Use Questions to build the form.</p>';
+      const recent = (submissions || []).slice(0, 5);
+      const submissionList = recent.length
+        ? '<div class="form-recent-list">' + recent.map((submission) =>
+          '<button type="button" class="form-recent-row" @click="openNamedDetail(\'submission\',\'' + R.attr(submission.id) + '\')">' +
+          '<span class="cell-strong">' + R.dateTime(submission.submitted_at) + '</span>' +
+          '<span class="cell-sub">' + R.esc(submissionValues(submission).slice(0, 2).join(' · ')) + '</span></button>').join('') + '</div>'
+        : '<p class="muted small">No submissions yet.</p>';
+
+      const sections = {
+        overview: '<p class="form-description muted">' + R.richParagraphs(form.description || 'No description yet.') + '</p>' + badgeLine + metaGrid + draftWarning + paymentNote + publicLink,
+        questions: (isDraft ? '<p class="muted small">Showing your unpublished draft questions.</p>' : '') + fieldList,
+        submissions: submissionList + '<div class="section"></div><button type="button" class="btn btn-sm btn-secondary" @click="setTab(\'submissions\')">Open Submissions ' + R.icon('arrow-right') + '</button>',
+        settings: '<div class="detail-list">' +
+          R.detailItem('Form name', R.esc(form.name)) +
+          R.detailItem('Type', R.esc(R.titleCase(form.form_type))) +
+          R.detailItem('Public link', form.is_public ? 'On' : 'Off') +
+          R.detailItem('On website', form.display_on_website !== false ? 'On' : 'Off') +
+          R.detailItem('Payment', R.esc(payment.label)) + '</div>' +
+          (canManage ? '<div class="section"></div><button type="button" class="btn btn-sm btn-secondary" @click="openNamedModal(\'formSettings\',\'' + R.attr(form.id) + '\')">' + R.icon('settings') + ' Edit settings</button>' : '')
+      };
+      const subTabsHtml = '<div class="tabs">' + [
+        { key: 'overview', label: 'Overview' }, { key: 'questions', label: 'Questions' },
+        { key: 'submissions', label: 'Submissions' }, { key: 'settings', label: 'Settings' }
+      ].map((item) => '<button class="tab ' + (section === item.key ? 'active' : '') + '" @click="setFilter(\'formSection\',\'' + item.key + '\')">' +
+        R.esc(item.label) + '</button>').join('') + '</div>';
+      return R.card(form.name,
+        actions + subTabsHtml + '<div class="form-detail-section">' + (sections[section] || sections.overview) + '</div>');
     },
 
     renderSubmissions(ctx, page) {
       const form = page.detail;
-      if (!form) return R.emptyState('No form selected', 'Choose a form to review its submissions.', '<a class="btn btn-secondary" href="#/app/forms">Form library</a>', 'file-text');
-      return R.card(form.name + ' submissions', R.table({ rows: page.submissions || [], columns: [
-        { label: 'Received', render: (s) => '<span class="cell-strong">' + R.dateTime(s.submitted_at) + '</span><span class="cell-sub">' + R.relative(s.submitted_at) + '</span>' },
-        { label: 'Submitter', render: (s) => R.esc(s.submitter_email || (s.first_name ? s.first_name + ' ' + s.last_name : 'Anonymous')) },
-        { label: 'Data', render: (s) => '<span class="muted small">' + R.esc(R.truncate(Object.values(s.submission_data || {}).map((v) => Array.isArray(v) ? v.join(', ') : typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v)).filter(Boolean).join(' · '), 100)) + '</span>' },
-        { label: 'Payment', render: (s) => s.payment_status === 'paid'
+      const forms = page.rows || [];
+      const filters = ctx.filters || {};
+      const from = filters.subFrom || '', to = filters.subTo || '';
+      const fieldSchema = ((((form || {}).latest || {}).schema_json || {}).fields || []);
+      const labelFor = (key) => {
+        const found = fieldSchema.find((f) => f.key === key);
+        return found ? found.label : R.titleCase(key);
+      };
+      const formSwitcher = forms.length
+        ? '<select class="select" @change="setFilter(\'formId\',$event.target.value)"><option value="">All forms</option>' +
+          forms.map((f) => '<option value="' + R.attr(f.id) + '"' + (form && form.id === f.id ? ' selected' : '') + '>' + R.esc(f.name) + '</option>').join('') + '</select>'
+        : '';
+      const toolbar = R.filterBar(
+        formSwitcher +
+        '<label class="form-date-filter">From <input class="input" type="date" value="' + R.attr(from) + '" @change="setFilter(\'subFrom\',$event.target.value)"></label>' +
+        '<label class="form-date-filter">To <input class="input" type="date" value="' + R.attr(to) + '" @change="setFilter(\'subTo\',$event.target.value)"></label>' +
+        '<button type="button" class="btn btn-sm btn-secondary" @click="exportSubmissionsCsv()">' + R.icon('file-down') + ' Export CSV</button>'
+      );
+      if (!form) return R.emptyState('Choose a form', 'Pick a form to see its submissions and answers.', toolbar, 'file-text');
+      let submissions = (page.submissions || []).filter((sub) => {
+        const day = String(sub.submitted_at || '').slice(0, 10);
+        if (from && day < from) return false;
+        if (to && day > to) return false;
+        return true;
+      });
+      return R.card(form.name + ' submissions', toolbar + R.table({ rows: submissions, columns: [
+        { label: 'Received', render: (sub) => '<span class="cell-strong">' + R.dateTime(sub.submitted_at) + '</span><span class="cell-sub">' + R.relative(sub.submitted_at) + '</span>' },
+        { label: 'Submitter', render: (sub) => R.esc(sub.submitter_email || (sub.first_name ? sub.first_name + ' ' + sub.last_name : 'Anonymous')) },
+        { label: 'Answers', render: (sub) => {
+          const all = submissionValues(sub);
+          return '<span class="form-answer-cell" x-data="{ open: false }">' +
+            '<span class="muted small" x-show="!open">' + R.esc(R.truncate(all.join(' · '), 100)) + '</span>' +
+            '<button type="button" class="link-btn" x-show="!open" @click="open = true">Show all</button>' +
+            '<span x-show="open" style="display:none">' + all.map((value) => '<span class="form-answer-line">' + R.esc(value) + '</span>').join('') + '</span>' +
+            '<button type="button" class="link-btn" x-show="open" style="display:none" @click="open = false">Show less</button>' +
+          '</span>';
+        } },
+        { label: 'Payment', render: (sub) => sub.payment_status === 'paid'
           ? '<span class="badge badge-green">Paid</span>'
-          : s.payment_status === 'pending' ? '<span class="badge badge-sun">Pending</span>'
-            : s.payment_status === 'unavailable' ? '<span class="badge badge-danger">Unavailable</span>'
+          : sub.payment_status === 'pending' ? '<span class="badge badge-sun">Pending</span>'
+            : sub.payment_status === 'unavailable' ? '<span class="badge badge-danger">Unavailable</span>'
               : '<span class="badge badge-muted">Free</span>' },
-        { label: 'Status', render: (s) => R.badge(s.status) },
-        { label: '', align: 'right', render: (s) => '<div class="btn-group" style="flex-wrap:nowrap;white-space:nowrap">' +
-          '<button class="btn btn-sm btn-ghost" @click="openNamedDetail(\'submission\',\'' + R.attr(s.id) + '\')">Open</button>' +
-          (s.status === 'received' ? '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'review\',\'' + R.attr(s.id) + '\')">Review</button>' : '') +
+        { label: 'Status', render: (sub) => R.badge(sub.status) },
+        { label: '', align: 'right', render: (sub) => '<div class="btn-group" style="flex-wrap:nowrap;white-space:nowrap">' +
+          '<button type="button" class="btn btn-sm btn-ghost" @click="openNamedDetail(\'submission\',\'' + R.attr(sub.id) + '\')">Open</button>' +
+          (sub.status === 'received' ? '<button type="button" class="btn btn-sm btn-primary" @click="openNamedModal(\'review\',\'' + R.attr(sub.id) + '\')">Review</button>' : '') +
           '</div>' }
-      ], emptyTitle: 'No submissions', emptyMessage: 'Share the public link to start collecting responses.' }), '<a class="btn btn-sm btn-ghost" href="#/app/forms">Change form</a>');
+      ], emptyTitle: 'No submissions', emptyMessage: 'Share the public link to start collecting responses.' }), '<a class="btn btn-sm btn-ghost" href="#/app/forms?tab=forms">Change form</a>');
     },
 
     renderConsent(page) {

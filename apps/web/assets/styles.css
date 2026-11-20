@@ -3940,3 +3940,64 @@ body.book-reading { overflow: hidden; }
   .book-reader-title strong { text-align: center; }
 }
 .book-reading .modal-backdrop { z-index: 520; }
+
+/* ---- Forms workspace ------------------------------------------------------ */
+[x-cloak] { display: none !important; }
+.form-template-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-top: 12px; }
+.form-template-card {
+  display: flex; flex-direction: column; gap: 5px; text-align: left; padding: 12px;
+  border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--surface-2); cursor: pointer;
+  transition: transform .16s ease, box-shadow .16s ease;
+}
+.form-template-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-sm); }
+.form-template-icon { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: var(--reel-green-100); color: var(--reel-green-700); }
+.form-template-icon svg { width: 16px; height: 16px; }
+.form-template-card strong { font-size: .84rem; }
+.form-template-cta { display: inline-flex; gap: 4px; align-items: center; margin-top: auto; color: var(--reel-green-700); font-size: .72rem; font-weight: 700; }
+.form-template-cta svg { width: 12px; height: 12px; }
+.form-empty-guide ol { margin: 10px 0 0 18px; line-height: 1.7; }
+.form-library-name { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.form-visibility { font-size: .74rem; color: var(--text-muted); }
+.th-sort { display: inline-flex; gap: 3px; align-items: center; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.th-sort svg { width: 12px; height: 12px; }
+.th-sort.active { color: var(--reel-green-700); }
+.form-detail-actions {
+  position: sticky; top: 0; z-index: 3; display: flex; gap: 6px; align-items: center; justify-content: flex-end;
+  padding: 6px 0 10px; margin-bottom: 6px; background: var(--surface-1); border-bottom: 1px solid var(--border-subtle);
+  flex-wrap: nowrap;
+}
+.form-detail-actions .btn { white-space: nowrap; }
+.form-detail-actions .btn svg { width: 15px; height: 15px; }
+.form-status-line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
+.form-secondary { font-size: .76rem; color: var(--text-muted); }
+.form-field-copy { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.form-field-copy .cell-sub { display: block; }
+.form-draft-alert { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.form-draft-alert svg { width: 16px; height: 16px; flex: 0 0 auto; }
+.form-draft-alert .btn { margin-left: auto; }
+.form-public-block { margin-top: 16px; }
+.form-public-link { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.form-public-link .input { flex: 1 1 200px; min-width: 0; font-size: .74rem; }
+.form-public-qr { display: flex; justify-content: center; margin: 10px 0 4px; }
+.form-date-filter { display: inline-flex; gap: 6px; align-items: center; font-size: .76rem; color: var(--text-muted); }
+.form-date-filter .input { width: 140px; }
+.form-answer-cell { display: inline-flex; flex-direction: column; gap: 3px; max-width: 320px; }
+.form-answer-line { display: block; font-size: .74rem; }
+.link-btn { padding: 0; border: 0; background: transparent; color: var(--reel-green-700); font-size: .72rem; font-weight: 700; text-decoration: underline; cursor: pointer; align-self: flex-start; }
+.form-recent-list { display: flex; flex-direction: column; gap: 6px; }
+.form-recent-row {
+  display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 8px 10px;
+  border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--surface-2); cursor: pointer;
+}
+.form-recent-row:hover { background: var(--reel-green-100); }
+@media (max-width: 960px) {
+  .forms-split, .split.forms-split { grid-template-columns: 1fr; }
+  .form-detail-actions { position: static; flex-wrap: wrap; justify-content: flex-start; }
+  .form-meta-grid { grid-template-columns: 1fr 1fr; }
+  .form-template-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 560px) {
+  .form-template-grid, .form-meta-grid { grid-template-columns: 1fr; }
+  .form-date-filter .input { width: 100%; }
+  .form-detail-actions .btn span { display: none; }
+}

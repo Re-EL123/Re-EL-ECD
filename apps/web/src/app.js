@@ -2094,6 +2094,44 @@
         this.refreshIcons();
       },
 
+      newFormFromPreset(key) {
+        this.openNamedModal('form');
+        const apply = () => this.applyFormPreset(key);
+        if (this.$nextTick) this.$nextTick(apply); else setTimeout(apply, 30);
+      },
+      exportSubmissionsCsv() {
+        const page = this.page || {};
+        const rows = page.submissions || [];
+        if (!rows.length) { this.toast('There are no submissions to export.', 'warn'); return; }
+        const schema = ((((page.detail || {}).latest || {}).schema_json || {}).fields || []);
+        const labelFor = (key) => {
+          const found = schema.find((f) => f.key === key);
+          return found ? found.label : key;
+        };
+        const keys = Array.from(new Set(rows.reduce((all, row) => all.concat(Object.keys(row.submission_data || {})), [])));
+        const cell = (value) => {
+          const text = Array.isArray(value) ? value.join(', ')
+            : typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value == null ? '' : value);
+          return '"' + text.replace(/"/g, '""') + '"';
+        };
+        const head = ['Received', 'Submitter', 'Status', 'Payment'].concat(keys.map(labelFor));
+        const lines = [head.map(cell).join(',')];
+        rows.forEach((row) => {
+          const data = row.submission_data || {};
+          lines.push([
+            row.submitted_at || '', row.submitter_email || 'Anonymous', row.status || '',
+            row.payment_status || ''
+          ].concat(keys.map((key) => data[key])).map(cell).join(','));
+        });
+        const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'form-submissions-' + new Date().toISOString().slice(0, 10) + '.csv';
+        document.body.appendChild(link); link.click(); link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        this.toast('Submissions exported.');
+      },
       copyToClipboard(value, label) {
         const text = String(value || '');
         if (!text) return;
