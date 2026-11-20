@@ -61,3 +61,9 @@ test('every teaching role that can open rhymes can load the shared audio', () =>
   const org = read('apps/api/src/modules/organisation.js');
   assert.match(org, /return \{ audio \};\s*\}, \{ permission: \['curriculum\.read\.daycare', 'platform\.settings\.manage'\], permissionMode: 'any' \}/);
 });
+
+test('the rhymes page loads audio for teaching roles, not just settings readers', () => {
+  const view = read('apps/web/src/views/nursery-rhymes.js');
+  assert.match(view, /ctx\.has\('curriculum\.read\.daycare'\) \|\| ctx\.has\('organisation\.read\.daycare'\)/);
+  assert.match(view, /R\.api\('GET', '\/organisations\/current\/settings'\)\.catch\(\(\) => null\)/);
+});

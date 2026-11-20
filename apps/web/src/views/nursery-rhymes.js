@@ -27,11 +27,11 @@
     async load(ctx) {
       let audio = {};
       let custom = [];
-      if (ctx.has('organisation.read.daycare')) {
+      if (ctx.has('curriculum.read.daycare') || ctx.has('organisation.read.daycare')) {
         try {
           const [sharedRes, settingsRes] = await Promise.all([
             R.api('GET', '/nursery-rhyme-audio').catch(() => null),
-            R.api('GET', '/organisations/current/settings')
+            R.api('GET', '/organisations/current/settings').catch(() => null)
           ]);
           const settings = (settingsRes && settingsRes.data) || {};
           // Every uploaded recording is shared across centres by default.
