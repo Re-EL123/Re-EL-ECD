@@ -100,7 +100,7 @@ function register(router) {
     });
     ctx.status = 201;
     return { book, platform: platform(ctx) };
-  }, { permission: 'organisation.settings.manage' });
+  }, { permission: ['organisation.settings.manage', 'platform.settings.manage'], permissionMode: 'any' });
 
   router.post('/books/import', async (ctx) => {
     const body = validate(ctx.body, { books: { type: 'array' } });
@@ -128,7 +128,7 @@ function register(router) {
     settings.books = list;
     await writeSettings(ctx.db, orgId, settings);
     return { book: updated };
-  }, { permission: 'organisation.settings.manage' });
+  }, { permission: ['organisation.settings.manage', 'platform.settings.manage'], permissionMode: 'any' });
 
   router.delete('/books/:id', async (ctx) => {
     const orgId = target(ctx);
@@ -138,7 +138,7 @@ function register(router) {
     await writeSettings(ctx.db, orgId, settings);
     await recordAudit(ctx.db, ctx, { action: 'book.deleted', resourceType: 'book', resourceId: ctx.params.id });
     return { success: true };
-  }, { permission: 'organisation.settings.manage' });
+  }, { permission: ['organisation.settings.manage', 'platform.settings.manage'], permissionMode: 'any' });
 }
 
 module.exports = { register, cleanBook, MAX_BOOKS };
