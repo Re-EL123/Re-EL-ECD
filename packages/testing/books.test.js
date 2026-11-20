@@ -121,7 +121,8 @@ test('books open in a full in-app reader with navigation and language switching'
 });
 
 test('language management is reachable from both the card and the reader', () => {
-  assert.match(view, /@click="openBook\(' \+ i \+ '\)"[^>]*>.*Details/);
+  assert.match(view, /R\.icon\('info'\) \+ ' Info/);
+  assert.ok(!view.includes(" ' PDF</a>"));
   assert.match(app, /id="reader-lang-add"/);
   assert.match(app, /openNamedModal\('bookEditionAdd', book\.id\)/);
   assert.match(css, /\.book-reading \.modal-backdrop \{ z-index: 520; \}/);
