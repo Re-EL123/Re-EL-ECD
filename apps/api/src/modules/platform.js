@@ -230,7 +230,14 @@ function register(router) {
         (SELECT COUNT(*)::int FROM staff_profiles s WHERE s.organisation_id = o.id AND s.employment_status = 'active') AS staff_count,
         (SELECT COUNT(*)::int FROM branches b WHERE b.organisation_id = o.id) AS branch_count
        FROM organisations o
-       LEFT JOIN platform_subscriptions ps ON ps.organisation_id = o.id
+       LEFT JOIN LATERAL (
+         SELECT ps.plan_id
+         FROM platform_subscriptions ps
+         WHERE ps.organisation_id = o.id
+         ORDER BY CASE ps.status WHEN 'active' THEN 0 WHEN 'trial' THEN 1 WHEN 'past_due' THEN 2 ELSE 3 END,
+                  ps.created_at DESC
+         LIMIT 1
+       ) ps ON true
        LEFT JOIN subscription_plans sp ON sp.id = ps.plan_id
        WHERE o.slug <> 're-el-platform'
          AND ($1::text IS NULL OR o.name ILIKE $1 OR o.slug ILIKE $1)
