@@ -613,8 +613,11 @@
           const value = subs.filter((row) => row.plan_id === p.id && row.status === 'active')
             .reduce((sum, row) => sum + Number(row.monthly_price || 0), 0);
           const max = Math.max(1, ...plans.map((p2) => subs.filter((row) => row.plan_id === p2.id && row.status === 'active').reduce((s, row) => s + Number(row.monthly_price || 0), 0)));
-          return '<button type="button" class="sub-mrr-row" @click="setFilter(\'scopePlan\',\'' + R.attr(p.id) + '\')">' +
-            '<span>' + R.esc(p.name) + '</span><div class="sub-mrr-track"><div class="sub-mrr-bar" style="width:' + Math.round(value / max * 100) + '%"></div></div>' +
+          const pct = value > 0 ? Math.max(3, Math.round(value / max * 100)) : 0;
+          const tenants = subs.filter((row) => row.plan_id === p.id && row.status === 'active').length;
+          return '<button type="button" class="sub-mrr-row' + (value > 0 ? '' : ' is-empty') + '" title="Scope to ' + R.attr(p.name) + '" @click="setFilter(\'scopePlan\',\'' + R.attr(p.id) + '\')">' +
+            '<span class="sub-mrr-name">' + R.esc(p.name) + (value > 0 ? '<small>' + tenants + ' paying tenant' + (tenants === 1 ? '' : 's') + '</small>' : '') + '</span>' +
+            '<span class="sub-mrr-track"><span class="sub-mrr-bar" style="width:' + pct + '%"></span></span>' +
             '<strong>' + R.money(value, p.currency) + '</strong></button>';
         }).join('') + '</div>' : '<p class="muted small">No active revenue in this scope.</p>') +
         '</div>';

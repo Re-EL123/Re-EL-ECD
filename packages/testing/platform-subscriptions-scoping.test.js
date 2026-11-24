@@ -142,3 +142,13 @@ test('subscription plans carry a storage limit', () => {
   assert.match(view, /Storage used/);
   assert.match(view, /≥.*max_storage_bytes \* 0\.9|>= Number\(row\.max_storage_bytes\) \* 0\.9/);
 });
+
+test('revenue by plan rows are styled as clean list rows, not default buttons', () => {
+  assert.match(view, /class="sub-mrr-row' \+ \(value > 0 \? '' : ' is-empty'\)/);
+  assert.match(view, /sub-mrr-name/);
+  assert.match(view, /paying tenant/);
+  assert.match(css, /\.sub-mrr-row \{[\s\S]{0,260}border: 0; border-radius: 8px; background: transparent/);
+  assert.match(css, /\.sub-mrr-row:hover \{ background: var\(--reel-green-100\); \}/);
+  assert.match(css, /\.sub-mrr-row\.is-empty \{ color: var\(--text-muted\); \}/);
+  assert.match(css, /\.sub-mrr-row\.is-empty \.sub-mrr-bar \{ display: none; \}/);
+});
