@@ -42,7 +42,8 @@ function register(router) {
       "SELECT * FROM organisations WHERE slug = 're-el-platform' ORDER BY created_at LIMIT 1"
     );
     const plans = await ctx.db.many(
-      `SELECT name, plan_key, description, monthly_price, currency, max_learners, max_staff, features
+      `SELECT name, plan_key, description, monthly_price, currency, max_learners, max_staff,
+              max_storage_bytes, features
        FROM subscription_plans WHERE status = 'active' ORDER BY monthly_price, name`
     );
     const bannerSettings = await ctx.db.one(
@@ -756,7 +757,10 @@ function register(router) {
               sp.name AS plan_name, sp.monthly_price, sp.plan_key, sp.currency AS plan_currency,
               (SELECT COUNT(*)::int FROM learners l WHERE l.organisation_id = o.id) AS learner_count,
               (SELECT COUNT(*)::int FROM staff_profiles st WHERE st.organisation_id = o.id) AS staff_count,
-              (SELECT COUNT(*)::int FROM branches b WHERE b.organisation_id = o.id) AS branch_count
+              (SELECT COUNT(*)::int FROM branches b WHERE b.organisation_id = o.id) AS branch_count,
+              (SELECT COALESCE(SUM(size_bytes), 0)::bigint FROM media_assets
+                WHERE organisation_id = o.id AND status = 'ready') AS storage_bytes,
+              sp.max_storage_bytes
        FROM platform_subscriptions ps
        JOIN organisations o ON o.id = ps.organisation_id
        LEFT JOIN subscription_plans sp ON sp.id = ps.plan_id
@@ -1000,15 +1004,18 @@ function register(router) {
       currency: { type: 'string', min: 3, max: 3, default: 'ZAR' },
       maxLearners: { type: 'integer', min: 0, max: 100000, default: 50 },
       maxStaff: { type: 'integer', min: 0, max: 10000, default: 10 },
+      maxStorageGb: { type: 'number', min: 0, max: 100000, default: 0 },
       features: { type: 'array', of: 'string', max: 40, optional: true }
     });
     const existing = await ctx.db.one('SELECT id FROM subscription_plans WHERE plan_key = $1', [body.planKey]);
     if (existing) fail('CONFLICT', null, 'That plan key is already in use.');
     const plan = await ctx.db.one(
-      `INSERT INTO subscription_plans (name, plan_key, description, monthly_price, currency, max_learners, max_staff, features, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'active') RETURNING *`,
+      `INSERT INTO subscription_plans
+         (name, plan_key, description, monthly_price, currency, max_learners, max_staff, max_storage_bytes, features, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'active') RETURNING *`,
       [body.name, body.planKey, body.description || null, body.monthlyPrice, body.currency.toUpperCase(),
-        body.maxLearners, body.maxStaff, JSON.stringify(body.features || [])]
+        body.maxLearners, body.maxStaff, Math.round(Number(body.maxStorageGb || 0) * 1024 * 1024 * 1024),
+        JSON.stringify(body.features || [])]
     );
     await recordAudit(ctx.db, ctx, {
       action: 'platform.plan_created', resourceType: 'subscription_plan', resourceId: plan.id,
@@ -1027,6 +1034,7 @@ function register(router) {
       currency: { type: 'string', min: 3, max: 3, optional: true },
       maxLearners: { type: 'integer', min: 0, max: 100000, optional: true },
       maxStaff: { type: 'integer', min: 0, max: 10000, optional: true },
+      maxStorageGb: { type: 'number', min: 0, max: 100000, optional: true },
       features: { type: 'array', of: 'string', max: 40, optional: true },
       status: { type: 'string', enum: ['active', 'archived'], optional: true }
     });
@@ -1046,6 +1054,7 @@ function register(router) {
     if ('currency' in body) set('currency', String(body.currency).toUpperCase());
     if ('maxLearners' in body) set('max_learners', body.maxLearners);
     if ('maxStaff' in body) set('max_staff', body.maxStaff);
+    if ('maxStorageGb' in body) set('max_storage_bytes', Math.round(Number(body.maxStorageGb) * 1024 * 1024 * 1024));
     if ('features' in body) set('features', JSON.stringify(body.features || []));
     if ('status' in body) {
       set('status', body.status);

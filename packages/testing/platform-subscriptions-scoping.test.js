@@ -128,3 +128,17 @@ test('all subscription endpoints remain permission-gated', () => {
   });
   assert.match(api, /router\.get\('\/platform\/subscriptions'[\s\S]{0,12000}permission: 'platform\.subscriptions\.read'/);
 });
+
+test('subscription plans carry a storage limit', () => {
+  const migration = read('packages/database/migrations/053_subscription_plan_storage.sql');
+  assert.match(migration, /max_storage_bytes BIGINT NOT NULL DEFAULT 0/);
+  assert.match(api, /maxStorageGb: \{ type: 'number', min: 0, max: 100000, default: 0 \}/);
+  assert.match(api, /set\('max_storage_bytes', Math\.round\(Number\(body\.maxStorageGb\)/);
+  assert.match(api, /sp\.max_storage_bytes/);
+  assert.ok(/SUM\(size_bytes\)[\s\S]{0,120}AS storage_bytes/.test(api));
+  assert.match(view, /function storageLabel\(bytes\)/);
+  assert.match(view, /Storage limit/);
+  assert.match(view, /maxStorageGb/);
+  assert.match(view, /Storage used/);
+  assert.match(view, /≥.*max_storage_bytes \* 0\.9|>= Number\(row\.max_storage_bytes\) \* 0\.9/);
+});

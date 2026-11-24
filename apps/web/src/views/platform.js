@@ -5,6 +5,15 @@
   const R = window.Reel;
   const V = R.views;
 
+  function storageLabel(bytes) {
+    const value = Number(bytes || 0);
+    if (!value) return 'Unlimited';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let n = value, i = 0;
+    while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+    return (i === 0 ? Math.round(n) : Math.round(n * 10) / 10) + ' ' + units[i];
+  }
+
   function settingLabel(key) {
     return R.titleCase(String(key).replace(/([a-z0-9])([A-Z])/g, '$1 $2'));
   }
@@ -542,7 +551,8 @@
       }).length;
       const nearLimit = subs.filter((row) => row.status === 'active' && (
         (Number(row.max_learners) > 0 && Number(row.learner_count || 0) >= Number(row.max_learners) * 0.9) ||
-        (Number(row.max_staff) > 0 && Number(row.staff_count || 0) >= Number(row.max_staff) * 0.9)
+        (Number(row.max_staff) > 0 && Number(row.staff_count || 0) >= Number(row.max_staff) * 0.9) ||
+        (Number(row.max_storage_bytes) > 0 && Number(row.storage_bytes || 0) >= Number(row.max_storage_bytes) * 0.9)
       ));
       const mrrByCurrency = d.mrrByCurrency || [];
       const singleCurrency = Boolean(d.singleCurrency);
@@ -638,7 +648,9 @@
           const learners = Number(row.learner_count || 0), maxL = Number(row.max_learners || 0);
           const staff = Number(row.staff_count || 0), maxS = Number(row.max_staff || 0);
           const cell = (value, max) => value + (max > 0 ? ' / ' + max : ' / ∞');
+          const maxStorage = Number(row.max_storage_bytes || 0);
           return '<span class="cell-sub">Learners ' + cell(learners, maxL) + '</span><span class="cell-sub">Staff ' + cell(staff, maxS) + '</span>' +
+            '<span class="cell-sub">Storage ' + storageLabel(row.storage_bytes) + (maxStorage ? ' / ' + storageLabel(maxStorage) : ' / ∞') + '</span>' +
             '<span class="cell-sub">' + R.number(row.branch_count || 0) + ' branch' + (Number(row.branch_count) === 1 ? '' : 'es') + '</span>';
         } },
         { label: 'Billing', render: (row) => R.esc(R.titleCase(row.billing_period)) + '<span class="cell-sub">' + row.billing_period + ' contract</span>' },
@@ -671,6 +683,7 @@
         '<div class="kpi-list">' +
         '<div class="kpi-row"><span class="kpi-label">Learner limit</span><span class="kpi-value">' + (p.max_learners ? R.number(p.max_learners) : 'Unlimited') + '</span></div>' +
         '<div class="kpi-row"><span class="kpi-label">Staff limit</span><span class="kpi-value">' + (p.max_staff ? R.number(p.max_staff) : 'Unlimited') + '</span></div>' +
+        '<div class="kpi-row"><span class="kpi-label">Storage limit</span><span class="kpi-value">' + storageLabel(p.max_storage_bytes) + '</span></div>' +
         '<button type="button" class="kpi-row kpi-link" @click="setFilter(\'scopePlan\',\'' + R.attr(p.id) + '\')">' +
           '<span class="kpi-label">Active tenants →</span><span class="kpi-value">' + R.number(p.tenant_count || 0) + '</span></button></div>' +
         ((p.features || []).length ? '<div class="plan-features">' + (p.features || []).map((f) => '<span class="badge badge-muted">' + R.esc(R.titleCase(String(f).replace(/_/g, ' '))) + '</span>').join('') + '</div>' : '') +
@@ -744,6 +757,7 @@
           R.detailItem('Current period', R.date(row.current_period_start) + ' → ' + R.date(row.current_period_end)) +
           R.detailItem('Normalised monthly', R.money(row.monthly_price, row.plan_currency || row.organisation_currency)) +
           R.detailItem('Entitlements', 'Learners ' + (row.learner_count || 0) + '/' + (row.max_learners || '∞') + ' · Staff ' + (row.staff_count || 0) + '/' + (row.max_staff || '∞')) +
+          R.detailItem('Storage used', storageLabel(row.storage_bytes) + (row.max_storage_bytes ? ' / ' + storageLabel(row.max_storage_bytes) : ' / Unlimited')) +
           R.detailItem('Branches', R.number(row.branch_count || 0)) +
           R.detailItem('Setup fee', fee ? R.esc(R.titleCase(fee.status)) + ' · ' + R.money(fee.amount, row.organisation_currency) : 'None') +
           '</div>' + actions +
@@ -878,6 +892,7 @@
             { name: 'currency', label: 'Currency', type: 'select', options: ['ZAR', 'USD', 'EUR', 'GBP'], value: plan ? plan.currency : 'ZAR' },
             { name: 'maxLearners', label: 'Learner limit', type: 'number', min: 0, value: plan ? plan.max_learners : 50, help: '0 means unlimited' },
             { name: 'maxStaff', label: 'Staff limit', type: 'number', min: 0, value: plan ? plan.max_staff : 10, help: '0 means unlimited' },
+            { name: 'maxStorageGb', label: 'Storage limit (GB)', type: 'number', min: 0, step: '0.5', value: plan ? Math.round(Number(plan.max_storage_bytes || 0) / (1024 * 1024 * 1024) * 10) / 10 : 5, help: 'Uploaded files and media. 0 means unlimited.' },
             { name: 'features', label: 'Features', type: 'textarea', span: 2, value: plan ? (plan.features || []).join(', ') : 'attendance, assessments, parent_portal, finance', help: 'Comma-separated feature keys.' },
             { name: 'status', label: 'Status', type: 'select', options: [{ value: 'active', label: 'Active' }, { value: 'archived', label: 'Archived' }], value: plan ? plan.status : 'active' }
           ],
@@ -886,7 +901,7 @@
               name: data.name, planKey: String(data.planKey || '').trim().toLowerCase(),
               description: data.description || null, monthlyPrice: Number(data.monthlyPrice) || 0,
               currency: (data.currency || 'ZAR').toUpperCase(), maxLearners: Number(data.maxLearners) || 0,
-              maxStaff: Number(data.maxStaff) || 0,
+              maxStaff: Number(data.maxStaff) || 0, maxStorageGb: Number(data.maxStorageGb) || 0,
               features: String(data.features || '').split(',').map((f) => f.trim()).filter(Boolean),
               status: data.status || 'active'
             };
