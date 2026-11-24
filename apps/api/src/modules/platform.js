@@ -751,8 +751,168 @@ function register(router) {
     const mrr = subscriptions
       .filter((s) => s.status === 'active')
       .reduce((sum, s) => sum + Number(s.monthly_price || 0), 0);
-    return { plans, subscriptions, mrr };
+    const invoices = await ctx.db.many(
+      `SELECT i.*, o.name AS organisation_name, o.currency AS organisation_currency
+       FROM platform_subscription_invoices i JOIN organisations o ON o.id = i.organisation_id
+       WHERE o.slug <> 're-el-platform' ORDER BY i.created_at DESC LIMIT 500`
+    ).catch(() => []);
+    const setupFees = await ctx.db.many(
+      `SELECT sf.*, o.name AS organisation_name FROM platform_setup_fees sf
+       JOIN organisations o ON o.id = sf.organisation_id
+       WHERE o.slug <> 're-el-platform' ORDER BY sf.created_at DESC`
+    ).catch(() => []);
+    const activity = await ctx.db.many(
+      `SELECT a.id, a.action, a.resource_type, a.resource_id, a.organisation_id, a.metadata,
+              a.occurred_at, u.display_name AS actor_name
+       FROM audit_events a LEFT JOIN users u ON u.id = a.actor_user_id
+       WHERE a.action LIKE 'platform.subscription%' OR a.action LIKE 'platform.setup_fee%'
+       ORDER BY a.occurred_at DESC LIMIT 100`
+    ).catch(() => []);
+    return {
+      plans, subscriptions, mrr, invoices,
+      setupFees: setupFees.map((fee) => setupFeeSummaryView(fee)),
+      activity
+    };
   }, { platformOnly: true, permission: 'platform.subscriptions.read' });
+
+  // Subscription lifecycle actions used from the platform subscriptions console.
+  async function subscriptionFor(ctx) {
+    const row = await ctx.db.one(
+      `SELECT ps.*, o.name AS organisation_name, o.slug AS organisation_slug
+       FROM platform_subscriptions ps JOIN organisations o ON o.id = ps.organisation_id
+       WHERE ps.id = $1 AND o.slug <> 're-el-platform'`, [ctx.params.id]
+    );
+    if (!row) throw new AppError('NOT_FOUND');
+    return row;
+  }
+
+  router.post('/platform/subscriptions/:id/cancel', async (ctx) => {
+    const subscription = await subscriptionFor(ctx);
+    await ctx.db.withTransaction(async (client) => {
+      await client.query("UPDATE platform_subscriptions SET status = 'cancelled' WHERE id = $1", [subscription.id]);
+      await client.query("UPDATE organisations SET subscription_status = 'cancelled', updated_at = now() WHERE id = $1", [subscription.organisation_id]);
+    });
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.subscription_cancelled', resourceType: 'platform_subscription',
+      resourceId: subscription.id, organisationId: subscription.organisation_id
+    });
+    return { success: true };
+  }, { platformOnly: true, permission: 'platform.subscriptions.manage' });
+
+  router.post('/platform/subscriptions/:id/period', async (ctx) => {
+    const body = validate(ctx.body, {
+      currentPeriodStart: { type: 'string', date: true, optional: true },
+      currentPeriodEnd: { type: 'string', date: true, optional: true },
+      extendDays: { type: 'number', min: 1, max: 3650, optional: true }
+    });
+    const subscription = await subscriptionFor(ctx);
+    let start = body.currentPeriodStart || null;
+    let end = body.currentPeriodEnd || null;
+    if (body.extendDays) {
+      const base = end && end > new Date().toISOString().slice(0, 10)
+        ? end : (new Date().toISOString().slice(0, 10));
+      const next = new Date(base + 'T00:00:00Z');
+      next.setUTCDate(next.getUTCDate() + Number(body.extendDays));
+      end = next.toISOString().slice(0, 10);
+      start = start || base;
+    }
+    if (!start && !end) fail('VALIDATION', [{ field: 'extendDays', message: 'Choose new dates or a number of days to extend.' }]);
+    await ctx.db.query(
+      `UPDATE platform_subscriptions SET current_period_start = COALESCE($2::date, current_period_start),
+         current_period_end = COALESCE($3::date, current_period_end) WHERE id = $1`,
+      [subscription.id, start, end]
+    );
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.subscription_period_changed', resourceType: 'platform_subscription',
+      resourceId: subscription.id, organisationId: subscription.organisation_id,
+      metadata: { start, end, extendDays: body.extendDays || null }
+    });
+    return { success: true };
+  }, { platformOnly: true, permission: 'platform.subscriptions.manage' });
+
+  router.post('/platform/subscriptions/:id/waive', async (ctx) => {
+    const subscription = await subscriptionFor(ctx);
+    const body = validate(ctx.body || {}, { reason: { type: 'string', max: 200, optional: true } });
+    const invoice = await ctx.db.one(
+      `SELECT * FROM platform_subscription_invoices WHERE subscription_id = $1 AND status = 'issued'
+       ORDER BY period_start DESC LIMIT 1`, [subscription.id]
+    );
+    const annual = subscription.billing_period === 'annual';
+    const days = annual ? 365 : 30;
+    const today = new Date().toISOString().slice(0, 10);
+    const base = subscription.current_period_end && subscription.current_period_end > today
+      ? subscription.current_period_end : today;
+    const next = new Date(base + 'T00:00:00Z');
+    next.setUTCDate(next.getUTCDate() + days);
+    await ctx.db.withTransaction(async (client) => {
+      if (invoice) {
+        await client.query("UPDATE platform_subscription_invoices SET status = 'void' WHERE id = $1", [invoice.id]);
+      }
+      await client.query(
+        `UPDATE platform_subscriptions SET status = 'active', current_period_start = $2, current_period_end = $3 WHERE id = $1`,
+        [subscription.id, base, next.toISOString().slice(0, 10)]
+      );
+      await client.query("UPDATE organisations SET subscription_status = 'active', updated_at = now() WHERE id = $1", [subscription.organisation_id]);
+    });
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.subscription_waived', resourceType: 'platform_subscription',
+      resourceId: subscription.id, organisationId: subscription.organisation_id,
+      metadata: { reason: body.reason || null, invoiceId: invoice ? invoice.id : null }
+    });
+    return { success: true };
+  }, { platformOnly: true, permission: 'platform.subscriptions.manage' });
+
+  async function invoiceFor(ctx) {
+    const invoice = await ctx.db.one(
+      `SELECT i.*, o.name AS organisation_name, o.slug AS organisation_slug
+       FROM platform_subscription_invoices i JOIN organisations o ON o.id = i.organisation_id
+       WHERE i.id = $1 AND o.slug <> 're-el-platform'`, [ctx.params.id]
+    );
+    if (!invoice) throw new AppError('NOT_FOUND');
+    return invoice;
+  }
+
+  router.post('/platform/subscription-invoices/:id/void', async (ctx) => {
+    const invoice = await invoiceFor(ctx);
+    if (invoice.status !== 'issued') fail('CONFLICT', null, 'Only an issued invoice can be voided.');
+    await ctx.db.query("UPDATE platform_subscription_invoices SET status = 'void' WHERE id = $1", [invoice.id]);
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.subscription_invoice_voided', resourceType: 'platform_subscription_invoice',
+      resourceId: invoice.id, organisationId: invoice.organisation_id,
+      metadata: { invoiceNumber: invoice.invoice_number }
+    });
+    return { success: true };
+  }, { platformOnly: true, permission: 'platform.subscriptions.manage' });
+
+  router.post('/platform/subscription-invoices/:id/mark-paid', async (ctx) => {
+    const invoice = await invoiceFor(ctx);
+    if (invoice.status === 'void') fail('CONFLICT', null, 'A voided invoice cannot be marked paid.');
+    await ctx.db.query(
+      "UPDATE platform_subscription_invoices SET status = 'paid', paid_at = now() WHERE id = $1", [invoice.id]
+    );
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.subscription_invoice_marked_paid', resourceType: 'platform_subscription_invoice',
+      resourceId: invoice.id, organisationId: invoice.organisation_id,
+      metadata: { invoiceNumber: invoice.invoice_number }
+    });
+    return { success: true };
+  }, { platformOnly: true, permission: 'platform.subscriptions.manage' });
+
+  router.post('/platform/subscription-invoices/:id/refund', async (ctx) => {
+    const invoice = await invoiceFor(ctx);
+    const body = validate(ctx.body || {}, {
+      reference: { type: 'string', max: 100, optional: true },
+      notes: { type: 'string', max: 500, optional: true }
+    });
+    await ctx.db.query("UPDATE platform_subscription_invoices SET status = 'void' WHERE id = $1", [invoice.id]);
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.subscription_refund_recorded', resourceType: 'platform_subscription_invoice',
+      resourceId: invoice.id, organisationId: invoice.organisation_id,
+      metadata: { invoiceNumber: invoice.invoice_number, amount: invoice.amount, reference: body.reference || null, notes: body.notes || null }
+    });
+    return { success: true };
+  }, { platformOnly: true, permission: 'platform.subscriptions.manage' });
+
 
   router.get('/platform/plans', async (ctx) => {
     return ctx.db.many(

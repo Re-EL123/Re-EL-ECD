@@ -4002,3 +4002,22 @@ body.book-reading { overflow: hidden; }
   .form-detail-actions .btn span { display: none; }
 }
 .form-library-name .cell-strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+
+/* ---- Platform subscriptions console -------------------------------------- */
+.sub-pager { display: flex; gap: 8px; align-items: center; justify-content: flex-end; margin-top: 10px; }
+.sub-risk-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 14px; }
+.sub-risk { display: flex; flex-direction: column; gap: 2px; padding: 10px; border-radius: 10px; background: var(--surface-2); }
+.sub-risk-value { font-family: var(--font-display); font-size: 1.3rem; font-weight: 700; }
+.sub-mrr-list { margin-top: 14px; display: flex; flex-direction: column; gap: 7px; }
+.sub-mrr-row { display: grid; grid-template-columns: 110px 1fr 72px; gap: 8px; align-items: center; font-size: .76rem; }
+.sub-mrr-track { height: 8px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.sub-mrr-bar { height: 100%; border-radius: 999px; background: var(--reel-green-700); }
+.sub-mrr-row strong { text-align: right; }
+.sub-activity { display: flex; flex-direction: column; gap: 2px; }
+.sub-activity-row { display: grid; grid-template-columns: 1.4fr 1.4fr auto; gap: 10px; align-items: center; padding: 8px 4px; border-bottom: 1px solid var(--border-subtle); font-size: .76rem; }
+.sub-activity-row:last-child { border-bottom: 0; }
+@media (max-width: 720px) {
+  .sub-risk-grid { grid-template-columns: 1fr; }
+  .sub-mrr-row { grid-template-columns: 90px 1fr 60px; }
+  .sub-activity-row { grid-template-columns: 1fr; gap: 2px; }
+}
