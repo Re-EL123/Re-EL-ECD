@@ -2033,6 +2033,10 @@
         this.navigate(true);
       },
 
+      clearSubscriptionScope() {
+        ['scopeOrg', 'scopePlan', 'scopeFrom', 'scopeTo', 'orgQuery'].forEach((key) => { this.filters[key] = ''; });
+        this.navigate(true);
+      },
       setFilter(name, value) {
         this.filters[name] = value;
         this.navigate(true);
@@ -2914,6 +2918,7 @@
           fields: config.fields || [],
           data,
           submitLabel: config.submitLabel || 'Save',
+          confirmText: config.confirmText || '',
           successMessage: config.successMessage || 'Saved successfully.',
           size: config.size || null,
           label: {},
@@ -4404,6 +4409,10 @@
         });
         if (missing.length) {
           this.modal.error = 'Please complete: ' + missing.map((f) => f.label).join(', ');
+          return;
+        }
+        if (this.modal.confirmText && String(this.modal.data.confirmation || '') !== this.modal.confirmText) {
+          this.modal.error = 'Type “' + this.modal.confirmText + '” to confirm this action.';
           return;
         }
         this.modal.saving = true;

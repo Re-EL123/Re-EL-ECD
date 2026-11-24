@@ -727,51 +727,110 @@ function register(router) {
 
   router.get('/platform/subscriptions', async (ctx) => {
     // Lazy status flip: a period that ended without a payment becomes past_due.
-    // Done here so the platform console always sees the truth without a cron.
     await ctx.db.query(
       `UPDATE platform_subscriptions SET status = 'past_due'
        WHERE status IN ('trial','active') AND current_period_end < CURRENT_DATE
          AND organisation_id IN (SELECT id FROM organisations WHERE slug <> 're-el-platform')`
     );
+    // One shared scope (organisation + plan + date range) drives every section
+    // of the console: subscriptions, invoices, activity, risk and revenue.
+    const scopeOrg = ctx.query.orgId || null;
+    const scopePlan = ctx.query.planId || null;
+    const from = ctx.query.from || null;
+    const to = ctx.query.to || null;
     const plans = await ctx.db.many(
       `SELECT sp.*,
               (SELECT COUNT(*)::int FROM platform_subscriptions ps
-                WHERE ps.plan_id = sp.id AND ps.status IN ('trial','active','past_due')) AS tenant_count
-       FROM subscription_plans sp ORDER BY sp.monthly_price, sp.name`
+                JOIN organisations o ON o.id = ps.organisation_id
+                WHERE ps.plan_id = sp.id AND ps.status IN ('trial','active','past_due')
+                  AND o.slug <> 're-el-platform'
+                  AND ($1::uuid IS NULL OR ps.organisation_id = $1)
+                  AND ($2::date IS NULL OR ps.current_period_end >= $2)
+                  AND ($3::date IS NULL OR ps.current_period_end <= $3)) AS tenant_count
+       FROM subscription_plans sp ORDER BY sp.monthly_price, sp.name`,
+      [scopeOrg, from, to]
     );
     const subscriptions = await ctx.db.many(
-      `SELECT ps.*, o.name AS organisation_name, o.status AS organisation_status, o.currency AS organisation_currency,
-              sp.name AS plan_name, sp.monthly_price, sp.plan_key
+      `SELECT ps.*, o.name AS organisation_name, o.status AS organisation_status,
+              o.currency AS organisation_currency, o.slug AS organisation_slug,
+              sp.name AS plan_name, sp.monthly_price, sp.plan_key, sp.currency AS plan_currency,
+              (SELECT COUNT(*)::int FROM learners l WHERE l.organisation_id = o.id) AS learner_count,
+              (SELECT COUNT(*)::int FROM staff_profiles st WHERE st.organisation_id = o.id) AS staff_count,
+              (SELECT COUNT(*)::int FROM branches b WHERE b.organisation_id = o.id) AS branch_count
        FROM platform_subscriptions ps
        JOIN organisations o ON o.id = ps.organisation_id
        LEFT JOIN subscription_plans sp ON sp.id = ps.plan_id
        WHERE o.slug <> 're-el-platform'
-       ORDER BY ps.created_at DESC`
+         AND ($1::uuid IS NULL OR ps.organisation_id = $1)
+         AND ($2::uuid IS NULL OR ps.plan_id = $2)
+         AND ($3::date IS NULL OR ps.current_period_end >= $3)
+         AND ($4::date IS NULL OR ps.current_period_end <= $4)
+       ORDER BY ps.created_at DESC`,
+      [scopeOrg, scopePlan, from, to]
     );
-    const mrr = subscriptions
-      .filter((s) => s.status === 'active')
-      .reduce((sum, s) => sum + Number(s.monthly_price || 0), 0);
+    // Never sum across currencies: plans can be priced in ZAR, USD, EUR or GBP.
+    const currencyMap = new Map();
+    subscriptions.filter((row) => row.status === 'active').forEach((row) => {
+      const code = String(row.plan_currency || row.organisation_currency || 'ZAR').toUpperCase();
+      const entry = currencyMap.get(code) || { currency: code, amount: 0, tenants: 0 };
+      entry.amount += Number(row.monthly_price || 0);
+      entry.tenants += 1;
+      currencyMap.set(code, entry);
+    });
+    const mrrByCurrency = Array.from(currencyMap.values())
+      .map((entry) => ({ ...entry, amount: Math.round(entry.amount * 100) / 100 }))
+      .sort((a, b) => b.amount - a.amount);
+    const singleCurrency = mrrByCurrency.length === 1 ? mrrByCurrency[0] : null;
+
+    const scopeInvoice = `o.slug <> 're-el-platform'
+         AND ($1::uuid IS NULL OR i.organisation_id = $1)
+         AND ($2::date IS NULL OR i.created_at::date >= $2)
+         AND ($3::date IS NULL OR i.created_at::date <= $3)`;
+    const invoiceParams = [scopeOrg, from, to];
+    const invoiceCount = await ctx.db.one(
+      `SELECT COUNT(*)::int AS total FROM platform_subscription_invoices i
+       JOIN organisations o ON o.id = i.organisation_id WHERE ${scopeInvoice}`, invoiceParams
+    ).catch(() => ({ total: 0 }));
     const invoices = await ctx.db.many(
-      `SELECT i.*, o.name AS organisation_name, o.currency AS organisation_currency
-       FROM platform_subscription_invoices i JOIN organisations o ON o.id = i.organisation_id
-       WHERE o.slug <> 're-el-platform' ORDER BY i.created_at DESC LIMIT 500`
+      `SELECT i.*, o.name AS organisation_name, o.currency AS organisation_currency,
+              u.display_name AS paid_by_name, v.display_name AS voided_by_name, r.display_name AS refunded_by_name
+       FROM platform_subscription_invoices i
+       JOIN organisations o ON o.id = i.organisation_id
+       LEFT JOIN users u ON u.id = i.paid_by
+       LEFT JOIN users v ON v.id = i.voided_by
+       LEFT JOIN users r ON r.id = i.refunded_by
+       WHERE ${scopeInvoice} ORDER BY i.created_at DESC LIMIT 200`,
+      invoiceParams
     ).catch(() => []);
+
     const setupFees = await ctx.db.many(
       `SELECT sf.*, o.name AS organisation_name FROM platform_setup_fees sf
        JOIN organisations o ON o.id = sf.organisation_id
-       WHERE o.slug <> 're-el-platform' ORDER BY sf.created_at DESC`
+       WHERE o.slug <> 're-el-platform' AND ($1::uuid IS NULL OR sf.organisation_id = $1)
+       ORDER BY sf.created_at DESC`, [scopeOrg]
     ).catch(() => []);
+
+    const scopeActivity = `(a.action LIKE 'platform.subscription%' OR a.action LIKE 'platform.setup_fee%')
+         AND ($1::uuid IS NULL OR a.organisation_id = $1)
+         AND ($2::date IS NULL OR a.occurred_at::date >= $2)
+         AND ($3::date IS NULL OR a.occurred_at::date <= $3)`;
+    const activityCount = await ctx.db.one(
+      `SELECT COUNT(*)::int AS total FROM audit_events a WHERE ${scopeActivity}`, [scopeOrg, from, to]
+    ).catch(() => ({ total: 0 }));
     const activity = await ctx.db.many(
       `SELECT a.id, a.action, a.resource_type, a.resource_id, a.organisation_id, a.metadata,
               a.occurred_at, u.display_name AS actor_name
        FROM audit_events a LEFT JOIN users u ON u.id = a.actor_user_id
-       WHERE a.action LIKE 'platform.subscription%' OR a.action LIKE 'platform.setup_fee%'
-       ORDER BY a.occurred_at DESC LIMIT 100`
+       WHERE ${scopeActivity} ORDER BY a.occurred_at DESC LIMIT 200`,
+      [scopeOrg, from, to]
     ).catch(() => []);
     return {
-      plans, subscriptions, mrr, invoices,
+      plans, subscriptions, mrr: singleCurrency ? singleCurrency.amount : 0,
+      mrrByCurrency, singleCurrency: Boolean(singleCurrency),
+      invoices, invoiceCount: invoiceCount.total,
+      activity, activityCount: activityCount.total,
       setupFees: setupFees.map((fee) => setupFeeSummaryView(fee)),
-      activity
+      scope: { organisationId: scopeOrg, planId: scopePlan, from, to }
     };
   }, { platformOnly: true, permission: 'platform.subscriptions.read' });
 
@@ -875,7 +934,10 @@ function register(router) {
   router.post('/platform/subscription-invoices/:id/void', async (ctx) => {
     const invoice = await invoiceFor(ctx);
     if (invoice.status !== 'issued') fail('CONFLICT', null, 'Only an issued invoice can be voided.');
-    await ctx.db.query("UPDATE platform_subscription_invoices SET status = 'void' WHERE id = $1", [invoice.id]);
+    await ctx.db.query(
+      "UPDATE platform_subscription_invoices SET status = 'void', voided_by = $2, voided_at = now() WHERE id = $1",
+      [invoice.id, ctx.user.id]
+    );
     await recordAudit(ctx.db, ctx, {
       action: 'platform.subscription_invoice_voided', resourceType: 'platform_subscription_invoice',
       resourceId: invoice.id, organisationId: invoice.organisation_id,
@@ -888,7 +950,8 @@ function register(router) {
     const invoice = await invoiceFor(ctx);
     if (invoice.status === 'void') fail('CONFLICT', null, 'A voided invoice cannot be marked paid.');
     await ctx.db.query(
-      "UPDATE platform_subscription_invoices SET status = 'paid', paid_at = now() WHERE id = $1", [invoice.id]
+      "UPDATE platform_subscription_invoices SET status = 'paid', paid_at = now(), paid_by = $2 WHERE id = $1",
+      [invoice.id, ctx.user.id]
     );
     await recordAudit(ctx.db, ctx, {
       action: 'platform.subscription_invoice_marked_paid', resourceType: 'platform_subscription_invoice',
@@ -904,7 +967,11 @@ function register(router) {
       reference: { type: 'string', max: 100, optional: true },
       notes: { type: 'string', max: 500, optional: true }
     });
-    await ctx.db.query("UPDATE platform_subscription_invoices SET status = 'void' WHERE id = $1", [invoice.id]);
+    await ctx.db.query(
+      `UPDATE platform_subscription_invoices
+       SET status = 'void', refunded_by = $2, refunded_at = now(), voided_by = $2, voided_at = now()
+       WHERE id = $1`, [invoice.id, ctx.user.id]
+    );
     await recordAudit(ctx.db, ctx, {
       action: 'platform.subscription_refund_recorded', resourceType: 'platform_subscription_invoice',
       resourceId: invoice.id, organisationId: invoice.organisation_id,

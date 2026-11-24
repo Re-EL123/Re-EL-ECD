@@ -500,21 +500,118 @@
   };
 
   V.platformSubscriptions = {
-    async load() {
+    async load(ctx) {
+      const filters = ctx.filters || {};
+      const params = [];
+      if (filters.scopeOrg) params.push('orgId=' + encodeURIComponent(filters.scopeOrg));
+      if (filters.scopePlan) params.push('planId=' + encodeURIComponent(filters.scopePlan));
+      if (filters.scopeFrom) params.push('from=' + encodeURIComponent(filters.scopeFrom));
+      if (filters.scopeTo) params.push('to=' + encodeURIComponent(filters.scopeTo));
+      const qs = params.length ? '?' + params.join('&') : '';
       const [subscriptions, organisations] = await Promise.all([
-        R.api('GET', '/platform/subscriptions'),
-        R.api('GET', '/platform/organisations')
+        R.api('GET', '/platform/subscriptions' + qs),
+        R.api('GET', '/platform/organisations?pageSize=100' +
+          (filters.orgQuery ? '&q=' + encodeURIComponent(filters.orgQuery) : ''))
       ]);
-      return { data: subscriptions.data, organisations: organisations.data || [] };
+      return {
+        data: subscriptions.data, organisations: organisations.data || [],
+        orgTotal: (organisations.meta && organisations.meta.total) || ((organisations.data || []).length)
+      };
     },
     render(ctx, params, page) {
       const d = page.data || {};
       const plans = d.plans || [], subs = d.subscriptions || [], invoices = d.invoices || [];
-      const setupFees = d.setupFees || [], activity = d.activity || [];
-      const canManage = ctx.has('platform.subscriptions.manage');
+      const activity = d.activity || [], setupFees = d.setupFees || [];
+      const canSubs = ctx.has('platform.subscriptions.manage');
+      const canOrg = ctx.has('platform.organisations.manage');
+      const canAudit = ctx.has('platform.audit.read');
       const filters = ctx.filters || {};
+      const tab = filters.subTab || 'overview';
+      const scopeOrg = filters.scopeOrg || '', scopePlan = filters.scopePlan || '';
+      const scopeFrom = filters.scopeFrom || '', scopeTo = filters.scopeTo || '';
+      const scoped = Boolean(scopeOrg || scopePlan || scopeFrom || scopeTo);
+
+      const today = new Date();
+      const day = today.toISOString().slice(0, 10);
+      const soon = new Date(today.getTime() + 7 * 86400000).toISOString().slice(0, 10);
+      const expiring = subs.filter((row) => row.status === 'trial' && row.current_period_end >= day && row.current_period_end <= soon);
+      const pastDue = subs.filter((row) => row.status === 'past_due');
+      const aged = (low, high) => pastDue.filter((row) => {
+        const days = Math.floor((today - new Date(row.current_period_end + 'T00:00:00Z')) / 86400000);
+        return days >= low && days < high;
+      }).length;
+      const nearLimit = subs.filter((row) => row.status === 'active' && (
+        (Number(row.max_learners) > 0 && Number(row.learner_count || 0) >= Number(row.max_learners) * 0.9) ||
+        (Number(row.max_staff) > 0 && Number(row.staff_count || 0) >= Number(row.max_staff) * 0.9)
+      ));
+      const mrrByCurrency = d.mrrByCurrency || [];
+      const singleCurrency = Boolean(d.singleCurrency);
+      const activeCount = subs.filter((row) => row.status === 'active').length;
+
+      const orgOptions = (page.organisations || []).map((org) => ({
+        value: org.id, label: org.name + ' · ' + org.slug
+      }));
+      const planOptions = plans.map((p) => ({ value: p.id, label: p.name + ' · ' + p.plan_key }));
+      const scopeBanner = '<div class="sub-scope' + (scoped ? ' is-scoped' : '') + '">' +
+        '<span class="sub-scope-label">' + R.icon(scoped ? 'filter' : 'globe') + ' ' +
+          (scoped ? 'Scoped view' : 'All tenants') + '</span>' +
+        '<select class="select" aria-label="Scope by organisation" @change="setFilter(\'scopeOrg\',$event.target.value)">' +
+          '<option value="">All organisations</option>' +
+          orgOptions.map((o) => '<option value="' + R.attr(o.value) + '"' + (scopeOrg === o.value ? ' selected' : '') + '>' + R.esc(o.label) + '</option>').join('') +
+        '</select>' +
+        '<input class="input" type="search" placeholder="Find an organisation…" value="' + R.attr(filters.orgQuery || '') + '" @input.debounce.350ms="setFilter(\'orgQuery\',$event.target.value)">' +
+        '<select class="select" aria-label="Scope by plan" @change="setFilter(\'scopePlan\',$event.target.value)">' +
+          '<option value="">All plans</option>' +
+          planOptions.map((o) => '<option value="' + R.attr(o.value) + '"' + (scopePlan === o.value ? ' selected' : '') + '>' + R.esc(o.label) + '</option>').join('') +
+        '</select>' +
+        '<label>From <input class="input" type="date" value="' + R.attr(scopeFrom) + '" @change="setFilter(\'scopeFrom\',$event.target.value)"></label>' +
+        '<label>To <input class="input" type="date" value="' + R.attr(scopeTo) + '" @change="setFilter(\'scopeTo\',$event.target.value)"></label>' +
+        (scoped ? '<button type="button" class="btn btn-sm btn-ghost" @click="clearSubscriptionScope()">' + R.icon('x') + ' Clear scope</button>' : '') +
+        '<span class="muted small">' + R.number(subs.length) + ' subscriptions</span>' +
+      '</div>';
+
+      const tabsHtml = '<div class="tabs sub-tabs">' + [
+        { key: 'overview', label: 'Overview', icon: 'activity' },
+        { key: 'tenants', label: 'Tenants', icon: 'building-2' },
+        { key: 'plans', label: 'Plans', icon: 'layers' },
+        { key: 'billing', label: 'Billing', icon: 'receipt' },
+        { key: 'activity', label: 'Activity', icon: 'history' }
+      ].map((item) => '<button class="tab' + (tab === item.key ? ' active' : '') + '" @click="setFilter(\'subTab\',\'' + item.key + '\')">' +
+        R.icon(item.icon) + ' ' + item.label + '</button>').join('') + '</div>';
+
+      const moneyCell = (amount, currency) => R.money(amount, currency || (singleCurrency ? mrrByCurrency[0].currency : 'ZAR'));
+      const mrrLabel = singleCurrency ? R.money(d.mrr, mrrByCurrency[0].currency) : mrrByCurrency.map((row) => R.money(row.amount, row.currency)).join(' + ');
+      const mrrNote = singleCurrency ? 'Normalised monthly · ' + activeCount + ' paying tenants'
+        : 'Split by currency — totals are never mixed';
+
+      const overview = '<div class="grid grid-3 section">' +
+        R.statCard({ label: 'Monthly recurring', value: mrrLabel, icon: 'credit-card', foot: mrrNote }) +
+        R.statCard({ label: 'Active plans', value: R.number(plans.filter((p) => p.status === 'active').length), icon: 'layers', tone: 'sky', foot: plans.length + ' in catalogue' }) +
+        R.statCard({ label: 'Trials', value: R.number(subs.filter((row) => row.status === 'trial').length), icon: 'hourglass', tone: 'plum', foot: expiring.length + ' ending within 7 days' }) +
+        '</div>' +
+        (mrrByCurrency.length > 1 ? '<div class="card sub-currency-card"><h3>Revenue by currency</h3>' +
+          mrrByCurrency.map((row) => '<div class="kpi-row"><span class="kpi-label">' + R.esc(row.currency) + ' · ' + row.tenants + ' tenants</span><span class="kpi-value">' + R.money(row.amount, row.currency) + '</span></div>').join('') + '</div>' : '') +
+        '<div class="grid grid-2 section">' +
+        R.card('Risk and health', '<div class="sub-risk-grid">' +
+          '<div class="sub-risk"><span class="sub-risk-value">' + expiring.length + '</span><span class="muted small">Trials ending in 7 days</span></div>' +
+          '<div class="sub-risk"><span class="sub-risk-value">' + nearLimit.length + '</span><span class="muted small">Near or over plan limits</span></div>' +
+          '<div class="sub-risk"><span class="sub-risk-value">' + aged(0, 7) + '</span><span class="muted small">Past due under 7 days</span></div>' +
+          '<div class="sub-risk"><span class="sub-risk-value">' + aged(7, 30) + '</span><span class="muted small">Past due 7–30 days</span></div>' +
+          '<div class="sub-risk"><span class="sub-risk-value">' + aged(30, 36500) + '</span><span class="muted small">Past due over 30 days</span></div>' +
+          '</div>') +
+        R.card('Revenue by plan', mrrByCurrency.length ? '<div class="sub-mrr-list">' + plans.map((p) => {
+          const value = subs.filter((row) => row.plan_id === p.id && row.status === 'active')
+            .reduce((sum, row) => sum + Number(row.monthly_price || 0), 0);
+          const max = Math.max(1, ...plans.map((p2) => subs.filter((row) => row.plan_id === p2.id && row.status === 'active').reduce((s, row) => s + Number(row.monthly_price || 0), 0)));
+          return '<button type="button" class="sub-mrr-row" @click="setFilter(\'scopePlan\',\'' + R.attr(p.id) + '\')">' +
+            '<span>' + R.esc(p.name) + '</span><div class="sub-mrr-track"><div class="sub-mrr-bar" style="width:' + Math.round(value / max * 100) + '%"></div></div>' +
+            '<strong>' + R.money(value, p.currency) + '</strong></button>';
+        }).join('') + '</div>' : '<p class="muted small">No active revenue in this scope.</p>') +
+        '</div>';
+
       const q = String(filters.subQ || '').trim().toLowerCase();
-      const statusFilter = filters.subStatus || '', periodFilter = filters.subPeriod || '';
+      const statusFilter = filters.subStatus || '';
+      const periodFilter = filters.subPeriod || '';
       let rows = subs.filter((row) => {
         if (q && !String(row.organisation_name || '').toLowerCase().includes(q) && !String(row.plan_name || '').toLowerCase().includes(q)) return false;
         if (statusFilter && row.status !== statusFilter) return false;
@@ -526,111 +623,104 @@
       const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
       const currentPage = Math.min(pageNum, totalPages);
       const shown = rows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-      const today = new Date();
-      const day = today.toISOString().slice(0, 10);
-      const soon = new Date(today.getTime() + 7 * 86400000).toISOString().slice(0, 10);
-      const expiring = subs.filter((row) => row.status === 'trial' && row.current_period_end >= day && row.current_period_end <= soon);
-      const pastDue = subs.filter((row) => row.status === 'past_due');
-      const aged = (low, high) => pastDue.filter((row) => {
-        const days = Math.floor((today - new Date(row.current_period_end + 'T00:00:00Z')) / 86400000);
-        return days >= low && days < high;
-      }).length;
-      const mrrByPlan = plans.map((plan) => ({
-        plan, value: subs.filter((row) => row.plan_id === plan.id && row.status === 'active')
-          .reduce((sum, row) => sum + Number(row.monthly_price || 0), 0)
-      })).filter((row) => row.value > 0).sort((a, b) => b.value - a.value);
-      const maxMrr = Math.max(1, ...mrrByPlan.map((row) => row.value));
-      const activePlanCount = (plan) => subs.filter((row) => row.plan_id === plan.id && ['trial', 'active', 'past_due'].includes(row.status)).length;
-      const planCard = (p) => '<div class="plan-card ' + (p.status === 'archived' ? 'archived' : '') + '">' +
-        '<div class="row" style="justify-content:space-between;align-items:flex-start">' +
-        '<div><div class="cell-strong" style="font-size:1rem">' + R.esc(p.name) + '</div><div class="cell-sub mono">' + R.esc(p.plan_key) + '</div></div>' + R.badge(p.status) + '</div>' +
-        '<div class="plan-price">' + R.money(p.monthly_price, p.currency) + '<span> /month</span></div>' +
-        '<div class="muted small">' + R.esc(p.description || 'No description yet.') + '</div>' +
-        '<div class="kpi-list">' +
-        '<div class="kpi-row"><span class="kpi-label">Learner limit</span><span class="kpi-value">' + (p.max_learners ? R.number(p.max_learners) : 'Unlimited') + '</span></div>' +
-        '<div class="kpi-row"><span class="kpi-label">Staff limit</span><span class="kpi-value">' + (p.max_staff ? R.number(p.max_staff) : 'Unlimited') + '</span></div>' +
-        '<div class="kpi-row"><span class="kpi-label">Active tenants</span><span class="kpi-value">' + R.number(activePlanCount(p)) + '</span></div></div>' +
-        ((p.features || []).length ? '<div class="plan-features">' + (p.features || []).map((f) => '<span class="badge badge-muted">' + R.esc(R.titleCase(String(f).replace(/_/g, ' '))) + '</span>').join('') + '</div>' : '') +
-        (canManage ? '<div class="plan-actions">' +
-          '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'editPlan\',' + R.attr(JSON.stringify(p.id)) + ')">' + R.icon('pencil') + ' Edit</button>' +
-          '<button class="btn btn-sm ' + (p.status === 'archived' ? 'btn-secondary' : 'btn-ghost') + '" @click="act(\'PATCH\',\'/platform/plans/' + R.attr(p.id) + '\',{status:\'' + (p.status === 'archived' ? 'active' : 'archived') + '\'},{successMessage:\'Plan ' + (p.status === 'archived' ? 'restored' : 'archived') + '\'})">' + R.icon(p.status === 'archived' ? 'rotate-ccw' : 'archive') + ' ' + (p.status === 'archived' ? 'Restore' : 'Archive') + '</button>' +
-          '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'assignPlan\')">' + R.icon('user-plus') + ' Assign</button>' +
-          '</div>' : '') + '</div>';
-      const filterBar = R.filterBar(
+      const pager = totalPages > 1 ? '<div class="sub-pager"><span class="muted small">Page ' + currentPage + ' of ' + totalPages + '</span>' +
+        '<button type="button" class="btn btn-sm btn-ghost" ' + (currentPage <= 1 ? 'disabled' : '') + ' @click="setFilter(\'subPage\',' + (currentPage - 1) + ')">' + R.icon('chevron-left') + ' Previous</button>' +
+        '<button type="button" class="btn btn-sm btn-ghost" ' + (currentPage >= totalPages ? 'disabled' : '') + ' @click="setFilter(\'subPage\',' + (currentPage + 1) + ')">Next ' + R.icon('chevron-right') + '</button></div>' : '';
+      const bulk = canOrg ? R.bulkBar([
+        { label: 'Assign plan', icon: 'user-plus', modal: 'bulkAssignPlan' },
+        { label: 'Suspend', icon: 'ban', modal: 'bulkSuspend' },
+        { label: 'Restore', icon: 'rotate-ccw', path: '/platform/organisations/bulk', action: 'restore' }
+      ], { hint: 'Suspending a centre revokes all sessions across every branch.' }) : '';
+      const subColumns = [
+        { label: 'Organisation', render: (row) => '<a class="cell-strong" href="#/platform/organisations/' + R.attr(row.organisation_id) + '">' + R.esc(row.organisation_name) + '</a><span class="cell-sub">' + R.esc(row.plan_name || 'No plan') + '</span>' },
+        { label: 'Status', render: (row) => R.badge(row.status) + (nearLimit.includes(row) ? ' <span class="badge badge-sun">Near limit</span>' : '') },
+        { label: 'Entitlements', render: (row) => {
+          const learners = Number(row.learner_count || 0), maxL = Number(row.max_learners || 0);
+          const staff = Number(row.staff_count || 0), maxS = Number(row.max_staff || 0);
+          const cell = (value, max) => value + (max > 0 ? ' / ' + max : ' / ∞');
+          return '<span class="cell-sub">Learners ' + cell(learners, maxL) + '</span><span class="cell-sub">Staff ' + cell(staff, maxS) + '</span>' +
+            '<span class="cell-sub">' + R.number(row.branch_count || 0) + ' branch' + (Number(row.branch_count) === 1 ? '' : 'es') + '</span>';
+        } },
+        { label: 'Billing', render: (row) => R.esc(R.titleCase(row.billing_period)) + '<span class="cell-sub">' + row.billing_period + ' contract</span>' },
+        { label: 'Renews', render: (row) => R.date(row.current_period_end) },
+        { label: 'Normalised MRR', align: 'right', render: (row) => R.money(row.monthly_price, row.plan_currency || row.organisation_currency) },
+        { label: 'Actions', align: 'right', render: (row) => {
+          if (!canSubs) return '';
+          return '<div class="btn-group" style="flex-wrap:nowrap">' +
+            '<button class="btn btn-sm btn-secondary" @click="openNamedDetail(\'subscription\',\'' + R.attr(row.id) + '\')">Manage</button>' +
+            '<button class="btn btn-sm btn-ghost" title="Online payment link" @click="billSubscription(\'' + R.attr(row.organisation_id) + '\',\'' + R.attr(row.billing_period || 'monthly') + '\')">' + R.icon('link') + '</button>' +
+            '<button class="btn btn-sm btn-ghost" title="Record payment" @click="openNamedModal(\'manualSubscriptionPayment\',' + R.attr(JSON.stringify(row.organisation_id)) + ')">' + R.icon('banknote') + '</button>' +
+            '</div>';
+        } }
+      ];
+      const tenants = R.card('Tenant subscriptions', bulk + R.filterBar(
         R.searchFilter(ctx, 'subQ', 'Search organisation or plan…') +
         R.selectFilter(ctx, 'subStatus', [
           { value: 'trial', label: 'Trial' }, { value: 'active', label: 'Active' },
           { value: 'past_due', label: 'Past due' }, { value: 'cancelled', label: 'Cancelled' }
         ], 'All statuses') +
         R.selectFilter(ctx, 'subPeriod', [{ value: 'monthly', label: 'Monthly' }, { value: 'annual', label: 'Annual' }], 'All billing')
-      );
-      const pager = totalPages > 1 ? '<div class="sub-pager"><span class="muted small">Page ' + currentPage + ' of ' + totalPages + '</span>' +
-        '<button type="button" class="btn btn-sm btn-ghost" ' + (currentPage <= 1 ? 'disabled' : '') + ' @click="setFilter(\'subPage\',' + (currentPage - 1) + ')">' + R.icon('chevron-left') + ' Previous</button>' +
-        '<button type="button" class="btn btn-sm btn-ghost" ' + (currentPage >= totalPages ? 'disabled' : '') + ' @click="setFilter(\'subPage\',' + (currentPage + 1) + ')">Next ' + R.icon('chevron-right') + '</button></div>' : '';
-      const bulk = canManage ? R.bulkBar([
-        { label: 'Assign plan', icon: 'user-plus', modal: 'bulkAssignPlan' },
-        { label: 'Suspend', icon: 'ban', modal: 'bulkSuspend' },
-        { label: 'Restore', icon: 'rotate-ccw', path: '/platform/organisations/bulk', action: 'restore' }
-      ], { hint: 'Suspending a centre signs out its users.' }) : '';
-      const actions = canManage
-        ? (R.icon('refresh-cw') + ' <button type="button" class="btn btn-secondary btn-sm" @click="act(\'POST\',\'/platform/subscriptions/sweep\',{},{successMessage:\'Billing sweep complete\'})">Run billing sweep</button>') +
-          '<button type="button" class="btn btn-secondary btn-sm" @click="openNamedModal(\'newPlan\')">' + R.icon('plus') + ' New plan</button>'
-        : '';
-      const risk = '<div class="sub-risk-grid">' +
-        '<div class="sub-risk"><span class="sub-risk-value">' + expiring.length + '</span><span class="muted small">Trials ending in 7 days</span></div>' +
-        '<div class="sub-risk"><span class="sub-risk-value">' + aged(0, 7) + '</span><span class="muted small">Past due under 7 days</span></div>' +
-        '<div class="sub-risk"><span class="sub-risk-value">' + aged(7, 30) + '</span><span class="muted small">Past due 7–30 days</span></div>' +
-        '<div class="sub-risk"><span class="sub-risk-value">' + aged(30, 36500) + '</span><span class="muted small">Past due over 30 days</span></div>' +
-        '</div>' + (mrrByPlan.length ? '<div class="sub-mrr-list">' + mrrByPlan.map((row) =>
-          '<div class="sub-mrr-row"><span>' + R.esc(row.plan.name) + '</span><div class="sub-mrr-track"><div class="sub-mrr-bar" style="width:' + Math.round(row.value / maxMrr * 100) + '%"></div></div><strong>' + R.money(row.value) + '</strong></div>').join('') + '</div>' : '');
-      const invoiceRows = invoices.slice(0, 50);
-      return R.pageHead('Subscriptions', 'Plans, tenant billing state and monthly recurring revenue.',
-        actions + '<a class="btn btn-secondary btn-sm" href="#/platform/organisations">' + R.icon('building-2') + ' Organisations</a>') +
-        '<div class="grid grid-3 section">' +
-        R.statCard({ label: 'Monthly recurring', value: R.money(d.mrr), icon: 'credit-card', foot: subs.filter((row) => row.status === 'active').length + ' paying tenants' }) +
-        R.statCard({ label: 'Active plans', value: R.number(plans.filter((p) => p.status === 'active').length), icon: 'layers', tone: 'sky', foot: plans.length + ' in catalogue' }) +
-        R.statCard({ label: 'Trials', value: R.number(subs.filter((row) => row.status === 'trial').length), icon: 'hourglass', tone: 'plum', foot: expiring.length + ' ending within 7 days' }) +
-        '</div>' +
-        R.card('Plan catalogue', '<div class="plan-grid">' + plans.map(planCard).join('') + '</div>',
-          canManage ? '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'newPlan\')">' + R.icon('plus') + ' New plan</button>' : '') +
-        '<div class="section"></div>' +
-        '<div class="grid grid-2 section">' +
-        R.card('Tenant subscriptions', bulk + filterBar + R.table({ rows: shown, selectable: canManage, columns: [
-          { label: 'Organisation', render: (row) => '<a class="cell-strong" href="#/platform/organisations/' + R.attr(row.organisation_id) + '">' + R.esc(row.organisation_name) + '</a><span class="cell-sub">' + R.esc(row.plan_name || 'No plan') + '</span>' },
-          { label: 'Status', render: (row) => R.badge(row.status) },
-          { label: 'Billing', render: (row) => R.esc(R.titleCase(row.billing_period)) },
-          { label: 'Renews', render: (row) => R.date(row.current_period_end) },
-          { label: 'MRR', align: 'right', render: (row) => R.money(row.monthly_price, row.organisation_currency) },
-          { label: 'Actions', align: 'right', render: (row) => canManage && row.organisation_id
-            ? '<div class="btn-group" style="flex-wrap:nowrap">' +
-              '<button class="btn btn-sm btn-secondary" @click="openNamedDetail(\'subscription\',\'' + R.attr(row.id) + '\')">Manage</button>' +
-              '<button class="btn btn-sm btn-ghost" title="Online payment link" @click="billSubscription(\'' + R.attr(row.organisation_id) + '\',\'' + R.attr(row.billing_period || 'monthly') + '\')">' + R.icon('link') + '</button>' +
-              '<button class="btn btn-sm btn-ghost" title="Record payment" @click="openNamedModal(\'manualSubscriptionPayment\',' + R.attr(JSON.stringify(row.organisation_id)) + ')">' + R.icon('banknote') + '</button>' +
-              '</div>' : '' }
-        ], emptyTitle: 'No matching subscriptions', emptyMessage: 'Try a different search or filter.' }) + pager) +
-        R.card('Revenue health', '<div class="stat-value">' + R.money(d.mrr) + '</div><div class="muted small">Monthly recurring revenue</div>' + risk) +
-        '</div>' +
-        '<div class="section"></div>' +
-        R.card('Subscription invoices', R.table({ rows: invoiceRows, columns: [
-          { label: 'Invoice', render: (inv) => '<span class="cell-strong mono">' + R.esc(inv.invoice_number) + '</span><span class="cell-sub">' + R.esc(inv.organisation_name || '') + '</span>' },
-          { label: 'Amount', align: 'right', render: (inv) => R.money(inv.amount, inv.organisation_currency) },
-          { label: 'Period', render: (inv) => R.date(inv.period_start) + ' → ' + R.date(inv.period_end) },
-          { label: 'Status', render: (inv) => R.badge(inv.status) },
-          { label: 'Due', render: (inv) => R.date(inv.due_at) + (inv.paid_at ? '<span class="cell-sub">Paid ' + R.date(inv.paid_at) + '</span>' : '') },
-          { label: '', align: 'right', render: (inv) => canManage ? '<div class="btn-group" style="flex-wrap:nowrap">' +
-            (inv.status === 'issued' ? '<button class="btn btn-sm btn-ghost" @click="act(\'POST\',\'/platform/subscription-invoices/' + R.attr(inv.id) + '/mark-paid\',{},{successMessage:\'Invoice marked paid\'})">Mark paid</button>' +
-              '<button class="btn btn-sm btn-ghost" @click="act(\'POST\',\'/platform/subscription-invoices/' + R.attr(inv.id) + '/void\',{},{successMessage:\'Invoice voided\'})">Void</button>' : '') +
-            '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'recordRefund\',\'' + R.attr(inv.id) + '\')">Refund</button></div>' : '' }
-        ], emptyTitle: 'No invoices yet', emptyMessage: 'Invoices appear when a subscription is billed.' }),
-          '<a class="btn btn-sm btn-ghost" href="#/platform/audit">' + R.icon('history') + ' Audit trail</a>') +
-        '<div class="section"></div>' +
-        R.card('Billing activity', activity.length
-          ? '<div class="sub-activity">' + activity.map((event) => '<div class="sub-activity-row">' +
-            '<span class="cell-strong">' + R.esc(R.titleCase(String(event.action).replace(/^platform\./, '').replace(/[._]/g, ' '))) + '</span>' +
-            '<span class="muted small">' + R.esc(event.actor_name || 'System') + (event.organisation_id ? ' · ' + R.esc(event.organisation_id) : '') + '</span>' +
-            '<span class="muted small">' + R.relative(event.occurred_at) + '</span></div>').join('') + '</div>'
-          : '<p class="muted small">No billing activity recorded yet.',
-          '<a class="btn btn-sm btn-ghost" href="#/platform/audit">' + R.icon('history') + ' Full audit trail</a>');
+      ) + R.table({ rows: shown, columns: subColumns, selectable: canOrg,
+        emptyTitle: 'No matching subscriptions', emptyMessage: 'Try a different search or filter.' }) + pager);
+
+      const activePlans = plans.filter((p) => p.status === 'active');
+      const planCard = (p) => '<div class="plan-card ' + (p.status === 'archived' ? 'archived' : '') + '">' +
+        '<div class="row" style="justify-content:space-between;align-items:flex-start"><div><div class="cell-strong" style="font-size:1rem">' + R.esc(p.name) + '</div><div class="cell-sub mono">' + R.esc(p.plan_key) + '</div></div>' + R.badge(p.status) + '</div>' +
+        '<div class="plan-price">' + R.money(p.monthly_price, p.currency) + '<span> /month</span></div>' +
+        '<div class="muted small">' + R.esc(p.description || 'No description yet.') + '</div>' +
+        '<div class="kpi-list">' +
+        '<div class="kpi-row"><span class="kpi-label">Learner limit</span><span class="kpi-value">' + (p.max_learners ? R.number(p.max_learners) : 'Unlimited') + '</span></div>' +
+        '<div class="kpi-row"><span class="kpi-label">Staff limit</span><span class="kpi-value">' + (p.max_staff ? R.number(p.max_staff) : 'Unlimited') + '</span></div>' +
+        '<button type="button" class="kpi-row kpi-link" @click="setFilter(\'scopePlan\',\'' + R.attr(p.id) + '\')">' +
+          '<span class="kpi-label">Active tenants →</span><span class="kpi-value">' + R.number(p.tenant_count || 0) + '</span></button></div>' +
+        ((p.features || []).length ? '<div class="plan-features">' + (p.features || []).map((f) => '<span class="badge badge-muted">' + R.esc(R.titleCase(String(f).replace(/_/g, ' '))) + '</span>').join('') + '</div>' : '') +
+        (canSubs ? '<div class="plan-actions">' +
+          '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'editPlan\',' + R.attr(JSON.stringify(p.id)) + ')">' + R.icon('pencil') + ' Edit</button>' +
+          '<button class="btn btn-sm ' + (p.status === 'archived' ? 'btn-secondary' : 'btn-ghost') + '" @click="act(\'PATCH\',\'/platform/plans/' + R.attr(p.id) + '\',{status:\'' + (p.status === 'archived' ? 'active' : 'archived') + '\'},{successMessage:\'Plan ' + (p.status === 'archived' ? 'restored' : 'archived') + '\'})">' + R.icon(p.status === 'archived' ? 'rotate-ccw' : 'archive') + ' ' + (p.status === 'archived' ? 'Restore' : 'Archive') + '</button>' +
+          '<button class="btn btn-sm btn-primary" @click="openNamedModal(\'assignPlan\')">' + R.icon('user-plus') + ' Assign</button>' +
+          '</div>' : '') + '</div>';
+      const plansView = R.card('Plan catalogue', '<div class="plan-grid">' + plans.map(planCard).join('') + '</div>',
+        canSubs ? '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'newPlan\')">' + R.icon('plus') + ' New plan</button>' : '');
+
+      const invoiceColumns = [
+        { label: 'Invoice', render: (inv) => '<span class="cell-strong mono">' + R.esc(inv.invoice_number) + '</span><span class="cell-sub">' + R.esc(inv.organisation_name || '') + '</span>' },
+        { label: 'Amount', align: 'right', render: (inv) => R.money(inv.amount, inv.currency || inv.organisation_currency) },
+        { label: 'Period', render: (inv) => R.date(inv.period_start) + ' → ' + R.date(inv.period_end) },
+        { label: 'Status', render: (inv) => R.badge(inv.status) + (inv.refunded_at ? ' <span class="badge badge-sun">Refunded</span>' : '') },
+        { label: 'Paid / voided', render: (inv) => inv.paid_at ? '<span class="cell-strong">Paid ' + R.date(inv.paid_at) + '</span><span class="cell-sub">' + R.esc(inv.paid_by_name || 'Platform') + '</span>'
+          : inv.voided_at ? '<span class="cell-sub">Voided by ' + R.esc(inv.voided_by_name || 'Platform') + '</span>' : '<span class="muted">—</span>' },
+        { label: 'Due', render: (inv) => R.date(inv.due_at) },
+        { label: '', align: 'right', render: (inv) => canSubs ? '<div class="btn-group" style="flex-wrap:nowrap">' +
+          (inv.status === 'issued' ? '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'confirmMoney\',\'' + R.attr(inv.id) + '|mark-paid|' + R.attr(inv.invoice_number) + '\')">Mark paid</button>' +
+            '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'confirmMoney\',\'' + R.attr(inv.id) + '|void|' + R.attr(inv.invoice_number) + '\')">Void</button>' : '') +
+          '<button class="btn btn-sm btn-ghost" @click="openNamedModal(\'recordRefund\',\'' + R.attr(inv.id) + '\')">Refund</button></div>' : '' }
+      ];
+      const invoiceCount = Number(d.invoiceCount || 0);
+      const billing = R.card('Subscription invoices',
+        '<div class="sub-count-note">Showing ' + R.number(invoices.length) + ' of ' + R.number(invoiceCount) + ' matching invoices' +
+          (invoiceCount > invoices.length ? ' — narrow the scope or date range to see more.' : '.') + '</div>' +
+        R.table({ rows: invoices, columns: invoiceColumns, emptyTitle: 'No invoices in this scope', emptyMessage: 'Widen the scope or date range, or assign a plan to begin billing.' }),
+        canAudit ? '<a class="btn btn-sm btn-ghost" href="#/platform/audit">' + R.icon('history') + ' Full audit trail</a>' : '');
+
+      const activityCount = Number(d.activityCount || 0);
+      const activityView = R.card('Billing activity',
+        '<div class="sub-count-note">Showing ' + R.number(activity.length) + ' of ' + R.number(activityCount) + ' matching events.</div>' +
+        (activity.length ? '<div class="sub-activity">' + activity.map((event) => '<div class="sub-activity-row">' +
+          '<span class="cell-strong">' + R.esc(R.titleCase(String(event.action).replace(/^platform\./, '').replace(/[._]/g, ' '))) + '</span>' +
+          '<span class="muted small">' + R.esc(event.actor_name || 'System') + (event.organisation_id ? ' · ' + R.esc(event.organisation_id) : '') + '</span>' +
+          '<span class="muted small">' + R.relative(event.occurred_at) + '</span></div>').join('') + '</div>'
+          : '<p class="muted small">No billing activity in this scope.</p>'),
+        canAudit ? '<a class="btn btn-sm btn-ghost" href="#/platform/audit">' + R.icon('history') + ' Full audit trail</a>' : '');
+
+      const toolActions = (canSubs ? '<button type="button" class="btn btn-secondary btn-sm" @click="act(\'POST\',\'/platform/subscriptions/sweep\',{},{successMessage:\'Billing sweep complete\'})">' + R.icon('refresh-cw') + ' Run billing sweep</button>' : '') +
+        (canSubs ? '<button type="button" class="btn btn-secondary btn-sm" @click="openNamedModal(\'newPlan\')">' + R.icon('plus') + ' New plan</button>' : '') +
+        '<a class="btn btn-secondary btn-sm" href="#/platform/organisations">' + R.icon('building-2') + ' Organisations</a>';
+      const content = tab === 'tenants' ? tenants
+        : tab === 'plans' ? plansView
+          : tab === 'billing' ? billing
+            : tab === 'activity' ? activityView : overview;
+      return R.pageHead('Subscriptions', 'Plans, tenant billing state and monthly recurring revenue.', toolActions) +
+        scopeBanner + tabsHtml + content;
     },
     detail(ctx, name, id) {
       if (name !== 'subscription') return null;
@@ -638,24 +728,27 @@
       const row = (d.subscriptions || []).find((entry) => entry.id === id);
       if (!row) return { title: 'Subscription', html: '<p class="muted">Subscription not found.</p>' };
       const fee = (d.setupFees || []).find((entry) => entry.organisation_id === row.organisation_id);
-      const canManage = ctx.has('platform.subscriptions.manage');
-      const actions = canManage ? '<div class="row" style="flex-wrap:wrap;gap:8px;margin-top:14px">' +
+      const canSubs = ctx.has('platform.subscriptions.manage');
+      const actions = canSubs ? '<div class="row" style="flex-wrap:wrap;gap:8px;margin-top:14px">' +
         '<button type="button" class="btn btn-sm btn-secondary" @click="openNamedModal(\'extendTrial\',\'' + R.attr(row.id) + '\')">' + R.icon('calendar-plus') + ' Extend trial / period</button>' +
-        '<button type="button" class="btn btn-sm btn-secondary" @click="openNamedModal(\'waiveSubscription\',\'' + R.attr(row.id) + '\')">' + R.icon('gift') + ' Waive fee</button>' +
-        '<button type="button" class="btn btn-sm btn-ghost" @click="confirmAction(\'Cancel subscription\',\'The tenant will lose access at the end of the current period. Continue?\',\'/platform/subscriptions/' + R.attr(row.id) + '/cancel\',{submitLabel:\'Cancel subscription\',successMessage:\'Subscription cancelled\'})">' + R.icon('ban') + ' Cancel</button>' +
+        '<button type="button" class="btn btn-sm btn-secondary" @click="openNamedModal(\'confirmMoney\',\'' + R.attr(row.id) + '|waive|' + R.attr(row.organisation_name) + '\')">' + R.icon('gift') + ' Waive fee</button>' +
+        '<button type="button" class="btn btn-sm btn-ghost" @click="openNamedModal(\'confirmMoney\',\'' + R.attr(row.id) + '|cancel|' + R.attr(row.organisation_name) + '\')">' + R.icon('ban') + ' Cancel</button>' +
         (fee && fee.status !== 'paid' && fee.status !== 'waived' ? '<button type="button" class="btn btn-sm btn-secondary" @click="openNamedModal(\'setupFeePayment\',\'' + R.attr(row.organisation_id) + '\')">' + R.icon('banknote') + ' Setup fee</button>' : '') +
         '</div>' : '';
       return {
         title: row.organisation_name + ' — subscription',
         html: '<div class="detail-list">' +
-          R.detailItem('Plan', R.esc(row.plan_name || 'No plan')) +
+          R.detailItem('Plan', R.esc(row.plan_name || 'No plan') + ' · ' + R.esc(row.plan_currency || row.organisation_currency || 'ZAR')) +
           R.detailItem('Status', R.badge(row.status)) +
-          R.detailItem('Billing', R.esc(R.titleCase(row.billing_period))) +
+          R.detailItem('Billing', R.esc(R.titleCase(row.billing_period)) + ' · ' + row.billing_period + ' contract') +
           R.detailItem('Current period', R.date(row.current_period_start) + ' → ' + R.date(row.current_period_end)) +
-          R.detailItem('Monthly', R.money(row.monthly_price, row.organisation_currency)) +
+          R.detailItem('Normalised monthly', R.money(row.monthly_price, row.plan_currency || row.organisation_currency)) +
+          R.detailItem('Entitlements', 'Learners ' + (row.learner_count || 0) + '/' + (row.max_learners || '∞') + ' · Staff ' + (row.staff_count || 0) + '/' + (row.max_staff || '∞')) +
+          R.detailItem('Branches', R.number(row.branch_count || 0)) +
           R.detailItem('Setup fee', fee ? R.esc(R.titleCase(fee.status)) + ' · ' + R.money(fee.amount, row.organisation_currency) : 'None') +
           '</div>' + actions +
-          '<div class="section"></div><a class="btn btn-sm btn-ghost" href="#/platform/organisations/' + R.attr(row.organisation_id) + '">' + R.icon('external-link') + ' Open organisation</a>'
+          '<div class="section"></div><button type="button" class="btn btn-sm btn-ghost" @click="setFilter(\'scopeOrg\',\'' + R.attr(row.organisation_id) + '\'); closeModal()">' + R.icon('filter') + ' Scope console to this tenant</button>' +
+          '<a class="btn btn-sm btn-ghost" href="#/platform/organisations/' + R.attr(row.organisation_id) + '">' + R.icon('external-link') + ' Open organisation</a>'
       };
     },
     openModal(ctx, name, id) {
@@ -668,7 +761,7 @@
         const subscription = subs.find((entry) => entry.organisation_id === id);
         ctx.openModal({
           title: 'Record subscription payment — ' + (subscription ? subscription.organisation_name : 'tenant'),
-          description: 'Records an EFT (or other manual payment): marks the current invoice paid and extends the subscription by one period. Leave the amount blank to pay the invoice as issued.',
+          description: 'Records an EFT: marks the current invoice paid and extends the subscription by one period. Leave the amount blank to pay the invoice as issued.',
           endpoint: '/platform/organisations/' + encodeURIComponent(id) + '/subscription/manual-payment',
           submitLabel: 'Record payment', successMessage: 'Subscription payment recorded',
           fields: [
@@ -676,6 +769,24 @@
             { name: 'amount', label: 'Amount (optional)', type: 'number', placeholder: 'Leave blank to pay the invoice as issued' },
             { name: 'notes', label: 'Notes', type: 'textarea', span: 2 }
           ]
+        });
+        return;
+      }
+      if (name === 'confirmMoney' && id) {
+        const [resourceId, action, label] = String(id).split('|');
+        const meta = {
+          cancel: { title: 'Cancel subscription', label: 'subscription', endpoint: '/platform/subscriptions/' + resourceId + '/cancel', submit: 'Cancel subscription' },
+          waive: { title: 'Waive this period', label: 'invoice', endpoint: '/platform/subscriptions/' + resourceId + '/waive', submit: 'Waive fee' },
+          void: { title: 'Void invoice', label: 'invoice', endpoint: '/platform/subscription-invoices/' + resourceId + '/void', submit: 'Void invoice' },
+          'mark-paid': { title: 'Mark invoice paid', label: 'invoice', endpoint: '/platform/subscription-invoices/' + resourceId + '/mark-paid', submit: 'Mark paid' }
+        }[action];
+        if (!meta) return;
+        ctx.openModal({
+          title: meta.title + ' — ' + (label || ''),
+          descriptionHtml: '<p class="muted small">This changes billing state immediately and is recorded in the platform audit trail. Type <strong>' + R.esc(label) + '</strong> to confirm.</p>',
+          endpoint: meta.endpoint, method: 'POST', submitLabel: meta.submit,
+          successMessage: meta.title + ' complete', confirmText: label,
+          fields: [{ name: 'confirmation', label: 'Type “' + label + '” to confirm', required: true, span: 2 }]
         });
         return;
       }
@@ -701,11 +812,9 @@
       if (name === 'bulkSuspend') {
         ctx.openModal({
           title: 'Suspend selected centres',
-          description: 'Suspension signs out every user of those centres immediately.',
+          descriptionHtml: '<p class="muted small">Suspension revokes <strong>every session in every branch</strong> of the selected centres immediately.</p>',
           submitLabel: 'Suspend', successMessage: 'Centres suspended',
-          fields: [
-            { name: 'reason', label: 'Reason', required: true, span: 2, placeholder: 'e.g. Non-payment after 60 days' }
-          ],
+          fields: [{ name: 'reason', label: 'Reason', required: true, span: 2, placeholder: 'e.g. Non-payment after 60 days' }],
           async onSubmit(body) {
             await R.api('POST', '/platform/organisations/bulk', { ids: (ctx.selectedIds || []).slice(), action: 'suspend', reason: body.reason });
             ctx.clearSelection(); await ctx.navigate(true);
@@ -715,26 +824,16 @@
       }
       if (name === 'extendTrial' && id) {
         ctx.openModal({
-          title: 'Extend a subscription period',
-          endpoint: '/platform/subscriptions/' + encodeURIComponent(id) + '/period',
+          title: 'Extend a subscription period', endpoint: '/platform/subscriptions/' + encodeURIComponent(id) + '/period',
           method: 'POST', submitLabel: 'Extend period', successMessage: 'Period updated',
           fields: [
             { name: 'extendDays', label: 'Extend by (days)', type: 'number', min: 1, max: 3650, value: 30 },
             { name: 'currentPeriodEnd', label: 'Or set an exact end date', type: 'date', help: 'Leave blank to use the number of days above.' }
           ],
           transform(data) {
-            const body = { extendDays: Number(data.extendDays) || 30 };
-            if (data.currentPeriodEnd) { body.currentPeriodEnd = data.currentPeriodEnd; delete body.extendDays; }
-            return body;
+            if (data.currentPeriodEnd) return { currentPeriodEnd: data.currentPeriodEnd };
+            return { extendDays: Number(data.extendDays) || 30 };
           }
-        });
-        return;
-      }
-      if (name === 'waiveSubscription' && id) {
-        ctx.openModal({
-          title: 'Waive this period', endpoint: '/platform/subscriptions/' + encodeURIComponent(id) + '/waive',
-          method: 'POST', submitLabel: 'Waive fee', successMessage: 'Fee waived and period extended',
-          fields: [{ name: 'reason', label: 'Reason', type: 'textarea', span: 2, placeholder: 'Why are we waiving this invoice?' }]
         });
         return;
       }
@@ -742,6 +841,7 @@
         ctx.openModal({
           title: 'Record a refund', endpoint: '/platform/subscription-invoices/' + encodeURIComponent(id) + '/refund',
           method: 'POST', submitLabel: 'Record refund', successMessage: 'Refund recorded',
+          description: 'Records a refund against this invoice in the platform audit trail.',
           fields: [
             { name: 'reference', label: 'Payment / refund reference', placeholder: 'e.g. REF-1234' },
             { name: 'notes', label: 'Notes', type: 'textarea', span: 2 }
@@ -785,7 +885,7 @@
             return {
               name: data.name, planKey: String(data.planKey || '').trim().toLowerCase(),
               description: data.description || null, monthlyPrice: Number(data.monthlyPrice) || 0,
-              currency: data.currency || 'ZAR', maxLearners: Number(data.maxLearners) || 0,
+              currency: (data.currency || 'ZAR').toUpperCase(), maxLearners: Number(data.maxLearners) || 0,
               maxStaff: Number(data.maxStaff) || 0,
               features: String(data.features || '').split(',').map((f) => f.trim()).filter(Boolean),
               status: data.status || 'active'
@@ -804,9 +904,9 @@
             { name: 'planId', label: 'Plan', type: 'select', required: true, options: plans.filter((p) => p.status === 'active').map((p) => ({ value: p.id, label: p.name + ' · ' + R.money(p.monthly_price, p.currency) + '/mo' })) },
             { name: 'status', label: 'Status', type: 'select', options: [{ value: 'active', label: 'Active' }, { value: 'trial', label: 'Trial' }, { value: 'past_due', label: 'Past due' }], value: 'active' },
             { name: 'billingPeriod', label: 'Billing period', type: 'select', options: [{ value: 'monthly', label: 'Monthly' }, { value: 'annual', label: 'Annual' }], value: 'monthly' },
-            { name: 'trialDays', label: 'Days in period', type: 'number', min: 1, max: 3650, value: 30, help: 'Sets the end date from the start date below.' },
-            { name: 'currentPeriodStart', label: 'Period start', type: 'date', help: 'Leave blank for today.' },
-            { name: 'currentPeriodEnd', label: 'Period end (override)', type: 'date', help: 'Leave blank to use the days above.' }
+            { name: 'trialDays', label: 'Days in period', type: 'number', min: 1, max: 3650, value: 30 },
+            { name: 'currentPeriodStart', label: 'Period start', type: 'date' },
+            { name: 'currentPeriodEnd', label: 'Period end (override)', type: 'date' }
           ],
           async onSubmit(body) {
             const payload = {

@@ -4021,3 +4021,24 @@ body.book-reading { overflow: hidden; }
   .sub-mrr-row { grid-template-columns: 90px 1fr 60px; }
   .sub-activity-row { grid-template-columns: 1fr; gap: 2px; }
 }
+/* ---- Scoped platform subscriptions console ------------------------------- */
+.sub-scope { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 12px; margin: 12px 0;
+  border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--surface-1); }
+.sub-scope.is-scoped { border-color: var(--reel-green-600); background: var(--reel-green-100); }
+.sub-scope-label { display: inline-flex; gap: 5px; align-items: center; font-size: .76rem; font-weight: 700; }
+.sub-scope-label svg { width: 14px; height: 14px; }
+.sub-scope .input { width: 180px; }
+.sub-scope label { display: inline-flex; gap: 5px; align-items: center; font-size: .72rem; color: var(--text-muted); }
+.sub-scope label .input { width: 132px; }
+.sub-tabs .tab { display: inline-flex; gap: 5px; align-items: center; }
+.sub-tabs .tab svg { width: 14px; height: 14px; }
+.sub-tabs { margin-bottom: 14px; }
+.kpi-link { width: 100%; border: 0; background: transparent; padding: 4px 0; cursor: pointer; text-align: left; color: inherit; }
+.kpi-link:hover .kpi-label { color: var(--reel-green-700); }
+.sub-currency-card { margin-bottom: 14px; }
+.sub-count-note { margin-bottom: 8px; font-size: .74rem; color: var(--text-muted); }
+.sub-currency-card .kpi-row { margin: 4px 0; }
+@media (max-width: 820px) {
+  .sub-scope .input, .sub-scope label .input { width: 100%; }
+  .sub-scope label { flex: 1 1 140px; }
+}

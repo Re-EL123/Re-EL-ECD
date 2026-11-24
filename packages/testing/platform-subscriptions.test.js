@@ -62,7 +62,8 @@ test('assigning a plan can set a custom period', () => {
 
 test('platform invoices and billing activity are returned and rendered', () => {
   assert.match(api, /FROM platform_subscription_invoices i JOIN organisations o/);
-  assert.match(api, /return \{\s*plans, subscriptions, mrr, invoices,/);
+  assert.match(api, /return \{\s*plans, subscriptions, mrr:/);
+  assert.match(api, /mrrByCurrency/);
   assert.match(view, /Subscription invoices/);
   assert.match(view, /Billing activity/);
   assert.match(view, /subscription-invoices/);
@@ -92,6 +93,6 @@ test('risk and health panels surface trials, ageing and revenue by plan', () => 
   assert.match(view, /Past due under 7 days/);
   assert.match(view, /Past due 7–30 days/);
   assert.match(view, /Past due over 30 days/);
-  assert.match(view, /mrrByPlan/);
+  assert.match(view, /mrrByCurrency/);
   assert.match(css, /\.sub-risk-grid \{/);
 });
