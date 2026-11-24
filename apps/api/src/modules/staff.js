@@ -101,6 +101,41 @@ function register(router) {
     };
   }, { permission: 'staff.read.daycare' });
 
+  // Accounts that can be turned into a staff profile: active members with a
+  // staff-type role who do not already have a profile at this organisation.
+  const STAFF_ROLE_KEYS = ['organisation_owner', 'principal', 'daycare_administrator', 'daycare_manager',
+    'curriculum_coordinator', 'teacher', 'assistant_teacher', 'support_staff', 'finance_officer',
+    'admissions_officer', 'substitute_staff'];
+  router.get('/staff/eligible', async (ctx) => {
+    const search = ctx.query.q ? `%${ctx.query.q}%` : null;
+    const rows = await ctx.db.many(
+      `SELECT u.id AS user_id, u.display_name, u.email, u.phone, u.avatar_url, m.id AS membership_id
+       FROM memberships m
+       JOIN users u ON u.id = m.user_id
+       WHERE m.organisation_id = $1 AND m.status = 'active' AND u.status = 'active'
+         AND NOT EXISTS (SELECT 1 FROM staff_profiles sp
+                         WHERE sp.user_id = u.id AND sp.organisation_id = m.organisation_id)
+         AND EXISTS (SELECT 1 FROM membership_roles mr JOIN roles r ON r.id = mr.role_id
+                     WHERE mr.membership_id = m.id AND mr.status = 'active'
+                       AND (mr.expires_at IS NULL OR mr.expires_at > now())
+                       AND r.role_key = ANY($2::text[]))
+         AND ($3::text IS NULL OR u.display_name ILIKE $3 OR u.email ILIKE $3)
+       ORDER BY u.display_name, u.email`,
+      [ctx.organisationId, STAFF_ROLE_KEYS, search]
+    );
+    for (const row of rows) {
+      row.roles = await ctx.db.many(
+        `SELECT r.role_key AS role, r.name
+         FROM membership_roles mr JOIN roles r ON r.id = mr.role_id
+         WHERE mr.membership_id = $1 AND mr.status = 'active'
+           AND (mr.expires_at IS NULL OR mr.expires_at > now())
+           AND r.role_key = ANY($2::text[])
+         ORDER BY r.name`, [row.membership_id, STAFF_ROLE_KEYS]
+      );
+    }
+    return rows;
+  }, { permission: 'staff.manage.daycare' });
+
   router.get('/staff', async (ctx) => {
     const { page, pageSize, offset } = parsePagination(ctx.query);
     const term = ctx.query.q ? `%${ctx.query.q}%` : null;
@@ -148,6 +183,9 @@ function register(router) {
       classroomIds: { type: 'array', of: 'uuid', max: 20, optional: true }
     });
     let userId = body.userId || null;
+    if (!userId && !body.email) {
+      fail('VALIDATION', [{ field: 'userId', message: 'Choose an active account, or provide a work email.' }]);
+    }
     if (!userId && body.email) {
       const existing = await ctx.db.one('SELECT id FROM users WHERE email_normalized = $1', [body.email.toLowerCase()]);
       if (!existing) fail('VALIDATION', [{ field: 'email', message: 'Invite the user to the organisation before creating their staff profile.' }]);

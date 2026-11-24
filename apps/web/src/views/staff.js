@@ -13,12 +13,13 @@
       if (ctx.filters.q) query.set('q', ctx.filters.q);
       if (ctx.filters.status) query.set('status', ctx.filters.status);
       if (ctx.filters.branchId) query.set('branchId', ctx.filters.branchId);
-      const [overview, staff, classrooms] = await Promise.all([
+      const [overview, staff, classrooms, eligible] = await Promise.all([
         R.api('GET', '/staff/overview').then((p) => p.data).catch(() => ({})),
         R.api('GET', '/staff?' + query),
-        R.api('GET', '/classrooms').catch(() => ({ data: [] }))
+        R.api('GET', '/classrooms').catch(() => ({ data: [] })),
+        R.api('GET', '/staff/eligible').then((p) => p.data).catch(() => [])
       ]);
-      return { overview, rows: staff.data, meta: staff.meta || {}, classrooms: classrooms.data || [] };
+      return { overview, rows: staff.data, meta: staff.meta || {}, classrooms: classrooms.data || [], eligible: eligible || [] };
     },
 
     render(ctx, params, page) {
@@ -55,11 +56,17 @@
 
     openModal(ctx, name) {
       if (name !== 'staff') return;
+      const eligible = (ctx.page && ctx.page.eligible) || [];
+      const accountField = eligible.length
+        ? { name: 'userId', label: 'Active account', type: 'searchselect', required: true, span: 2,
+            options: R.memberOptions(eligible), placeholder: 'Search invited staff accounts…',
+            help: 'Active accounts with a staff role, invited under Users and access, that do not yet have a profile.' }
+        : { name: 'email', label: 'Work email', type: 'email', required: true,
+            help: 'No eligible accounts yet — invite a colleague under Users and access first.' };
       ctx.openModal({ title: 'Add staff profile', endpoint: '/staff', submitLabel: 'Create profile', size: 'wide',
-        description: 'The person must already be an active member of this organisation. Invite them under Users and access first.',
+        description: 'Choose an active account with a staff role. Its name, email and photo come from the account; invite someone under Users and access first if they are not listed.',
         fields: [
-          { name: 'email', label: 'Work email', type: 'email', required: true, help: 'Must match an active member of this organisation' },
-          { name: 'displayName', label: 'Display name' },
+          accountField,
           { name: 'employeeReference', label: 'Employee reference', required: true, placeholder: 'EMP-011' },
           { name: 'jobTitle', label: 'Job title', required: true },
           { name: 'startDate', label: 'Start date', type: 'date', value: R.today() },

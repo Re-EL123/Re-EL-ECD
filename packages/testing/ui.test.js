@@ -159,3 +159,17 @@ test('QR generation never passes a data-URL centre image to the library', () => 
   assert.match(utils, /draw the centre badge ourselves once the QR is present/);
   assert.match(utils, /context\.drawImage\(badge/);
 });
+
+test('Add staff profile offers a searchable picker of active invited accounts', () => {
+  const view = fs.readFileSync(path.join(webRoot, 'src', 'views', 'staff.js'), 'utf8');
+  const api = fs.readFileSync(path.join(webRoot, '..', 'api', 'src', 'modules', 'staff.js'), 'utf8');
+  assert.match(view, /\/staff\/eligible/);
+  assert.match(view, /name: 'userId', label: 'Active account', type: 'searchselect'/);
+  assert.match(view, /R\.memberOptions\(eligible\)/);
+  assert.match(view, /No eligible accounts yet/);
+  assert.match(api, /router\.get\('\/staff\/eligible'/);
+  assert.match(api, /m\.status = 'active' AND u\.status = 'active'/);
+  assert.match(api, /NOT EXISTS \(SELECT 1 FROM staff_profiles/);
+  assert.match(api, /r\.role_key = ANY\(\$2::text\[\]\)/);
+  assert.match(api, /Choose an active account, or provide a work email/);
+});
