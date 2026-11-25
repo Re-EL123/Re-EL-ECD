@@ -36,6 +36,33 @@ function addDays(dateValue, days) {
   return base.toISOString().slice(0, 10);
 }
 
+// Platform-wide SEO and analytics settings are public by design (they appear
+// in page metadata), but still validated so an admin cannot inject markup.
+function normalisePlatformSeo(value) {
+  const v = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const str = (x, max) => typeof x === 'string' ? x.trim().slice(0, max) : '';
+  const list = (x, max) => Array.isArray(x)
+    ? x.map((item) => str(item, 200)).filter(Boolean).slice(0, max) : [];
+  return {
+    title: str(v.title, 160),
+    description: str(v.description, 500),
+    keywords: list(v.keywords, 20),
+    siteUrl: str(v.siteUrl, 300),
+    image: str(v.image, 1000),
+    twitterHandle: str(v.twitterHandle, 60),
+    sameAs: list(v.sameAs, 10)
+  };
+}
+function normalisePlatformAnalytics(value) {
+  const v = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const measurementId = typeof v.measurementId === 'string' ? v.measurementId.trim().toUpperCase() : '';
+  const verification = typeof v.verification === 'string' ? v.verification.trim().slice(0, 200) : '';
+  return {
+    measurementId: /^G-[A-Z0-9]{6,}$/.test(measurementId) ? measurementId : '',
+    verification: /^[A-Za-z0-9_-]+$/.test(verification) ? verification : ''
+  };
+}
+
 function register(router) {
   router.get('/public/platform', async (ctx) => {
     const organisation = await ctx.db.one(
@@ -62,7 +89,9 @@ function register(router) {
       branding: branding.themeFromOrganisation(organisation || {}),
       plans,
       allowTenantSignup: platformSettings.allowTenantSignup === true,
-      banner: banner && banner.enabled && banner.message ? { message: banner.message, tone: banner.tone || 'info' } : null
+      banner: banner && banner.enabled && banner.message ? { message: banner.message, tone: banner.tone || 'info' } : null,
+      seo: normalisePlatformSeo(platformSettings.seo),
+      analytics: normalisePlatformAnalytics(platformSettings.analytics)
     };
   }, { public: true });
 
@@ -1622,7 +1651,9 @@ function register(router) {
       currency: { type: 'string', min: 3, max: 3, optional: true },
       locale: { type: 'string', max: 10, optional: true },
       settings: { type: 'object', optional: true },
-      banner: { type: 'object', optional: true }
+      banner: { type: 'object', optional: true },
+      seo: { type: 'object', optional: true },
+      analytics: { type: 'object', optional: true }
     });
     if (body.banner !== undefined) {
       const banner = body.banner;
@@ -1640,6 +1671,14 @@ function register(router) {
         tone
       } };
       delete body.banner;
+    }
+    if (body.seo !== undefined) {
+      body.settings = { ...(body.settings || {}), seo: normalisePlatformSeo(body.seo) };
+      delete body.seo;
+    }
+    if (body.analytics !== undefined) {
+      body.settings = { ...(body.settings || {}), analytics: normalisePlatformAnalytics(body.analytics) };
+      delete body.analytics;
     }
     const tokens = body.themeTokens ? branding.normalizeTokens(body.themeTokens) : null;
     if (body.themeTokens && !Object.keys(tokens).length) {

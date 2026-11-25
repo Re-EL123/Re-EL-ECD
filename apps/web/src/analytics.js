@@ -12,7 +12,7 @@
   const R = window.Reel || (window.Reel = {});
   const CONSENT_KEY = 'reel-analytics-consent';
   const config = window;
-  const measurementId = String(config.REEL_GA4_MEASUREMENT_ID || '').trim();
+  let measurementId = String(config.REEL_GA4_MEASUREMENT_ID || '').trim();
 
   function readConsent() {
     try { return window.localStorage.getItem(CONSENT_KEY) || ''; }
@@ -23,15 +23,11 @@
     catch (error) { /* private browsing — remember for this page only */ }
   }
 
-  // Search Console verification is public; let deploy config supply the token.
-  const verification = String(config.REEL_SEARCH_CONSOLE_VERIFICATION || '').trim();
-  if (verification) {
-    const meta = document.getElementById('reel-search-verification') ||
-      document.querySelector('meta[name="google-site-verification"]');
-    if (meta) meta.setAttribute('content', verification);
-  }
+  // Deploy-time config is the fallback; platform settings can override this
+  // at runtime through configure().
+  applyVerification(config.REEL_SEARCH_CONSOLE_VERIFICATION);
 
-  const state = { loaded: false, consent: readConsent() };
+  const state = { loaded: false, consent: readConsent(), runtime: false };
 
   function gtag() { (window.dataLayer = window.dataLayer || []).push(arguments); }
 
@@ -105,9 +101,36 @@
     });
   }
 
+  function applyVerification(token) {
+    const value = String(token || '').trim();
+    if (!value) return;
+    const meta = document.getElementById('reel-search-verification') ||
+      document.querySelector('meta[name="google-site-verification"]');
+    if (meta) meta.setAttribute('content', value);
+  }
+
+  // Called from app boot with platform settings saved by an administrator.
+  // A deploy-time config value is the fallback; runtime settings win.
+  function configure(runtime) {
+    if (!runtime || typeof runtime !== 'object') return;
+    state.runtime = true;
+    const id = String(runtime.measurementId || '').trim().toUpperCase();
+    const changed = id && id !== measurementId;
+    if (id) measurementId = id;
+    applyVerification(runtime.verification);
+    if (measurementId && state.consent === 'granted' && (!state.loaded || changed)) {
+      if (state.loaded) {
+        // Reconfigure the existing stream to the new measurement id.
+        gtag('config', measurementId, { anonymize_ip: true, send_page_view: false });
+      } else loadGA4();
+    }
+    if (measurementId) window.setTimeout(showBanner, 1200);
+  }
+
   R.analytics = {
     pageView,
     setConsent,
+    configure,
     get consent() { return state.consent; },
     get enabled() { return Boolean(measurementId); }
   };

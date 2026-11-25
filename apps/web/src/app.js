@@ -524,6 +524,9 @@
           this.platformBrand = payload.data || null;
           this.platformBanner = (this.platformBrand && this.platformBrand.banner && this.platformBrand.banner.message) ? this.platformBrand.banner : null;
           if (!this.platformBanner) this.bannerDismissed = true;
+          if (this.platformBrand && Reel.analytics && Reel.analytics.configure) {
+            Reel.analytics.configure(this.platformBrand.analytics);
+          }
           // The platform palette belongs to signed-out surfaces and the
           // platform console. Applying it to a signed-in tenant would clobber
           // that centre's own colours (the tenant theme is applied in
@@ -4975,7 +4978,8 @@
             const org = site.organisation || (page && page.organisation) || {};
             const baseSeo = (page && page.seo) || site.seo || null;
             const form = page && page.form;
-            const seo = baseSeo || (form ? {
+            const isPlatformHome = route.view === 'platformHome';
+            let seo = baseSeo || (form ? {
               title: form.name + ' | ' + (org.name || 'Re-EL ECD'),
               description: form.description || '',
               keywords: [org.name, form.name, 'form', 'early childhood development'].filter(Boolean),
@@ -4988,6 +4992,25 @@
               image: org.logoUrl || '',
               organisationName: org.name || 'Re-EL ECD'
             } : null));
+            // Platform administrators can edit the homepage SEO in Settings;
+            // those values override the built-in defaults at runtime.
+            if (isPlatformHome && this.platformBrand && this.platformBrand.seo) {
+              const saved = this.platformBrand.seo;
+              seo = Object.assign({}, seo, {
+                title: saved.title || seo.title,
+                description: saved.description || seo.description,
+                keywords: (saved.keywords && saved.keywords.length ? saved.keywords : seo.keywords),
+                image: saved.image || seo.image,
+                twitterHandle: saved.twitterHandle || seo.twitterHandle,
+                canonical: saved.siteUrl ? String(saved.siteUrl).replace(/\/+$/, '') + '/' : seo.canonical
+              });
+              if (saved.sameAs && saved.sameAs.length && seo.schema) {
+                const schema = JSON.parse(JSON.stringify(seo.schema));
+                const org = (schema['@graph'] || []).find((entry) => entry['@type'] === 'Organization');
+                if (org) org.sameAs = saved.sameAs;
+                seo.schema = schema;
+              }
+            }
             if (seo && !(page && page.missing)) {
               const pagePath = route.view === 'publicApply'
                 ? 'apply'
@@ -5001,7 +5024,6 @@
               const canonicalHost = site.canonicalHost
                 || ((Reel.isPlatformHost && !Reel.isPlatformHost()) ? location.hostname : null);
               const canonicalBase = canonicalHost ? 'https://' + canonicalHost : null;
-              const isPlatformHome = route.view === 'platformHome';
               const canonical = isPlatformHome
                 ? (canonicalBase || (Reel.siteBase ? Reel.siteBase() : 'https://ecd.re-el.co.za')) + '/'
                 : Reel.siteUrl(orgSlug, pagePath, canonicalBase);

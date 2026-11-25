@@ -40,7 +40,7 @@ test('deployment config holds all public SEO/analytics identifiers', () => {
 });
 
 test('GA4 loads only when configured and analytics storage is denied by default', () => {
-  assert.match(analytics, /const measurementId = String\(config\.REEL_GA4_MEASUREMENT_ID \|\| ''\)\.trim\(\)/);
+  assert.match(analytics, /let measurementId = String\(config\.REEL_GA4_MEASUREMENT_ID \|\| ''\)\.trim\(\)/);
   assert.match(analytics, /if \(state\.loaded \|\| !measurementId\) return;/);
   assert.match(analytics, /analytics_storage: state\.consent === 'granted' \? 'granted' : 'denied'/);
   assert.match(analytics, /ad_storage: 'denied'/);
@@ -64,7 +64,7 @@ test('consent can be granted, denied and remembered', () => {
 
 test('Search Console token comes from deployment config', () => {
   assert.match(analytics, /REEL_SEARCH_CONSOLE_VERIFICATION/);
-  assert.match(analytics, /meta\.setAttribute\('content', verification\)/);
+  assert.match(analytics, /applyVerification\(config\.REEL_SEARCH_CONSOLE_VERIFICATION\)/);
 });
 
 test('platform homepage publishes SEO and structured data', () => {
@@ -99,4 +99,18 @@ test('robots and sitemap are served as static files', () => {
 test('public routes without their own SEO still get a canonical and index directive', () => {
   assert.match(app, /route\.area === 'public' \? \{/);
   assert.match(utils, /seoMeta\('robots', opts\.robots \|\| 'index, follow'\)/);
+});
+
+test('platform admins can edit SEO and analytics settings at runtime', () => {
+  const platform = read('apps/web/src/views/platform.js');
+  assert.match(platform, /if \(name === 'platformSeo'\)/);
+  assert.match(platform, /Search & analytics/);
+  assert.match(platform, /name: 'measurementId', label: 'GA4 measurement ID'/);
+  assert.match(platform, /name: 'verification', label: 'Search Console verification token'/);
+  assert.match(platform, /analytics: \{[\s\S]{0,120}measurementId: data\.measurementId/);
+  assert.match(read('apps/api/src/modules/platform.js'), /normalisePlatformAnalytics/);
+  assert.match(read('apps/api/src/modules/platform.js'), /analytics: normalisePlatformAnalytics\(platformSettings\.analytics\)/);
+  assert.match(analytics, /function configure\(runtime\)/);
+  assert.match(app, /Reel\.analytics\.configure\(this\.platformBrand\.analytics\)/);
+  assert.match(app, /if \(isPlatformHome && this\.platformBrand && this\.platformBrand\.seo\)/);
 });

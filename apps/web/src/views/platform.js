@@ -1143,6 +1143,7 @@
       const storage = (page.health && page.health.storage) || {};
       const swatch = (label, value) => '<div style="text-align:center"><span class="swatch" style="display:inline-block;background:' + R.attr(value) + '"></span><div class="muted small mono">' + R.esc(value) + '</div><div class="muted small">' + R.esc(label) + '</div></div>';
       return R.pageHead('Platform configuration', 'The Re-EL ECD brand, the platform organisation profile and global switches.',
+        (canManage ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'platformSeo\')">' + R.icon('search') + ' Search & analytics</button>' : '') +
         (canManage ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'platformBranding\')">' + R.icon('palette') + ' Edit brand colours</button>' : '') +
         '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'editOrg\')">' + R.icon('pencil') + ' Edit profile</button>') +
         R.card('Platform brand',
@@ -1166,6 +1167,18 @@
             ? '<div class="alert alert-info"><i data-lucide="info"></i><span>' + R.esc(((org.settings || {}).banner || {}).message || '') + '</span></div>'
             : '<p class="muted small">Show a short message at the top of every workspace.</p>'),
           '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'platformBanner\')">' + R.icon('megaphone') + ' ' + (((org.settings || {}).banner || {}).enabled ? 'Edit banner' : 'Enable banner') + '</button>') : '') +
+        (canManage ? (() => {
+          const settings = (org.settings || {});
+          const seo = settings.seo || {}, analytics = settings.analytics || {};
+          return R.card('Search and analytics',
+            '<div class="kpi-list">' +
+            '<div class="kpi-row"><span class="kpi-label">Homepage title</span><span class="kpi-value">' + R.esc(seo.title || 'Platform default') + '</span></div>' +
+            '<div class="kpi-row"><span class="kpi-label">Site URL</span><span class="kpi-value mono small">' + R.esc(seo.siteUrl || 'https://ecd.re-el.co.za') + '</span></div>' +
+            '<div class="kpi-row"><span class="kpi-label">Google Analytics</span><span class="kpi-value">' + (analytics.measurementId ? R.badge(analytics.measurementId) : R.badge('not connected')) + '</span></div>' +
+            '<div class="kpi-row"><span class="kpi-label">Search Console</span><span class="kpi-value">' + R.badge(analytics.verification ? 'verified' : 'not verified') + '</span></div>' +
+            '</div><p class="muted small" style="margin-top:10px">These values appear in the platform homepage metadata and are read by the browser at runtime — no deploy or code change needed.</p>',
+            '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'platformSeo\')">' + R.icon('settings-2') + ' Edit SEO & analytics</button>');
+        })() : '') +
         (canManage ? R.card('Manuals and legal documents',
           '<p class="muted small">Role manuals with SOPs and every legal document. Edit any document, including legal ones — downloads update everywhere instantly.</p>' +
           R.table({ rows: page.documents || [], compact: true, columns: [
@@ -1252,6 +1265,45 @@
           })
         });
       }).catch((error) => ctx.toast(error.message || 'Could not load the document.', 'error'));
+      return;
+    }
+    if (name === 'platformSeo') {
+      const settings = ((ctx.page && ctx.page.org) || {}).settings || {};
+      const seo = settings.seo || {}, analytics = settings.analytics || {};
+      ctx.openModal({
+        title: 'Search and analytics',
+        description: 'Control how Re-EL ECD appears in search results and social shares, and connect Google Analytics. Analytics stays off until you enter a measurement ID and a visitor accepts the optional banner.',
+        endpoint: '/platform/settings', method: 'PATCH', submitLabel: 'Save settings',
+        successMessage: 'Search and analytics settings saved', size: 'wide',
+        fields: [
+          { name: 'title', label: 'Homepage title', required: true, span: 2, value: seo.title || 'Re-EL ECD | Run your ECD centre with calm, clarity and care', help: 'Shown as the browser tab title and the main search result heading.' },
+          { name: 'description', label: 'Meta description', type: 'textarea', span: 2, value: seo.description || '', placeholder: 'A clear one-or-two sentence summary for search results.' },
+          { name: 'keywords', label: 'Keywords', span: 2, value: (seo.keywords || []).join(', '), help: 'Comma separated. Lower priority than the title and description.' },
+          { name: 'siteUrl', label: 'Public site URL', value: seo.siteUrl || 'https://ecd.re-el.co.za', help: 'Used as the canonical homepage address.' },
+          { name: 'image', label: 'Social share image URL', value: seo.image || '', placeholder: 'https://…/share-image.png' },
+          { name: 'twitterHandle', label: 'Twitter / X handle', value: seo.twitterHandle || '', placeholder: '@reel_ecd' },
+          { name: 'sameAs', label: 'Social profiles', type: 'textarea', span: 2, value: (seo.sameAs || []).join('\n'), help: 'One full URL per line, used in structured data.' },
+          { name: 'measurementId', label: 'GA4 measurement ID', value: analytics.measurementId || '', placeholder: 'G-XXXXXXXXXX', help: 'Find this in Google Analytics → Admin → Data streams.' },
+          { name: 'verification', label: 'Search Console verification token', value: analytics.verification || '', help: 'The content value from the Google site verification meta tag.' }
+        ],
+        transform(data) {
+          return {
+            seo: {
+              title: data.title,
+              description: data.description || '',
+              keywords: String(data.keywords || '').split(',').map((k) => k.trim()).filter(Boolean),
+              siteUrl: data.siteUrl || '',
+              image: data.image || '',
+              twitterHandle: String(data.twitterHandle || '').replace(/^@/, ''),
+              sameAs: String(data.sameAs || '').split('\n').map((s) => s.trim()).filter(Boolean)
+            },
+            analytics: {
+              measurementId: data.measurementId || '',
+              verification: data.verification || ''
+            }
+          };
+        }
+      });
       return;
     }
     if (name === 'platformBanner') {
