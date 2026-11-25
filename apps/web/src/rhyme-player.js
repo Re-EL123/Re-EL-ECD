@@ -15,12 +15,15 @@
 
   const audio = new Audio();
   audio.preload = 'metadata';
+  try { audio.setAttribute('playsinline', ''); } catch (error) { /* older browsers */ }
+  const coarse = () => typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
   const savedVolume = R.rhymeMeta && R.rhymeMeta.volume();
   audio.volume = Number.isFinite(savedVolume) && savedVolume >= 0 && savedVolume <= 1 ? savedVolume : 0.8;
 
   let state = {
     id: null, title: '', url: '', playing: false, duration: 0, time: 0,
-    failed: false, loop: false, queue: [], queueIndex: -1
+    failed: false, needsGesture: false, continueAction: null,
+    loop: false, queue: [], queueIndex: -1
   };
   const listeners = new Set();
   let bar = null;
@@ -62,6 +65,8 @@
     state.url = url;
     state.title = title || titleFor(id);
     state.failed = false;
+    state.needsGesture = false;
+    state.continueAction = null;
     state.time = 0;
     state.duration = 0;
     audio.src = url;
@@ -71,8 +76,21 @@
   function play(id, url, title) {
     if (!id || !url) return Promise.resolve();
     if (state.id !== id || state.failed) load(id, url, title);
+    state.needsGesture = false;
+    state.continueAction = null;
     const result = audio.play();
-    return result && typeof result.catch === 'function' ? result.catch(() => { state.failed = true; emit(); }) : Promise.resolve();
+    if (!result || typeof result.catch !== 'function') return Promise.resolve();
+    return result.catch(() => {
+      // A real load failure is reported by the `error` event; don't replace it
+      // with a Continue prompt that could only fail again.
+      if (state.failed) return;
+      // Mobile browsers reject play() when it isn't launched by a user
+      // gesture. Surface a tappable control instead of failing silently.
+      state.needsGesture = coarse();
+      state.failed = !coarse();
+      state.continueAction = 'resume';
+      emit();
+    });
   }
 
   function toggle(id, url, title) {
@@ -94,7 +112,21 @@
     state.time = 0;
     state.duration = 0;
     state.failed = false;
+    state.needsGesture = false;
+    state.continueAction = null;
     emit();
+  }
+
+  // Mobile browsers block playback started after an `ended` event or a
+  // rejected play() because neither carries a user gesture. Resume the queued
+  // action from an explicit tap on Continue (or the bar's play button).
+  function continuePlayback() {
+    if (!state.id || !state.url) return Promise.resolve();
+    const action = state.continueAction || 'resume';
+    state.continueAction = null;
+    state.needsGesture = false;
+    if (action === 'next') return next();
+    return play(state.id, state.url, state.title);
   }
 
   function seek(ratio) {
@@ -166,13 +198,21 @@
   audio.addEventListener('pause', () => { state.playing = false; emit(); });
   audio.addEventListener('ended', () => {
     state.playing = false;
-    if (state.queue.length && !state.loop) next();
-    else emit();
+    if (!state.queue.length || state.loop) { emit(); return; }
+    // Advancing from `ended` has no user gesture, which mobile browsers block.
+    // Ask for an explicit tap instead so the next song reliably starts.
+    if (coarse()) {
+      state.needsGesture = true;
+      state.continueAction = 'next';
+      emit();
+    } else next();
   });
   audio.addEventListener('error', () => {
     if (!audio.src) return;
     state.failed = true;
     state.playing = false;
+    state.needsGesture = false;
+    state.continueAction = null;
     emit();
   });
 
@@ -234,6 +274,7 @@
       '<button type="button" class="np-icon" data-np="loop" aria-label="Loop this song" aria-pressed="false">' + R.icon('repeat') + '</button>' +
       '<label class="np-volume" title="Volume">' + R.icon('volume-2') + '<input type="range" min="0" max="1" step="0.05" aria-label="Volume"></label>' +
       '<button type="button" class="np-icon" data-np="queue" aria-label="Session queue">' + R.icon('list-music') + '<span class="np-count"></span></button>' +
+      '<button type="button" class="np-continue" data-np="continue" hidden>' + R.icon('play') + ' Continue</button>' +
       '<button type="button" class="np-icon" data-np="read" aria-label="Open lyrics reader">' + R.icon('book-open') + '</button>' +
       '<button type="button" class="np-icon np-close" data-np="stop" aria-label="Stop all and close">' + R.icon('x') + '</button>';
     document.body.appendChild(bar);
@@ -241,7 +282,13 @@
       const control = event.target.closest && event.target.closest('[data-np]');
       if (!control) return;
       switch (control.getAttribute('data-np')) {
-        case 'toggle': if (state.id) toggle(state.id, state.url, state.title); break;
+        case 'toggle':
+          if (state.id) {
+            if (state.needsGesture && state.continueAction) continuePlayback();
+            else toggle(state.id, state.url, state.title);
+          }
+          break;
+        case 'continue': continuePlayback(); break;
         case 'prev': previous(); break;
         case 'next': next(); break;
         case 'loop': toggleLoop(); break;
@@ -274,6 +321,8 @@
       return;
     }
     bar.querySelector('.np-title').textContent = state.title;
+    const cont = bar.querySelector('.np-continue');
+    cont.hidden = !state.needsGesture;
     setIcon(bar.querySelector('.np-play-icon'), state.playing ? 'pause' : 'play');
     const seek = bar.querySelector('.np-seek');
     if (document.activeElement !== seek) {
@@ -443,7 +492,7 @@
 
   R.rhymePlayer = {
     init, subscribe, getState, play, toggle, pause, stop, seek, setVolume, toggleLoop, retry,
-    enqueue, removeFromQueue, clearQueue, jumpQueue, next, previous,
+    enqueue, removeFromQueue, clearQueue, jumpQueue, next, previous, continuePlayback,
     openReader, closeReader, toggleQueuePanel,
     get volume() { return audio.volume; }
   };

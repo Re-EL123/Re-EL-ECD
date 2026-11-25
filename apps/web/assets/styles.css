@@ -3161,6 +3161,18 @@ a:focus-visible, input:focus-visible, select:focus-visible {
 .np-count:empty { display: none; }
 .np-close { margin-left: auto; }
 
+/* Explicit resume prompt: mobile browsers block play() without a user gesture. */
+.np-continue {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 36px; padding: 0 12px; border: 0; border-radius: 10px;
+  background: var(--reel-green-700); color: #fff; font-weight: 650; font-size: .8rem;
+  cursor: pointer; white-space: nowrap;
+}
+.np-continue:hover { background: var(--reel-green-900); }
+.np-continue:active { transform: scale(.96); }
+.np-continue svg { width: 16px; height: 16px; }
+.np-continue[hidden] { display: none !important; }
+
 .rhyme-queue-panel {
   position: fixed; z-index: 186; right: 14px; bottom: 82px; width: min(360px, calc(100vw - 28px));
   max-height: 50vh; overflow: auto; padding: 12px; border-radius: 16px;
@@ -3223,11 +3235,43 @@ a:focus-visible, input:focus-visible, select:focus-visible {
 @media (max-width: 680px) {
   .rhyme-card .btn, .rhyme-no-audio .btn, .rhyme-manage .btn, .reader-tools .btn { min-height: 44px; }
   .rhyme-filter-label { flex-basis: 100%; }
-  .np-volume { display: none; }
-  .np-meta { max-width: 110px; }
-  .rhyme-now-playing { gap: 6px; padding: 8px; bottom: 8px; }
+
+  /* The transport becomes a compact three-row grid so every control keeps a
+     comfortable thumb target and the bar never overflows a phone viewport. */
+  .rhyme-now-playing {
+    left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    width: auto; transform: none; display: grid; gap: 6px 4px; padding: 10px;
+    grid-template-columns: auto auto auto minmax(0, 1fr) auto auto auto;
+    grid-template-areas:
+      "prev play next meta queue read close"
+      "seek seek seek seek seek seek seek"
+      "time time loop cont cont cont cont";
+  }
+  @keyframes npUp { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+  .rhyme-now-playing [data-np="prev"] { grid-area: prev; }
+  .rhyme-now-playing [data-np="toggle"] { grid-area: play; }
+  .rhyme-now-playing [data-np="next"] { grid-area: next; }
+  .rhyme-now-playing .np-meta { grid-area: meta; min-width: 0; max-width: none; }
+  .rhyme-now-playing [data-np="queue"] { grid-area: queue; }
+  .rhyme-now-playing [data-np="read"] { grid-area: read; }
+  .rhyme-now-playing .np-close { grid-area: close; margin-left: 0; }
+  .rhyme-now-playing .np-seek { grid-area: seek; width: 100%; min-width: 0; }
+  .rhyme-now-playing .np-time { grid-area: time; }
+  .rhyme-now-playing [data-np="loop"] { grid-area: loop; }
+  .rhyme-now-playing [data-np="continue"] { grid-area: cont; width: 100%; min-height: 40px; }
+  .rhyme-now-playing .np-volume { display: none; }
+
+  .np-icon { width: 34px; height: 34px; }
+  .np-play { width: 40px; height: 40px; }
+  .np-meta { min-width: 0; }
+  .np-title { font-size: .8rem; }
+  .np-sub { display: none; }
+
+  .rhyme-queue-panel { right: 8px; left: 8px; bottom: 132px; width: auto; max-height: 46vh; }
   .reader-line { font-size: calc(1.35rem * var(--reader-scale)); }
   .reader-head h2 { font-size: 1.2rem; }
+  .reader-head, .reader-tools { padding-left: 14px; padding-right: 14px; }
+  .reader-body { padding: 18px 16px 32px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .rhyme-now-playing, .rhyme-reader { animation: none; }

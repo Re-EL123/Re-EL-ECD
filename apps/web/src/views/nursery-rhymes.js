@@ -42,8 +42,18 @@
           // separately hosted GitHub Pages frontend too.
           const origin = R.apiBase ? R.apiBase() : '';
           Object.keys(audio).forEach((id) => {
-            const url = String(audio[id] || '');
-            if (url.startsWith('/')) audio[id] = origin + (url.startsWith('/api/') ? url : '/api/v1' + url);
+            let url = String(audio[id] || '');
+            if (url.startsWith('/')) url = origin + (url.startsWith('/api/') ? url : '/api/v1' + url);
+            // Stream through the cookie-free public endpoint so mobile Safari
+            // and in-app browsers can play without third-party cookies. The
+            // captured value is the already-encoded query parameter, so decode
+            // once before re-encoding to avoid a double-encoded `key`.
+            const match = /\/api\/v1\/media\/object\?key=([^&]+)/.exec(url);
+            if (match) {
+              const rawKey = decodeURIComponent(match[1]);
+              url = origin + '/api/v1/public/rhyme-audio?key=' + encodeURIComponent(rawKey);
+            }
+            audio[id] = url;
           });
         } catch { /* teachers still get the lyrics without org settings access */ }
       }

@@ -124,6 +124,25 @@ function register(router) {
     };
   }, { permission: 'media.upload.daycare' });
 
+  // Public, cookie-free stream for shared nursery-rhyme recordings. The key is
+  // an unguessable R2 object key and the asset must be a ready audio file in
+  // the nursery-rhyme scope. Redirect to a short-lived signed R2 URL so mobile
+  // browsers never depend on third-party cookies for playback.
+  router.get('/public/rhyme-audio', async (ctx) => {
+    const key = String(ctx.query.key || '');
+    if (!key) throw new AppError('NOT_FOUND');
+    const asset = await ctx.db.one(
+      "SELECT id, storage_key, status, scope FROM media_assets WHERE storage_key = $1", [key]
+    ).catch(() => null);
+    if (!asset || asset.status !== 'ready' || asset.scope !== 'nursery-rhyme') throw new AppError('NOT_FOUND');
+    const signed = storage.presignGet(asset.storage_key, { expires: 900 });
+    ctx.rawResponse = true;
+    ctx.res.statusCode = 302;
+    ctx.res.setHeader('Location', signed.url);
+    ctx.res.setHeader('Cache-Control', 'public, max-age=300');
+    ctx.res.end();
+  }, { public: true });
+
   // Authenticated media proxy: membership of the owning organisation is the
   // authorisation. Redirects to a short-lived signed URL; the bucket itself
   // can stay private. Keys are tenant-scoped `org/<id>/...`, except shared

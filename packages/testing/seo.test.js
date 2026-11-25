@@ -174,3 +174,30 @@ test('platform console flags over-limit tenants separately', () => {
   assert.match(platform, /badge-danger\">Over limit/);
   assert.match(platform, /Over limit', value: R\.number\(overLimit\.length\)/);
 });
+
+test('rhyme audio uses a public cookie-free stream on mobile', () => {
+  const media = read('apps/api/src/modules/media.js');
+  const rhymes = read('apps/web/src/views/nursery-rhymes.js');
+  const player = read('apps/web/src/rhyme-player.js');
+  const css = read('apps/web/assets/styles.css');
+
+  assert.match(media, /router\.get\('\/public\/rhyme-audio'/);
+  assert.match(media, /\{ public: true \}/);
+  assert.match(media, /asset\.scope !== 'nursery-rhyme'/);
+  assert.match(media, /asset\.status !== 'ready'/);
+  assert.match(media, /presignGet\(asset\.storage_key, \{ expires: 900 \}\)/);
+
+  assert.match(rhymes, /\/api\/v1\/public\/rhyme-audio\?key=/);
+  assert.match(rhymes, /decodeURIComponent\(match\[1\]\)/);
+
+  assert.match(player, /setAttribute\('playsinline', ''\)/);
+  assert.match(player, /pointer: coarse/);
+  assert.match(player, /continueAction: null/);
+  assert.match(player, /state\.continueAction = 'next'/);
+  assert.match(player, /case 'continue': continuePlayback\(\); break;/);
+  assert.match(player, /data-np="continue"/);
+
+  assert.match(css, /\.np-continue\[hidden\] \{ display: none !important; \}/);
+  assert.match(css, /grid-template-areas:\s*"prev play next meta queue read close"/);
+  assert.match(css, /env\(safe-area-inset-bottom, 0px\)/);
+});
