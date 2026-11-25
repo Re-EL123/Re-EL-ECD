@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /healthz
+
+# Re-EL ECD is a hash-routed app: crawlers see only "/" at the server.
+# Public vs private routes are controlled with <meta name="robots">, which is
+# set to noindex for app, parent, platform and login areas.
+
+Sitemap: https://ecd.re-el.co.za/sitemap.xml

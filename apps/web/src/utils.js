@@ -1223,7 +1223,7 @@
       icon.setAttribute('href', logo);
     }
 
-    const structured = {
+    const structured = meta.schema || {
       '@context': 'https://schema.org',
       '@type': 'ChildCare',
       name: siteName,
@@ -1243,6 +1243,12 @@
       document.head.appendChild(script);
     }
     script.textContent = JSON.stringify(structured);
+  }
+
+  /** Set only the robots directive (used to keep private areas unindexed). */
+  function setRobots(value) {
+    if (typeof document === 'undefined') return;
+    seoMeta('robots', value || 'index, follow');
   }
 
   /** Put the product shell's metadata back after leaving a tenant site. */
@@ -1449,8 +1455,10 @@
   }
 
   Reel.applySeo = applySeo;
+  Reel.setRobots = setRobots;
   Reel.resetSeo = resetSeo;
   Reel.siteUrl = siteUrl;
+  Reel.siteBase = function () { return String(window.REEL_SITE_BASE || 'https://ecd.re-el.co.za').replace(/\/+$/, ''); };
   Reel.isPlatformHost = isPlatformHost;
   Reel.mountQr = mountQrFromElement;
   Reel.downloadQr = downloadQr;

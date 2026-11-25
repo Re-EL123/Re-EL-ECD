@@ -4084,3 +4084,22 @@ body.book-reading { overflow: hidden; }
   .card-head .card-actions .btn { flex: 1 1 auto; }
   .suggest-row { padding: 10px; }
 }
+
+/* ---- Optional analytics consent ------------------------------------------ */
+.analytics-banner {
+  position: fixed; z-index: 450; left: 16px; bottom: 16px; max-width: 520px;
+  display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+  padding: 14px 16px; border-radius: 14px;
+  background: var(--surface-glass-strong); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border-subtle); box-shadow: var(--shadow-lg);
+  animation: fade-in .25s ease;
+}
+.analytics-banner-copy { display: flex; flex-direction: column; gap: 3px; flex: 1 1 260px; }
+.analytics-banner-copy strong { font-size: .86rem; }
+.analytics-banner-copy span { font-size: .74rem; line-height: 1.45; color: var(--text-muted); }
+.analytics-banner-actions { display: flex; gap: 6px; align-items: center; }
+@media (max-width: 560px) {
+  .analytics-banner { left: 10px; right: 10px; bottom: 10px; padding: 12px; }
+  .analytics-banner-actions { width: 100%; }
+  .analytics-banner-actions .btn { flex: 1 1 auto; }
+}

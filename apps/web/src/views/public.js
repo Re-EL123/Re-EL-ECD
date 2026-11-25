@@ -1126,7 +1126,36 @@
         ctx.signupEnabled = ctx.signupEnabled || false;
         ctx.platformPlans = ctx.platformPlans || [];
       }
-      return {};
+      const site = String(window.REEL_SITE_BASE || 'https://ecd.re-el.co.za').replace(/\/+$/, '');
+      const image = site + '/assets/branding/logo-re-el-ecd.png';
+      return {
+        seo: {
+          title: 'Re-EL ECD | Run your ECD centre with calm, clarity and care',
+          description: 'Re-EL ECD brings attendance and safe gate collection, teaching and curriculum, family communication, admissions and daily operations into one simple workspace for South African early childhood development centres.',
+          keywords: ['early childhood development', 'ECD software', 'daycare management', 'preschool software', 'South Africa', 'learner attendance', 'parent communication'],
+          image,
+          organisationName: 'Re-EL ECD',
+          canonical: site + '/',
+          schema: {
+            '@context': 'https://schema.org',
+            '@graph': [
+              {
+                '@type': 'Organization', name: 'Re-EL ECD', url: site + '/', logo: image,
+                description: 'An early childhood development management platform for South African daycare centres.',
+                sameAs: ['https://www.facebook.com/reel.ecd', 'https://www.linkedin.com/company/re-el-ecd/']
+              },
+              {
+                '@type': 'WebSite', name: 'Re-EL ECD', url: site + '/',
+                publisher: { '@type': 'Organization', name: 'Re-EL ECD' }, inLanguage: 'en-ZA'
+              },
+              {
+                '@type': 'SoftwareApplication', name: 'Re-EL ECD', applicationCategory: 'BusinessApplication',
+                operatingSystem: 'Web', url: site + '/', offers: { '@type': 'Offer', price: '0', priceCurrency: 'ZAR' }
+              }
+            ]
+          }
+        }
+      };
     },
     render(ctx) {
       const canSignup = ctx.signupEnabled === true;

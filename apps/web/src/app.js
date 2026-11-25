@@ -447,6 +447,7 @@
           history.replaceState(null, '', '#' + (this.session ? this.defaultRoute() : '/'));
         }
         await this.navigate();
+        if (window.Reel && Reel.analytics) Reel.analytics.pageView();
       },
 
       installIconObserver() {
@@ -905,6 +906,7 @@
       renderHtml(html) {
         const root = document.getElementById('view-root');
         if (!root) return;
+        if (Reel.setRobots && this.route && this.route.area !== 'public') Reel.setRobots('noindex, nofollow');
         if (window.Alpine && window.Alpine.destroyTree) window.Alpine.destroyTree(root);
         root.innerHTML = html;
         if (window.Alpine && window.Alpine.initTree) window.Alpine.initTree(root);
@@ -945,7 +947,7 @@
             title: 'Page not found | Re-EL ECD',
             description: 'The page you followed could not be found.',
             canonical: location.origin + '/'
-          }, null);
+          }, { robots: 'noindex, nofollow' });
         }
       },
 
@@ -4979,7 +4981,13 @@
               keywords: [org.name, form.name, 'form', 'early childhood development'].filter(Boolean),
               image: org.logoUrl || '',
               organisationName: org.name || 'Re-EL ECD'
-            } : null);
+            } : (route.area === 'public' ? {
+              title: (route.label || 'Re-EL ECD') + ' | Re-EL ECD',
+              description: 'Re-EL ECD — a calm, complete workspace for early childhood development centres, families and teams.',
+              keywords: ['early childhood development', 'ECD', 'daycare', 'South Africa'],
+              image: org.logoUrl || '',
+              organisationName: org.name || 'Re-EL ECD'
+            } : null));
             if (seo && !(page && page.missing)) {
               const pagePath = route.view === 'publicApply'
                 ? 'apply'
@@ -4993,9 +5001,11 @@
               const canonicalHost = site.canonicalHost
                 || ((Reel.isPlatformHost && !Reel.isPlatformHost()) ? location.hostname : null);
               const canonicalBase = canonicalHost ? 'https://' + canonicalHost : null;
-              Reel.applySeo(Object.assign({}, seo, {
-                canonical: Reel.siteUrl(orgSlug, pagePath, canonicalBase)
-              }), { logo: org.logoUrl || '' });
+              const isPlatformHome = route.view === 'platformHome';
+              const canonical = isPlatformHome
+                ? (canonicalBase || (Reel.siteBase ? Reel.siteBase() : 'https://ecd.re-el.co.za')) + '/'
+                : Reel.siteUrl(orgSlug, pagePath, canonicalBase);
+              Reel.applySeo(Object.assign({}, seo, { canonical }), { logo: org.logoUrl || '' });
             }
           }
           if (window.Alpine && window.Alpine.initTree) window.Alpine.initTree(root);
