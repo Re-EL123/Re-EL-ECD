@@ -3263,6 +3263,9 @@ a:focus-visible, input:focus-visible, select:focus-visible {
 
   .np-icon { width: 34px; height: 34px; }
   .np-play { width: 40px; height: 40px; }
+  /* Extend the tap area to ~44px without growing the visual controls. */
+  .np-icon, .np-play { position: relative; }
+  .np-icon::after, .np-play::after { content: ''; position: absolute; inset: -5px; }
   .np-meta { min-width: 0; }
   .np-title { font-size: .8rem; }
   .np-sub { display: none; }
