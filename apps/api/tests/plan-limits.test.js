@@ -66,3 +66,18 @@ test('tenant usage, grace window and hard enforcement', async () => {
   const restored = await principal.get('/billing/summary');
   assert.equal(restored.data.planUsage.learners.state, 'ok');
 });
+
+test('storage usage counts ready media bytes for the organisation', async () => {
+  const admin = createClient();
+  await admin.login('platform@re-el-ecd.local');
+  const principal = createClient();
+  const session = await principal.login('principal@littlesprouts.local');
+  const key = 'test-storage-' + Date.now();
+  await db.query(
+    `INSERT INTO media_assets (organisation_id, original_filename, storage_key, url, mime_type, size_bytes, kind, status)
+     VALUES ($1,'test.png',$2,$3,'image/png',123456,'image','ready')`,
+    [session.activeOrganisationId, key, '/api/v1/media/object?key=' + encodeURIComponent(key)]
+  );
+  const summary = await principal.get('/billing/summary');
+  assert.ok(Number(summary.data.planUsage.storage.used) >= 123456);
+});

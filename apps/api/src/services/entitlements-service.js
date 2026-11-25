@@ -34,14 +34,14 @@ async function usage(db, organisationId, extra) {
        (SELECT COUNT(*)::int FROM learners WHERE organisation_id = $1) AS learners,
        (SELECT COUNT(*)::int FROM staff_profiles WHERE organisation_id = $1) AS staff,
        (SELECT COALESCE(SUM(size_bytes), 0)::bigint FROM media_assets
-         WHERE organisation_id = $1 AND status = 'ready') AS storageBytes`,
+         WHERE organisation_id = $1 AND status = 'ready') AS storage_bytes`,
     [organisationId]
   );
   const additional = extra || {};
   const values = {
     learners: Number(counts.learners || 0) + Number(additional.learners || 0),
     staff: Number(counts.staff || 0) + Number(additional.staff || 0),
-    storage: Number(counts.storageBytes || 0) + Number(additional.storageBytes || 0)
+    storage: Number(counts.storage_bytes || 0) + Number(additional.storageBytes || 0)
   };
   const limits = {
     learners: Number(plan.max_learners || 0),
