@@ -4046,12 +4046,13 @@
               ownerId: field.ownerId || undefined,
               shared: ['nursery-rhyme', 'book'].includes(field.scope) ? true : undefined
             });
+            const stored = field.absolute && Reel.resolveMediaUrl ? Reel.resolveMediaUrl(asset.url) : asset.url;
             if (field.multiple) {
               const list = Array.isArray(this.modal.data[field.name]) ? this.modal.data[field.name] : [];
-              list.push(asset.url);
+              list.push(stored);
               this.modal.data[field.name] = list;
             } else {
-              this.modal.data[field.name] = asset.url;
+              this.modal.data[field.name] = stored;
             }
             if (field.mediaTypeField && this.modal.data[field.mediaTypeField] !== undefined) {
               const kind = Reel.kindForUrl(asset.url, 'image');

@@ -1280,7 +1280,7 @@
           { name: 'description', label: 'Meta description', type: 'textarea', span: 2, value: seo.description || '', placeholder: 'A clear one-or-two sentence summary for search results.' },
           { name: 'keywords', label: 'Keywords', span: 2, value: (seo.keywords || []).join(', '), help: 'Comma separated. Lower priority than the title and description.' },
           { name: 'siteUrl', label: 'Public site URL', value: seo.siteUrl || 'https://ecd.re-el.co.za', help: 'Used as the canonical homepage address.' },
-          { name: 'image', label: 'Social share image', type: 'media', accept: 'image/jpeg,image/png,image/webp', scope: 'branding',
+          { name: 'image', label: 'Social share image', type: 'media', accept: 'image/jpeg,image/png,image/webp', scope: 'branding', absolute: true,
             value: seo.image || '', placeholder: 'Upload an image, or paste a link',
             help: 'Recommended 1200 × 630 px. Uploaded images are stored on the platform media account.' },
           { name: 'twitterHandle', label: 'Twitter / X handle', value: seo.twitterHandle || '', placeholder: '@reel_ecd' },

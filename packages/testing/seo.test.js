@@ -132,3 +132,10 @@ test('uploaded media previews resolve against the API origin', () => {
   assert.match(app, /Reel\.resolveMediaUrl \? Reel\.resolveMediaUrl\(url\) : url/);
   assert.match(utils, /key=\[\^&\]\*\\\\\.\(/);
 });
+
+test('social image uploads store an absolute URL and need no pasted link', () => {
+  const platform = read('apps/web/src/views/platform.js');
+  const app = read('apps/web/src/app.js');
+  assert.match(platform, /scope: 'branding', absolute: true/);
+  assert.match(app, /const stored = field\.absolute && Reel\.resolveMediaUrl \? Reel\.resolveMediaUrl\(asset\.url\) : asset\.url/);
+});
