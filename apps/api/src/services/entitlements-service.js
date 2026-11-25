@@ -18,8 +18,23 @@ const LABEL = { learners: 'Learners', staff: 'Staff members', storage: 'Storage'
 function bytesToGb(bytes) {
   return Math.round(Number(bytes || 0) / (1024 * 1024 * 1024) * 10) / 10;
 }
+/**
+ * Storage labels pick the unit that actually carries information. Rounding
+ * everything to one decimal of a gigabyte made a centre with 49 MB of photos
+ * look like it had "0 GB" — indistinguishable from an empty account.
+ */
 function gbLabel(bytes) {
-  return (bytesToGb(bytes) || 0) + ' GB';
+  const value = Math.max(0, Number(bytes) || 0);
+  const gb = 1024 * 1024 * 1024;
+  const mb = 1024 * 1024;
+  // Zero stays in GB so an empty account reads "0 GB / 1 GB". Once there is
+  // data, switch to MB below a tenth of a gigabyte so it never rounds to zero,
+  // and keep both sides of the label in GB from there up.
+  if (value === 0) return '0 GB';
+  if (value >= gb / 10) return (Math.round(value / gb * 10) / 10) + ' GB';
+  if (value >= mb) return (Math.round(value / mb * 10) / 10) + ' MB';
+  if (value >= 1024) return Math.round(value / 1024) + ' KB';
+  return value + ' B';
 }
 function describe(kind, used, limit) {
   if (kind === KIND.storage) return gbLabel(used) + ' / ' + (limit > 0 ? gbLabel(limit) : 'Unlimited');

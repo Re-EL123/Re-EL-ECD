@@ -441,7 +441,7 @@ window.Reel.renderGateQr = function (targetId) {
         '<div class="plan-usage">' + usageRows + '</div>' +
         (overOrGrace
           ? '<div class="alert alert-warning" style="margin-top:12px"><i data-lucide="alert-triangle"></i><span>You have reached a plan limit. New learners, staff or uploads may be blocked once the 7-day grace period ends. Upgrade to keep everything running.</span></div>'
-          : '<p class="muted small" style="margin-top:10px">Limits apply to new learners, staff and uploads. Existing records stay available.</p>') +
+          : '<p class="muted small" style="margin-top:10px">Limits apply to new learners, staff and uploads. Storage counts files uploaded by this centre — shared books and nursery-rhyme recordings don’t use your allowance. Existing records stay available.</p>') +
         (upgradePlans.length && canManage && platformPayfast
           ? '<div class="section"></div><div class="wb-field-label">Upgrade your plan</div><div class="plan-upgrade-list">' +
             upgradePlans.map((p) => '<button type="button" class="plan-upgrade-card" @click="upgradePlan(\'' + R.attr(p.plan_key) + '\',\'' + R.attr((subscription && subscription.billingPeriod) || 'monthly') + '\')">' +
