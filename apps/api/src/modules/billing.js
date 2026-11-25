@@ -25,9 +25,11 @@ const {
   ensureInvoice,
   todayDate,
   invoiceAmountFor,
-  runSubscriptionSweep
+  runSubscriptionSweep,
+  applyUpgrade
 } = require('../services/subscription-billing-service');
 const { maskedAccount, savePaymentAccount } = require('../services/payment-accounts-service');
+const entitlements = require('../services/entitlements-service');
 const {
   SETUP_FEE_BASE_AMOUNT,
   SETUP_FEE_INCLUDES,
@@ -96,6 +98,13 @@ function register(router) {
       ? payfastFees.estimate(baseAmount, process.env.PAYFAST_RECOVERY_PROFILE || 'standard_card')
       : null;
 
+    const planUsage = await entitlements.status(ctx.db, ctx.organisationId);
+    const currentPrice = Number((subscription && subscription.monthly_price) || 0);
+    const upgradePlans = await ctx.db.many(
+      `SELECT plan_key, name, monthly_price, currency, max_learners, max_staff, max_storage_bytes
+       FROM subscription_plans WHERE status = 'active' AND monthly_price > $1
+       ORDER BY monthly_price LIMIT 12`, [currentPrice]
+    ).catch(() => []);
     const setupFeeRow = await ensureSetupFee(ctx.db, organisation);
     const setupBaseAmount = setupFeeRow ? Number(setupFeeRow.amount) : 0;
     const setupPayfastRecovery = (setupFeeRow && setupFeeRow.status === 'issued' && setupBaseAmount > 0)
@@ -150,6 +159,8 @@ function register(router) {
           recovered: payfast.isConfigured() && recoverFees
         } : null
       }) : null,
+      planUsage,
+      upgradePlans,
       paymentAccount: maskedAccount(account),
       collections: {
         collectedGross: money(collections.collected_gross),
@@ -270,6 +281,68 @@ function register(router) {
     };
   }, { permission: MANAGE, allowSuspended: true });
 
+
+  // Tenant-initiated upgrade: pay first, apply the new plan on PayFast ITN.
+  router.post('/billing/subscription/upgrade', async (ctx) => {
+    if (!payfast.isConfigured()) {
+      fail('CONFLICT', null, 'Online payments are not configured. Contact support to upgrade your plan.');
+    }
+    const body = validate(ctx.body || {}, {
+      planKey: { type: 'string', min: 2, max: 60 },
+      billingPeriod: { type: 'string', enum: ['monthly', 'annual'], default: 'monthly' }
+    });
+    const plan = await ctx.db.one(
+      "SELECT * FROM subscription_plans WHERE plan_key = $1 AND status = 'active'", [body.planKey]
+    );
+    if (!plan) fail('VALIDATION', [{ field: 'planKey', message: 'That plan is not available.' }]);
+    const current = await currentSubscription(ctx.db, ctx.organisationId);
+    if (current && Number(plan.monthly_price) <= Number(current.monthly_price || 0)) {
+      fail('CONFLICT', null, 'Choose a plan with a higher monthly price than your current plan.');
+    }
+    const annual = body.billingPeriod === 'annual';
+    const baseAmount = Math.round(Number(plan.monthly_price) * (annual ? 12 : 1) * 100) / 100;
+    if (!(baseAmount > 0)) fail('CONFLICT', null, 'That plan has no price to charge.');
+    const recoverFees = payfastFees.recoveryEnabledForSubscriptions();
+    const feeQuote = recoverFees
+      ? payfastFees.estimate(baseAmount, process.env.PAYFAST_RECOVERY_PROFILE || 'standard_card') : null;
+    const amount = feeQuote ? feeQuote.gross : baseAmount;
+
+    const nameParts = String(ctx.user.display_name || '').trim().split(/\s+/).filter(Boolean);
+    const payer = {
+      email: ctx.user.email,
+      first_name: nameParts[0] || ctx.organisation.name,
+      last_name: nameParts.slice(1).join(' ')
+    };
+    const { intent, checkout } = await createPaymentIntent(ctx.db, {
+      organisation: ctx.organisation,
+      amount,
+      currency: plan.currency || ctx.organisation.currency || 'ZAR',
+      purpose: 'platform_subscription_upgrade',
+      metadata: {
+        organisationId: ctx.organisationId,
+        newPlanKey: plan.plan_key,
+        billingPeriod: body.billingPeriod,
+        createdBy: ctx.user.id,
+        payerEmail: payer.email,
+        baseAmount,
+        processingFee: feeQuote ? feeQuote.fee : 0
+      },
+      payer,
+      createdBy: ctx.user.id,
+      req: ctx.req,
+      scope: 'staff',
+      itemName: 'Re-EL ECD — upgrade to ' + plan.name + ' (' + body.billingPeriod + ')',
+      itemDescription: ctx.organisation.name,
+      returnUrl: payfast.frontendBaseUrl() + '/#/app/settings?tab=billing&payment=return',
+      cancelUrl: payfast.frontendBaseUrl() + '/#/app/settings?tab=billing&payment=cancelled'
+    });
+    await recordAudit(ctx.db, ctx, {
+      action: 'billing.subscription_upgrade_checkout', resourceType: 'platform_subscription',
+      resourceId: current ? current.id : null, organisationId: ctx.organisationId,
+      metadata: { planKey: plan.plan_key, amount, intentId: intent.id }
+    });
+    return { plan, amount, currency: plan.currency || ctx.organisation.currency || 'ZAR', checkout };
+  }, { permission: MANAGE, allowSuspended: true });
 
   router.post('/billing/setup/pay', async (ctx) => {
     if (!payfast.isConfigured()) {

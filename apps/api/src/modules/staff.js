@@ -3,6 +3,7 @@
 const { validate } = require('../../../../packages/contracts/validate');
 const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
+const entitlements = require('../services/entitlements-service');
 const { createNotification } = require('../services/notification-service');
 const { sendTemplate } = require('../services/email-service');
 const { parsePagination } = require('../utils/http');
@@ -202,6 +203,8 @@ function register(router) {
       );
       if (duplicate) fail('CONFLICT', null, 'This user already has a staff profile.');
     }
+    const seat = await entitlements.check(ctx.db, ctx.organisationId, 'staff');
+    if (!seat.allowed) fail('CONFLICT', { code: 'PLAN_LIMIT_REACHED', detail: seat.description }, seat.message);
     const staff = await ctx.db.withTransaction(async (client) => {
       const row = (await client.query(
         `INSERT INTO staff_profiles (organisation_id, user_id, employee_reference, job_title, start_date, contact_details)

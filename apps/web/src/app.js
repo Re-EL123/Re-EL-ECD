@@ -2723,6 +2723,20 @@
         }
       },
 
+      async upgradePlan(planKey, billingPeriod) {
+        if (!planKey) return;
+        try {
+          const result = await Reel.api('POST', '/billing/subscription/upgrade', {
+            planKey, billingPeriod: billingPeriod || 'monthly'
+          });
+          const checkout = (result && result.data && result.data.checkout) || null;
+          if (checkout) { this.submitCheckout(checkout); return; }
+          this.toast('Could not start the upgrade checkout.', 'error');
+        } catch (error) {
+          this.toast(error.message || 'Could not start the upgrade checkout.', 'error');
+        }
+      },
+
       async paySetupFee() {
         const page = this.page || {};
         const billing = page.billing || {};

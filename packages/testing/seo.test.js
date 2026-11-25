@@ -139,3 +139,38 @@ test('social image uploads store an absolute URL and need no pasted link', () =>
   assert.match(platform, /scope: 'branding', absolute: true/);
   assert.match(app, /const stored = field\.absolute && Reel\.resolveMediaUrl \? Reel\.resolveMediaUrl\(asset\.url\) : asset\.url/);
 });
+
+test('billing summary exposes plan usage and an upgrade path', () => {
+  const billing = read('apps/api/src/modules/billing.js');
+  const utils = read('apps/web/src/views/settings.js');
+  const app = read('apps/web/src/app.js');
+  assert.match(billing, /planUsage,/);
+  assert.match(billing, /upgradePlans,/);
+  assert.match(billing, /router\.post\('\/billing\/subscription\/upgrade'/);
+  assert.match(billing, /purpose: 'platform_subscription_upgrade'/);
+  assert.match(utils, /R\.card\('Plan usage'/);
+  assert.match(utils, /Grace period \(' \+ row\.graceDaysLeft/);
+  assert.match(utils, /plan-upgrade-card/);
+  assert.match(app, /async upgradePlan\(planKey, billingPeriod\)/);
+  assert.match(read('apps/api/src/modules/finance.js'), /applyUpgrade\(client, intent\)/);
+});
+
+test('plan limits are enforced with a grace window', () => {
+  const svc = read('apps/api/src/services/entitlements-service.js');
+  assert.match(svc, /GRACE_DAYS = 7/);
+  assert.match(svc, /state = 'grace'/);
+  assert.match(svc, /allowed: false, state: 'over'/);
+  assert.match(svc, /if \(!limit \|\| r < 0\.9\)/);
+  ['learners.js', 'admissions.js', 'staff.js', 'access.js', 'media.js'].forEach((file) => {
+    assert.match(read('apps/api/src/modules/' + file), /entitlements\.check\(/, file);
+  });
+  assert.match(read('apps/api/src/services/subscription-billing-service.js'), /sp\.max_storage_bytes/);
+});
+
+test('platform console flags over-limit tenants separately', () => {
+  const platform = read('apps/web/src/views/platform.js');
+  assert.match(platform, /const limitState = \(row\) =>/);
+  assert.match(platform, /const overLimit = subs\.filter/);
+  assert.match(platform, /badge-danger\">Over limit/);
+  assert.match(platform, /Over limit', value: R\.number\(overLimit\.length\)/);
+});

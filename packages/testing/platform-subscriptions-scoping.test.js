@@ -140,7 +140,8 @@ test('subscription plans carry a storage limit', () => {
   assert.match(view, /Storage limit/);
   assert.match(view, /maxStorageGb/);
   assert.match(view, /Storage used/);
-  assert.match(view, /≥.*max_storage_bytes \* 0\.9|>= Number\(row\.max_storage_bytes\) \* 0\.9/);
+  assert.match(view, /const limitState = \(row\) =>/);
+  assert.match(view, /max_storage_bytes/);
 });
 
 test('revenue by plan rows are styled as clean list rows, not default buttons', () => {

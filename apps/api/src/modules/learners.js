@@ -3,6 +3,7 @@
 const { validate } = require('../../../../packages/contracts/validate');
 const { AppError, fail } = require('../../../../packages/contracts/errors');
 const { recordAudit } = require('../services/audit-service');
+const entitlements = require('../services/entitlements-service');
 const { parsePagination } = require('../utils/http');
 const bulk = require('../services/bulk-service');
 const { getLearner, assertPermission, has, assignedClassroomIds } = require('./helpers');
@@ -103,6 +104,8 @@ function register(router) {
         [body.classroomId, ctx.organisationId]);
       if (!classroom) fail('VALIDATION', [{ field: 'classroomId', message: 'Unknown classroom.' }]);
     }
+    const seat = await entitlements.check(ctx.db, ctx.organisationId, 'learners');
+    if (!seat.allowed) fail('CONFLICT', { code: 'PLAN_LIMIT_REACHED', detail: seat.description }, seat.message);
     const reference = body.learnerReference || `LS-${new Date().getFullYear()}-${Math.floor(Math.random() * 90000 + 10000)}`;
     const learner = await ctx.db.withTransaction(async (client) => {
       const row = (await client.query(

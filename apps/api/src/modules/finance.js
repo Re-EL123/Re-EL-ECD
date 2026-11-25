@@ -7,7 +7,7 @@ const { createNotification } = require('../services/notification-service');
 const { sendTemplate, appLink } = require('../services/email-service');
 const payfast = require('../services/payfast-service');
 const { resolveItnAccount } = require('../services/payment-accounts-service');
-const { settleSubscriptionPayment } = require('../services/subscription-billing-service');
+const { settleSubscriptionPayment, applyUpgrade } = require('../services/subscription-billing-service');
 const { settleSetupFeePayment } = require('../services/setup-fee-service');
 const { createInvoiceIntent, createStatementIntent, outstandingFor, isPayable, guardianForInvoice, learnerName } = require('../services/payment-intent-service');
 const { parsePagination, sendText } = require('../utils/http');
@@ -1326,6 +1326,11 @@ function register(router) {
             );
           }
         }
+      }
+
+      // A paid plan upgrade swaps in the new entitlement immediately.
+      if (intent.purpose === 'platform_subscription_upgrade') {
+        await applyUpgrade(client, intent);
       }
 
       // A once-off R700 launch/setup package paid to the platform.

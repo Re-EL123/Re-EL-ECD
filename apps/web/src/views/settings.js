@@ -424,6 +424,35 @@ window.Reel.renderGateQr = function (targetId) {
               : '<div class="alert alert-success" style="margin-top:12px"><i data-lucide="check-circle"></i><span>You are up to date. Your plan renews on ' + R.date(subscription.currentPeriodEnd) + '.</span></div>')
           : '<div class="alert alert-warning"><i data-lucide="alert-circle"></i><span>This organisation has no plan yet. Contact support to set one up.</span></div>');
 
+      const planUsage = billing.planUsage || {};
+      const usageRows = ['learners', 'staff', 'storage'].map((kind) => {
+        const row = planUsage[kind] || {};
+        const state = row.state || 'ok';
+        const tone = state === 'over' ? 'badge-danger' : (state === 'grace' || state === 'near') ? 'badge-sun' : 'badge-muted';
+        const label = state === 'over' ? 'Over limit' : state === 'grace' ? 'Grace period (' + row.graceDaysLeft + ' days left)'
+          : state === 'near' ? 'Near limit' : '';
+        return '<div class="plan-usage-row"><span>' + R.esc(R.titleCase(kind)) + '</span>' +
+          '<strong>' + R.esc(row.description || '—') + '</strong>' +
+          (label ? '<span class="badge ' + tone + '">' + label + '</span>' : '') + '</div>';
+      }).join('');
+      const overOrGrace = ['learners', 'staff', 'storage'].some((kind) => ['over', 'grace'].includes((planUsage[kind] || {}).state));
+      const upgradePlans = (billing.upgradePlans || []).filter((p) => p.plan_key !== (subscription && subscription.planKey));
+      const usageCard = R.card('Plan usage',
+        '<div class="plan-usage">' + usageRows + '</div>' +
+        (overOrGrace
+          ? '<div class="alert alert-warning" style="margin-top:12px"><i data-lucide="alert-triangle"></i><span>You have reached a plan limit. New learners, staff or uploads may be blocked once the 7-day grace period ends. Upgrade to keep everything running.</span></div>'
+          : '<p class="muted small" style="margin-top:10px">Limits apply to new learners, staff and uploads. Existing records stay available.</p>') +
+        (upgradePlans.length && canManage && platformPayfast
+          ? '<div class="section"></div><div class="wb-field-label">Upgrade your plan</div><div class="plan-upgrade-list">' +
+            upgradePlans.map((p) => '<button type="button" class="plan-upgrade-card" @click="upgradePlan(\'' + R.attr(p.plan_key) + '\',\'' + R.attr((subscription && subscription.billingPeriod) || 'monthly') + '\')">' +
+              '<span class="cell-strong">' + R.esc(p.name) + '</span>' +
+              '<span class="muted small">' + (Number(p.max_learners) ? R.number(p.max_learners) + ' learners' : 'Unlimited learners') + ' · ' +
+                (Number(p.max_staff) ? R.number(p.max_staff) + ' staff' : 'Unlimited staff') + ' · ' +
+                (Number(p.max_storage_bytes) ? R.number(Math.round(p.max_storage_bytes / (1024 * 1024 * 1024) * 10) / 10) + ' GB' : 'Unlimited storage') + '</span>' +
+              '<strong>' + R.money(p.monthly_price, p.currency) + ' / mo ' + R.icon('arrow-right') + '</strong></button>').join('') + '</div>'
+          : ''),
+        canManage && upgradePlans.length ? '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'upgradePlan\')">' + R.icon('arrow-up-circle') + ' Upgrade</button>' : '');
+
       const invoicesCard = R.card('Subscription invoices',
         R.table({ rows: invoices, compact: true, columns: [
           { label: 'Invoice', render: (row) => '<span class="mono cell-strong">' + R.esc(row.invoice_number) + '</span>' },
@@ -484,10 +513,31 @@ window.Reel.renderGateQr = function (targetId) {
           { label: 'Reference', render: (row) => row.reference ? '<span class="mono small">' + R.esc(row.reference) + '</span>' : '—' }
         ], emptyTitle: 'No payouts yet', emptyMessage: 'Once fees are collected, the platform settles them to your bank account and each payout appears here.' })) : '';
 
-      return suspendedBanner + backBanner + setupCard + '<div class="section">' + subscriptionCard + '</div><div class="section">' + invoicesCard + '</div><div class="section">' + accountCard + '</div>' + (payoutHistory ? '<div class="section">' + payoutHistory + '</div>' : '');
+      return suspendedBanner + backBanner + setupCard + '<div class="section">' + subscriptionCard + '</div><div class="section">' + usageCard + '</div><div class="section">' + invoicesCard + '</div><div class="section">' + accountCard + '</div>' + (payoutHistory ? '<div class="section">' + payoutHistory + '</div>' : '');
     },
 
     openModal(ctx, name, id) {
+      if (name === 'upgradePlan') {
+        const billing = (ctx.page || {}).billing || {};
+        const current = (billing.subscription || {}).planKey;
+        const options = (billing.upgradePlans || []).filter((p) => p.plan_key !== current).map((p) => ({
+          value: p.plan_key, label: p.name + ' · ' + Reel.money(p.monthly_price, p.currency) + '/mo'
+        }));
+        if (!options.length) { ctx.toast('There are no larger plans available right now.', 'warn'); return; }
+        ctx.openModal({
+          title: 'Upgrade your plan',
+          description: 'You will be taken to PayFast to pay for the new plan. The higher limits apply as soon as payment is confirmed.',
+          submitLabel: 'Continue to payment', endpoint: '/billing/subscription/upgrade',
+          fields: [
+            { name: 'planKey', label: 'New plan', type: 'select', required: true, options },
+            { name: 'billingPeriod', label: 'Billing period', type: 'select',
+              options: [{ value: 'monthly', label: 'Monthly' }, { value: 'annual', label: 'Annual (12 months)' }],
+              value: ((billing.subscription || {}).billingPeriod) || 'monthly' }
+          ],
+          async onSubmit(body) { await ctx.upgradePlan(body.planKey, body.billingPeriod); }
+        });
+        return;
+      }
       const page = ctx.page || {};
       const org = page.organisation || {};
       const settings = page.settings || {};

@@ -7,6 +7,7 @@ const { ROLE_HIERARCHY, ROLES } = require('../../../../packages/auth/roles');
 const { hasPermission } = require('../../../../packages/auth/permissions');
 const { invalidateAccess } = require('../services/access-service');
 const { recordAudit } = require('../services/audit-service');
+const entitlements = require('../services/entitlements-service');
 const { createNotification } = require('../services/notification-service');
 const { sendTemplate } = require('../services/email-service');
 const bulk = require('../services/bulk-service');
@@ -78,6 +79,8 @@ function register(router) {
         [body.branchId, ctx.organisationId]);
       if (!branch) fail('VALIDATION', [{ field: 'branchId', message: 'Unknown branch.' }]);
     }
+    const seat = await entitlements.check(ctx.db, ctx.organisationId, 'staff');
+    if (!seat.allowed) fail('CONFLICT', { code: 'PLAN_LIMIT_REACHED', detail: seat.description }, seat.message);
     const token = randomToken(24);
     const invitation = await ctx.db.one(
       `INSERT INTO invitations (organisation_id, email, role_key, branch_id, token_hash, invited_by, expires_at)

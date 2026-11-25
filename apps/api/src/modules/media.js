@@ -14,6 +14,7 @@ const { recordAudit } = require('../services/audit-service');
 const { hasPermission } = require('../../../../packages/auth/permissions');
 const { parsePagination } = require('../utils/http');
 const storage = require('../services/storage-service');
+const entitlements = require('../services/entitlements-service');
 
 function register(router) {
   router.get('/media/config', async (ctx) => {
@@ -44,6 +45,12 @@ function register(router) {
   }, { permission: 'media.read.daycare' });
 
   router.post('/media/uploads', async (ctx) => {
+    // Check the plan quota first — a tenant at its limit gets a useful upgrade
+    // message even on an environment where storage credentials are missing.
+    const quota = await entitlements.check(ctx.db, ctx.organisationId, 'storage', {
+      storageBytes: Number(ctx.body && ctx.body.size) || 0
+    });
+    if (!quota.allowed) fail('CONFLICT', { code: 'PLAN_LIMIT_REACHED', detail: quota.description }, quota.message);
     if (!storage.isConfigured()) {
       fail('CONFLICT', null, 'File storage is not configured. Set the R2_* environment variables.');
     }

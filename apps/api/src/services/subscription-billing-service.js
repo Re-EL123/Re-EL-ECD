@@ -42,7 +42,8 @@ function invoiceNumber() {
 
 async function currentSubscription(db, organisationId) {
   const subscription = await db.one(
-    `SELECT ps.*, sp.name AS plan_name, sp.plan_key, sp.monthly_price, sp.currency AS plan_currency
+    `SELECT ps.*, sp.name AS plan_name, sp.plan_key, sp.monthly_price, sp.currency AS plan_currency,
+            sp.max_learners, sp.max_staff, sp.max_storage_bytes
      FROM platform_subscriptions ps JOIN subscription_plans sp ON sp.id = ps.plan_id
      WHERE ps.organisation_id = $1
      ORDER BY ps.created_at DESC LIMIT 1`,
@@ -258,3 +259,50 @@ module.exports = {
   dateString,
   runSubscriptionSweep
 };
+
+/** Apply a paid plan upgrade after PayFast confirms the payment. */
+async function applyUpgrade(db, intent) {
+  const metadata = intent.metadata || {};
+  const organisationId = metadata.organisationId || intent.organisation_id;
+  const plan = await db.one(
+    "SELECT * FROM subscription_plans WHERE plan_key = $1 AND status = 'active'",
+    [metadata.newPlanKey]
+  );
+  if (!plan) return null;
+  const annual = metadata.billingPeriod === 'annual';
+  const start = todayDate();
+  const end = addDays(start, annual ? 365 : 30);
+  return db.withTransaction(async (client) => {
+    await client.query(
+      "UPDATE platform_subscriptions SET status = 'cancelled' WHERE organisation_id = $1 AND status IN ('trial','active','past_due')",
+      [organisationId]
+    );
+    const subscription = (await client.query(
+      `INSERT INTO platform_subscriptions
+         (organisation_id, plan_id, status, billing_period, current_period_start, current_period_end)
+       VALUES ($1,$2,'active',$3,$4,$5) RETURNING *`,
+      [organisationId, plan.id, metadata.billingPeriod || 'monthly', start, end]
+    )).rows[0];
+    await client.query(
+      "UPDATE organisations SET subscription_status = 'active', updated_at = now() WHERE id = $1", [organisationId]
+    );
+    await client.query(
+      `INSERT INTO platform_subscription_invoices
+         (organisation_id, subscription_id, invoice_number, amount, currency, period_start, period_end,
+          status, due_at, paid_at, payment_intent_id, payment_reference)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'paid',$6,now(),$8,$9)
+       ON CONFLICT (subscription_id, period_start) DO NOTHING`,
+      [organisationId, subscription.id, invoiceNumber(), Number(intent.amount || 0),
+       plan.currency || 'ZAR', start, end, intent.id, intent.reference || null]
+    );
+    await client.query(
+      `INSERT INTO audit_events (organisation_id, actor_user_id, action, resource_type, resource_id, metadata, occurred_at)
+       VALUES ($1,$2,'billing.subscription_upgraded','platform_subscription',$3,$4,now())`,
+      [organisationId, metadata.createdBy || null, subscription.id,
+       JSON.stringify({ planKey: plan.plan_key, amount: Number(intent.amount || 0), billingPeriod: metadata.billingPeriod || 'monthly' })]
+    );
+    return subscription;
+  });
+}
+
+module.exports.applyUpgrade = applyUpgrade;

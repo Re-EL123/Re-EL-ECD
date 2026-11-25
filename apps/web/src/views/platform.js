@@ -549,11 +549,17 @@
         const days = Math.floor((today - new Date(row.current_period_end + 'T00:00:00Z')) / 86400000);
         return days >= low && days < high;
       }).length;
-      const nearLimit = subs.filter((row) => row.status === 'active' && (
-        (Number(row.max_learners) > 0 && Number(row.learner_count || 0) >= Number(row.max_learners) * 0.9) ||
-        (Number(row.max_staff) > 0 && Number(row.staff_count || 0) >= Number(row.max_staff) * 0.9) ||
-        (Number(row.max_storage_bytes) > 0 && Number(row.storage_bytes || 0) >= Number(row.max_storage_bytes) * 0.9)
-      ));
+      const limitState = (row) => {
+        const pairs = [[row.learner_count, row.max_learners], [row.staff_count, row.max_staff], [row.storage_bytes, row.max_storage_bytes]];
+        let worst = 'ok';
+        pairs.forEach(([used, max]) => {
+          if (Number(max) > 0 && Number(used || 0) >= Number(max)) worst = 'over';
+          else if (Number(max) > 0 && Number(used || 0) >= Number(max) * 0.9 && worst !== 'over') worst = 'near';
+        });
+        return worst;
+      };
+      const nearLimit = subs.filter((row) => limitState(row) === 'near');
+      const overLimit = subs.filter((row) => limitState(row) === 'over');
       const mrrByCurrency = d.mrrByCurrency || [];
       const singleCurrency = Boolean(d.singleCurrency);
       const activeCount = subs.filter((row) => row.status === 'active').length;
@@ -598,6 +604,7 @@
         R.statCard({ label: 'Monthly recurring', value: mrrLabel, icon: 'credit-card', foot: mrrNote }) +
         R.statCard({ label: 'Active plans', value: R.number(plans.filter((p) => p.status === 'active').length), icon: 'layers', tone: 'sky', foot: plans.length + ' in catalogue' }) +
         R.statCard({ label: 'Trials', value: R.number(subs.filter((row) => row.status === 'trial').length), icon: 'hourglass', tone: 'plum', foot: expiring.length + ' ending within 7 days' }) +
+        (overLimit.length ? R.statCard({ label: 'Over limit', value: R.number(overLimit.length), icon: 'alert-triangle', tone: 'danger', foot: 'Tenants past a plan limit' }) : '') +
         '</div>' +
         (mrrByCurrency.length > 1 ? '<div class="card sub-currency-card"><h3>Revenue by currency</h3>' +
           mrrByCurrency.map((row) => '<div class="kpi-row"><span class="kpi-label">' + R.esc(row.currency) + ' · ' + row.tenants + ' tenants</span><span class="kpi-value">' + R.money(row.amount, row.currency) + '</span></div>').join('') + '</div>' : '') +
@@ -646,7 +653,8 @@
       ], { hint: 'Suspending a centre revokes all sessions across every branch.' }) : '';
       const subColumns = [
         { label: 'Organisation', render: (row) => '<a class="cell-strong" href="#/platform/organisations/' + R.attr(row.organisation_id) + '">' + R.esc(row.organisation_name) + '</a><span class="cell-sub">' + R.esc(row.plan_name || 'No plan') + '</span>' },
-        { label: 'Status', render: (row) => R.badge(row.status) + (nearLimit.includes(row) ? ' <span class="badge badge-sun">Near limit</span>' : '') },
+        { label: 'Status', render: (row) => R.badge(row.status) +
+          (overLimit.includes(row) ? ' <span class="badge badge-danger">Over limit</span>' : nearLimit.includes(row) ? ' <span class="badge badge-sun">Near limit</span>' : '') },
         { label: 'Entitlements', render: (row) => {
           const learners = Number(row.learner_count || 0), maxL = Number(row.max_learners || 0);
           const staff = Number(row.staff_count || 0), maxS = Number(row.max_staff || 0);

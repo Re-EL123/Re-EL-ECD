@@ -4103,3 +4103,25 @@ body.book-reading { overflow: hidden; }
   .analytics-banner-actions { width: 100%; }
   .analytics-banner-actions .btn { flex: 1 1 auto; }
 }
+
+/* ---- Tenant plan usage and upgrades -------------------------------------- */
+.plan-usage { display: flex; flex-direction: column; }
+.plan-usage-row { display: grid; grid-template-columns: 110px 1fr auto; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--border-subtle); font-size: .82rem; }
+.plan-usage-row:last-child { border-bottom: 0; }
+.plan-usage-row strong { font-variant-numeric: tabular-nums; }
+.plan-upgrade-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.plan-upgrade-card {
+  display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; text-align: left;
+  padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: 11px;
+  background: var(--surface-2); color: var(--text); cursor: pointer;
+}
+.plan-upgrade-card:hover { background: var(--reel-green-100); border-color: var(--reel-green-600); }
+.plan-upgrade-card .muted { grid-column: 1; }
+.plan-upgrade-card strong { grid-column: 2; grid-row: 1 / span 2; align-self: center; display: inline-flex; gap: 5px; align-items: center; white-space: nowrap; }
+.plan-upgrade-card strong svg { width: 14px; height: 14px; }
+@media (max-width: 560px) {
+  .plan-usage-row { grid-template-columns: 1fr auto; }
+  .plan-usage-row strong { grid-column: 1; }
+  .plan-upgrade-card { grid-template-columns: 1fr; }
+  .plan-upgrade-card strong { grid-column: 1; grid-row: auto; }
+}
