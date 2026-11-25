@@ -173,3 +173,16 @@ test('Add staff profile offers a searchable picker of active invited accounts', 
   assert.match(api, /r\.role_key = ANY\(\$2::text\[\]\)/);
   assert.match(api, /Choose an active account, or provide a work email/);
 });
+
+test('card headers and Today suggestion rows wrap text on mobile', () => {
+  const css = fs.readFileSync(path.join(webRoot, 'assets', 'styles.css'), 'utf8');
+  const today = fs.readFileSync(path.join(webRoot, 'src', 'views', 'today.js'), 'utf8');
+  assert.match(css, /\.card-head \{ display: flex;[\s\S]{0,120}flex-wrap: wrap/);
+  assert.match(css, /\.card-head h3 \{ font-size: 1rem; min-width: 0; overflow-wrap: anywhere; \}/);
+  assert.match(css, /\.card-head \.card-actions \{ margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap/);
+  assert.match(css, /\.suggest-row \{[\s\S]{0,220}flex-wrap: wrap/);
+  assert.match(css, /\.suggest-copy \{ flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; \}/);
+  assert.match(today, /class="suggest-copy"/);
+  assert.match(css, /@media \(max-width: 720px\)[\s\S]{0,900}\.suggest-copy \{ flex: 1 1 100%; \}/);
+  assert.match(css, /\.book-card-body h3 \{ font-size: 1rem; overflow-wrap: anywhere; \}/);
+});

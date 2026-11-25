@@ -571,7 +571,7 @@
         if (!(t.expected || page.teachingPerms)) return '';
         return '<div class="card glass section today-suggest anim-in" id="today-suggestions"><div class="row" style="gap:10px;align-items:center;padding:6px 2px">' +
           '<span class="suggest-ico suggest-ok">' + R.icon('check-circle') + '</span>' +
-          '<div style="flex:1"><div class="strong" style="font-size:0.9rem">All caught up</div><div class="muted small">Nothing needs your attention right now — nice work.</div></div></div></div>';
+          '<div class="suggest-copy"><div class="strong" style="font-size:0.9rem">All caught up</div><div class="muted small">Nothing needs your attention right now — nice work.</div></div></div></div>';
       }
 
       return '<div class="card glass section today-suggest anim-in" id="today-suggestions"><div class="card-head"><h3>' + R.icon('sparkles') + ' Suggested next steps</h3><span class="muted small">Picked up from today’s register, reports and tasks</span></div>' +
@@ -580,7 +580,7 @@
           const snoozed = saved[key] === 'snoozed';
           return '<div class="suggest-row' + (snoozed ? ' is-snoozed' : '') + '" data-suggest-key="' + R.attr(key) + '">' +
             '<span class="suggest-ico suggest-' + esc(s.tone) + '">' + R.icon(s.icon) + '</span>' +
-            '<div style="flex:1;min-width:0"><div class="strong" style="font-size:0.9rem' + (snoozed ? ';text-decoration:line-through;opacity:.65' : '') + '">' + esc(s.text) + '</div>' +
+            '<div class="suggest-copy"><div class="strong" style="font-size:0.9rem' + (snoozed ? ';text-decoration:line-through;opacity:.65' : '') + '">' + esc(s.text) + '</div>' +
               (s.foot ? '<div class="muted small">' + esc(s.foot) + '</div>' : '') + '</div>' +
             (s.mins ? '<span class="suggest-mins">' + R.icon('clock') + ' ≈ ' + s.mins + ' min</span>' : '') +
             (s.href
