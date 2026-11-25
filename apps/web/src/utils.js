@@ -692,11 +692,15 @@
   // ---------------------------------------------------------------------------
 
   function kindForUrl(url, fallback) {
-    const value = String(url || '').split('?')[0].toLowerCase();
-    if (/\.(mp4|webm|mov|m4v)$/.test(value)) return 'video';
-    if (/\.(mp3|m4a|weba|wav|ogg)$/.test(value)) return 'audio';
-    if (/\.(pdf|docx?|xlsx?|csv|txt)$/.test(value)) return 'document';
-    if (/\.(jpe?g|png|webp|gif|avif|svg)$/.test(value)) return 'image';
+    const value = String(url || '').toLowerCase();
+    const path = value.split('?')[0];
+    // Media proxy URLs carry the filename in ?key=..., so check both parts.
+    const has = (ext) => new RegExp('\\.(' + ext + ')($|%|&|\\s)').test(path) ||
+      new RegExp('[?&]key=[^&]*\\.(' + ext + ')(%|&|$)').test(value);
+    if (has('mp4|webm|mov|m4v')) return 'video';
+    if (has('mp3|m4a|weba|wav|ogg')) return 'audio';
+    if (has('pdf|docx?|xlsx?|csv|txt')) return 'document';
+    if (has('jpe?g|png|webp|gif|avif|svg')) return 'image';
     return fallback || 'image';
   }
 
@@ -724,7 +728,7 @@
     if (!url) return '<span class="muted">No file</span>';
     const opts = options || {};
     const type = kind || kindForUrl(url);
-    const checked = safeUrl(url);
+    const checked = resolveMediaUrl(url);
     if (!checked) return '<span class="muted">Unsupported file link</span>';
     const safe = attr(checked);
     if (type === 'video') {

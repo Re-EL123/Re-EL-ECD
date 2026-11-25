@@ -4027,7 +4027,8 @@
 
       mediaPreview(field, url) {
         if (!url) return '';
-        return Reel.mediaHtml(url, field.kind || Reel.kindForUrl(url), { compact: true, alt: field.label || '' });
+        const resolved = Reel.resolveMediaUrl ? Reel.resolveMediaUrl(url) : url;
+        return Reel.mediaHtml(resolved, field.kind || Reel.kindForUrl(url), { compact: true, alt: field.label || '' });
       },
 
       async uploadModalMedia(field, event) {

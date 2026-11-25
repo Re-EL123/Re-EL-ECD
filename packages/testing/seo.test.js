@@ -124,3 +124,11 @@ test('social share image can be uploaded and is stored as an absolute URL', () =
   assert.match(api, /if \(image\.startsWith\('\/'\)\)/);
   assert.ok(api.includes("base.replace(/\\/+$/, '') + image"));
 });
+
+test('uploaded media previews resolve against the API origin', () => {
+  const utils = read('apps/web/src/utils.js');
+  const app = read('apps/web/src/app.js');
+  assert.match(utils, /const checked = resolveMediaUrl\(url\)/);
+  assert.match(app, /Reel\.resolveMediaUrl \? Reel\.resolveMediaUrl\(url\) : url/);
+  assert.match(utils, /key=\[\^&\]\*\\\\\.\(/);
+});
