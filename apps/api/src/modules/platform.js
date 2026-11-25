@@ -43,12 +43,20 @@ function normalisePlatformSeo(value) {
   const str = (x, max) => typeof x === 'string' ? x.trim().slice(0, max) : '';
   const list = (x, max) => Array.isArray(x)
     ? x.map((item) => str(item, 200)).filter(Boolean).slice(0, max) : [];
+  const siteUrl = str(v.siteUrl, 300);
+  let image = str(v.image, 1000);
+  // Uploaded media is stored as a site-relative proxy path; social crawlers
+  // need an absolute URL in og:image and the structured data logo.
+  if (image.startsWith('/')) {
+    const base = siteUrl || String(process.env.APP_BASE_URL || process.env.FRONTEND_ORIGIN || 'https://ecd.re-el.co.za');
+    image = base.replace(/\/+$/, '') + image;
+  }
   return {
     title: str(v.title, 160),
     description: str(v.description, 500),
     keywords: list(v.keywords, 20),
-    siteUrl: str(v.siteUrl, 300),
-    image: str(v.image, 1000),
+    siteUrl,
+    image,
     twitterHandle: str(v.twitterHandle, 60),
     sameAs: list(v.sameAs, 10)
   };

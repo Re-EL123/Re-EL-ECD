@@ -114,3 +114,13 @@ test('platform admins can edit SEO and analytics settings at runtime', () => {
   assert.match(app, /Reel\.analytics\.configure\(this\.platformBrand\.analytics\)/);
   assert.match(app, /if \(isPlatformHome && this\.platformBrand && this\.platformBrand\.seo\)/);
 });
+
+test('social share image can be uploaded and is stored as an absolute URL', () => {
+  const platform = read('apps/web/src/views/platform.js');
+  assert.match(platform, /name: 'image', label: 'Social share image', type: 'media'/);
+  assert.match(platform, /accept: 'image\/jpeg,image\/png,image\/webp'/);
+  assert.match(platform, /scope: 'branding'/);
+  const api = read('apps/api/src/modules/platform.js');
+  assert.match(api, /if \(image\.startsWith\('\/'\)\)/);
+  assert.ok(api.includes("base.replace(/\\/+$/, '') + image"));
+});

@@ -60,3 +60,14 @@ test('tenant administrators cannot change platform SEO settings', async () => {
   const res = await client.patch('/platform/settings', { seo: { title: 'Hijacked' } });
   assert.equal(res.status, 403);
 });
+
+test('uploaded relative share images become absolute public URLs', async () => {
+  const admin = createClient();
+  await admin.login('platform@re-el-ecd.local');
+  const saved = await admin.patch('/platform/settings', {
+    seo: { image: '/api/v1/media/object?key=shared%2Fbranding%2Ftest.png', siteUrl: 'https://ecd.re-el.co.za' }
+  });
+  assert.equal(saved.status, 200);
+  assert.equal(saved.data.settings.seo.image,
+    'https://ecd.re-el.co.za/api/v1/media/object?key=shared%2Fbranding%2Ftest.png');
+});
