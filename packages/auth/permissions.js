@@ -62,6 +62,8 @@ const PERMISSION_KEYS = [
   'website.read.daycare', 'website.manage.daycare',
   // Parent portal
   'parent.read.own', 'parent.forms.submit.own', 'parent.finance.read.own', 'parent.absence.report.own',
+  // Record corrections — a reason is always required and the original value is kept.
+  'records.correct.daycare', 'records.approve.daycare',
   // Audit
   'audit.read.daycare'
 ];

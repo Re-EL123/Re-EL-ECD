@@ -85,6 +85,7 @@
     route('/app/manuals/:slug', 'app', 'manualDetail', ['parent.read.own', 'reports.read.daycare', 'tasks.read.own', 'attendance.read.assigned'], 'Manual'),
     route('/app/access', 'app', 'access', 'access.read.daycare', 'Users and access'),
     route('/app/audit', 'app', 'audit', 'audit.read.daycare', 'Audit log'),
+    route('/app/corrections', 'app', 'corrections', 'records.correct.daycare', 'Record corrections'),
     route('/app/automation', 'app', 'automation', 'organisation.settings.manage', 'Automation'),
 
     route('/parent/overview', 'parent', 'parentOverview', 'parent.read.own', 'Family home'),
@@ -186,6 +187,7 @@
         { path: '/app/media', label: 'Media library', icon: 'images', permission: 'media.read.daycare' },
         { path: '/app/access', label: 'Users and access', icon: 'shield-check', permission: 'access.read.daycare' },
         { path: '/app/audit', label: 'Audit log', icon: 'scroll-text', permission: 'audit.read.daycare' },
+        { path: '/app/corrections', label: 'Record corrections', icon: 'file-pen', permission: 'records.correct.daycare' },
         { path: '/app/manuals', label: 'Manuals', icon: 'book-open', permission: ['parent.read.own', 'reports.read.daycare', 'tasks.read.own', 'attendance.read.assigned'] },
         { path: '/app/automation', label: 'Automation', icon: 'workflow', permission: 'organisation.settings.manage' }
       ] }
@@ -310,6 +312,7 @@
       automationSweepBusy: false,
       automationDigestBusy: false,
       modal: null,
+      correction: { type: '', resourceId: '', reason: '', fields: [], values: {}, label: '', error: '' },
       signaturePads: {},
       toasts: [],
       unread: 0,
@@ -2709,6 +2712,62 @@
        * server decides the amount from the oldest open invoice, or reuses the
        * pending checkout if the button was already pressed.
        */
+      async loadCorrectionFields() {
+        const form = this.correction || {};
+        form.error = '';
+        form.fields = [];
+        form.values = {};
+        if (!form.type || !form.resourceId) return;
+        try {
+          const response = await Reel.api('GET', '/corrections/resources/' + encodeURIComponent(form.type) + '/' + encodeURIComponent(form.resourceId));
+          const data = response.data || {};
+          form.fields = data.fields || [];
+          form.label = data.label || '';
+          const values = {};
+          form.fields.forEach((field) => { values[field.key] = field.value; });
+          form.values = values;
+        } catch (error) {
+          form.error = error.message || 'That record could not be found.';
+        }
+      },
+
+      async submitCorrection() {
+        const form = this.correction || {};
+        form.error = '';
+        if (!form.type || !form.resourceId) { form.error = 'Choose a record type and enter the record ID.'; return; }
+        const changes = {};
+        (form.fields || []).forEach((field) => {
+          let value = (form.values || {})[field.key];
+          if (field.type === 'json' && typeof value === 'string') {
+            try { value = JSON.parse(value); } catch (error) { form.error = field.label + ' must be valid JSON.'; return; }
+          }
+          const same = JSON.stringify(value === undefined ? null : value) === JSON.stringify(field.value === undefined ? null : field.value);
+          if (!same) changes[field.key] = value;
+        });
+        if (form.error) return;
+        if (!Object.keys(changes).length) { form.error = 'Change at least one field before submitting.'; return; }
+        try {
+          await Reel.api('POST', '/corrections', {
+            resourceType: form.type, resourceId: form.resourceId, reason: form.reason, changes
+          });
+          this.toast('Correction submitted for approval.');
+          this.correction = { type: '', resourceId: '', reason: '', fields: [], values: {}, label: '', error: '' };
+          await this.navigate(true);
+        } catch (error) {
+          form.error = error.message || 'The correction could not be submitted.';
+        }
+      },
+
+      async reviewCorrection(id, decision) {
+        try {
+          await Reel.api('POST', '/corrections/' + encodeURIComponent(id) + '/' + (decision === 'approved' ? 'approve' : 'reject'), {});
+          this.toast(decision === 'approved' ? 'Correction applied and audited.' : 'Correction rejected.');
+          await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'Could not resolve this correction.', 'error');
+        }
+      },
+
       async paySubscription() {
         try {
           const result = await Reel.api('POST', '/billing/subscription/pay', {});

@@ -4172,3 +4172,16 @@ body.book-reading { overflow: hidden; }
   .plan-upgrade-card { grid-template-columns: 1fr; }
   .plan-upgrade-card strong { grid-column: 1; grid-row: auto; }
 }
+
+/* ---- Record corrections --------------------------------------------------- */
+.correction-row { display: flex; gap: 14px; align-items: flex-start; justify-content: space-between; }
+.correction-detail { display: flex; flex-direction: column; gap: 8px; min-width: 0; flex: 1 1 auto; }
+.correction-diff { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); font-size: .8rem; }
+.correction-field { min-width: 110px; font-weight: 650; }
+.correction-diff code { padding: 2px 6px; border-radius: 6px; background: var(--surface-3); word-break: break-word; }
+.correction-diff code.is-new { background: var(--reel-green-100); color: var(--reel-green-900); }
+.correction-diff svg { width: 14px; height: 14px; opacity: .6; }
+@media (max-width: 640px) {
+  .correction-row { flex-direction: column; }
+  .correction-diff { align-items: flex-start; }
+}

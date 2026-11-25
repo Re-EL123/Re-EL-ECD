@@ -16,7 +16,9 @@ const { assignedClassroomIds, has, orgDayBounds } = require('./helpers');
  * intentionally empty day (nothing scheduled, no children) — never the whole
  * centre's PII.
  */
-const WIDE_READ_PERMS = ['learners.read.daycare', 'reports.read.daycare', 'organisation.settings.manage', 'attendance.record.daycare'];
+// A reports permission lets someone read aggregate numbers; it does not grant
+// access to every child's name, photo and attendance record.
+const WIDE_READ_PERMS = ['learners.read.daycare', 'organisation.settings.manage', 'attendance.record.daycare'];
 
 function wideRead(ctx) {
   return WIDE_READ_PERMS.some((key) => has(ctx, key));
@@ -719,4 +721,4 @@ function register(router) {
   }, TODAY_PERMS);
 }
 
-module.exports = { register };
+module.exports = { register, wideRead, WIDE_READ_PERMS };

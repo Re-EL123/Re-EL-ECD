@@ -850,4 +850,4 @@ function register(router) {
   }, { permission: ['consent.manage.daycare', 'parent.forms.submit.own'], permissionMode: 'any' });
 }
 
-module.exports = { register };
+module.exports = { register, validateSubmission };

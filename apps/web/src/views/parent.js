@@ -90,7 +90,9 @@
         '<div class="grid grid-4 section">' +
         R.statCard({ label: 'Children', value: R.number(children.length), icon: 'users', foot: 'In our care' }) +
         R.statCard({ label: 'Unread', value: R.number(page.unread), icon: 'bell', tone: Number(page.unread) ? 'sun' : 'green', foot: 'Notifications for you' }) +
-        R.statCard({ label: 'Outstanding', value: R.money(children.reduce((sum, c) => sum + Number(c.outstandingBalance || 0), 0)), icon: 'wallet', tone: children.some((c) => Number(c.outstandingBalance) > 0) ? 'clay' : 'green', foot: 'Across your children' }) +
+        (children.some((c) => c.canViewFinance)
+          ? R.statCard({ label: 'Outstanding', value: R.money(children.reduce((sum, c) => sum + Number(c.outstandingBalance || 0), 0)), icon: 'wallet', tone: children.some((c) => Number(c.outstandingBalance) > 0) ? 'clay' : 'green', foot: 'Across your children' })
+          : '') +
         R.statCard({ label: 'Forms to complete', value: R.number(forms.length), icon: 'clipboard-list', tone: 'plum', foot: 'Published by the centre' }) +
         '</div>' +
         '<div class="split section"><div class="stack">' +
@@ -102,7 +104,7 @@
           '<div class="detail-list">' +
           R.detailItem('Today', c.attendanceToday ? R.titleCase(c.attendanceToday.attendance_status) : 'Not marked yet') +
           R.detailItem('Checked in', c.attendanceToday && c.attendanceToday.check_in_at ? R.time(c.attendanceToday.check_in_at) : '—') +
-          R.detailItem('Balance', R.money(c.outstandingBalance)) +
+          (c.canViewFinance ? R.detailItem('Balance', R.money(c.outstandingBalance)) : '') +
           R.detailItem('Latest observation', c.latestObservation ? R.date(c.latestObservation.observation_date) : 'None yet') +
           '</div>',
           '<a class="btn btn-sm btn-ghost" href="#/parent/children/' + R.attr(c.id) + '" title="Open this child">Open</a>')).join('') +
@@ -181,7 +183,9 @@
         R.statCard({ label: 'Classroom', value: classroom.name || 'Not assigned', icon: 'door-open', foot: R.esc(branch.name || '') }) +
         R.statCard({ label: 'Age', value: R.ageYears(learner.dateOfBirth), icon: 'cake', tone: 'sky', foot: 'Born ' + R.date(learner.dateOfBirth) }) +
         R.statCard({ label: 'Attendance', value: R.number(attendance.filter((a) => ['present', 'late', 'collected'].includes(a.attendance_status)).length), icon: 'calendar-check', tone: 'green', foot: 'Days recorded in the last 14' }) +
-        R.statCard({ label: 'Balance', value: R.money(child.outstandingBalance), icon: 'wallet', tone: Number(child.outstandingBalance) ? 'clay' : 'green', foot: 'Outstanding fees' }) +
+        (relationship && relationship.can_receive_financial_information
+          ? R.statCard({ label: 'Balance', value: R.money(child.outstandingBalance), icon: 'wallet', tone: Number(child.outstandingBalance) ? 'clay' : 'green', foot: 'Outstanding fees' })
+          : '') +
         '</div>' +
         R.tabs([{ key: 'overview', label: 'Overview' }, { key: 'progress', label: 'Development' }, { key: 'portfolio', label: 'Portfolio' }, { key: 'reports', label: 'Daily reports' }], tab) +
         (tab === 'progress' ? this.renderProgress(page) : tab === 'portfolio' ? this.renderPortfolio(page) : tab === 'reports' ? this.renderReports(page) : this.renderOverview(child, relationship, page.calendar));

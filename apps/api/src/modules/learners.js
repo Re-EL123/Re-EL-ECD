@@ -498,7 +498,14 @@ function register(router) {
 
   router.get('/learners/:id/medical', async (ctx) => {
     const learner = await getLearner(ctx, ctx.params.id);
-    return ctx.db.many('SELECT * FROM learner_medical_records WHERE learner_id = $1 ORDER BY created_at DESC', [learner.id]);
+    // Teachers need allergies and everyday care notes. Restricted and
+    // medical-level detail requires the manage permission (principal/admin).
+    const full = has(ctx, 'medical.manage.daycare');
+    const rows = await ctx.db.many(
+      `SELECT * FROM learner_medical_records
+       WHERE learner_id = $1 AND (visibility_level = 'staff' OR $2::boolean)`, [learner.id, full]
+    );
+    return rows;
   }, { permission: 'medical.read.daycare' });
 
   router.post('/learners/:id/medical', async (ctx) => {

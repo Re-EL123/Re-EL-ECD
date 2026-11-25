@@ -438,6 +438,9 @@ function register(router) {
 
   router.get('/parent/overview', async (ctx) => {
     const ids = await guardianLearnerIds(ctx);
+    // Only guardians explicitly allowed to receive financial information see
+    // a balance — the same rule already used by the invoices endpoint.
+    const financeIds = new Set(await financeLearnerIds(ctx));
     const children = [];
     for (const id of ids) {
       const learner = await ctx.db.one('SELECT * FROM learners WHERE id = $1 AND organisation_id = $2',
@@ -470,7 +473,8 @@ function register(router) {
         id: learner.id, firstName: learner.first_name, lastName: learner.last_name,
         preferredName: learner.preferred_name, dateOfBirth: learner.date_of_birth,
         status: learner.status, classroom, attendanceToday: attendance || null,
-        outstandingBalance: roundMoney(balance.outstanding),
+        outstandingBalance: financeIds.has(learner.id) ? roundMoney(balance.outstanding) : null,
+        canViewFinance: financeIds.has(learner.id),
         latestObservation
       });
     }

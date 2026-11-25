@@ -478,66 +478,78 @@ function register(router) {
 
   router.get('/dashboard', async (ctx) => {
     const date = today();
-    const learners = await ctx.db.one(
+    // A report permission is not a pass to every domain. Only include a
+    // section when the caller can also open the workspace it comes from.
+    const can = {
+      learners: has(ctx, 'learners.read.daycare') || has(ctx, 'learners.read.assigned'),
+      staff: has(ctx, 'staff.read.daycare'),
+      attendance: has(ctx, 'attendance.read.daycare') || has(ctx, 'attendance.read.assigned'),
+      finance: has(ctx, 'finance.read.daycare') || has(ctx, 'finance.reports.daycare'),
+      safety: has(ctx, 'safety.read.daycare'),
+      admissions: has(ctx, 'admissions.read.daycare'),
+      observations: has(ctx, 'assessments.read.daycare') || has(ctx, 'reports.read.daycare'),
+      tasks: has(ctx, 'tasks.read.daycare')
+    };
+    const learners = can.learners ? await ctx.db.one(
       `SELECT COUNT(*)::int AS total,
         SUM(CASE WHEN status = 'enrolled' THEN 1 ELSE 0 END)::int AS enrolled,
         SUM(CASE WHEN status = 'waitlisted' THEN 1 ELSE 0 END)::int AS waitlisted
        FROM learners WHERE organisation_id = $1`, [ctx.organisationId]
-    );
-    const staff = await ctx.db.one(
+    ) : { total: 0, enrolled: 0, waitlisted: 0 };
+    const staff = can.staff ? await ctx.db.one(
       `SELECT COUNT(*)::int AS total FROM staff_profiles WHERE organisation_id = $1 AND employment_status = 'active'`,
       [ctx.organisationId]
-    );
-    const attendance = await ctx.db.one(
+    ) : { total: 0 };
+    const attendance = can.attendance ? await ctx.db.one(
       `SELECT COUNT(*)::int AS marked,
               SUM(CASE WHEN attendance_status IN ('present','late','collected') THEN 1 ELSE 0 END)::int AS present,
               SUM(CASE WHEN attendance_status = 'absent' THEN 1 ELSE 0 END)::int AS absent
        FROM learner_attendance WHERE organisation_id = $1 AND attendance_date = $2`,
       [ctx.organisationId, date]
-    );
-    const finance = await ctx.db.one(
+    ) : { marked: 0, present: 0, absent: 0 };
+    const finance = can.finance ? await ctx.db.one(
       `SELECT COALESCE(SUM(total_amount - amount_paid), 0)::float AS outstanding,
               COALESCE(SUM(amount_paid), 0)::float AS collected
        FROM invoices WHERE organisation_id = $1 AND status IN ('issued','partially_paid','overdue')`,
       [ctx.organisationId]
-    );
-    const incidents = await ctx.db.one(
+    ) : { outstanding: 0, collected: 0 };
+    const incidents = can.safety ? await ctx.db.one(
       `SELECT COUNT(*)::int AS total FROM incidents
        WHERE organisation_id = $1 AND status <> 'closed'`, [ctx.organisationId]
-    );
-    const tasks = await ctx.db.many(
+    ) : { total: 0 };
+    const tasks = can.tasks ? await ctx.db.many(
       `SELECT t.*, u.display_name AS assignee_name FROM tasks t LEFT JOIN users u ON u.id = t.assigned_to
        WHERE t.organisation_id = $1 AND t.status IN ('open','in_progress','blocked')
        ORDER BY CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
          t.due_at ASC LIMIT 6`,
       [ctx.organisationId]
-    );
-    const applications = await ctx.db.one(
+    ) : [];
+    const applications = can.admissions ? await ctx.db.one(
       `SELECT COUNT(*)::int AS total FROM admission_applications
        WHERE organisation_id = $1 AND status IN ('submitted','under_review')`, [ctx.organisationId]
-    );
-    const observations = await ctx.db.one(
+    ) : { total: 0 };
+    const observations = can.observations ? await ctx.db.one(
       `SELECT COUNT(*)::int AS total FROM learner_observations
        WHERE organisation_id = $1 AND observation_date > CURRENT_DATE - 7`, [ctx.organisationId]
-    );
-    const upcoming = await ctx.db.many(
+    ) : { total: 0 };
+    const upcoming = has(ctx, 'curriculum.read.daycare') ? await ctx.db.many(
       `SELECT sa.id, sa.title, sa.starts_at, sa.status, c.name AS classroom_name
        FROM scheduled_activities sa LEFT JOIN classrooms c ON c.id = sa.classroom_id
        WHERE sa.organisation_id = $1 AND sa.starts_at >= now() - interval '1 hour'
        ORDER BY sa.starts_at LIMIT 5`, [ctx.organisationId]
-    );
-    const attendanceTrend = await ctx.db.many(
+    ) : [];
+    const attendanceTrend = can.attendance ? await ctx.db.many(
       `SELECT attendance_date,
         SUM(CASE WHEN attendance_status IN ('present','late','collected') THEN 1 ELSE 0 END)::int AS present,
         COUNT(*)::int AS marked
        FROM learner_attendance WHERE organisation_id = $1 AND attendance_date > CURRENT_DATE - 14
        GROUP BY attendance_date ORDER BY attendance_date`,
       [ctx.organisationId]
-    );
-    const revenueByMonth = await ctx.db.many(
+    ) : [];
+    const revenueByMonth = can.finance ? await ctx.db.many(
       `SELECT issued_at, total_amount, amount_paid FROM invoices
        WHERE organisation_id = $1 AND issued_at IS NOT NULL`, [ctx.organisationId]
-    );
+    ) : [];
     const monthMap = new Map();
     for (const invoice of revenueByMonth) {
       const month = new Date(invoice.issued_at).toISOString().slice(0, 7);
@@ -548,9 +560,9 @@ function register(router) {
     }
     const revenueSeries = Array.from(monthMap.values()).sort((a, b) => a.month.localeCompare(b.month)).slice(-6);
     const alerts = [];
-    if (attendance.marked === 0) alerts.push({ severity: 'warning', message: "Today's attendance register has not been started.", link: '#/app/learner-attendance' });
-    if (finance.outstanding > 0) alerts.push({ severity: 'info', message: `R${finance.outstanding.toFixed(2)} in fees is outstanding.`, link: '#/app/finance' });
-    if (applications.total > 0) alerts.push({ severity: 'info', message: `${applications.total} application${applications.total === 1 ? '' : 's'} await${applications.total === 1 ? 's' : ''} review.`, link: '#/app/admissions' });
+    if (can.attendance && attendance.marked === 0) alerts.push({ severity: 'warning', message: "Today's attendance register has not been started.", link: '#/app/learner-attendance' });
+    if (can.finance && finance.outstanding > 0) alerts.push({ severity: 'info', message: `R${finance.outstanding.toFixed(2)} in fees is outstanding.`, link: '#/app/finance' });
+    if (can.admissions && applications.total > 0) alerts.push({ severity: 'info', message: `${applications.total} application${applications.total === 1 ? '' : 's'} await${applications.total === 1 ? 's' : ''} review.`, link: '#/app/admissions' });
     return {
       date,
       learners,
