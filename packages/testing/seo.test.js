@@ -201,3 +201,29 @@ test('rhyme audio uses a public cookie-free stream on mobile', () => {
   assert.match(css, /grid-template-areas:\s*"prev play next meta queue read close"/);
   assert.match(css, /env\(safe-area-inset-bottom, 0px\)/);
 });
+
+test('operator agreement and safeguarding disclaimer are published legal pages', () => {
+  const appRoute = read('apps/web/src/app.js');
+  const sitemap = fs.readFileSync(path.join(root, 'apps/web', 'sitemap.xml'), 'utf8');
+  const defaults = read('apps/api/src/services/document-service.js');
+  const review = read('docs/legal-review.md');
+
+  assert.match(appRoute, /route\('\/legal\/data-processing-agreement', 'public', 'legalDataProcessingAgreement'/);
+  assert.match(appRoute, /route\('\/legal\/safeguarding-disclaimer', 'public', 'legalSafeguardingDisclaimer'/);
+  assert.match(sitemap, /#\/legal\/data-processing-agreement<\/loc>/);
+  assert.match(sitemap, /#\/legal\/safeguarding-disclaimer<\/loc>/);
+
+  assert.match(publicView, /V\.legalDataProcessingAgreement = legalDocViews\('data-processing-agreement'\)/);
+  assert.match(publicView, /V\.legalSafeguardingDisclaimer = legalDocViews\('safeguarding-disclaimer'\)/);
+  assert.match(publicView, /DRAFT FOR LEGAL REVIEW — NOT YET REVIEWED BY A SOUTH AFRICAN ATTORNEY/);
+  assert.match(publicView, /does not automatically register an ECD centre/);
+  assert.match(publicView, /authorised collectors must be correctly registered/i);
+  assert.match(publicView, /does not replace physical supervision/);
+  assert.match(publicView, /Operator \/ Data Processing Agreement/);
+
+  assert.match(defaults, /legal\('data-processing-agreement'/);
+  assert.match(defaults, /legal\('safeguarding-disclaimer'/);
+  assert.match(defaults, /does not register an ECD centre or certify legal compliance/);
+  assert.match(review, /NOT REVIEWED BY A SOUTH AFRICAN ATTORNEY/);
+  assert.match(review, /Cross-border transfers/);
+});

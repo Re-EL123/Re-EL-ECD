@@ -30,6 +30,8 @@
     route('/legal/cookies', 'public', 'legalCookies', null, 'Cookie Policy'),
     route('/legal/acceptable-use', 'public', 'legalAcceptableUse', null, 'Acceptable Use Policy'),
     route('/legal/safeguarding', 'public', 'legalSafeguarding', null, 'Safeguarding Policy'),
+    route('/legal/safeguarding-disclaimer', 'public', 'legalSafeguardingDisclaimer', null, 'Safeguarding & Operational Disclaimer'),
+    route('/legal/data-processing-agreement', 'public', 'legalDataProcessingAgreement', null, 'Operator / Data Processing Agreement'),
     route('/gate/:slug', 'public', 'gate', null, 'Gate'),
     route('/terms', 'public', 'legalTerms', null, 'Terms of Service'),
     route('/privacy', 'public', 'legalPrivacy', null, 'Privacy Policy'),

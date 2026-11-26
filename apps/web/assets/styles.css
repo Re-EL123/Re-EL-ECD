@@ -4185,3 +4185,12 @@ body.book-reading { overflow: hidden; }
   .correction-row { flex-direction: column; }
   .correction-diff { align-items: flex-start; }
 }
+
+/* ---- Legal notices and disclaimers --------------------------------------- */
+.legal-notice { margin: 0 0 18px; align-items: flex-start; }
+.legal-notice svg { flex: 0 0 auto; margin-top: 2px; }
+.site-footer-disclaimer {
+  padding: 10px 0; font-size: .76rem; color: var(--text-muted);
+  border-top: 1px solid var(--border-subtle);
+}
+.site-footer-disclaimer a { font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }

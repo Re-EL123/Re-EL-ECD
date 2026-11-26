@@ -2,7 +2,7 @@
    Strategy: same-origin static assets are cache-backed so the app shell
    loads offline. API GETs are network-only — children's data is never
    written to Cache Storage, which persists after logout on shared devices. */
-const CACHE = 'reel-shell-v175';
+const CACHE = 'reel-shell-v176';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(self.skipWaiting());

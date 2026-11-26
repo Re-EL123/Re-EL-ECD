@@ -16,7 +16,8 @@ test('role manuals seed for every capacity and download as branded PDFs', async 
   for (const role of ['principal', 'teacher', 'parent_guardian', 'finance_officer', 'admissions_officer', 'platform_super_admin']) {
     assert.ok(slugs.has('manual-' + role), 'missing manual ' + role);
   }
-  for (const slug of ['terms', 'privacy', 'cookies', 'acceptable-use', 'safeguarding']) {
+  for (const slug of ['terms', 'privacy', 'cookies', 'acceptable-use', 'safeguarding',
+    'safeguarding-disclaimer', 'data-processing-agreement']) {
     assert.ok(slugs.has(slug), 'missing legal ' + slug);
   }
   const detail = await client.get('/documents/manual-teacher');
@@ -76,4 +77,27 @@ test('legal PDFs are public and the super admin can edit every document', async 
   const session = await principalClient.login('principal@littlesprouts.local');
   const denied = await principalClient.patch('/platform/documents/manual-teacher', { title: 'Hacked manual title' }, { organisationId: session.activeOrganisationId });
   assert.equal(denied.status, 403, denied.text);
+});
+
+test('the operator agreement and safeguarding disclaimer are public and complete', async () => {
+  const anon = createClient();
+  const dpa = await anon.get('/public/documents/data-processing-agreement');
+  assert.equal(dpa.status, 200, dpa.text);
+  const dpaText = JSON.stringify(dpa.data).toLowerCase();
+  for (const phrase of ['lawful authority', 'cloudflare r2', 'payfast', 'access, sharing', 'security requirements',
+    'termination', 'export, retention', 'security incidents', 'attorney']) {
+    assert.ok(dpaText.includes(phrase), 'DPA is missing: ' + phrase);
+  }
+
+  const disclaimer = await anon.get('/public/documents/safeguarding-disclaimer');
+  assert.equal(disclaimer.status, 200, disclaimer.text);
+  const disclaimerText = JSON.stringify(disclaimer.data).toLowerCase();
+  for (const phrase of ['supervis', 'safeguarding policies', 'authorised collector',
+    'verification', 'does not replace', 'registration']) {
+    assert.ok(disclaimerText.includes(phrase), 'Disclaimer is missing: ' + phrase);
+  }
+
+  const terms = await anon.get('/public/documents/terms');
+  assert.equal(terms.status, 200);
+  assert.match(JSON.stringify(terms.data), /does not automatically register an ECD centre|does not register an ECD centre/i);
 });

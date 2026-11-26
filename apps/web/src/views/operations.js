@@ -498,7 +498,7 @@
     renderHomePanel(ctx, slug, canManage) {
       return '<div class="site-editor-panel" x-show="siteTab === \'home\'" x-cloak>' +
         editorCard('Hero', '<div class="form-grid">' +
-          editorField('Badge', 'siteDraft.hero.badge', { placeholder: 'Registered ECD centre' }) +
+          editorField('Badge', 'siteDraft.hero.badge', { placeholder: 'Registered ECD centre', help: 'Only claim registration you can prove. Re-EL ECD does not verify or certify ECD registration — see the Safeguarding & Operational Disclaimer.' }) +
           editorField('Headline', 'siteDraft.hero.headline', { span: true, placeholder: 'Where little minds grow' }) +
           editorField('Subheadline', 'siteDraft.hero.subheadline', { span: true, textarea: true, rows: 3, placeholder: 'A warm, play-based early learning home.' }) +
           editorField('Button label', 'siteDraft.hero.cta', { placeholder: 'Book a visit' }) +
