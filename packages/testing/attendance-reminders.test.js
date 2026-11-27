@@ -15,7 +15,9 @@ test('staff attendance reminders are scheduled and guarded', () => {
   const migration = read('packages/database/migrations/062_attendance_reminders.sql');
 
   assert.match(vercel, /\/api\/v1\/cron\/attendance-reminders/);
-  assert.match(vercel, /\*\/30 6-18 \* \* 1-5/);
+  assert.match(vercel, /"schedule": "0 7 \* \* 1-5"/);
+  assert.match(vercel, /"schedule": "30 10 \* \* 1-5"/);
+  assert.match(vercel, /"schedule": "45 16 \* \* 1-5"/);
   assert.match(operations, /router\.post\('\/cron\/attendance-reminders'/);
   assert.match(operations, /safeEqual\(presented, secret\)/);
   assert.match(operations, /\{ public: true \}/);
