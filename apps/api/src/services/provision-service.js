@@ -9,6 +9,7 @@
  * (`POST /public/signup`, gated by the platform `allowTenantSignup` setting).
  */
 
+const { AppError } = require('../../../../packages/contracts/errors');
 const { invalidateAccess } = require('./access-service');
 const { ensureSetupFee } = require('./setup-fee-service');
 
@@ -54,13 +55,18 @@ async function provisionOrganisation(db, input, actorUserId) {
       [org.id, branch.id, input.slug]
     );
     if (input.planKey) {
-      const plan = (await client.query('SELECT id FROM subscription_plans WHERE plan_key = $1', [input.planKey])).rows[0];
-      if (plan) {
-        await client.query(
-          `INSERT INTO platform_subscriptions (organisation_id, plan_id, status, current_period_start, current_period_end)
-           VALUES ($1,$2,'trial',CURRENT_DATE,CURRENT_DATE + 30)`, [org.id, plan.id]
-        );
+      // Never attach an archived or unknown plan — that would leave the new
+      // centre with no entitlements while still promising a trial.
+      const plan = (await client.query(
+        "SELECT id FROM subscription_plans WHERE plan_key = $1 AND status = 'active'", [input.planKey]
+      )).rows[0];
+      if (!plan) {
+        throw new AppError('VALIDATION', { code: 'PLAN_UNAVAILABLE' }, 'That plan is not available.');
       }
+      await client.query(
+        `INSERT INTO platform_subscriptions (organisation_id, plan_id, status, current_period_start, current_period_end)
+         VALUES ($1,$2,'trial',CURRENT_DATE,CURRENT_DATE + 30)`, [org.id, plan.id]
+      );
     }
     // Once-off R700 launch/setup package (tracked per organisation). Optional at signup:
     // if not included, record as waived so it is not due but remains tracked.

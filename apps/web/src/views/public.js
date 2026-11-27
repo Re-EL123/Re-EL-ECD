@@ -987,6 +987,11 @@
         const data = (payload && payload.data) || {};
         ctx.signupEnabled = data.allowTenantSignup === true;
         ctx.signupPlans = Array.isArray(data.plans) ? data.plans : [];
+        // Always start on a plan — the trial and the plan limits need a real
+        // subscription row from the first day.
+        if (ctx.signupPlans.length && !ctx.signupForm.planKey) {
+          ctx.signupForm.planKey = ctx.signupPlans[0].plan_key;
+        }
       } catch {
         ctx.signupEnabled = false;
         ctx.signupPlans = [];
@@ -995,8 +1000,9 @@
     },
     render(ctx, params, page) {
       const enabled = ctx.signupEnabled === true;
-      const planOptions = '<option value="">Decide later — choose in settings</option>' + (ctx.signupPlans || []).map((p) =>
-        '<option value="' + R.attr(p.plan_key) + '">' + R.esc(p.name) + ' — R' + R.esc(String(p.monthly_price)) + '/mo</option>'
+      const planOptions = (ctx.signupPlans || []).map((p) =>
+        '<option value="' + R.attr(p.plan_key) + '">' + R.esc(p.name) + ' — ' +
+        R.esc(R.money(p.monthly_price, p.currency || 'ZAR')) + '/mo</option>'
       ).join('');
 
       const steps = [
@@ -1022,10 +1028,11 @@
         '<div class="signup-success" x-show="signupDone" x-cloak>' +
           '<div class="signup-success-icon"><i data-lucide="party-popper"></i></div>' +
           '<h2>Your centre is ready</h2>' +
-          '<p class="muted">Welcome to Re-EL ECD. Your workspace for <strong x-text="signupForm.centreName || \'your centre\'"></strong> has been created and a 30-day trial has started.</p>' +
+          '<p class="muted">Welcome to Re-EL ECD. Your workspace for <strong x-text="signupForm.centreName || \'your centre\'"></strong> has been created and a 30-day trial on your chosen plan has started.</p>' +
           '<div class="card" style="text-align:left;margin:16px 0;background:var(--surface-2)">' +
             '<div class="kpi-list">' +
               '<div class="kpi-row"><span class="kpi-label">Sign-in email</span><span class="kpi-value" x-text="signupForm.ownerEmail"></span></div>' +
+              '<div class="kpi-row"><span class="kpi-label">Trial plan</span><span class="kpi-value" x-text="signupPlanName()"></span></div>' +
               '<div class="kpi-row"><span class="kpi-label">Role</span><span class="kpi-value">Owner / principal</span></div>' +
               '<div class="kpi-row"><span class="kpi-label">Next step</span><span class="kpi-value">Sign in and invite your team</span></div>' +
               '<div class="kpi-row" x-show="signupForm.includeSetup"><span class="kpi-label">Setup package</span><span class="kpi-value">R700 once-off launch package selected</span></div>' +
@@ -1067,7 +1074,7 @@
 
           '<section class="signup-panel" x-show="signupStep === 4" x-cloak>' +
             '<h3>Choose a plan & confirm</h3>' +
-            '<p class="muted small">Start with a 30-day trial. You can change plans anytime.</p>' +
+            '<p class="muted small">Every plan starts with a 30-day trial. You can change plans anytime in Settings.</p>' +
             '<div class="field"><label for="signup-plan">Plan (30-day trial)</label><select class="select" id="signup-plan" name="planKey" x-model="signupForm.planKey">' + planOptions + '</select></div>' +
             '<div class="card" style="margin-top:12px;background:var(--surface-2)">' +
               '<label class="check-row" style="align-items:flex-start;gap:10px;margin:0">' +

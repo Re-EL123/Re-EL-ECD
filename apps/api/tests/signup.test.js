@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { start, stop, createClient } = require('./helpers');
+const { start, stop, createClient, db } = require('./helpers');
 
 test.before(start);
 test.after(stop);
@@ -80,4 +80,50 @@ test('admin provisioning still works after the provisioning refactor', async () 
   assert.equal(created.status, 201, created.text);
   assert.equal(created.data.slug, 'admin-provisioned-creche');
   assert.equal(created.data.status, 'onboarding');
+});
+
+test('signup without choosing a plan still starts a real trial with limits', async () => {
+  const admin = createClient();
+  await admin.login('platform@re-el-ecd.local');
+  const enabled = await admin.patch('/platform/settings', { settings: { allowTenantSignup: true } });
+  assert.equal(enabled.status, 200, enabled.text);
+
+  const plans = (await admin.get('/platform/plans')).data;
+  const cheapest = [...plans].sort((a, b) => Number(a.monthly_price) - Number(b.monthly_price))[0];
+  assert.ok(cheapest);
+
+  const anon = createClient();
+  const created = await anon.post('/public/signup', {
+    centreName: 'No Plan Choice Centre',
+    ownerName: 'Thandi Nkosi',
+    ownerEmail: 'thandi@noplan.local',
+    password: 'noplan-pass-123'
+    // deliberately no planKey — this is the form's previous default
+  });
+  assert.equal(created.status, 201, created.text);
+  assert.equal(created.data.trialDays, 30);
+  assert.equal(created.data.planKey, cheapest.plan_key, 'the cheapest active plan should be assigned');
+  assert.equal(created.data.planName, cheapest.name);
+
+  const sub = await db.one(
+    `SELECT ps.status, ps.current_period_start, ps.current_period_end, sp.plan_key, sp.max_learners, sp.max_staff
+     FROM platform_subscriptions ps JOIN subscription_plans sp ON sp.id = ps.plan_id
+     WHERE ps.organisation_id = (SELECT id FROM organisations WHERE slug = $1)`,
+    ['no-plan-choice-centre']
+  );
+  assert.ok(sub, 'a subscription row must exist immediately after signup');
+  assert.equal(sub.status, 'trial');
+  assert.equal(sub.plan_key, cheapest.plan_key);
+  assert.ok(sub.current_period_end, 'trial end date must be set');
+
+  // The owner sees real plan limits, not "unlimited" from a missing plan.
+  const owner = createClient();
+  await owner.login('thandi@noplan.local', 'noplan-pass-123');
+  const summary = await owner.get('/billing/summary');
+  assert.equal(summary.status, 200, summary.text);
+  const usage = summary.data.planUsage;
+  assert.equal(usage.learners.limit, Number(sub.max_learners));
+  assert.equal(usage.staff.limit, Number(sub.max_staff));
+
+  await admin.patch('/platform/settings', { settings: { allowTenantSignup: false } });
 });

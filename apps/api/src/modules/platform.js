@@ -131,9 +131,25 @@ function register(router) {
     if (existingUser) {
       fail('CONFLICT', null, 'An account with this email already exists. Sign in instead.');
     }
-    if (body.planKey) {
-      const plan = await ctx.db.one('SELECT id FROM subscription_plans WHERE plan_key = $1 AND status = $2', [body.planKey, 'active']);
-      if (!plan) fail('VALIDATION', [{ field: 'planKey', message: 'That plan is not available.' }]);
+    // A centre must always start on a real plan. If no plan was chosen, use
+    // the least expensive active plan so the 30-day trial, the plan limits
+    // and the first invoice all exist from day one.
+    let planKey = body.planKey || null;
+    let chosenPlan = null;
+    if (planKey) {
+      chosenPlan = await ctx.db.one(
+        'SELECT id, plan_key, name, monthly_price, currency FROM subscription_plans WHERE plan_key = $1 AND status = $2',
+        [planKey, 'active']
+      );
+      if (!chosenPlan) fail('VALIDATION', [{ field: 'planKey', message: 'That plan is not available.' }]);
+    } else {
+      chosenPlan = await ctx.db.one(
+        "SELECT id, plan_key, name, monthly_price, currency FROM subscription_plans WHERE status = 'active' ORDER BY monthly_price ASC, name ASC LIMIT 1"
+      );
+      if (!chosenPlan) {
+        fail('CONFLICT', null, 'No plans are available for signup right now. Please contact Re-EL ECD.');
+      }
+      planKey = chosenPlan.plan_key;
     }
     // Derive a unique slug from the centre name.
     let base = body.centreName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'centre';
@@ -152,7 +168,7 @@ function register(router) {
       ownerName: body.ownerName,
       ownerEmail: email,
       passwordHash,
-      planKey: body.planKey || null,
+      planKey,
       timezone: body.timezone || null,
       includeSetup,
       source: 'self-signup'
@@ -167,8 +183,9 @@ function register(router) {
     return {
       organisation: { name: result.organisation.name, slug: result.organisation.slug, status: result.organisation.status },
       trialDays: 30,
-      planKey: body.planKey || null,
-      setupFee: { included: includeSetup, amount: 700, currency: 'ZAR' }
+      planKey: chosenPlan.plan_key,
+      planName: chosenPlan.name,
+      setupFee: { included: includeSetup, amount: 700, currency: chosenPlan.currency || 'ZAR' }
     };
   }, { public: true });
 

@@ -5323,7 +5323,8 @@
       signupPlanName() {
         const key = this.signupForm && this.signupForm.planKey;
         const plan = (this.signupPlans || []).find((p) => p.plan_key === key);
-        return plan ? (plan.name + ' — R' + plan.monthly_price + '/mo') : 'Decide later (you can choose in settings)';
+        return plan ? (plan.name + ' — ' + Reel.money(plan.monthly_price, plan.currency || 'ZAR') + '/mo')
+          : 'Default plan (30-day trial)';
       },
 
       async submitResetPassword(event) {
