@@ -4295,12 +4295,15 @@ body.book-reading { overflow: hidden; }
 
 /* ---- Signup plan comparison ---------------------------------------------- */
 .signup-plan-label { font-size: .8rem; font-weight: 650; color: var(--text-strong); margin: 14px 0 8px; }
-.signup-plans { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.signup-plans { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .signup-plans .upgrade-plan { padding: 15px; border-radius: 14px; }
 .signup-plans .upgrade-plan-name { font-size: 1.02rem; }
-.signup-plans .upgrade-plan-price strong { font-size: 1.12rem; }
+.signup-plans .upgrade-plan-top { flex-direction: column; align-items: flex-start; gap: 8px; }
+.signup-plans .upgrade-plan-price { text-align: left; }
+.signup-plans .upgrade-plan-price strong { display: inline; font-size: 1.12rem; }
+.signup-plans .upgrade-plan-price span { margin-left: 4px; }
 .signup-price-note { display: flex; gap: 7px; align-items: flex-start; margin: 12px 0 0; font-size: .76rem; line-height: 1.5; color: var(--text-muted); }
 .signup-price-note svg { width: 15px; height: 15px; flex: 0 0 15px; color: var(--reel-green-700); }
-@media (max-width: 560px) {
+@media (max-width: 720px) {
   .signup-plans { grid-template-columns: 1fr; }
 }
