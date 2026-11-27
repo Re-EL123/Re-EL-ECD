@@ -117,3 +117,20 @@ test('the breach response procedure is published and covers all seven stages', a
   assert.equal(dpa.status, 200);
   assert.match(JSON.stringify(dpa.data), /Breach Response Procedure/);
 });
+
+test('Terms and the safeguarding disclaimer agree on responsibilities and registration', async () => {
+  const anon = createClient();
+  const terms = (await anon.get('/public/documents/terms')).data;
+  const disclaimer = (await anon.get('/public/documents/safeguarding-disclaimer')).data;
+  const termsText = JSON.stringify(terms).toLowerCase();
+  const disclaimerText = JSON.stringify(disclaimer).toLowerCase();
+  for (const phrase of ['digital tools', 'supervis', 'authorised collector', 'verification',
+    'does not replace', 'safeguarding']) {
+    assert.ok(termsText.includes(phrase), 'Terms missing: ' + phrase);
+    assert.ok(disclaimerText.includes(phrase), 'Disclaimer missing: ' + phrase);
+  }
+  for (const phrase of ['south african government', 'does not', 'registration', 'certif']) {
+    assert.ok(termsText.includes(phrase), 'Terms missing: ' + phrase);
+    assert.ok(disclaimerText.includes(phrase), 'Disclaimer missing: ' + phrase);
+  }
+});
