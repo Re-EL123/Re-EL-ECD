@@ -26,6 +26,9 @@ test('a 30-day trial does not issue a payable invoice until it ends', async () =
   const trialSummary = await owner.get('/billing/summary');
   assert.equal(trialSummary.status, 200, trialSummary.text);
   assert.equal(trialSummary.data.subscription.status, 'trial');
+  assert.ok(trialSummary.data.subscription.daysRemaining >= 28,
+    'a fresh 30-day trial should report its remaining days, not zero/null');
+  assert.ok(trialSummary.data.subscription.daysRemaining <= 30);
   assert.equal(trialSummary.data.openInvoice, null, 'no invoice should be payable during the trial');
   assert.equal((trialSummary.data.invoices || []).length, 0);
 

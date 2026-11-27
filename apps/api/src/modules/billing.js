@@ -44,6 +44,16 @@ function money(value) {
   return Math.round(Number(value || 0) * 100) / 100;
 }
 
+function daysUntil(value) {
+  if (!value) return null;
+  const end = new Date(value);
+  if (Number.isNaN(end.getTime())) return null;
+  const endDay = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
+  const today = new Date(String(todayDate()).slice(0, 10) + 'T00:00:00Z').getTime();
+  if (Number.isNaN(today)) return null;
+  return Math.max(0, Math.round((endDay - today) / 86400000));
+}
+
 async function collectionsOutstanding(db, organisationId) {
   return db.one(
     `WITH collected AS (
@@ -129,9 +139,9 @@ function register(router) {
         currency: subscription.plan_currency || organisation.currency || 'ZAR',
         currentPeriodStart: subscription.current_period_start,
         currentPeriodEnd: subscription.current_period_end,
-        daysRemaining: subscription.current_period_end
-          ? Math.max(0, Math.round((new Date(String(subscription.current_period_end).slice(0, 10) + 'T00:00:00Z') - new Date(todayDate() + 'T00:00:00Z')) / 86400000))
-          : null,
+        // pg returns a Date object; slicing String(date) gives "Tue Dec 15",
+        // which is not parseable. Normalise both sides to a UTC calendar day.
+        daysRemaining: daysUntil(subscription.current_period_end),
         payfast: payfastRecovery ? {
           baseAmount: payfastRecovery.base,
           processingFee: recoverFees ? payfastRecovery.fee : 0,
