@@ -27,6 +27,8 @@ test('telemetry is consent-gated and never sends form values or identifiers', ()
   assert.match(collector, /\(pointer: coarse\)/);
   assert.match(collector, /sessionStorage/);
   assert.match(collector, /R\.api\('POST', '\/public\/telemetry'/);
+  assert.match(collector, /hash\.charAt\(0\) === '#'/);
+  assert.match(collector, /replace\(\/\^\\\/\+\/, '\/'\)/);
 
   assert.match(api, /uuid|UUID_RE/);
   assert.match(api, /EMAIL_RE/);

@@ -20,22 +20,26 @@ const EMAIL_RE = /\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/g;
 const PHONE_RE = /\+?\d[\d\s()-]{7,}\d/g;
 const LONG_TOKEN_RE = /\b[A-Za-z0-9_-]{24,}\b/g;
 
-function scrub(value, max, labelChars) {
+function scrub(value, max, labelChars, stripTokens) {
   let text = String(value == null ? '' : value)
     .replace(/[\u0000-\u001f\u007f]/g, ' ')
     .replace(UUID_RE, ':id')
     .replace(EMAIL_RE, ':email')
-    .replace(PHONE_RE, ':number')
-    .replace(LONG_TOKEN_RE, ':token');
+    .replace(PHONE_RE, ':number');
+  // Only free-text fields get token scrubbing — event names and labels are
+  // allowlisted identifiers, not secrets.
+  if (stripTokens) text = text.replace(LONG_TOKEN_RE, ':token');
   if (labelChars) text = text.replace(/[^A-Za-z0-9 :._\/-]/g, '');
   return text.replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
 function sanitizePath(value) {
-  return scrub(value, 240, false)
+  const clean = scrub(value, 240, false, true)
     .replace(UUID_RE, ':id')
     .replace(/\/\d+/g, '/:id')
-    .replace(/[?&][^=]+=([^&]*)/g, (match, param) => match.slice(0, match.indexOf('=') + 1) + ':value') || '/';
+    .replace(/[?&][^=]+=([^&]*)/g, (match) => match.slice(0, match.indexOf('=') + 1) + ':value')
+    .replace(/^\/+/, '/');
+  return clean || '/';
 }
 
 function sanitizeDetails(kind, details) {
@@ -48,7 +52,7 @@ function sanitizeDetails(kind, details) {
   if (details.reason !== undefined) out.reason = scrub(details.reason, 60, true);
   if (kind === 'error') {
     // Error messages are useful for debugging, but scrubbed and capped.
-    out.message = scrub(details.message, 160, false);
+    out.message = scrub(details.message, 160, false, true);
     if (details.source !== undefined) out.source = sanitizePath(details.source);
     if (Number.isFinite(Number(details.line))) out.line = Math.floor(Number(details.line)) || 0;
     if (Number.isFinite(Number(details.column))) out.column = Math.floor(Number(details.column)) || 0;

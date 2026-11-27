@@ -27,9 +27,17 @@ test('telemetry ingest sanitises identifiers and free text', async () => {
   });
   assert.equal(response.status, 200, response.text);
   assert.equal(response.data.accepted, 2);
+  // Label names must not be mistaken for tokens just because they are long.
+  const longName = await client.post('/public/telemetry', {
+    events: [{ kind: 'event', name: 'verification_browser_check', path: '//app/today', details: {} }]
+  });
+  assert.equal(longName.status, 200, longName.text);
+  const named = await db.one("SELECT name, path FROM telemetry_events WHERE name LIKE 'verification%' ORDER BY id DESC LIMIT 1");
+  assert.equal(named.name, 'verification_browser_check');
+  assert.equal(named.path, '/app/today');
 
-  const rows = await db.many('SELECT * FROM telemetry_events ORDER BY id DESC LIMIT 2');
-  assert.equal(rows.length, 2);
+  const rows = await db.many('SELECT * FROM telemetry_events ORDER BY id DESC LIMIT 3');
+  assert.equal(rows.length, 3);
   const click = rows.find((row) => row.kind === 'click');
   assert.ok(click);
   assert.ok(!JSON.stringify(click).includes('3f2a1111'));

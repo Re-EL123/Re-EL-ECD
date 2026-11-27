@@ -34,7 +34,10 @@
   }
 
   function route() {
-    return clean(String(location.pathname || '') + String(location.hash || ''), 240).replace(UUID_RE, ':id') || '/';
+    // The SPA uses hash routes: use the hash when present, otherwise the path.
+    const hash = String(location.hash || '');
+    const raw = hash.charAt(0) === '#' ? hash.slice(1) : (String(location.pathname || '/') || '/');
+    return clean(raw, 240).replace(UUID_RE, ':id').replace(/^\/+/, '/') || '/';
   }
 
   function area() {
@@ -141,7 +144,7 @@
     const role = element.getAttribute && element.getAttribute('role');
     const classes = typeof element.className === 'string'
       ? '.' + element.className.trim().split(/\s+/).slice(0, 2).join('.') : '';
-    return clean(tag + (role ? '[' + role + ']' : '') + classes, 80) || tag;
+    return clean(tag + (role ? '[' + role + ']' : '') + classes, 80).replace(/\.$/, '') || tag;
   }
 
   function resetScroll() { maxScroll = 0; scrollEnded = false; }
