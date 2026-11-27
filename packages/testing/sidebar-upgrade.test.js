@@ -54,3 +54,22 @@ test('the upgrade modal compares plans with their inclusions', () => {
   assert.match(css, /\.upgrade-plan\.selected \{/);
   assert.match(css, /\.upgrade-features \{/);
 });
+
+test('upgrade prices are the fee-inclusive amounts PayFast will charge', () => {
+  const html = read('apps/web/index.html');
+  const app = read('apps/web/src/app.js');
+  const billing = read('apps/api/src/modules/billing.js');
+  const settings = read('apps/web/src/views/settings.js');
+
+  assert.match(html, /upgradePrice-detail|x-text="upgradePlanFee\(plan\)/);
+  assert.match(html, /exactly what PayFast will charge/);
+  assert.match(app, /upgradeCheckout\(plan\)/);
+  assert.match(app, /quoted \? quoted\.total/);
+  assert.match(app, /upgradePlanFee\(plan\)/);
+
+  assert.match(billing, /const upgradeQuote = \(base\) =>/);
+  assert.match(billing, /monthly: upgradeQuote\(monthlyBase\)/);
+  assert.match(billing, /annual: upgradeQuote\(annualBase\)/);
+  assert.match(billing, /feeLabel: feeMethod \? feeMethod\.label/);
+  assert.match(settings, /p\.checkout && p\.checkout\.monthly && p\.checkout\.monthly\.total/);
+});

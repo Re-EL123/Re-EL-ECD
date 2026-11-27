@@ -110,12 +110,36 @@ function register(router) {
 
     const planUsage = await entitlements.status(ctx.db, ctx.organisationId);
     const currentPrice = Number((subscription && subscription.monthly_price) || 0);
-    const upgradePlans = await ctx.db.many(
+    const rawUpgradePlans = await ctx.db.many(
       `SELECT plan_key, name, description, features, monthly_price, currency,
               max_learners, max_staff, max_storage_bytes
        FROM subscription_plans WHERE status = 'active' AND monthly_price > $1
        ORDER BY monthly_price LIMIT 12`, [currentPrice]
     ).catch(() => []);
+    // Quote each plan with the exact same fee logic the upgrade endpoint uses,
+    // so the amount shown in the modal is the amount PayFast will request.
+    const feeProfile = process.env.PAYFAST_RECOVERY_PROFILE || 'standard_card';
+    const feeMethod = payfastFees.METHODS[payfastFees.resolveMethodKey(feeProfile)];
+    const upgradeQuote = (base) => {
+      const quoted = payfastFees.estimate(base, feeProfile);
+      return {
+        base: quoted.base,
+        fee: recoverFees ? quoted.fee : 0,
+        total: recoverFees ? quoted.gross : quoted.base
+      };
+    };
+    const upgradePlans = rawUpgradePlans.map((plan) => {
+      const monthlyBase = Math.round(Number(plan.monthly_price || 0) * 100) / 100;
+      const annualBase = Math.round(monthlyBase * 12 * 100) / 100;
+      return {
+        ...plan,
+        checkout: {
+          monthly: upgradeQuote(monthlyBase),
+          annual: upgradeQuote(annualBase),
+          feeLabel: feeMethod ? feeMethod.label : 'Card payments'
+        }
+      };
+    });
     const setupFeeRow = await ensureSetupFee(ctx.db, organisation);
     const setupBaseAmount = setupFeeRow ? Number(setupFeeRow.amount) : 0;
     const setupPayfastRecovery = (setupFeeRow && setupFeeRow.status === 'issued' && setupBaseAmount > 0)

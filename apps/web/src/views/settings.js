@@ -452,8 +452,9 @@ window.Reel.renderGateQr = function (targetId) {
               '<span class="muted small">' + (Number(p.max_learners) ? R.number(p.max_learners) + ' learners' : 'Unlimited learners') + ' · ' +
                 (Number(p.max_staff) ? R.number(p.max_staff) + ' staff' : 'Unlimited staff') + ' · ' +
                 (Number(p.max_storage_bytes) ? R.number(Math.round(p.max_storage_bytes / (1024 * 1024 * 1024) * 10) / 10) + ' GB' : 'Unlimited storage') + '</span>' +
-              '<strong>' + R.money(p.monthly_price, p.currency) + ' / mo ' + R.icon('arrow-right') + '</strong></button>').join('') +
-            '<p class="muted small" style="margin-top:8px">Base monthly price shown. PayFast processing fees are added at checkout and shown before you pay.</p></div>'
+              '<strong>' + R.money(((p.checkout && p.checkout.monthly && p.checkout.monthly.total) || p.monthly_price), p.currency) + ' / mo ' + R.icon('arrow-right') + '</strong></button>').join('') +
+            '<p class="muted small" style="margin-top:8px">Amounts include the PayFast processing fee — this is what you pay. Base plan price: ' +
+              upgradePlans.map((p) => R.esc(p.name) + ' ' + R.money(p.monthly_price, p.currency)).join(', ') + '.</p></div>'
           : ''),
         canManage && upgradePlans.length ? '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'upgradePlan\')">' + R.icon('arrow-up-circle') + ' Upgrade</button>' : '');
 

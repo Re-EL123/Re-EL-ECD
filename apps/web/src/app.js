@@ -2829,10 +2829,29 @@
       setUpgradePeriod(period) { this.upgradeModal.period = period; },
       selectUpgradePlan(key) { this.upgradeModal.selectedKey = key; this.upgradeModal.error = ''; },
 
+      upgradeCheckout(plan) {
+        if (!plan || !plan.checkout) return null;
+        return plan.checkout[this.upgradeModal.period] || null;
+      },
+
       upgradePlanPrice(plan) {
         if (!plan) return '';
+        const quoted = this.upgradeCheckout(plan);
         const months = this.upgradeModal.period === 'annual' ? 12 : 1;
-        return Reel.money(Number(plan.monthly_price || 0) * months, plan.currency || 'ZAR');
+        const amount = quoted ? quoted.total : Number(plan.monthly_price || 0) * months;
+        return Reel.money(amount, plan.currency || 'ZAR');
+      },
+
+      upgradePlanBase(plan) {
+        const quoted = this.upgradeCheckout(plan);
+        return Reel.money(quoted ? quoted.base : Number(plan.monthly_price || 0), (plan && plan.currency) || 'ZAR');
+      },
+
+      upgradePlanFee(plan) {
+        const quoted = this.upgradeCheckout(plan);
+        if (!quoted || !quoted.fee) return '';
+        return 'Includes ' + Reel.money(quoted.fee, (plan && plan.currency) || 'ZAR') + ' ' +
+          ((plan && plan.checkout && plan.checkout.feeLabel) || 'processing') + ' fee';
       },
 
       upgradePlanStorage(plan) {

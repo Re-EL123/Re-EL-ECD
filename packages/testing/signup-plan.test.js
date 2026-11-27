@@ -48,13 +48,13 @@ test('signup plan cards show inclusions and charges are described honestly', () 
 
   assert.ok(!/2 months free/.test(html));
   assert.match(html, /Annual <span class="upgrade-save">12 months upfront<\/span>/);
-  assert.match(html, /PayFast processing fees are added at checkout/);
+  assert.match(html, /exactly what PayFast will charge, including the online processing fee/);
 
   assert.match(platform, /there is no price lock/);
   assert.match(platform, /annual is charged as 12 months upfront/);
   assert.match(platform, /options: \['ZAR'\]/);
   assert.match(settings, /You will not be charged during the trial/);
-  assert.match(settings, /Base monthly price shown\. PayFast processing fees are added at checkout/);
+  assert.match(settings, /Amounts include the PayFast processing fee — this is what you pay/);
 
   assert.match(billingService, /subscription\.status === 'trial'\) return null/);
   assert.match(billingService, /past_due' \? todayDate\(\) : start/);

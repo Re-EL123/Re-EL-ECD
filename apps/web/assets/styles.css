@@ -4266,6 +4266,7 @@ body.book-reading { overflow: hidden; }
 .upgrade-plan-price { flex: 0 0 auto; text-align: right; line-height: 1.1; }
 .upgrade-plan-price strong { display: block; font-family: var(--font-display); font-size: 1.28rem; color: var(--reel-green-800); }
 .upgrade-plan-price span { font-size: .7rem; color: var(--text-muted); }
+.upgrade-price-detail { margin-top: 4px; font-size: .66rem; font-weight: 500; color: var(--text-muted); line-height: 1.35; }
 
 .upgrade-features { display: flex; flex-wrap: wrap; gap: 6px; }
 .upgrade-feature {
