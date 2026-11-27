@@ -101,3 +101,19 @@ test('the operator agreement and safeguarding disclaimer are public and complete
   assert.equal(terms.status, 200);
   assert.match(JSON.stringify(terms.data), /does not automatically register an ECD centre|does not register an ECD centre/i);
 });
+
+test('the breach response procedure is published and covers all seven stages', async () => {
+  const anon = createClient();
+  const doc = await anon.get('/public/documents/breach-response');
+  assert.equal(doc.status, 200, doc.text);
+  const text = JSON.stringify(doc.data).toLowerCase();
+  for (const phrase of ['detect', 'restrict', 'preserve', 'inform', 'affected', 'popia', 'corrective',
+    'information regulator', 'eservices', 'operator']) {
+    assert.ok(text.includes(phrase), 'procedure is missing: ' + phrase);
+  }
+  assert.ok((doc.data.sections || []).length >= 7);
+
+  const dpa = await anon.get('/public/documents/data-processing-agreement');
+  assert.equal(dpa.status, 200);
+  assert.match(JSON.stringify(dpa.data), /Breach Response Procedure/);
+});

@@ -87,3 +87,18 @@ Documents.
    change the `eyebrow` from `POPIA · DRAFT` once counsel signs off.
 4. Bump `LEGAL_UPDATED`, asset versions and the service-worker cache, and record
    the review date and attorney name here.
+
+## Security Incident & Breach Response Procedure (added later)
+
+`docs/breach-response.md` is the internal playbook; the tenant-facing summary is
+the `breach-response` legal document. Both are marked as unreviewed operational
+templates and must be approved by the Information Officer and counsel.
+
+Additional review points:
+
+1. Confirm the appointed Information Officer and Deputy, and publish their contact details.
+2. Confirm the current Information Regulator submission channel (eServices portal vs guidance-specified email) and the current prescribed Security Compromise Notification Form at the time of an incident.
+3. Verify the operator/responsible-party split for each data category, especially where Re-EL hosts its own account/billing data.
+4. Confirm the evidence-retention period and legal-hold process with counsel.
+5. Check the "ten business days" post-incident review target against the centre's policies.
+6. Re-check the official links before each use: Information Regulator fact sheet (Aug 2025), section 22 guidelines, POPIA forms page, eServices portal.
