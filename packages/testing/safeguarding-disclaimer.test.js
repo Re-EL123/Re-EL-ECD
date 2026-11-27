@@ -13,6 +13,7 @@ test('a dedicated safeguarding disclaimer explains platform vs centre duties', (
   const app = read('apps/web/src/app.js');
   const service = read('apps/api/src/services/document-service.js');
   const migration = read('packages/database/migrations/060_safeguarding_terms_alignment.sql');
+  const government = read('packages/database/migrations/061_terms_government_wording.sql');
 
   assert.match(app, /route\('\/legal\/safeguarding-disclaimer'/);
   assert.match(view, /V\.legalSafeguardingDisclaimer = legalDocViews\('safeguarding-disclaimer'\)/);
@@ -30,6 +31,7 @@ test('a dedicated safeguarding disclaimer explains platform vs centre duties', (
   assert.match(service, /South African Government ECD registration/);
   assert.match(migration, /Safeguarding and operational responsibilities/);
   assert.match(migration, /South African Government department/);
+  assert.match(government, /Re-EL ECD is not a South African Government department/);
 });
 
 test('the Terms carry the safeguarding relationship and registration disclaimer', () => {
