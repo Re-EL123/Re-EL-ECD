@@ -48,6 +48,7 @@
     route('/platform/item-analysis', 'platform', 'platformItemAnalysis', 'platform.organisations.read', 'Item analysis'),
     route('/platform/audit', 'platform', 'platformAudit', 'platform.audit.read', 'Platform audit'),
     route('/platform/health', 'platform', 'platformHealth', 'platform.health.read', 'System health'),
+    route('/platform/diagnostics', 'platform', 'platformDiagnostics', 'platform.health.read', 'Diagnostics'),
     route('/platform/settings', 'platform', 'platformSettings', 'platform.organisations.read', 'Platform settings'),
     route('/platform/support', 'platform', 'platformSupport', 'platform.support.manage', 'Support workspace'),
 
@@ -143,6 +144,7 @@
       { label: 'Governance', items: [
         { path: '/platform/audit', label: 'Audit explorer', icon: 'scroll-text', permission: 'platform.audit.read' },
         { path: '/platform/health', label: 'System health', icon: 'activity', permission: 'platform.health.read' },
+        { path: '/platform/diagnostics', label: 'Diagnostics', icon: 'bug', permission: 'platform.health.read' },
         { path: '/platform/support', label: 'Support', icon: 'life-buoy', permission: 'platform.support.manage' },
         { path: '/platform/settings', label: 'Configuration', icon: 'settings', permission: 'platform.organisations.read' }
       ] }
@@ -414,6 +416,7 @@
         window.ReelApp = this;
         if (window.Reel && Reel.feedback) Reel.feedback.init();
         if (window.Reel && Reel.rhymePlayer) Reel.rhymePlayer.init();
+        if (window.Reel && Reel.telemetry) Reel.telemetry.init();
         this._pendingTick = [];
         this.nextTick = (fn) => {
           const tick = () => Promise.resolve().then(() => {
@@ -913,6 +916,7 @@
           this.error = error.message || 'Unable to load this page.';
           this.errorTitle = 'Could not load ' + matched.route.title;
           if (window.console) console.error(error);
+          if (Reel.telemetry && Reel.telemetry.captureError) Reel.telemetry.captureError('route_load_failed', error);
         }
       },
 

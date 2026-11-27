@@ -87,7 +87,7 @@
     banner.setAttribute('aria-label', 'Analytics preference');
     banner.innerHTML =
       '<div class="analytics-banner-copy"><strong>Help us improve Re-EL ECD</strong>' +
-      '<span>We use optional, privacy-friendly analytics to see which pages are useful. No personal or child data is sent.</span></div>' +
+      '<span>Optional, privacy-friendly diagnostics help us see which pages are useful and fix errors on specific devices. No personal or child data is sent.</span></div>' +
       '<div class="analytics-banner-actions">' +
         '<button type="button" class="btn btn-sm btn-ghost" data-analytics="deny">No thanks</button>' +
         '<button type="button" class="btn btn-sm btn-primary" data-analytics="allow">Allow analytics</button>' +

@@ -26,6 +26,7 @@
     "docs:api": "node scripts/generate-api-docs.js",
     "check": "node scripts/lint.js && node scripts/check-migrations.js && node scripts/check-functions.js",
     "purge:live-checks": "node scripts/purge-live-checks.mjs",
+    "purge:telemetry": "node scripts/purge-telemetry.mjs",
     "import:books": "node scripts/import-bookdash.mjs"
   },
   "dependencies": {

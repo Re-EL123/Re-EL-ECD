@@ -29,7 +29,8 @@ const modules = [
   require('./whiteboards'),
   require('./books'),
   require('./interactions'),
-  require('./corrections')
+  require('./corrections'),
+  require('./telemetry')
 ];
 
 function register(router) {

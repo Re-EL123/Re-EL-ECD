@@ -1557,4 +1557,68 @@
     }
   };
 
+  // Diagnostics: consent-gated, privacy-safe product telemetry. No child data,
+  // no user id, no free text — just coarse device facts and sanitised events.
+  V.platformDiagnostics = {
+    async load(ctx) {
+      const hours = Number((ctx.query && ctx.query.hours) || 24);
+      const kind = (ctx.query && ctx.query.kind) || '';
+      const response = await R.api('GET', '/platform/telemetry?hours=' + encodeURIComponent(hours) +
+        (kind ? '&kind=' + encodeURIComponent(kind) : '')).catch(() => null);
+      return {
+        data: (response && response.data) || {},
+        hours, kind,
+        kinds: [
+          { value: '', label: 'All events' },
+          { value: 'page_view', label: 'Page views' },
+          { value: 'click', label: 'Clicks' },
+          { value: 'scroll', label: 'Scrolls' },
+          { value: 'error', label: 'Errors' },
+          { value: 'event', label: 'Custom events' }
+        ]
+      };
+    },
+
+    render(ctx, params, page) {
+      const d = page.data || {};
+      const totals = d.totals || {};
+      const bars = (rows) => (rows || []).map((row) =>
+        '<div class="kpi-row"><span class="kpi-label">' + R.esc(row.label || row.name || row.path || 'Unknown') +
+        '</span><span class="kpi-value">' + R.number(row.total) + '</span></div>').join('') || '<p class="muted small">Nothing in this window.</p>';
+      const errors = (d.recent || []).filter((row) => row.kind === 'error');
+      const errorRows = errors.length
+        ? R.table({ rows: errors.slice(0, 20), compact: true, columns: [
+            { label: 'When', render: (row) => R.date(row.occurred_at) },
+            { label: 'Event', render: (row) => R.esc(row.name) },
+            { label: 'Message', render: (row) => R.esc((row.details && row.details.message) || '—') },
+            { label: 'Device', render: (row) => R.esc((row.device || '?') + ' · ' + (row.os || '?') + ' · ' + (row.browser || '?')) },
+            { label: 'Route', render: (row) => R.esc(row.path) }
+          ] })
+        : R.emptyState('No errors reported', 'Browser errors from consenting visitors will appear here.', '', 'shield-check');
+
+      const selects = '<div class="row" style="gap:8px;flex-wrap:wrap">' +
+        '<select class="select" x-model="filters.hours" @change="setFilter(\'hours\',$event.target.value)" aria-label="Time window">' +
+          [24, 72, 168, 720].map((h) => '<option value="' + h + '"' + (Number(page.hours) === h ? ' selected' : '') + '>Last ' + (h < 48 ? h + ' hours' : (h / 24) + ' days') + '</option>').join('') +
+        '</select>' +
+        '<select class="select" x-model="filters.kind" @change="setFilter(\'kind\',$event.target.value)" aria-label="Event type">' +
+          page.kinds.map((k) => '<option value="' + R.attr(k.value) + '"' + (page.kind === k.value ? ' selected' : '') + '>' + R.esc(k.label) + '</option>').join('') +
+        '</select></div>';
+
+      return R.pageHead('Diagnostics',
+        'Privacy-safe product telemetry — only collected with consent, never child data or record identifiers.', selects) +
+        '<div class="grid grid-4 section">' +
+          R.statCard({ label: 'Events', value: R.number(totals.events || 0), icon: 'activity', tone: 'plum', foot: 'In window' }) +
+          R.statCard({ label: 'Errors', value: R.number(totals.errors || 0), icon: 'alert-triangle', tone: 'danger', foot: 'Browser errors' }) +
+          R.statCard({ label: 'Sessions', value: R.number(totals.sessions || 0), icon: 'users', foot: 'Anonymous, rotating daily' }) +
+        '</div>' +
+        '<div class="grid grid-3 section">' +
+          R.card('Operating systems', '<div class="kpi-list">' + bars(d.topOs) + '</div>') +
+          R.card('Device types', '<div class="kpi-list">' + bars(d.topDevices) + '</div>') +
+          R.card('Most viewed routes', '<div class="kpi-list">' + bars(d.topPaths) + '</div>') +
+        '</div>' +
+        '<div class="section">' + R.card('Top errors', '<div class="kpi-list">' + bars(d.topErrors) + '</div>') + '</div>' +
+        '<div class="section">' + R.card('Recent errors', errorRows) + '</div>';
+    }
+  };
+
 })();
