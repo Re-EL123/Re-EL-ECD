@@ -392,6 +392,9 @@
           }))
         })).filter((group) => group.items.length);
       },
+      get canUpgrade() {
+        return this.area === 'app' && !this.billingLocked && this.has('organisation.settings.manage');
+      },
       get quickActions() {
         const isParentAction = (action) => (Array.isArray(action.permission) ? action.permission : [action.permission])
           .some((key) => String(key).startsWith('parent.'));
@@ -4665,6 +4668,43 @@
       },
 
       openNamedModal(name, id) {
+        // Upgrades are available from the sidebar as well as the Billing page.
+        if (name === 'upgradePlan') {
+          const ctx = this;
+          if (!this.has('organisation.settings.manage')) {
+            this.toast('Only an owner or principal can upgrade the plan.', 'warn');
+            return;
+          }
+          const openUpgrade = (billing) => {
+            const current = (billing && billing.subscription && billing.subscription.planKey) || null;
+            const options = ((billing && billing.upgradePlans) || [])
+              .filter((plan) => plan.plan_key !== current)
+              .map((plan) => ({ value: plan.plan_key,
+                label: plan.name + ' · ' + Reel.money(plan.monthly_price, plan.currency) + '/mo' }));
+            if (!options.length) { this.toast('You are already on the highest available plan.', 'info'); return; }
+            if (billing && billing.payfast && billing.payfast.platformAvailable === false) {
+              this.toast('Online upgrades are not available right now. Contact support.', 'warn');
+              return;
+            }
+            this.openModal({
+              title: 'Upgrade your plan',
+              description: 'You will be taken to PayFast to pay for the new plan. Higher limits apply as soon as payment is confirmed.',
+              submitLabel: 'Continue to payment',
+              fields: [
+                { name: 'planKey', label: 'New plan', type: 'select', required: true, options },
+                { name: 'billingPeriod', label: 'Billing period', type: 'select',
+                  options: [{ value: 'monthly', label: 'Monthly' }, { value: 'annual', label: 'Annual (12 months)' }],
+                  value: ((billing && billing.subscription && billing.subscription.billingPeriod) || 'monthly') }
+              ],
+              async onSubmit(body) { await ctx.upgradePlan(body.planKey, body.billingPeriod); }
+            });
+          };
+          const pageBilling = (this.page || {}).billing;
+          if (pageBilling && Array.isArray(pageBilling.upgradePlans)) { openUpgrade(pageBilling); return; }
+          Reel.api('GET', '/billing/summary').then((response) => openUpgrade((response && response.data) || {}))
+            .catch((error) => this.toast(error.message || 'Could not load upgrade options.', 'error'));
+          return;
+        }
         // Cross-cutting actions available from any screen (Today, Overview, etc.).
         if (name === 'observationFor' && id) {
           Promise.all([
