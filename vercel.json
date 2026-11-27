@@ -79,15 +79,7 @@
     },
     {
       "path": "/api/v1/cron/attendance-reminders",
-      "schedule": "0 7 * * 1-5"
-    },
-    {
-      "path": "/api/v1/cron/attendance-reminders",
-      "schedule": "30 10 * * 1-5"
-    },
-    {
-      "path": "/api/v1/cron/attendance-reminders",
-      "schedule": "45 16 * * 1-5"
+      "schedule": "*/30 * * * *"
     }
   ]
 }
