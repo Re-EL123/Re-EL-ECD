@@ -79,11 +79,15 @@ function invoiceAmountFor(subscription) {
  * concurrent calls a no-op.
  */
 async function ensureInvoice(db, organisation, subscription) {
-  if (!subscription || subscription.status === 'cancelled') return null;
+  // A trial is free: do not issue a payable invoice until the trial has ended.
+  // Otherwise tenants see "R… due in 7 days" on day one of a 30-day trial.
+  if (!subscription || subscription.status === 'cancelled' || subscription.status === 'trial') return null;
   const { start, end } = periodFor(subscription);
   const amount = invoiceAmountFor(subscription);
   if (!(amount > 0)) return null;
-  const due = addDays(start, subscription.billing_period === 'annual' ? 14 : 7);
+  // A lapsed period may be older than the invoice due window; count from today.
+  const dueBase = subscription.status === 'past_due' ? todayDate() : start;
+  const due = addDays(dueBase, subscription.billing_period === 'annual' ? 14 : 7);
   const inserted = await db.one(
     `INSERT INTO platform_subscription_invoices
        (organisation_id, subscription_id, invoice_number, amount, currency, period_start, period_end, status, due_at)

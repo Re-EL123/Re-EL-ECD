@@ -1000,10 +1000,39 @@
     },
     render(ctx, params, page) {
       const enabled = ctx.signupEnabled === true;
-      const planOptions = (ctx.signupPlans || []).map((p) =>
-        '<option value="' + R.attr(p.plan_key) + '">' + R.esc(p.name) + ' — ' +
-        R.esc(R.money(p.monthly_price, p.currency || 'ZAR')) + '/mo</option>'
-      ).join('');
+      const storageText = (bytes) => {
+        const value = Number(bytes || 0);
+        if (!value) return 'Unlimited storage';
+        const gb = 1024 * 1024 * 1024;
+        const mb = 1024 * 1024;
+        if (value >= gb) return R.number(Math.round(value / gb * 10) / 10) + ' GB storage';
+        if (value >= mb) return R.number(Math.round(value / mb * 10) / 10) + ' MB storage';
+        return R.number(Math.round(value / 1024)) + ' KB storage';
+      };
+      const featureText = (key) => {
+        const labels = { attendance: 'Attendance', assessments: 'Assessments', parent_portal: 'Parent portal', finance: 'Fees & finance' };
+        return labels[key] || R.titleCase(String(key).replace(/_/g, ' '));
+      };
+      const planCards = (ctx.signupPlans || []).map((p) => {
+        const key = R.attr(p.plan_key);
+        const selected = "signupForm.planKey === '" + key + "'";
+        const chips = [
+          '<span class="upgrade-feature"><i data-lucide="users"></i><span>' + (p.max_learners ? R.number(p.max_learners) + ' learners' : 'Unlimited learners') + '</span></span>',
+          '<span class="upgrade-feature"><i data-lucide="user-round"></i><span>' + (p.max_staff ? R.number(p.max_staff) + ' staff members' : 'Unlimited staff') + '</span></span>',
+          '<span class="upgrade-feature"><i data-lucide="hard-drive"></i><span>' + R.esc(storageText(p.max_storage_bytes)) + '</span></span>'
+        ].concat((p.features || []).map((f) =>
+          '<span class="upgrade-feature"><i data-lucide="check"></i><span>' + R.esc(featureText(f)) + '</span></span>'));
+        return '<button type="button" class="upgrade-plan" :class="{ selected: ' + selected + ' }" ' +
+          '@click="signupForm.planKey = \'' + key + '\'" :aria-pressed="' + selected + '">' +
+          '<div class="upgrade-plan-top"><div class="upgrade-plan-identity">' +
+            '<div class="upgrade-plan-name"><span>' + R.esc(p.name) + '</span>' +
+              '<span class="upgrade-check" x-show="' + selected + '"><i data-lucide="check"></i></span></div>' +
+            '<p class="upgrade-plan-desc">' + R.esc(p.description || 'A calm, capable plan for growing centres.') + '</p>' +
+          '</div><div class="upgrade-plan-price"><strong>' + R.esc(R.money(p.monthly_price, p.currency || 'ZAR')) + '</strong><span>/ month</span></div></div>' +
+          '<div class="upgrade-features">' + chips.join('') + '</div>' +
+          '<div class="upgrade-plan-foot"><span x-text="' + selected + ' ? \'Selected plan\' : \'Choose ' + R.esc(p.name) + '\'"></span>' +
+            '<i data-lucide="arrow-right"></i></div></button>';
+      }).join('');
 
       const steps = [
         { n: 1, label: 'Your centre', icon: 'school' },
@@ -1075,14 +1104,16 @@
           '<section class="signup-panel" x-show="signupStep === 4" x-cloak>' +
             '<h3>Choose a plan & confirm</h3>' +
             '<p class="muted small">Every plan starts with a 30-day trial. You can change plans anytime in Settings.</p>' +
-            '<div class="field"><label for="signup-plan">Plan (30-day trial)</label><select class="select" id="signup-plan" name="planKey" x-model="signupForm.planKey">' + planOptions + '</select></div>' +
+            '<div class="signup-plan-label">Plan (30-day trial)</div>' +
+            '<div class="upgrade-plans signup-plans" role="group" aria-label="Choose a plan">' + planCards + '</div>' +
+            '<p class="signup-price-note"><i data-lucide="info"></i> Prices are monthly plan fees in South African rand. You are not charged during the 30-day trial. PayFast processing fees, if you pay online, are shown before you pay.</p>' +
             '<div class="card" style="margin-top:12px;background:var(--surface-2)">' +
               '<label class="check-row" style="align-items:flex-start;gap:10px;margin:0">' +
                 '<input type="checkbox" name="includeSetup" x-model="signupForm.includeSetup" style="margin-top:3px">' +
                 '<span>' +
                   '<span class="strong">Add the R700 once-off setup &amp; launch package <span class="badge badge-muted">Optional</span></span>' +
                   '<div class="muted small" style="margin-top:4px">Includes 3 days staff training, platform setup, public website setup, curriculum template, module templates, activities templates, and launch marketing. If selected, it will be added to your billing so you can pay it in-app (R700 base + secure online processing when paying by card).</div>' +
-                  '<div class="muted small" style="margin-top:4px">You can add or arrange this later — it’s not required to create your workspace.</div>' +
+                  '<div class="muted small" style="margin-top:4px">Optional — your workspace is created either way. If you skip it now, contact support to arrange it later.</div>' +
                 '</span>' +
               '</label>' +
             '</div>' +
@@ -1114,7 +1145,7 @@
 
       return platformShell(ctx, platformNav(ctx) +
         '<div class="signup-page-bg">' +
-          '<section class="public-section signup-section" style="max-width:640px;margin:0 auto">' +
+          '<section class="public-section signup-section" style="max-width:860px;margin:0 auto">' +
             '<h1>Create your centre</h1><p class="lede">Set up your Re-EL ECD workspace in a few simple steps. Start a 30-day trial — you’ll be the owner and can invite your team.</p>' +
             '<div class="card glass signup-card" style="margin-top:16px">' + body + '</div>' +
             '<div class="row" style="margin-top:12px;justify-content:center"><a class="muted small signup-backlink" href="#/login">Already have an account? Sign in</a></div>' +

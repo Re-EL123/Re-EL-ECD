@@ -691,6 +691,7 @@
         '<div class="row" style="justify-content:space-between;align-items:flex-start"><div><div class="cell-strong" style="font-size:1rem">' + R.esc(p.name) + '</div><div class="cell-sub mono">' + R.esc(p.plan_key) + '</div></div>' + R.badge(p.status) + '</div>' +
         '<div class="plan-price">' + R.money(p.monthly_price, p.currency) + '<span> /month</span></div>' +
         '<div class="muted small">' + R.esc(p.description || 'No description yet.') + '</div>' +
+        '<div class="muted small" style="margin-top:6px">Base price · annual is charged as 12 months upfront · PayFast fees added at checkout.</div>' +
         '<div class="kpi-list">' +
         '<div class="kpi-row"><span class="kpi-label">Learner limit</span><span class="kpi-value">' + (p.max_learners ? R.number(p.max_learners) : 'Unlimited') + '</span></div>' +
         '<div class="kpi-row"><span class="kpi-label">Staff limit</span><span class="kpi-value">' + (p.max_staff ? R.number(p.max_staff) : 'Unlimited') + '</span></div>' +
@@ -891,7 +892,7 @@
         if (name === 'editPlan' && !plan) { ctx.toast('That plan could not be found.', 'warn'); return; }
         ctx.openModal({
           title: plan ? 'Edit ' + plan.name : 'Create a subscription plan',
-          description: plan ? 'Changes apply to new subscriptions; existing subscriptions keep their agreed price until renewed.' : 'Plans define price, limits and the features a tenant can use.',
+          description: plan ? 'Price, limits and features are read live from this catalogue. Saving a change affects existing tenants on their next invoice or upgrade — there is no price lock.' : 'Plans define price, limits and the features a tenant can use.',
           endpoint: plan ? '/platform/plans/' + encodeURIComponent(plan.id) : '/platform/plans',
           method: plan ? 'PATCH' : 'POST', submitLabel: plan ? 'Save plan' : 'Create plan',
           successMessage: plan ? 'Plan updated' : 'Plan created', size: 'wide',
@@ -900,10 +901,10 @@
             { name: 'planKey', label: 'Plan key', required: true, value: plan ? plan.plan_key : '', help: 'Lowercase letters, numbers and hyphens.' },
             { name: 'description', label: 'Description', type: 'textarea', span: 2, value: plan ? (plan.description || '') : '' },
             { name: 'monthlyPrice', label: 'Monthly price', type: 'number', min: 0, step: '0.01', required: true, value: plan ? plan.monthly_price : 0 },
-            { name: 'currency', label: 'Currency', type: 'select', options: ['ZAR', 'USD', 'EUR', 'GBP'], value: plan ? plan.currency : 'ZAR' },
+            { name: 'currency', label: 'Currency', type: 'select', options: ['ZAR'], value: 'ZAR', help: 'PayFast settles in South African rand. Online checkout cannot charge other currencies.' },
             { name: 'maxLearners', label: 'Learner limit', type: 'number', min: 0, value: plan ? plan.max_learners : 50, help: '0 means unlimited' },
             { name: 'maxStaff', label: 'Staff limit', type: 'number', min: 0, value: plan ? plan.max_staff : 10, help: '0 means unlimited' },
-            { name: 'maxStorageGb', label: 'Storage limit (GB)', type: 'number', min: 0, step: '0.5', value: plan ? Math.round(Number(plan.max_storage_bytes || 0) / (1024 * 1024 * 1024) * 10) / 10 : 5, help: 'Uploaded files and media. 0 means unlimited.' },
+            { name: 'maxStorageGb', label: 'Storage limit (GB)', type: 'number', min: 0, step: '0.001', value: plan ? Math.round(Number(plan.max_storage_bytes || 0) / (1024 * 1024 * 1024) * 1000) / 1000 : 5, help: 'Uploaded files and media. 0 means unlimited.' },
             { name: 'features', label: 'Features', type: 'textarea', span: 2, value: plan ? (plan.features || []).join(', ') : 'attendance, assessments, parent_portal, finance', help: 'Comma-separated feature keys.' },
             { name: 'status', label: 'Status', type: 'select', options: [{ value: 'active', label: 'Active' }, { value: 'archived', label: 'Archived' }], value: plan ? plan.status : 'active' }
           ],

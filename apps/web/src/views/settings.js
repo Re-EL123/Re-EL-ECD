@@ -421,7 +421,10 @@ window.Reel.renderGateQr = function (targetId) {
                 (canManage && platformPayfast
                   ? '<button class="btn btn-primary" style="margin-top:12px" @click="paySubscription()">' + R.icon('credit-card') + ' Pay ' + R.money(openInvoice.payfastTotalDue || openInvoice.amount, openInvoice.currency) + '</button>'
                   : '<p class="muted small" style="margin-top:10px">' + (platformPayfast ? 'Ask an administrator with settings access to pay this invoice.' : 'Online payment is not configured. Ask support to record a bank transfer.') + '</p>')
-              : '<div class="alert alert-success" style="margin-top:12px"><i data-lucide="check-circle"></i><span>You are up to date. Your plan renews on ' + R.date(subscription.currentPeriodEnd) + '.</span></div>')
+              : '<div class="alert alert-success" style="margin-top:12px"><i data-lucide="check-circle"></i><span>' +
+                (subscription.status === 'trial'
+                  ? 'Your free trial runs until ' + R.date(subscription.currentPeriodEnd) + '. You will not be charged during the trial.'
+                  : 'You are up to date. Your plan renews on ' + R.date(subscription.currentPeriodEnd) + '.') + '</span></div>')
           : '<div class="alert alert-warning"><i data-lucide="alert-circle"></i><span>This organisation has no plan yet. Contact support to set one up.</span></div>');
 
       const planUsage = billing.planUsage || {};
@@ -449,7 +452,8 @@ window.Reel.renderGateQr = function (targetId) {
               '<span class="muted small">' + (Number(p.max_learners) ? R.number(p.max_learners) + ' learners' : 'Unlimited learners') + ' · ' +
                 (Number(p.max_staff) ? R.number(p.max_staff) + ' staff' : 'Unlimited staff') + ' · ' +
                 (Number(p.max_storage_bytes) ? R.number(Math.round(p.max_storage_bytes / (1024 * 1024 * 1024) * 10) / 10) + ' GB' : 'Unlimited storage') + '</span>' +
-              '<strong>' + R.money(p.monthly_price, p.currency) + ' / mo ' + R.icon('arrow-right') + '</strong></button>').join('') + '</div>'
+              '<strong>' + R.money(p.monthly_price, p.currency) + ' / mo ' + R.icon('arrow-right') + '</strong></button>').join('') +
+            '<p class="muted small" style="margin-top:8px">Base monthly price shown. PayFast processing fees are added at checkout and shown before you pay.</p></div>'
           : ''),
         canManage && upgradePlans.length ? '<button class="btn btn-sm btn-secondary" @click="openNamedModal(\'upgradePlan\')">' + R.icon('arrow-up-circle') + ' Upgrade</button>' : '');
 
