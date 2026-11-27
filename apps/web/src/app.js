@@ -315,6 +315,7 @@
       automationDigestBusy: false,
       modal: null,
       correction: { type: '', resourceId: '', reason: '', fields: [], values: {}, label: '', error: '' },
+      upgradeModal: { open: false, plans: [], currentKey: '', currentName: '', selectedKey: '', period: 'monthly', busy: false, error: '' },
       signaturePads: {},
       toasts: [],
       unread: 0,
@@ -2787,17 +2788,92 @@
         }
       },
 
+      async openUpgradeModal() {
+        if (!this.has('organisation.settings.manage')) {
+          this.toast('Only an owner or principal can upgrade the plan.', 'warn'); return;
+        }
+        const modal = this.upgradeModal;
+        modal.error = '';
+        modal.busy = false;
+        let billing = (this.page || {}).billing;
+        if (!billing || !Array.isArray(billing.upgradePlans)) {
+          try {
+            const response = await Reel.api('GET', '/billing/summary');
+            billing = (response && response.data) || {};
+          } catch (error) {
+            this.toast(error.message || 'Could not load upgrade options.', 'error'); return;
+          }
+        }
+        if (billing.payfast && billing.payfast.platformAvailable === false) {
+          this.toast('Online upgrades are not available right now. Contact support.', 'warn'); return;
+        }
+        const subscription = billing.subscription || {};
+        const plans = (billing.upgradePlans || []).filter((plan) => plan.plan_key !== subscription.planKey);
+        if (!plans.length) { this.toast('You are already on the highest available plan.', 'info'); return; }
+        modal.plans = plans;
+        modal.currentKey = subscription.planKey || '';
+        modal.currentName = subscription.planName || (modal.currentKey ? Reel.titleCase(modal.currentKey) : 'your current plan');
+        modal.period = subscription.billingPeriod || 'monthly';
+        modal.selectedKey = plans[0].plan_key;
+        modal.open = true;
+        this.nextTick(() => { if (this.refreshIcons) this.refreshIcons(); });
+      },
+
+      closeUpgradeModal() {
+        const modal = this.upgradeModal;
+        modal.open = false;
+        modal.busy = false;
+        modal.error = '';
+      },
+
+      setUpgradePeriod(period) { this.upgradeModal.period = period; },
+      selectUpgradePlan(key) { this.upgradeModal.selectedKey = key; this.upgradeModal.error = ''; },
+
+      upgradePlanPrice(plan) {
+        if (!plan) return '';
+        const months = this.upgradeModal.period === 'annual' ? 12 : 1;
+        return Reel.money(Number(plan.monthly_price || 0) * months, plan.currency || 'ZAR');
+      },
+
+      upgradePlanStorage(plan) {
+        if (!plan || !Number(plan.max_storage_bytes)) return 'Unlimited storage';
+        const gb = Math.round(Number(plan.max_storage_bytes) / (1024 * 1024 * 1024) * 10) / 10;
+        return Reel.number(gb) + ' GB storage';
+      },
+
+      upgradeFeatureLabel(key) {
+        const labels = { attendance: 'Attendance', assessments: 'Assessments', parent_portal: 'Parent portal', finance: 'Fees & finance' };
+        return labels[key] || String(key).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+      },
+
+      async confirmUpgrade() {
+        const modal = this.upgradeModal;
+        if (!modal.selectedKey || modal.busy) return;
+        modal.busy = true;
+        modal.error = '';
+        try {
+          const done = await this.upgradePlan(modal.selectedKey, modal.period);
+          if (done) modal.open = false;
+        } catch (error) {
+          modal.error = error.message || 'The upgrade could not be started.';
+        } finally {
+          modal.busy = false;
+        }
+      },
+
       async upgradePlan(planKey, billingPeriod) {
-        if (!planKey) return;
+        if (!planKey) return false;
         try {
           const result = await Reel.api('POST', '/billing/subscription/upgrade', {
             planKey, billingPeriod: billingPeriod || 'monthly'
           });
           const checkout = (result && result.data && result.data.checkout) || null;
-          if (checkout) { this.submitCheckout(checkout); return; }
+          if (checkout) { this.submitCheckout(checkout); return true; }
           this.toast('Could not start the upgrade checkout.', 'error');
+          return false;
         } catch (error) {
           this.toast(error.message || 'Could not start the upgrade checkout.', 'error');
+          return false;
         }
       },
 
@@ -4669,42 +4745,7 @@
 
       openNamedModal(name, id) {
         // Upgrades are available from the sidebar as well as the Billing page.
-        if (name === 'upgradePlan') {
-          const ctx = this;
-          if (!this.has('organisation.settings.manage')) {
-            this.toast('Only an owner or principal can upgrade the plan.', 'warn');
-            return;
-          }
-          const openUpgrade = (billing) => {
-            const current = (billing && billing.subscription && billing.subscription.planKey) || null;
-            const options = ((billing && billing.upgradePlans) || [])
-              .filter((plan) => plan.plan_key !== current)
-              .map((plan) => ({ value: plan.plan_key,
-                label: plan.name + ' · ' + Reel.money(plan.monthly_price, plan.currency) + '/mo' }));
-            if (!options.length) { this.toast('You are already on the highest available plan.', 'info'); return; }
-            if (billing && billing.payfast && billing.payfast.platformAvailable === false) {
-              this.toast('Online upgrades are not available right now. Contact support.', 'warn');
-              return;
-            }
-            this.openModal({
-              title: 'Upgrade your plan',
-              description: 'You will be taken to PayFast to pay for the new plan. Higher limits apply as soon as payment is confirmed.',
-              submitLabel: 'Continue to payment',
-              fields: [
-                { name: 'planKey', label: 'New plan', type: 'select', required: true, options },
-                { name: 'billingPeriod', label: 'Billing period', type: 'select',
-                  options: [{ value: 'monthly', label: 'Monthly' }, { value: 'annual', label: 'Annual (12 months)' }],
-                  value: ((billing && billing.subscription && billing.subscription.billingPeriod) || 'monthly') }
-              ],
-              async onSubmit(body) { await ctx.upgradePlan(body.planKey, body.billingPeriod); }
-            });
-          };
-          const pageBilling = (this.page || {}).billing;
-          if (pageBilling && Array.isArray(pageBilling.upgradePlans)) { openUpgrade(pageBilling); return; }
-          Reel.api('GET', '/billing/summary').then((response) => openUpgrade((response && response.data) || {}))
-            .catch((error) => this.toast(error.message || 'Could not load upgrade options.', 'error'));
-          return;
-        }
+        if (name === 'upgradePlan') { this.openUpgradeModal(); return; }
         // Cross-cutting actions available from any screen (Today, Overview, etc.).
         if (name === 'observationFor' && id) {
           Promise.all([

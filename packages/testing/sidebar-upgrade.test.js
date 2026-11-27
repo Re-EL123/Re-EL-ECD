@@ -31,3 +31,26 @@ test('the sidebar has a permission-gated upgrade shortcut', () => {
   assert.ok(settings.includes("openNamedModal(\\'upgradePlan\\')"));
   assert.match(settings, /plan-upgrade-card/);
 });
+
+test('the upgrade modal compares plans with their inclusions', () => {
+  const html = read('apps/web/index.html');
+  const app = read('apps/web/src/app.js');
+  const billing = read('apps/api/src/modules/billing.js');
+  const css = read('apps/web/assets/styles.css');
+
+  assert.match(html, /class="modal modal-upgrade"/);
+  assert.match(html, /class="upgrade-plans"/);
+  assert.match(html, /class="upgrade-features"/);
+  assert.match(html, /x-text="upgradePlanPrice\(plan\)"/);
+  assert.match(html, /x-text="upgradeFeatureLabel\(feature\)"/);
+  assert.match(html, /x-text="upgradeModal\.period === 'annual'/);
+
+  assert.match(app, /async openUpgradeModal\(\)/);
+  assert.match(app, /async confirmUpgrade\(\)/);
+  assert.match(app, /upgradePlanPrice\(plan\)/);
+  assert.match(app, /upgradeFeatureLabel\(key\)/);
+
+  assert.match(billing, /SELECT plan_key, name, description, features, monthly_price, currency/);
+  assert.match(css, /\.upgrade-plan\.selected \{/);
+  assert.match(css, /\.upgrade-features \{/);
+});

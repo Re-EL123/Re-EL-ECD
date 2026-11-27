@@ -101,7 +101,8 @@ function register(router) {
     const planUsage = await entitlements.status(ctx.db, ctx.organisationId);
     const currentPrice = Number((subscription && subscription.monthly_price) || 0);
     const upgradePlans = await ctx.db.many(
-      `SELECT plan_key, name, monthly_price, currency, max_learners, max_staff, max_storage_bytes
+      `SELECT plan_key, name, description, features, monthly_price, currency,
+              max_learners, max_staff, max_storage_bytes
        FROM subscription_plans WHERE status = 'active' AND monthly_price > $1
        ORDER BY monthly_price LIMIT 12`, [currentPrice]
     ).catch(() => []);
