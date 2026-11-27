@@ -253,9 +253,10 @@ function register(router) {
   // a raw client object merged into the security config.
   const ALLOWED_SETTINGS = new Set([
     'academicYear', 'operatingHours', 'attendancePolicy', 'notificationPreferences',
-    'publicWebsite', 'dataRetention', 'weather', 'ncf', 'collection.lateCutoff', 'nurseryRhymeAudio', 'nurseryRhymes'
+    'publicWebsite', 'dataRetention', 'weather', 'ncf', 'collection.lateCutoff', 'nurseryRhymeAudio', 'nurseryRhymes',
+    'attendanceReminders'
   ]);
-  const OBJECT_SETTINGS = new Set(['operatingHours', 'attendancePolicy', 'notificationPreferences', 'publicWebsite', 'dataRetention', 'weather', 'ncf', 'nurseryRhymeAudio']);
+  const OBJECT_SETTINGS = new Set(['operatingHours', 'attendancePolicy', 'notificationPreferences', 'publicWebsite', 'dataRetention', 'weather', 'ncf', 'nurseryRhymeAudio', 'attendanceReminders']);
   router.patch('/organisations/current/settings', async (ctx) => {
     const body = validate(ctx.body, {
       settings: { type: 'object' }
@@ -275,7 +276,10 @@ function register(router) {
       } else if (OBJECT_SETTINGS.has(key)) {
         for (const [nestedKey, nestedValue] of Object.entries(value)) {
           const flat = typeof nestedValue;
-          if (nestedValue === null || !['string', 'number', 'boolean'].includes(flat)) {
+          if (key === 'attendanceReminders' && /Time$/.test(nestedKey)
+            && !/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(String(nestedValue))) {
+            fail('VALIDATION', [{ field: 'settings.' + key + '.' + nestedKey, message: 'Use HH:MM, e.g. 17:30.' }]);
+          } else if (nestedValue === null || !['string', 'number', 'boolean'].includes(flat)) {
             fail('VALIDATION', [{ field: 'settings.' + key + '.' + nestedKey, message: 'Only plain values are allowed here.' }]);
           } else if (flat === 'string' && nestedValue.length > 500) {
             fail('VALIDATION', [{ field: 'settings.' + key + '.' + nestedKey, message: 'Value is too long.' }]);

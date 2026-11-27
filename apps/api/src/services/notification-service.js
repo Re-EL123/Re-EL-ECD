@@ -22,6 +22,9 @@ const PUSH_URLS = {
   plan_review_due: '/app/curriculum',
   observation_due: '/app/assessments',
   observation_comment: '/app/assessments',
+  attendance_reminder_clock_in: '/app/staff-attendance',
+  attendance_reminder_break: '/app/staff-attendance',
+  attendance_reminder_clock_out: '/app/staff-attendance',
   absence_reported: '/app/learner-attendance',
   consent_needed: '/parent/forms',
   general: '/app/communications'

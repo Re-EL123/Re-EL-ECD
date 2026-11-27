@@ -764,6 +764,28 @@ const templates = {
     };
   },
 
+  attendanceReminder(data) {
+    const labels = { clock_in: 'Clock in', break: 'Take a break', clock_out: 'Clock out' };
+    const action = labels[data.kind] || 'Record your attendance';
+    return {
+      subject: 'Reminder: ' + action.toLowerCase(),
+      html: layout({
+        brand: data.brand,
+        heading: action,
+        intro: 'Hello ' + (data.staffName || 'there') + ', this is a friendly reminder from ' +
+          (data.organisationName || 'your centre') + ' to ' + action.toLowerCase() + '.',
+        rows: [
+          { label: 'Expected time', value: data.expectedTime || 'See your roster' },
+          { label: 'Why', value: 'Accurate attendance records help your centre plan staffing and meet ECD requirements.' }
+        ],
+        ctaLabel: 'Open my attendance',
+        ctaUrl: appLink('/#/app/staff-attendance'),
+        footer: 'You are receiving this because attendance reminders are enabled for your centre.'
+      }),
+      text: plain([action + ' by ' + (data.expectedTime || 'your rostered time'), appLink('/#/app/staff-attendance')])
+    };
+  },
+
   formReviewed(data) {
     const statusLabel = data.status === 'approved' ? 'approved'
       : data.status === 'rejected' ? 'rejected'

@@ -665,6 +665,7 @@ window.Reel.renderGateQr = function (targetId) {
           ]
         });
       } else if (name === 'operations') {
+        const reminders = settings.attendanceReminders || {};
         ctx.openModal({
           title: 'Operating settings', endpoint: '/organisations/current/settings', method: 'PATCH', submitLabel: 'Save settings', size: 'wide',
           fields: [
@@ -678,6 +679,13 @@ window.Reel.renderGateQr = function (targetId) {
             { name: 'emailInvoices', label: 'Email invoices', type: 'checkbox', value: notifications.emailInvoices !== false },
             { name: 'smsIncidents', label: 'SMS — high/critical safety incidents', type: 'checkbox', value: notifications.smsIncidents === true, help: 'Texts centre leaders when a serious incident is reported.' },
             { name: 'smsPickupBrief', label: 'SMS — pickup brief', type: 'checkbox', value: notifications.smsPickupBrief === true, help: 'Texts guardians a short version of the 15:00 pickup note.' },
+            { name: 'remindersEnabled', label: 'Staff attendance reminders', type: 'checkbox', value: reminders.enabled !== false, help: 'Nudges staff to clock in, take a break and clock out. In-app and push by default.' },
+            { name: 'clockInTime', label: 'Clock-in reminder', value: reminders.clockInTime || '07:30', help: 'HH:MM. Also uses the roster start time when a shift is scheduled.' },
+            { name: 'breakTime', label: 'Break reminder', value: reminders.breakTime || '10:30', help: 'HH:MM. Sent only to staff who are on site and have not recorded a break.' },
+            { name: 'clockOutTime', label: 'Clock-out reminder', value: reminders.clockOutTime || '16:45', help: 'HH:MM. Also uses the roster end time when a shift is scheduled.' },
+            { name: 'reminderEmail', label: 'Email attendance reminders', type: 'checkbox', value: reminders.channelEmail === true, help: 'Off by default — in-app and push are usually enough.' },
+            { name: 'reminderSms', label: 'SMS attendance reminders', type: 'checkbox', value: reminders.channelSms === true, help: 'Requires an SMS provider and the "SMS — attendance reminders" opt-in below.' },
+            { name: 'smsAttendanceReminders', label: 'SMS — attendance reminders', type: 'checkbox', value: notifications.smsAttendanceReminders === true, help: 'Allows text reminders to staff who have a phone number on their profile.' },
             { name: 'showFees', label: 'Show fees publicly', type: 'checkbox', value: (settings.publicWebsite || {}).showFees === true },
             { name: 'learnerRecordsYears', label: 'Learner record retention (years)', type: 'number', value: retention.learnerRecordsYears || 7 },
             { name: 'financeYears', label: 'Financial record retention (years)', type: 'number', value: retention.financeYears || 7 },
@@ -688,7 +696,15 @@ window.Reel.renderGateQr = function (targetId) {
               academicYear: Number(data.academicYear),
               operatingHours: { open: data.open, close: data.close },
               attendancePolicy: { lateAfter: data.lateAfter, autoAbsentAfter: data.autoAbsentAfter, allowExcusedAbsence: data.allowExcusedAbsence === true },
-              notificationPreferences: { emailAnnouncements: data.emailAnnouncements === true, emailInvoices: data.emailInvoices === true, smsIncidents: data.smsIncidents === true, smsPickupBrief: data.smsPickupBrief === true },
+              notificationPreferences: { emailAnnouncements: data.emailAnnouncements === true, emailInvoices: data.emailInvoices === true, smsIncidents: data.smsIncidents === true, smsPickupBrief: data.smsPickupBrief === true, smsAttendanceReminders: data.smsAttendanceReminders === true },
+              attendanceReminders: {
+                enabled: data.remindersEnabled === true,
+                clockInTime: data.clockInTime || '07:30',
+                breakTime: data.breakTime || '10:30',
+                clockOutTime: data.clockOutTime || '16:45',
+                channelEmail: data.reminderEmail === true,
+                channelSms: data.reminderSms === true
+              },
               publicWebsite: { enabled: true, showFees: data.showFees === true },
               dataRetention: { learnerRecordsYears: Number(data.learnerRecordsYears), financeYears: Number(data.financeYears) },
               weather: { city: String(data.weatherCity || '').trim() }

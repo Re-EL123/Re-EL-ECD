@@ -171,6 +171,7 @@ async function seedDevelopment({ force = false } = {}) {
     operatingHours: { open: '06:30', close: '18:00' },
     attendancePolicy: { lateAfter: '08:30', autoAbsentAfter: '10:00', allowExcusedAbsence: true },
     notificationPreferences: { emailAnnouncements: true, emailInvoices: true, smsIncidents: false, smsPickupBrief: false },
+    attendanceReminders: { enabled: true, clockInTime: '07:30', breakTime: '10:30', clockOutTime: '16:45' },
     publicWebsite: { enabled: true, showFees: false },
     dataRetention: { learnerRecordsYears: 7, financeYears: 7 },
     ncf: { enabled: true }

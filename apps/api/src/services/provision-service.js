@@ -49,6 +49,7 @@ async function provisionOrganisation(db, input, actorUserId) {
     await client.query('INSERT INTO organisation_settings (organisation_id, settings) VALUES ($1,$2)', [org.id, JSON.stringify({
       academicYear: new Date().getFullYear(),
       operatingHours: { open: '06:30', close: '18:00' },
+      attendanceReminders: { enabled: true, clockInTime: '07:30', breakTime: '10:30', clockOutTime: '16:45' },
       publicWebsite: { enabled: false }
     })]);
     await client.query(

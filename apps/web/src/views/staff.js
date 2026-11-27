@@ -265,8 +265,19 @@
         : status === 'on_break'
           ? '<button class="btn btn-primary btn-sm" @click="act(\'POST\',\'/staff-attendance/break-end\',{},{successMessage:\'Break ended\'})">End break</button>'
           : '<button class="btn btn-primary btn-sm" @click="act(\'POST\',\'/staff-attendance/clock-in\',{},{successMessage:\'Clocked in\'})">Clock in</button>';
+      const reminder = status === 'not_clocked_in'
+        ? { tone: 'alert-warn', icon: 'bell', text: 'Reminder: please clock in when you arrive. Your centre uses this record for staffing and ECD requirements.' }
+        : status === 'on_site'
+          ? { tone: 'alert-info', icon: 'coffee', text: 'Remember to record a break when you take one, and to clock out when your shift ends.' }
+          : status === 'on_break'
+            ? { tone: 'alert-info', icon: 'coffee', text: 'Remember to end your break when you are back on duty.' }
+            : null;
+      const shiftHint = state.shift
+        ? ' Your shift: ' + R.time(state.shift.starts_at) + ' – ' + R.time(state.shift.ends_at) + '.'
+        : '';
       return R.pageHead('My attendance', 'Clock in, take breaks and review your recorded hours.',
         '<span class="badge ' + (status === 'on_site' ? 'badge-success' : status === 'on_break' ? 'badge-warning' : 'badge-muted') + '">' + R.esc(label) + '</span>') +
+        (reminder ? '<div class="alert ' + reminder.tone + ' section"><i data-lucide="' + reminder.icon + '"></i><span>' + R.esc(reminder.text) + shiftHint + '</span></div>' : '') +
         '<div class="grid grid-3 section">' +
         R.statCard({ label: 'Status', value: R.esc(label), icon: 'fingerprint', tone: 'sky', foot: R.esc(state.staff.job_title || '') }) +
         R.statCard({ label: 'Today\'s shift', value: state.shift ? R.time(state.shift.starts_at) + ' – ' + R.time(state.shift.ends_at) : 'None', icon: 'calendar-clock', foot: state.shift ? R.esc(R.titleCase(state.shift.status)) : 'No shift scheduled' }) +

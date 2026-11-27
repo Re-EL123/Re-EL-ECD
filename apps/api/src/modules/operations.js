@@ -13,6 +13,7 @@ const branding = require('../services/branding-service');
 const websiteContent = require('../services/website-content');
 const domainService = require('../services/domain-service');
 const { has, today, roundMoney } = require('./helpers');
+const attendanceReminders = require('../services/attendance-reminders-service');
 
 const REPORT_CATALOGUE = [
   { key: 'enrolment_summary', name: 'Enrolment summary', description: 'Learner counts by branch, classroom and status.', permission: 'reports.read.daycare' },
@@ -1285,6 +1286,23 @@ function register(router) {
     if (!secret || !safeEqual(presented, secret)) throw new AppError('FORBIDDEN');
     return portfolioAll(ctx, 'cron');
   }, { public: true });
+
+  // --- Staff attendance reminders ----------------------------------------------
+  // Vercel Cron every 30 minutes during working hours, weekdays.
+  router.post('/cron/attendance-reminders', async (ctx) => {
+    const secret = String(process.env.CRON_SECRET || '').trim();
+    const header = String((ctx.req.headers['authorization'] || ctx.req.headers['x-cron-secret'] || '')).trim();
+    const presented = header.replace(/^Bearer\s+/i, '');
+    if (!secret || !safeEqual(presented, secret)) throw new AppError('FORBIDDEN');
+    return attendanceReminders.sendAttendanceReminders(ctx.db);
+  }, { public: true });
+
+  router.post('/automation/attendance-reminders', async (ctx) => {
+    const body = validate(ctx.body || {}, { staffId: { type: 'string', uuid: true, optional: true } });
+    return attendanceReminders.sendAttendanceReminders(ctx.db, {
+      staffId: body.staffId || undefined
+    });
+  }, { permission: 'organisation.settings.manage' });
 }
 
 async function buildReport(ctx, key, from, to) {
