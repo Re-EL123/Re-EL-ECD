@@ -837,7 +837,7 @@
       if (name === 'password') {
         ctx.openModal({
           title: 'Change password', endpoint: '/auth/change-password', submitLabel: 'Change password',
-          description: 'Use at least 10 characters. Every other session will be signed out.',
+          description: 'Use 10+ characters with upper and lower case, a number and a symbol. Every other session will be signed out.',
           fields: [
             { name: 'currentPassword', label: 'Current password', type: 'password', required: true, span: 2 },
             { name: 'newPassword', label: 'New password', type: 'password', required: true, span: 2 }

@@ -142,8 +142,8 @@ async function seedDevelopment({ force = false } = {}) {
     // in demos. No real phone number is ever shipped in the seed.
     const phone = '+2782000' + String(1000 + index);
     const row = await pool.query(
-      `INSERT INTO users (email, email_normalized, display_name, phone, password_hash, status, auth_provider, auth_subject)
-       VALUES ($1,$2,$3,$4,$5,'active','local',$6) RETURNING id`,
+      `INSERT INTO users (email, email_normalized, display_name, phone, password_hash, status, auth_provider, auth_subject, email_verified_at)
+       VALUES ($1,$2,$3,$4,$5,'active','local',$6,now()) RETURNING id`,
       [email, email.toLowerCase(), name, phone, passwordHash, email]
     );
     userIds[email] = row.rows[0].id;

@@ -2,13 +2,14 @@
 
 const { validate } = require('../../../../packages/contracts/validate');
 const { AppError, fail } = require('../../../../packages/contracts/errors');
-const { hashPassword, randomToken, sha256 } = require('../../../../packages/auth/password');
+const { hashPassword, randomToken, sha256, passwordIssues } = require('../../../../packages/auth/password');
 const { ROLES } = require('../../../../packages/auth/roles');
 const { recordAudit } = require('../services/audit-service');
 const { invalidateAccess } = require('../services/access-service');
 const { createNotification } = require('../services/notification-service');
 const { sendTemplate, isConfigured: emailConfigured, fromAddress } = require('../services/email-service');
 const payfast = require('../services/payfast-service');
+const payfastFees = require('../services/payfast-fees');
 const { createPaymentIntent } = require('../services/payment-intent-service');
 const { recordManualPayment, dateString, runSubscriptionSweep } = require('../services/subscription-billing-service');
 const { maskedAccount, savePaymentAccount } = require('../services/payment-accounts-service');
@@ -24,6 +25,11 @@ const { debugTokensEnabled } = require('../utils/debug');
 
 function roundMoney(value) {
   return Math.round(Number(value || 0) * 100) / 100;
+}
+
+function assertPassword(value, context) {
+  const issues = passwordIssues(value, context);
+  if (issues.length) fail('VALIDATION', issues.map((issue) => ({ field: 'password', message: issue.message })));
 }
 
 function todayDate() {
@@ -76,11 +82,31 @@ function register(router) {
     const organisation = await ctx.db.one(
       "SELECT * FROM organisations WHERE slug = 're-el-platform' ORDER BY created_at LIMIT 1"
     );
-    const plans = await ctx.db.many(
+    const rawPlans = await ctx.db.many(
       `SELECT name, plan_key, description, monthly_price, currency, max_learners, max_staff,
               max_storage_bytes, features
        FROM subscription_plans WHERE status = 'active' ORDER BY monthly_price, name`
     );
+    // Show the same fee-inclusive amount a tenant will actually be charged.
+    const recoverFees = payfast.isConfigured() && payfastFees.recoveryEnabledForSubscriptions();
+    const feeProfile = process.env.PAYFAST_RECOVERY_PROFILE || 'standard_card';
+    const feeMethod = payfastFees.METHODS[payfastFees.resolveMethodKey(feeProfile)];
+    const quote = (base) => {
+      const q = payfastFees.estimate(base, feeProfile);
+      return { base: q.base, fee: recoverFees ? q.fee : 0, total: recoverFees ? q.gross : q.base };
+    };
+    const plans = rawPlans.map((plan) => {
+      const monthlyBase = Math.round(Number(plan.monthly_price || 0) * 100) / 100;
+      const annualBase = Math.round(monthlyBase * 12 * 100) / 100;
+      return {
+        ...plan,
+        checkout: {
+          monthly: quote(monthlyBase),
+          annual: quote(annualBase),
+          feeLabel: feeMethod ? feeMethod.label : 'Card payments'
+        }
+      };
+    });
     const bannerSettings = await ctx.db.one(
       `SELECT settings FROM organisation_settings os JOIN organisations o ON o.id = os.organisation_id
        WHERE o.slug = 're-el-platform'`
@@ -160,6 +186,7 @@ function register(router) {
       slug = (base + '-' + attempt).slice(0, 60);
       if (attempt === 20) fail('CONFLICT', null, 'We could not find a free web address for that centre name. Try a more specific name.');
     }
+    assertPassword(body.password, { email });
     const passwordHash = await hashPassword(body.password);
     const includeSetup = body.includeSetup === true;
     const result = await provisionOrganisation(ctx.db, {
@@ -171,8 +198,24 @@ function register(router) {
       planKey,
       timezone: body.timezone || null,
       includeSetup,
+      requireEmailVerification: true,
       source: 'self-signup'
     }, null);
+
+    // Verification token: hashed at rest, single use, valid for 48 hours.
+    const verifyToken = randomToken(24);
+    await ctx.db.query(
+      `INSERT INTO email_verifications (user_id, token_hash, expires_at)
+       VALUES ($1,$2,now() + interval '48 hours')`,
+      [result.owner.id, sha256(verifyToken)]
+    );
+    await sendTemplate(ctx.db, 'verifyEmail', {
+      to: email,
+      organisationId: result.organisation.id,
+      metadata: { organisationId: result.organisation.id, userId: result.owner.id },
+      data: { ownerName: body.ownerName, organisationName: result.organisation.name, token: verifyToken }
+    });
+    if (debugTokensEnabled()) ctx.meta.verifyToken = verifyToken;
     await sendTemplate(ctx.db, 'signupWelcome', {
       to: email,
       organisationId: result.organisation.id,
@@ -619,6 +662,7 @@ function register(router) {
       if (membership) fail('CONFLICT', null, 'The owner already belongs to this organisation.');
     }
     const password = body.temporaryPassword || `Reel-${randomToken(6)}`;
+    if (body.temporaryPassword) assertPassword(password, { email: body.ownerEmail });
     const passwordHash = await hashPassword(password);
     const result = await provisionOrganisation(ctx.db, {
       name: body.name,

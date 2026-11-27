@@ -101,6 +101,7 @@ test('every email template renders a subject, html and text', () => {
     welcome: { ownerName: 'Sipho', organisationName: 'Little Sprouts', token: 'tok_welcome' },
     invitation: { organisationName: 'Little Sprouts', inviterName: 'Sipho', roleLabel: 'Teacher', token: 'tok_invite' },
     passwordReset: { displayName: 'Sipho', token: 'tok_reset' },
+    verifyEmail: { ownerName: 'Sipho', organisationName: 'Little Sprouts', token: 'tok_verify' },
     enquiryReceived: { guardianName: 'Sarah', childName: 'Amelia', email: 's@example.com', message: 'Hello' },
     enquiryAcknowledgement: { guardianName: 'Sarah', organisationName: 'Little Sprouts', slug: 'little-sprouts' },
     formSubmission: { formName: 'Consent', submittedBy: 'Sarah' },
@@ -119,5 +120,6 @@ test('every email template renders a subject, html and text', () => {
   }
   assert.match(email.build('passwordReset', { token: 'abc' }).html, /reset-password\?token=abc/);
   assert.match(email.build('invitation', { organisationName: 'X', roleLabel: 'Y', token: 'abc' }).html, /accept-invite\?token=abc/);
+  assert.match(email.build('verifyEmail', { token: 'abc' }).html, /verify-email\?token=abc/);
   assert.equal(email.money(1234.5, 'ZAR'), 'R1 234.50');
 });

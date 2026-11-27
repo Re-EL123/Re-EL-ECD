@@ -182,13 +182,31 @@ const templates = {
       html: layout({
         brand: data.brand,
         heading: 'Welcome, ' + data.ownerName,
-        intro: data.organisationName + ' now has a Re-EL ECD workspace with a 30-day trial. Sign in with the email and password you chose to start setting up your centre.',
+        intro: data.organisationName + ' now has a Re-EL ECD workspace with a 30-day trial. Verify your email using the link we sent, then sign in with the password you chose to start setting up your centre.',
         rows: [{ label: 'Organisation', value: data.organisationName }, { label: 'Your role', value: 'Owner' }],
         ctaLabel: 'Sign in to Re-EL ECD',
         ctaUrl: url,
         footer: 'If you did not sign up for this, ignore this email — no account will be used without an owner signing in.'
       }),
       text: plain(['Your Re-EL ECD centre is ready: ' + data.organisationName, 'Sign in: ' + url])
+    };
+  },
+
+  verifyEmail(data) {
+    const url = appLink('/#/verify-email?token=' + encodeURIComponent(data.token));
+    return {
+      subject: 'Verify your Re-EL ECD email address',
+      html: layout({
+        brand: data.brand,
+        heading: 'Verify your email',
+        intro: 'Hello ' + (data.ownerName || 'there') + ', please confirm this email address for your Re-EL ECD workspace' +
+          (data.organisationName ? ' (' + data.organisationName + ')' : '') + '.',
+        rows: [{ label: 'Why', value: 'We only email verified accounts about your centre and its records.' }],
+        ctaLabel: 'Verify my email',
+        ctaUrl: url,
+        footer: 'This link expires in 48 hours and can only be used once. If you did not create this account, you can ignore this email.'
+      }),
+      text: plain(['Verify your Re-EL ECD email:', url, 'This link expires in 48 hours and can only be used once.'])
     };
   },
 

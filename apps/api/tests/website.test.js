@@ -337,7 +337,7 @@ test('an onboarding centre still serves its public enquiry and form endpoints', 
     slug,
     ownerName: 'Onboarding Owner',
     ownerEmail: 'owner@' + slug + '.local',
-    temporaryPassword: 'onboarding-pass-123'
+    temporaryPassword: 'Onboarding-Pass-123!'
   });
   assert.equal(provisioned.status, 201, provisioned.text);
   assert.equal(provisioned.data.status, 'onboarding');
@@ -359,7 +359,7 @@ test('an onboarding centre still serves its public enquiry and form endpoints', 
   assert.equal(enquiry.data.received, true);
 
   const owner = createClient();
-  await owner.login('owner@' + slug + '.local', 'onboarding-pass-123');
+  await owner.login('owner@' + slug + '.local', 'Onboarding-Pass-123!');
   const form = await owner.post('/forms', {
     name: 'Learner admission',
     slug: 'learner-admission',

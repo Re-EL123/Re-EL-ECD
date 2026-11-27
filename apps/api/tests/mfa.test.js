@@ -23,8 +23,8 @@ test('seed: throwaway account exists', async () => {
   email = 'mfa-test-' + Date.now() + '@example.test';
   const hash = await hashPassword('Mfa-Test-Password-2026!');
   const rows = await db.query(
-    `INSERT INTO users (email, email_normalized, display_name, password_hash, status)
-     VALUES ($1,$1,'MFA Test',$2,'active') RETURNING id`,
+    `INSERT INTO users (email, email_normalized, display_name, password_hash, status, email_verified_at)
+     VALUES ($1,$1,'MFA Test',$2,'active',now()) RETURNING id`,
     [email, hash]
   );
   userId = rows.rows[0].id;

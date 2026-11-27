@@ -43,7 +43,8 @@
         '<div class="auth-panel"><div class="auth-card">' +
         '<div class="row" style="margin-bottom:18px">' + logoMark + '<div><div class="brand-name">' + R.esc(name) + '</div><div class="brand-sub">Sign in to your workspace</div></div></div>' +
         '<h2>Welcome back</h2><div class="muted">Use your work email and password. Parents use the same sign-in.</div>' +
-        '<div class="alert alert-danger" x-show="loginError" x-cloak style="margin-bottom:12px"><i data-lucide="alert-circle"></i><span x-text="loginError"></span></div>' +
+        '<div class="alert alert-danger" x-show="loginError" x-cloak style="margin-bottom:12px"><i data-lucide="alert-circle"></i><span x-text="loginError"></span>' +
+          '<button type="button" class="link-strong small" style="margin-top:6px;display:block" x-show="loginNeedsVerification" @click="resendVerification()">Resend verification email</button></div>' +
         '<form id="login-form" @submit.prevent="login($event)" x-show="!mfaPending">' +
         '<div class="field"><label for="login-email">Email</label><div class="input-wrap"><span class="input-icon" aria-hidden="true"><i data-lucide="mail"></i></span><input class="input input-icon-left" id="login-email" name="email" type="email" autocomplete="username" required x-model="loginEmail" placeholder="you@centre.co.za"></div></div>' +
         '<div class="field"><label for="login-password">Password</label><div class="input-wrap"><span class="input-icon" aria-hidden="true"><i data-lucide="lock"></i></span><input class="input input-icon-left input-icon-right" id="login-password" name="password" :type="loginShowPassword ? \'text\' : \'password\'" autocomplete="current-password" required x-model="loginPassword" placeholder="Your password"><button type="button" class="password-toggle" @click.prevent="loginShowPassword = !loginShowPassword" :aria-label="loginShowPassword ? \'Hide password\' : \'Show password\'" :aria-pressed="loginShowPassword" :title="loginShowPassword ? \'Hide password\' : \'Show password\'"><i data-lucide="eye" x-show="!loginShowPassword" x-cloak></i><i data-lucide="eye-off" x-show="loginShowPassword" x-cloak></i></button></div></div>' +
@@ -939,14 +940,14 @@
         ? '<div class="alert alert-success" x-show="resetDone"><i data-lucide="check-circle"></i><span>Your password has been changed. You can now sign in.</span></div>' +
           '<div class="alert alert-danger" x-show="resetError" style="margin-top:10px"><i data-lucide="alert-circle"></i><span x-text="resetError"></span></div>' +
           '<form @submit.prevent="submitResetPassword($event)" x-show="!resetDone">' +
-          '<div class="field"><label for="reset-password">New password</label><input class="input" id="reset-password" name="password" type="password" autocomplete="new-password" minlength="10" required placeholder="At least 10 characters"></div>' +
+          '<div class="field"><label for="reset-password">New password</label><input class="input" id="reset-password" name="password" type="password" autocomplete="new-password" minlength="10" required placeholder="10+ chars, upper & lower case, number, symbol"></div>' +
           '<div class="field"><label for="reset-confirm">Confirm password</label><input class="input" id="reset-confirm" name="confirm" type="password" autocomplete="new-password" minlength="10" required></div>' +
           '<button class="btn btn-primary btn-block" type="submit">Choose new password</button></form>' +
           '<div class="row" style="margin-top:14px"><a class="muted small" href="#/login" x-show="resetDone">Go to sign in →</a></div>'
         : '<div class="alert alert-warning"><i data-lucide="alert-triangle"></i><span>This reset link is missing its token. Request a new link from the sign-in page.</span></div>' +
           '<a class="btn btn-primary" href="#/login">Back to sign in</a>';
       return platformShell(ctx, platformNav(ctx) +
-        '<section class="public-section" style="max-width:520px;margin:40px auto"><h1>Choose a new password</h1><p class="lede">Use at least 10 characters. Signing in elsewhere will be required again.</p>' +
+        '<section class="public-section" style="max-width:520px;margin:40px auto"><h1>Choose a new password</h1><p class="lede">Use 10+ characters with upper and lower case, a number and a symbol. Signing in elsewhere will be required again.</p>' +
         '<div class="card glass" style="margin-top:16px">' + body + '</div></section>');
     }
   };
@@ -963,7 +964,7 @@
           '<div class="alert alert-danger" x-show="inviteError" style="margin-top:10px"><i data-lucide="alert-circle"></i><span x-text="inviteError"></span></div>' +
           '<form @submit.prevent="submitAcceptInvite($event)" x-show="!inviteDone">' +
           '<div class="field"><label for="invite-name">Your name</label><input class="input" id="invite-name" name="displayName" autocomplete="name" required placeholder="How your name appears in the centre"></div>' +
-          '<div class="field"><label for="invite-password">Password</label><input class="input" id="invite-password" name="password" type="password" autocomplete="new-password" minlength="10" required placeholder="At least 10 characters"></div>' +
+          '<div class="field"><label for="invite-password">Password</label><input class="input" id="invite-password" name="password" type="password" autocomplete="new-password" minlength="10" required placeholder="10+ chars, upper & lower case, number, symbol"></div>' +
           '<div class="field"><label for="invite-confirm">Confirm password</label><input class="input" id="invite-confirm" name="confirm" type="password" autocomplete="new-password" minlength="10" required></div>' +
           '<button class="btn btn-primary btn-block" type="submit">Accept invitation</button></form>' +
           '<div class="row" style="margin-top:14px"><a class="muted small" href="#/login" x-show="inviteDone">Go to sign in →</a></div>'
@@ -1028,11 +1029,27 @@
             '<div class="upgrade-plan-name"><span>' + R.esc(p.name) + '</span>' +
               '<span class="upgrade-check" x-show="' + selected + '"><i data-lucide="check"></i></span></div>' +
             '<p class="upgrade-plan-desc">' + R.esc(p.description || 'A calm, capable plan for growing centres.') + '</p>' +
-          '</div><div class="upgrade-plan-price"><strong>' + R.esc(R.money(p.monthly_price, p.currency || 'ZAR')) + '</strong><span>/ month</span></div></div>' +
+          '</div><div class="upgrade-plan-price">' +
+            '<div><strong>' + R.esc(R.money((p.checkout && p.checkout.monthly && p.checkout.monthly.total) || p.monthly_price, p.currency || 'ZAR')) + '</strong> <span>/ month</span></div>' +
+            '<div class="upgrade-price-detail">' +
+              (p.checkout && p.checkout.monthly && p.checkout.monthly.fee
+                ? 'Includes ' + R.esc(R.money(p.checkout.monthly.fee, p.currency || 'ZAR')) + ' ' + R.esc(p.checkout.feeLabel || 'processing') + ' fee · base '
+                : 'Base ') + R.esc(R.money(p.monthly_price, p.currency || 'ZAR')) +
+            '</div></div></div>' +
           '<div class="upgrade-features">' + chips.join('') + '</div>' +
           '<div class="upgrade-plan-foot"><span x-text="' + selected + ' ? \'Selected plan\' : \'Choose ' + R.esc(p.name) + '\'"></span>' +
             '<i data-lucide="arrow-right"></i></div></button>';
       }).join('');
+
+      const passwordRuleRows = [
+        { label: 'At least 10 characters', expr: "(signupForm.password || '').length >= 10" },
+        { label: 'One uppercase letter', expr: "/[A-Z]/.test(signupForm.password || '')" },
+        { label: 'One lowercase letter', expr: "/[a-z]/.test(signupForm.password || '')" },
+        { label: 'One number', expr: "/\\d/.test(signupForm.password || '')" },
+        { label: 'One symbol (! @ # …)', expr: "/[^A-Za-z0-9]/.test(signupForm.password || '')" },
+        { label: 'Not your email address', expr: "!(signupForm.ownerEmail && signupForm.password && signupForm.password.toLowerCase().includes(signupForm.ownerEmail.toLowerCase()))" }
+      ].map((rule) =>
+        '<div class="signup-strength" :class="{ ok: ' + rule.expr + ' }"><i data-lucide="check"></i><span>' + R.esc(rule.label) + '</span></div>').join('');
 
       const steps = [
         { n: 1, label: 'Your centre', icon: 'school' },
@@ -1057,7 +1074,7 @@
         '<div class="signup-success" x-show="signupDone" x-cloak>' +
           '<div class="signup-success-icon"><i data-lucide="party-popper"></i></div>' +
           '<h2>Your centre is ready</h2>' +
-          '<p class="muted">Welcome to Re-EL ECD. Your workspace for <strong x-text="signupForm.centreName || \'your centre\'"></strong> has been created and a 30-day trial on your chosen plan has started.</p>' +
+          '<p class="muted">Welcome to Re-EL ECD. Your workspace for <strong x-text="signupForm.centreName || \'your centre\'"></strong> has been created and a 30-day trial on your chosen plan has started. We sent a verification link to your email — open it before signing in.</p>' +
           '<div class="card" style="text-align:left;margin:16px 0;background:var(--surface-2)">' +
             '<div class="kpi-list">' +
               '<div class="kpi-row"><span class="kpi-label">Sign-in email</span><span class="kpi-value" x-text="signupForm.ownerEmail"></span></div>' +
@@ -1093,8 +1110,8 @@
           '<section class="signup-panel" x-show="signupStep === 3" x-cloak>' +
             '<h3>Secure your access</h3>' +
             '<p class="muted small">Choose a strong password to protect your centre’s information.</p>' +
-            '<div class="field"><label for="signup-password">Password <span class="req">*</span></label><input class="input" id="signup-password" name="password" type="password" autocomplete="new-password" minlength="10" required placeholder="At least 10 characters" x-model="signupForm.password">' +
-              '<div class="signup-strength" :class="{ ok: (signupForm.password || \'\').length >= 10 }"><i data-lucide="check-circle"></i><span>At least 10 characters</span></div>' +
+            '<div class="field"><label for="signup-password">Password <span class="req">*</span></label><input class="input" id="signup-password" name="password" type="password" autocomplete="new-password" minlength="10" required placeholder="10+ chars, upper & lower case, number, symbol" x-model="signupForm.password">' +
+              '<div class="signup-rules">' + passwordRuleRows + '</div>' +
             '</div>' +
             '<div class="field"><label for="signup-confirm">Confirm password <span class="req">*</span></label><input class="input" id="signup-confirm" name="confirm" type="password" autocomplete="new-password" minlength="10" required placeholder="Re-enter password" x-model="signupForm.confirm">' +
               '<div class="signup-strength" :class="{ ok: signupForm.confirm && signupForm.password === signupForm.confirm, warn: signupForm.confirm && signupForm.password !== signupForm.confirm }"><i data-lucide="check-circle"></i><span x-text="signupForm.confirm && signupForm.password !== signupForm.confirm ? \'Passwords do not match yet\' : \'Passwords match\'"></span></div>' +
@@ -1106,7 +1123,7 @@
             '<p class="muted small">Every plan starts with a 30-day trial. You can change plans anytime in Settings.</p>' +
             '<div class="signup-plan-label">Plan (30-day trial)</div>' +
             '<div class="upgrade-plans signup-plans" role="group" aria-label="Choose a plan">' + planCards + '</div>' +
-            '<p class="signup-price-note"><i data-lucide="info"></i> Prices are monthly plan fees in South African rand. You are not charged during the 30-day trial. PayFast processing fees, if you pay online, are shown before you pay.</p>' +
+            '<p class="signup-price-note"><i data-lucide="info"></i> The amount shown is what PayFast charges for a month of the plan, including the online processing fee (base price shown underneath). You are not charged during the 30-day trial.</p>' +
             '<div class="card" style="margin-top:12px;background:var(--surface-2)">' +
               '<label class="check-row" style="align-items:flex-start;gap:10px;margin:0">' +
                 '<input type="checkbox" name="includeSetup" x-model="signupForm.includeSetup" style="margin-top:3px">' +
@@ -1544,4 +1561,39 @@
   V.legalSafeguarding = legalDocViews('safeguarding');
   V.legalSafeguardingDisclaimer = legalDocViews('safeguarding-disclaimer');
   V.legalDataProcessingAgreement = legalDocViews('data-processing-agreement');
+
+  V.verifyEmail = {
+    async load(ctx) {
+      const token = String((ctx.query && ctx.query.token) || '');
+      let state = 'working';
+      let message = 'Checking your verification link…';
+      if (!token) {
+        state = 'error';
+        message = 'This verification link is missing its token. Open the link in your email again.';
+      } else {
+        try {
+          await R.api('POST', '/public/auth/verify-email', { token });
+          state = 'done';
+          message = 'Your email is verified. You can sign in now.';
+        } catch (error) {
+          state = 'error';
+          message = error.message || 'We could not verify this link. It may have expired or been used already.';
+        }
+      }
+      return { state, message, token };
+    },
+
+    render(ctx, params, page) {
+      const success = page.state === 'done';
+      const body = '<div class="card glass signup-card" style="max-width:520px;margin:0 auto;text-align:center">' +
+        '<div class="signup-success-icon"><i data-lucide="' + (success ? 'check-circle' : 'alert-circle') + '"></i></div>' +
+        '<h1>' + (success ? 'Email verified' : 'Verification problem') + '</h1>' +
+        '<p class="muted">' + R.esc(page.message) + '</p>' +
+        (success
+          ? '<a class="btn btn-primary btn-block" href="#/login">Sign in</a>'
+          : '<a class="btn btn-secondary" href="#/login">Back to sign in</a>') +
+        '</div>';
+      return platformShell(ctx, platformNav(ctx) + '<div class="signup-page-bg"><section class="public-section">' + body + '</section></div>');
+    }
+  };
 })();

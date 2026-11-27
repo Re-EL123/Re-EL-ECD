@@ -29,9 +29,10 @@ async function provisionOrganisation(db, input, actorUserId) {
     let isNewOwner = false;
     if (!owner) {
       owner = (await client.query(
-        `INSERT INTO users (email, email_normalized, display_name, password_hash, status)
-         VALUES ($1,$2,$3,$4,'active') RETURNING *`,
-        [input.ownerEmail, input.ownerEmail.toLowerCase(), input.ownerName, input.passwordHash]
+        `INSERT INTO users (email, email_normalized, display_name, password_hash, status, email_verified_at)
+         VALUES ($1,$2,$3,$4,'active',$5) RETURNING *`,
+        [input.ownerEmail, input.ownerEmail.toLowerCase(), input.ownerName, input.passwordHash,
+          input.requireEmailVerification ? null : new Date()]
       )).rows[0];
       isNewOwner = true;
     }

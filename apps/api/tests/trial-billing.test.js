@@ -17,12 +17,14 @@ test('a 30-day trial does not issue a payable invoice until it ends', async () =
     centreName: 'Trial Billing Centre',
     ownerName: 'Anita Trial',
     ownerEmail: 'anita@trialbilling.local',
-    password: 'trial-pass-123'
+    password: 'Trial-Pass-123!'
   });
   assert.equal(created.status, 201, created.text);
 
   const owner = createClient();
-  await owner.login('anita@trialbilling.local', 'trial-pass-123');
+  const verify = await anon.post('/public/auth/verify-email', { token: created.meta && created.meta.verifyToken });
+  assert.equal(verify.status, 200, verify.text);
+  await owner.login('anita@trialbilling.local', 'Trial-Pass-123!');
   const trialSummary = await owner.get('/billing/summary');
   assert.equal(trialSummary.status, 200, trialSummary.text);
   assert.equal(trialSummary.data.subscription.status, 'trial');

@@ -79,8 +79,8 @@ async function main() {
   if (!user) {
     const passwordHash = await hashPassword(config.password);
     user = (await pool.query(
-      `INSERT INTO users (email, email_normalized, display_name, password_hash, status, auth_provider, auth_subject)
-       VALUES ($1,$2,$3,$4,'active','local',$5)
+      `INSERT INTO users (email, email_normalized, display_name, password_hash, status, auth_provider, auth_subject, email_verified_at)
+       VALUES ($1,$2,$3,$4,'active','local',$5,now())
        RETURNING *`,
       [config.email, config.email, config.name, passwordHash, config.email]
     )).rows[0];

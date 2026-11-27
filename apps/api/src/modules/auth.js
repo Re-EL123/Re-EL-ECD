@@ -2,7 +2,7 @@
 
 const { validate } = require('../../../../packages/contracts/validate');
 const { AppError, fail } = require('../../../../packages/contracts/errors');
-const { hashPassword, verifyPassword, randomToken, sha256 } = require('../../../../packages/auth/password');
+const { hashPassword, verifyPassword, randomToken, sha256, passwordIssues } = require('../../../../packages/auth/password');
 const { createSession, revokeSession, revokeAllSessions, SESSION_COOKIE, CSRF_COOKIE, IMPERSONATION_COOKIE } = require('../services/session-service');
 const { resolveAccess, invalidateAccess } = require('../services/access-service');
 const { rateLimit } = require('../middleware/rate-limit');
@@ -103,6 +103,11 @@ async function verifySecondFactor(user, code) {
   return { ok: true, usedRecovery: true, remainingRecovery: hashes };
 }
 
+function assertPassword(value, context, field = 'password') {
+  const issues = passwordIssues(value, context);
+  if (issues.length) fail('VALIDATION', issues.map((issue) => ({ field, message: issue.message })));
+}
+
 function register(router) {
   router.post('/auth/login', async (ctx) => {
     const body = validate(ctx.body, {
@@ -134,6 +139,10 @@ function register(router) {
     }
     if (user.status === 'suspended') throw new AppError('ACCOUNT_SUSPENDED');
     if (user.status === 'disabled' || user.status === 'invited') throw new AppError('FORBIDDEN', null, 'This account is not active.');
+    if (!user.email_verified_at) {
+      throw new AppError('EMAIL_NOT_VERIFIED', null,
+        'Please verify your email address before signing in. Use the link we sent, or request a new one on the sign-in page.');
+    }
     // Second factor: a correct password is not enough on its own. Hand out a
     // short-lived challenge — the client exchanges it for a session only
     // after the TOTP (or a recovery code) checks out.
@@ -189,6 +198,7 @@ function register(router) {
       currentPassword: { type: 'string', min: 8, max: 200 },
       newPassword: { type: 'string', min: 10, max: 200 }
     });
+    assertPassword(body.newPassword, { email: ctx.user.email }, 'newPassword');
     const user = await ctx.db.one('SELECT * FROM users WHERE id = $1', [ctx.user.id]);
     const valid = await verifyPassword(body.currentPassword, user.password_hash);
     if (!valid) fail('VALIDATION', [{ field: 'currentPassword', message: 'The current password is incorrect.' }]);
@@ -239,12 +249,13 @@ function register(router) {
     });
     const reset = await ctx.db.one('SELECT * FROM password_resets WHERE token_hash = $1', [sha256(body.token)]);
     if (!reset || reset.used_at || new Date(reset.expires_at) < new Date()) throw new AppError('VALIDATION', [{ field: 'token', message: 'This reset link is invalid or has expired.' }]);
+    const resetUser = await ctx.db.one('SELECT email, display_name FROM users WHERE id = $1', [reset.user_id]);
+    assertPassword(body.password, { email: resetUser && resetUser.email });
     const hash = await hashPassword(body.password);
     await ctx.db.query('UPDATE users SET password_hash = $1, updated_at = now(), failed_login_count = 0, locked_until = NULL WHERE id = $2', [hash, reset.user_id]);
     await ctx.db.query('UPDATE password_resets SET used_at = now() WHERE id = $1', [reset.id]);
     await revokeAllSessions(ctx.db, reset.user_id);
     await recordAudit(ctx.db, ctx, { action: 'auth.password_reset_completed', resourceType: 'user', resourceId: reset.user_id });
-    const resetUser = await ctx.db.one('SELECT email, display_name FROM users WHERE id = $1', [reset.user_id]);
     if (resetUser) {
       await sendTemplate(ctx.db, 'passwordChanged', {
         to: resetUser.email,
@@ -354,10 +365,58 @@ function register(router) {
     return sessionPayload(ctx);
   }, { public: true, skipCsrf: true });
 
-  router.post('/auth/verify-email', async (ctx) => {
-    await recordAudit(ctx.db, ctx, { action: 'auth.email_verified', resourceType: 'user', resourceId: ctx.user.id });
+  // Public token exchange — the emailed link must work before the owner can
+  // sign in, so this cannot require a session.
+  router.post('/public/auth/verify-email', async (ctx) => {
+    const body = validate(ctx.body, { token: { type: 'string', min: 20, max: 200 } });
+    const verification = await ctx.db.one('SELECT * FROM email_verifications WHERE token_hash = $1', [sha256(body.token)]);
+    if (!verification || verification.used_at || new Date(verification.expires_at) < new Date()) {
+      throw new AppError('VALIDATION', [{ field: 'token', message: 'This verification link is invalid or has expired.' }]);
+    }
+    await ctx.db.withTransaction(async (client) => {
+      await client.query('UPDATE email_verifications SET used_at = now() WHERE id = $1', [verification.id]);
+      await client.query('UPDATE users SET email_verified_at = now(), updated_at = now() WHERE id = $1',
+        [verification.user_id]);
+    });
+    await recordAudit(ctx.db, ctx, {
+      action: 'auth.email_verified', resourceType: 'user', resourceId: verification.user_id,
+      metadata: { via: 'email_link' }
+    });
     return { success: true };
+  }, { public: true, skipCsrf: true });
+
+  async function sendVerificationEmail(ctx, user) {
+    if (user.email_verified_at) return { sent: false, reason: 'already_verified' };
+    const limit = rateLimit(`verify:${ctx.ip}:${user.id}`, 5, 60 * 60 * 1000);
+    if (!limit.allowed) throw new AppError('RATE_LIMITED');
+    await ctx.db.query('UPDATE email_verifications SET used_at = now() WHERE user_id = $1 AND used_at IS NULL', [user.id]);
+    const token = randomToken(24);
+    await ctx.db.query(
+      `INSERT INTO email_verifications (user_id, token_hash, expires_at)
+       VALUES ($1,$2,now() + interval '48 hours')`, [user.id, sha256(token)]
+    );
+    await sendTemplate(ctx.db, 'verifyEmail', {
+      to: user.email,
+      metadata: { userId: user.id, source: 'resend' },
+      data: { ownerName: user.display_name, token }
+    });
+    if (debugTokensEnabled()) ctx.meta.verifyToken = token;
+    return { sent: true };
+  }
+
+  // Resend from a signed-in session (kept for backwards compatibility).
+  router.post('/auth/verify-email', async (ctx) => {
+    const user = await ctx.db.one('SELECT * FROM users WHERE id = $1', [ctx.user.id]);
+    return sendVerificationEmail(ctx, user);
   }, { authenticated: true });
+
+  // Public resend for someone who has not verified and cannot sign in yet.
+  router.post('/public/auth/verify-email/resend', async (ctx) => {
+    const body = validate(ctx.body, { email: { type: 'string', email: true } });
+    const user = await ctx.db.one('SELECT * FROM users WHERE email_normalized = $1', [body.email.toLowerCase()]);
+    if (!user || user.email_verified_at) return { sent: false };
+    return sendVerificationEmail(ctx, user);
+  }, { public: true, skipCsrf: true });
 
   router.post('/auth/invitations/accept', async (ctx) => {
     const body = validate(ctx.body, {
@@ -376,13 +435,15 @@ function register(router) {
     let user = await ctx.db.one('SELECT * FROM users WHERE email_normalized = $1', [invitation.email.toLowerCase()]);
     if (!user) {
       if (!body.password) fail('VALIDATION', [{ field: 'password', message: 'A password is required to activate your account.' }]);
+      assertPassword(body.password, { email: invitation.email });
       const hash = await hashPassword(body.password);
       user = await ctx.db.one(
-        `INSERT INTO users (email, email_normalized, display_name, password_hash, status)
-         VALUES ($1,$2,$3,$4,'active') RETURNING *`,
+        `INSERT INTO users (email, email_normalized, display_name, password_hash, status, email_verified_at)
+         VALUES ($1,$2,$3,$4,'active',now()) RETURNING *`,
         [invitation.email, invitation.email.toLowerCase(), body.displayName || invitation.email.split('@')[0], hash]
       );
     } else if (body.password && !user.password_hash) {
+      assertPassword(body.password, { email: user.email });
       const hash = await hashPassword(body.password);
       await ctx.db.query('UPDATE users SET password_hash = $1, status = $2 WHERE id = $3', [hash, 'active', user.id]);
     }

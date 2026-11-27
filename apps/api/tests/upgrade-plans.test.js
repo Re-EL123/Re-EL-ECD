@@ -47,3 +47,21 @@ test('upgrade quotes match the amount the upgrade endpoint charges', async () =>
     assert.ok(plan.checkout.annual.total > plan.checkout.monthly.total);
   }
 });
+
+test('public signup plans quote the same fee-inclusive amounts', async () => {
+  const payfastFees = require('../src/services/payfast-fees');
+  const payfast = require('../src/services/payfast-service');
+  const res = await createClient().get('/public/platform');
+  assert.equal(res.status, 200, res.text);
+  const profile = process.env.PAYFAST_RECOVERY_PROFILE || 'standard_card';
+  const recover = payfast.isConfigured() && payfastFees.recoveryEnabledForSubscriptions();
+  assert.ok((res.data.plans || []).length);
+  for (const plan of res.data.plans) {
+    assert.ok(plan.checkout, 'signup plan must carry a checkout quote');
+    const base = Number(plan.monthly_price);
+    const quoted = payfastFees.estimate(base, profile);
+    assert.equal(plan.checkout.monthly.base, base);
+    assert.equal(plan.checkout.monthly.total, recover ? quoted.gross : quoted.base);
+    assert.equal(plan.checkout.annual.base, Math.round(base * 12 * 100) / 100);
+  }
+});

@@ -13,7 +13,7 @@ test('tenant self-signup is gated by the platform allowTenantSignup setting', as
     centreName: 'Rainbow Early Learning',
     ownerName: 'Nomsa Dlamini',
     ownerEmail: 'nomsa@rainbow.local',
-    password: 'rainbow-pass-123',
+    password: 'Rainbow-Pass-123!',
     planKey: 'seedling'
   };
 
@@ -42,7 +42,9 @@ test('tenant self-signup is gated by the platform allowTenantSignup setting', as
   assert.equal(created.data.trialDays, 30);
   assert.equal(created.data.planKey, 'seedling');
   const owner = createClient();
-  const login = await owner.login('nomsa@rainbow.local', 'rainbow-pass-123');
+  const verify = await anon.post('/public/auth/verify-email', { token: created.meta && created.meta.verifyToken });
+  assert.equal(verify.status, 200, verify.text);
+  const login = await owner.login('nomsa@rainbow.local', 'Rainbow-Pass-123!');
   assert.ok(login.csrfToken, 'owner should sign in straight after signup');
 
   // Duplicate email and unknown plan are rejected.
@@ -52,7 +54,7 @@ test('tenant self-signup is gated by the platform allowTenantSignup setting', as
     centreName: 'Sunrise Academy',
     ownerName: 'Sipho Ndlovu',
     ownerEmail: 'sipho@sunrise.local',
-    password: 'sunrise-pass-123',
+    password: 'Sunrise-Pass-123!',
     planKey: 'no-such-plan'
   });
   assert.equal(badPlan.status, 422, badPlan.text);
@@ -63,7 +65,7 @@ test('tenant self-signup is gated by the platform allowTenantSignup setting', as
     centreName: 'Sunrise Academy',
     ownerName: 'Sipho Ndlovu',
     ownerEmail: 'sipho@sunrise.local',
-    password: 'sunrise-pass-123'
+    password: 'Sunrise-Pass-123!'
   });
   assert.equal(reblocked.status, 403, reblocked.text);
 });
@@ -97,7 +99,7 @@ test('signup without choosing a plan still starts a real trial with limits', asy
     centreName: 'No Plan Choice Centre',
     ownerName: 'Thandi Nkosi',
     ownerEmail: 'thandi@noplan.local',
-    password: 'noplan-pass-123'
+    password: 'Noplan-Pass-123!'
     // deliberately no planKey — this is the form's previous default
   });
   assert.equal(created.status, 201, created.text);
@@ -118,7 +120,9 @@ test('signup without choosing a plan still starts a real trial with limits', asy
 
   // The owner sees real plan limits, not "unlimited" from a missing plan.
   const owner = createClient();
-  await owner.login('thandi@noplan.local', 'noplan-pass-123');
+  const verify = await anon.post('/public/auth/verify-email', { token: created.meta && created.meta.verifyToken });
+  assert.equal(verify.status, 200, verify.text);
+  await owner.login('thandi@noplan.local', 'Noplan-Pass-123!');
   const summary = await owner.get('/billing/summary');
   assert.equal(summary.status, 200, summary.text);
   const usage = summary.data.planUsage;

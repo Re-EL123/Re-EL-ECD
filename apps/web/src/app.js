@@ -24,6 +24,7 @@
     route('/site/:slug/:page', 'public', 'publicSite', null, 'Daycare website'),
     route('/reset-password', 'public', 'resetPassword', null, 'Reset password'),
     route('/accept-invite', 'public', 'acceptInvite', null, 'Accept invitation'),
+    route('/verify-email', 'public', 'verifyEmail', null, 'Verify email'),
     route('/legal', 'public', 'legalIndex', null, 'Legal'),
     route('/legal/terms', 'public', 'legalTerms', null, 'Terms of Service'),
     route('/legal/privacy', 'public', 'legalPrivacy', null, 'Privacy Policy'),
@@ -5243,6 +5244,7 @@
         const email = form ? form.email.value.trim() : this.loginEmail;
         const password = form ? form.password.value : this.loginPassword;
         this.loginError = null;
+        this.loginNeedsVerification = false;
         this.loginBusy = true;
         try {
           const payload = await Reel.api('POST', '/auth/login', { email, password });
@@ -5258,8 +5260,22 @@
           await this.navigate(true);
         } catch (error) {
           this.loginError = error.message || 'Sign in failed.';
+          this.loginNeedsVerification = error.code === 'EMAIL_NOT_VERIFIED';
+          if (this.loginNeedsVerification) this.loginVerifyEmail = email;
         } finally {
           this.loginBusy = false;
+        }
+      },
+
+      async resendVerification() {
+        const email = this.loginVerifyEmail || this.loginEmail;
+        if (!email) { this.toast('Enter your email address first.', 'warn'); return; }
+        try {
+          await Reel.api('POST', '/public/auth/verify-email/resend', { email });
+          this.toast('If that account needs verification, a new link is on its way.');
+          this.loginError = null;
+        } catch (error) {
+          this.toast(error.message || 'Could not resend the verification email.', 'error');
         }
       },
 
@@ -5363,6 +5379,21 @@
         }
       },
 
+      passwordIssues(value, email) {
+        const v = String(value || '');
+        const checks = [
+          ['At least 10 characters', v.length >= 10],
+          ['One uppercase letter', /[A-Z]/.test(v)],
+          ['One lowercase letter', /[a-z]/.test(v)],
+          ['One number', /\d/.test(v)],
+          ['One symbol (! @ # …)', /[^A-Za-z0-9]/.test(v)],
+          ['Not a common password', !/^(password|123456|qwerty|letmein|welcome|admin|changeme|iloveyou)/i.test(v)]
+        ];
+        const issues = checks.filter((check) => !check[1]).map((check) => check[0]);
+        if (email && v.toLowerCase().includes(String(email).toLowerCase())) issues.push('Not contain your email address');
+        return issues;
+      },
+
       async submitSignup(event) {
         const form = event && event.target ? event.target : null;
         const get = (k) => (this.signupForm && this.signupForm[k] != null && this.signupForm[k] !== '' ? this.signupForm[k] : (form && form[k] ? form[k].value : ''));
@@ -5375,11 +5406,16 @@
         const includeSetup = (this.signupForm && typeof this.signupForm.includeSetup === 'boolean') ? this.signupForm.includeSetup : (form && form.includeSetup ? form.includeSetup.checked === true : false);
         const agreed = (this.signupForm && typeof this.signupForm.agreed === 'boolean') ? this.signupForm.agreed : (form && form.agreed ? form.agreed.checked === true : false);
         this.signupError = null;
-        if (centreName.length < 2) { this.signupError = 'Please enter your centre name.'; this.signupStep = 1; return; }
-        if (ownerName.length < 2) { this.signupError = 'Please enter your name.'; this.signupStep = 2; return; }
-        if (!ownerEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) { this.signupError = 'Please enter a valid email address.'; this.signupStep = 2; return; }
-        if (password.length < 10) { this.signupError = 'Use a password of at least 10 characters.'; this.signupStep = 3; return; }
+        if (centreName.length < 2 || centreName.length > 200) { this.signupError = 'Centre name must be between 2 and 200 characters.'; this.signupStep = 1; return; }
+        if (ownerName.length < 2 || ownerName.length > 120) { this.signupError = 'Your name must be between 2 and 120 characters.'; this.signupStep = 2; return; }
+        if (!ownerEmail || ownerEmail.length > 255 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) { this.signupError = 'Please enter a valid email address.'; this.signupStep = 2; return; }
+        const passwordProblems = this.passwordIssues(password, ownerEmail);
+        if (passwordProblems.length) { this.signupError = 'Password needs: ' + passwordProblems.join(', ') + '.'; this.signupStep = 3; return; }
+        if (password.length > 200) { this.signupError = 'Password must be 200 characters or fewer.'; this.signupStep = 3; return; }
         if (password !== confirm) { this.signupError = 'The two passwords do not match.'; this.signupStep = 3; return; }
+        if (!planKey || !(this.signupPlans || []).some((plan) => plan.plan_key === planKey)) {
+          this.signupError = 'Choose one of the available plans.'; this.signupStep = 4; return;
+        }
         if (!agreed) { this.signupError = 'Please accept the Terms of Service and Privacy Policy to continue.'; this.signupStep = 4; return; }
         this.signupBusy = true;
         try {
@@ -5404,7 +5440,8 @@
           if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { this.signupError = 'Please enter a valid email address.'; return false; }
         } else if (s === 3) {
           const pw = String(f.password || '');
-          if (pw.length < 10) { this.signupError = 'Choose a password with at least 10 characters.'; return false; }
+          const issues = this.passwordIssues(pw, String(f.ownerEmail || ''));
+          if (issues.length) { this.signupError = 'Password needs: ' + issues.join(', ') + '.'; return false; }
           if (pw !== String(f.confirm || '')) { this.signupError = 'The two passwords do not match.'; return false; }
         }
         return true;
@@ -5423,7 +5460,8 @@
       signupPlanName() {
         const key = this.signupForm && this.signupForm.planKey;
         const plan = (this.signupPlans || []).find((p) => p.plan_key === key);
-        return plan ? (plan.name + ' — ' + Reel.money(plan.monthly_price, plan.currency || 'ZAR') + '/mo')
+        const total = (plan && plan.checkout && plan.checkout.monthly && plan.checkout.monthly.total) || (plan && plan.monthly_price) || 0;
+        return plan ? (plan.name + ' — ' + Reel.money(total, plan.currency || 'ZAR') + '/mo incl. fees')
           : 'Default plan (30-day trial)';
       },
 
@@ -5433,7 +5471,8 @@
         const password = form ? form.password.value : '';
         const confirm = form ? form.confirm.value : '';
         this.resetError = null;
-        if (password.length < 10) { this.resetError = 'Use at least 10 characters.'; return; }
+        const resetIssues = this.passwordIssues(password);
+        if (resetIssues.length) { this.resetError = 'Password needs: ' + resetIssues.join(', ') + '.'; return; }
         if (password !== confirm) { this.resetError = 'The two passwords do not match.'; return; }
         try {
           await Reel.api('POST', '/auth/reset-password', { token, password });
@@ -5450,7 +5489,8 @@
         const password = form ? form.password.value : '';
         const confirm = form ? form.confirm.value : '';
         this.inviteError = null;
-        if (password.length < 10) { this.inviteError = 'Use at least 10 characters.'; return; }
+        const inviteIssues = this.passwordIssues(password, form && form.email ? form.email.value : '');
+        if (inviteIssues.length) { this.inviteError = 'Password needs: ' + inviteIssues.join(', ') + '.'; return; }
         if (password !== confirm) { this.inviteError = 'The two passwords do not match.'; return; }
         try {
           await Reel.api('POST', '/auth/invitations/accept', { token, displayName, password });
@@ -5465,6 +5505,8 @@
       loginShowPassword: false,
       loginError: null,
       loginBusy: false,
+      loginNeedsVerification: false,
+      loginVerifyEmail: '',
       mfaPending: null,
       mfaCode: '',
       signingOut: false,

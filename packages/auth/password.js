@@ -14,6 +14,31 @@ const COMMON_PASSWORDS = new Set([
   'changeme', 'changeme123'
 ]);
 
+/**
+ * Shared password policy. Endpoints return these as field errors so the UI can
+ * show exactly which rule failed; hashPassword stays deliberately permissive
+ * for existing accounts and internally generated credentials.
+ */
+const PASSWORD_RULES = [
+  { key: 'length', label: 'At least 10 characters', test: (value) => value.length >= 10 },
+  { key: 'upper', label: 'One uppercase letter', test: (value) => /[A-Z]/.test(value) },
+  { key: 'lower', label: 'One lowercase letter', test: (value) => /[a-z]/.test(value) },
+  { key: 'number', label: 'One number', test: (value) => /\d/.test(value) },
+  { key: 'symbol', label: 'One symbol (! @ # …)', test: (value) => /[^A-Za-z0-9]/.test(value) },
+  { key: 'common', label: 'Not a common password', test: (value) => !COMMON_PASSWORDS.has(value.toLowerCase()) }
+];
+
+function passwordIssues(value, context = {}) {
+  const password = typeof value === 'string' ? value : '';
+  const issues = PASSWORD_RULES.filter((rule) => !rule.test(password))
+    .map((rule) => ({ rule: rule.key, message: rule.label }));
+  const email = String(context.email || '').toLowerCase();
+  if (email && password.toLowerCase().includes(email)) {
+    issues.push({ rule: 'email', message: 'Not contain your email address' });
+  }
+  return issues;
+}
+
 async function hashPassword(password) {
   if (typeof password !== 'string' || password.length < 8) {
     throw new Error('Password must be at least 8 characters.');
@@ -55,4 +80,4 @@ function safeEqual(a, b) {
   return crypto.timingSafeEqual(left, right);
 }
 
-module.exports = { hashPassword, verifyPassword, randomToken, sha256, safeEqual };
+module.exports = { hashPassword, verifyPassword, randomToken, sha256, safeEqual, passwordIssues, PASSWORD_RULES };

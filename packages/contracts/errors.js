@@ -5,6 +5,7 @@ const ERROR_CODES = {
   INVALID_CREDENTIALS: { status: 401, code: 'INVALID_CREDENTIALS', message: 'The email address or password is incorrect.' },
   SESSION_EXPIRED: { status: 401, code: 'SESSION_EXPIRED', message: 'Your session has expired. Please sign in again.' },
   ACCOUNT_SUSPENDED: { status: 403, code: 'ACCOUNT_SUSPENDED', message: 'This account is suspended.' },
+  EMAIL_NOT_VERIFIED: { status: 403, code: 'EMAIL_NOT_VERIFIED', message: 'Please verify your email address before signing in.' },
   FORBIDDEN: { status: 403, code: 'FORBIDDEN', message: 'You do not have permission to perform this action.' },
   TENANT_MISMATCH: { status: 403, code: 'TENANT_MISMATCH', message: 'The requested resource belongs to another organisation.' },
   NOT_FOUND: { status: 404, code: 'NOT_FOUND', message: 'The requested resource was not found.' },
