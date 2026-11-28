@@ -8,7 +8,7 @@
 
 ## What exists
 
-1. **Neon managed backups + point-in-time restore (PITR)** — the primary recovery path. Confirm it is enabled in the Neon console and record the date in the change log.
+1. **Neon managed backups + point-in-time restore (PITR)** — the primary recovery path for recent changes. Confirm it is enabled in the Neon console, record the **history window** (currently **6 hours** on this project) in `NEON_PITR_HOURS`, and note the date. Scheduled snapshots require a plan upgrade. A short PITR window does not break the 24-hour RPO by itself because the nightly logical backup provides a full-day recovery point, but recent changes inside the 6–24 hour band can only be recovered from the last nightly copy.
 2. **Nightly logical backup** — `POST /api/v1/cron/platform-backup` (Vercel Cron, 02:00 daily) writes a ZIP of every critical table plus a checksum manifest to `nightly/YYYY-MM-DD/full-backup.zip` in `R2_BACKUP_BUCKET`. It is guarded by `CRON_SECRET` and audited as `platform.backup_completed`.
 3. **Media bucket versioning** — enable versioning on both the media and backup buckets. This protects against accidental deletion of child photos.
 4. **Tenant exports** — a full centre export (ZIP of CSV/JSON per entity + media manifest) stored in the backup bucket under `exports/<org>/<job>.zip` and delivered by a 24-hour signed link. Weekly/monthly scheduled exports and automatic termination exports are created by `POST /api/v1/cron/data-exports` (03:00 daily).
@@ -19,7 +19,7 @@
 R2_BACKUP_BUCKET=<separate private bucket — strongly recommended; if unset, the configured media bucket is used with private `nightly/` and `exports/` prefixes>
 R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_REGION
 CRON_SECRET=<shared secret for cron endpoints>
-NEON_PITR_CONFIRMED=true        # set only after console verification
+NEON_PITR_HOURS=6               # the history window shown in Neon's Backup & Restore screen
 R2_VERSIONING_CONFIRMED=true    # set only after console verification
 ```
 

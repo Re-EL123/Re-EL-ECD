@@ -89,9 +89,19 @@ async function backupStatus(db) {
     bucketVerification: bucket && storage.isConfigured()
       ? await storage.verifyBucketObject(bucket, last && last.metadata && last.metadata.key ? last.metadata.key : '')
       : false,
-    pitr: process.env.NEON_PITR_CONFIRMED === 'true'
-      ? { status: 'confirmed', note: 'NEON_PITR_CONFIRMED=true' }
-      : { status: 'verify-manually', note: 'Confirm point-in-time restore is enabled in the Neon console and record the date.' },
+    // Report the actual history window. A short PITR window is not a failure:
+    // older recovery still comes from the nightly logical backup.
+    pitr: (() => {
+      const configured = Number(process.env.NEON_PITR_HOURS || 0);
+      const hours = configured > 0 ? configured
+        : (process.env.NEON_PITR_CONFIRMED === 'true' ? 24 : 0);
+      if (!hours) return { status: 'verify-manually', hours: 0,
+        note: 'Confirm point-in-time restore in the Neon console and set NEON_PITR_HOURS to the displayed history window.' };
+      if (hours >= RPO_HOURS) return { status: 'confirmed', hours,
+        note: 'PITR covers at least the 24-hour recovery point objective.' };
+      return { status: 'limited', hours,
+        note: `PITR covers ${hours} hours. Older recovery relies on the nightly logical backup; RPO is met for full-day restores but not for every minute of the last ${RPO_HOURS} hours.` };
+    })(),
     versioning: process.env.R2_VERSIONING_CONFIRMED === 'true'
       ? { status: 'confirmed' }
       : { status: 'verify-manually', note: 'Confirm bucket versioning is enabled on the media and backup buckets.' },

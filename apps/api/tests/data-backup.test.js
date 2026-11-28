@@ -138,3 +138,23 @@ test('backups and exports fall back to the configured bucket when no dedicated b
     else process.env.R2_BUCKET = original.media;
   }
 });
+
+test('backup status reports the real PITR window instead of a bare confirmed flag', async () => {
+  const original = { hours: process.env.NEON_PITR_HOURS, confirmed: process.env.NEON_PITR_CONFIRMED };
+  try {
+    process.env.NEON_PITR_HOURS = '6';
+    delete process.env.NEON_PITR_CONFIRMED;
+    const limited = await backupService.backupStatus(db);
+    assert.equal(limited.pitr.status, 'limited');
+    assert.equal(limited.pitr.hours, 6);
+    process.env.NEON_PITR_HOURS = '24';
+    const full = await backupService.backupStatus(db);
+    assert.equal(full.pitr.status, 'confirmed');
+    assert.equal(full.pitr.hours, 24);
+  } finally {
+    if (original.hours === undefined) delete process.env.NEON_PITR_HOURS;
+    else process.env.NEON_PITR_HOURS = original.hours;
+    if (original.confirmed === undefined) delete process.env.NEON_PITR_CONFIRMED;
+    else process.env.NEON_PITR_CONFIRMED = original.confirmed;
+  }
+});

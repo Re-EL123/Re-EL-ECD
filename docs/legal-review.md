@@ -111,4 +111,4 @@ quarterly restore drills and the tenant export path. Legal review should confirm
 1. The Privacy Policy, Terms and DPA disclosures about backup cycles and export sensitivity are adequate.
 2. The 24-hour signed-link expiry and 30-day backup retention are operationally accurate.
 3. The termination export is issued inside the stated transition window.
-4. `R2_BACKUP_BUCKET`, `NEON_PITR_CONFIRMED` and `R2_VERSIONING_CONFIRMED` are set in production and reflected in `/platform/backups`.
+4. `R2_BACKUP_BUCKET`, `NEON_PITR_HOURS` (the actual Neon history window, currently 6) and `R2_VERSIONING_CONFIRMED` are set in production and reflected in `/platform/backups`. Review whether a 6-hour PITR window plus a nightly logical copy is sufficient for the stated RPO, or upgrade Neon for a longer window.
