@@ -36,7 +36,10 @@ const ENTITIES = [
 ];
 
 function backupBucket() {
-  return process.env.R2_BACKUP_BUCKET || '';
+  // A dedicated private bucket is preferred. Until one is provisioned, use the
+  // configured media bucket with private `exports/` prefixes (UUID keys, no
+  // public listing) so centres can still retrieve their information.
+  return process.env.R2_BACKUP_BUCKET || process.env.R2_BUCKET || '';
 }
 
 async function createExport(db, organisationId, requestedBy, reason = 'manual') {

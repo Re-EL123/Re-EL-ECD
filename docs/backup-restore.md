@@ -16,7 +16,7 @@
 ## Required configuration
 
 ```
-R2_BACKUP_BUCKET=<separate private bucket, not the media bucket>
+R2_BACKUP_BUCKET=<separate private bucket — strongly recommended; if unset, the configured media bucket is used with private `nightly/` and `exports/` prefixes>
 R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_REGION
 CRON_SECRET=<shared secret for cron endpoints>
 NEON_PITR_CONFIRMED=true        # set only after console verification

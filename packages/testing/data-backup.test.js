@@ -56,6 +56,7 @@ test('backup and export endpoints are guarded and audited', () => {
   assert.match(exportsModule, /router\.get\('\/data-exports\/:id\/download'/);
   assert.match(service, /createZip\(files/);
   assert.match(service, /EXPIRY_HOURS = 24/);
+  assert.match(service, /process\.env\.R2_BACKUP_BUCKET \|\| process\.env\.R2_BUCKET/);
   assert.match(service, /sendTemplate\(db, 'dataExportReady'/);
   assert.match(backupService, /RPO_HOURS = 24/);
   assert.match(backupService, /RTO_HOURS = 4/);

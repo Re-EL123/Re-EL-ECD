@@ -29,7 +29,7 @@ const RPO_HOURS = 24;
 const RTO_HOURS = 4;
 
 function backupBucket() {
-  return process.env.R2_BACKUP_BUCKET || '';
+  return process.env.R2_BACKUP_BUCKET || process.env.R2_BUCKET || '';
 }
 
 async function runPlatformBackup(db) {
@@ -84,6 +84,7 @@ async function backupStatus(db) {
     rpoHours: RPO_HOURS,
     rtoHours: RTO_HOURS,
     bucketConfigured: Boolean(bucket),
+    dedicatedBucket: Boolean(process.env.R2_BACKUP_BUCKET),
     storageConfigured: storage.isConfigured(),
     bucketVerification: bucket && storage.isConfigured()
       ? await storage.verifyBucketObject(bucket, last && last.metadata && last.metadata.key ? last.metadata.key : '')

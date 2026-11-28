@@ -109,3 +109,32 @@ test('export jobs and scheduled exports are visible to owners only', async () =>
   const jobs = await exportService.dueScheduled(db);
   assert.ok(Array.isArray(jobs));
 });
+
+test('backups and exports fall back to the configured bucket when no dedicated bucket is set', async () => {
+  const original = { bucket: process.env.R2_BACKUP_BUCKET, media: process.env.R2_BUCKET };
+  delete process.env.R2_BACKUP_BUCKET;
+  process.env.R2_BUCKET = 'reel-media-fallback-test';
+  try {
+    const owner = createClient();
+    await owner.login('principal@littlesprouts.local');
+    const originalPut = storage.putObject;
+    const originalConfigured = storage.isConfigured;
+    const originalSign = storage.presignGetFrom;
+    let key = null;
+    storage.putObject = async (k) => { key = k; return true; };
+    storage.isConfigured = () => true;
+    storage.presignGetFrom = () => ({ url: 'https://example.test/media' });
+    const job = await exportService.createExport(db, (await db.one("SELECT id FROM organisations WHERE slug='little-sprouts'")).id, null, 'manual');
+    const done = await exportService.processExport(db, job.id);
+    assert.equal(done.status, 'ready', done.error || '');
+    assert.match(key, /^exports\//);
+    storage.putObject = originalPut;
+    storage.isConfigured = originalConfigured;
+    storage.presignGetFrom = originalSign;
+  } finally {
+    if (original.bucket === undefined) delete process.env.R2_BACKUP_BUCKET;
+    else process.env.R2_BACKUP_BUCKET = original.bucket;
+    if (original.media === undefined) delete process.env.R2_BUCKET;
+    else process.env.R2_BUCKET = original.media;
+  }
+});
