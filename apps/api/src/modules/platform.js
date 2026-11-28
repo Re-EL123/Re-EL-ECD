@@ -469,6 +469,29 @@ function register(router) {
     return user;
   }
 
+  // Never return password hashes, TOTP secrets or recovery codes to the console.
+  function safeUser(user) {
+    return {
+      id: user.id, email: user.email, display_name: user.display_name, phone: user.phone,
+      avatar_url: user.avatar_url, status: user.status, mfa_enabled: user.mfa_enabled,
+      email_verified_at: user.email_verified_at, last_login_at: user.last_login_at,
+      failed_login_count: user.failed_login_count, locked_until: user.locked_until,
+      created_at: user.created_at, updated_at: user.updated_at
+    };
+  }
+
+  async function sendEmailVerification(ctx, user) {
+    const token = randomToken(24);
+    await ctx.db.query(
+      `INSERT INTO email_verifications (user_id, token_hash, expires_at)
+       VALUES ($1,$2,now() + interval '48 hours')`, [user.id, sha256(token)]
+    );
+    await sendTemplate(ctx.db, 'verifyEmail', {
+      to: user.email, metadata: { userId: user.id, source: 'platform_user_edit' },
+      data: { ownerName: user.display_name, token }
+    });
+  }
+
   async function setUserStatus(ctx, user, status) {
     if (user.id === ctx.user.id && status !== 'active') {
       fail('CONFLICT', null, 'You cannot suspend or disable your own account.');
@@ -484,7 +507,7 @@ function register(router) {
       action: 'platform.user_status_changed', resourceType: 'user', resourceId: user.id,
       metadata: { status, previousStatus: user.status }
     });
-    return { ...user, status };
+    return safeUser(Object.assign({}, user, { status }));
   }
 
   router.post('/platform/users/:id/status', async (ctx) => {
@@ -505,6 +528,192 @@ function register(router) {
       metadata: { sessions: result.rowCount }
     });
     return { success: true, revoked: result.rowCount || 0 };
+  }, { platformOnly: true, permission: 'platform.organisations.manage' });
+
+  router.get('/platform/users/:id', async (ctx) => {
+    const user = await platformUser(ctx, ctx.params.id);
+    const [memberships, roles, organisations, branches] = await Promise.all([
+      ctx.db.many(
+        `SELECT m.id, m.status, o.id AS organisation_id, o.name AS organisation_name, o.slug AS organisation_slug,
+                COALESCE((SELECT jsonb_agg(jsonb_build_object('id', mr.id, 'key', r.role_key, 'name', r.name,
+                  'branchId', mr.branch_id, 'expiresAt', mr.expires_at) ORDER BY r.role_key)
+                  FROM membership_roles mr JOIN roles r ON r.id = mr.role_id
+                  WHERE mr.membership_id = m.id AND mr.status = 'active'), '[]'::jsonb) AS roles
+         FROM memberships m JOIN organisations o ON o.id = m.organisation_id
+         WHERE m.user_id = $1 ORDER BY o.name`, [user.id]
+      ),
+      ctx.db.many('SELECT id, role_key, name, scope_type, description FROM roles ORDER BY scope_type, name'),
+      ctx.db.many("SELECT id, name, slug FROM organisations WHERE slug <> 're-el-platform' ORDER BY name"),
+      ctx.db.many('SELECT id, organisation_id, name FROM branches ORDER BY name')
+    ]);
+    return { user: safeUser(user), memberships, roles, organisations, branches };
+  }, { platformOnly: true, permission: 'platform.organisations.read' });
+
+  router.patch('/platform/users/:id', async (ctx) => {
+    const body = validate(ctx.body || {}, {
+      displayName: { type: 'string', min: 2, max: 255, optional: true },
+      email: { type: 'string', email: true, max: 255, optional: true },
+      phone: { type: 'string', max: 50, optional: true },
+      avatarUrl: { type: 'string', max: 2000, optional: true },
+      status: { type: 'string', enum: ['active', 'suspended', 'disabled', 'invited'], optional: true },
+      disableMfa: { type: 'boolean', optional: true },
+      unlock: { type: 'boolean', optional: true }
+    });
+    const user = await platformUser(ctx, ctx.params.id);
+    const changes = {};
+    if (body.displayName !== undefined && body.displayName !== user.display_name) changes.display_name = body.displayName;
+    let emailChanged = false;
+    if (body.email !== undefined) {
+      const email = String(body.email).trim().toLowerCase();
+      if (email !== user.email) {
+        const taken = await ctx.db.one('SELECT id FROM users WHERE email_normalized = $1 AND id <> $2', [email, user.id]);
+        if (taken) fail('CONFLICT', null, 'That email address is already in use.');
+        changes.email = email;
+        changes.email_normalized = email;
+        emailChanged = true;
+      }
+    }
+    if (body.phone !== undefined) changes.phone = String(body.phone || '').trim() || null;
+    if (body.avatarUrl !== undefined) changes.avatar_url = String(body.avatarUrl || '').trim() || null;
+    if (body.status !== undefined && body.status !== user.status) {
+      if (user.id === ctx.user.id && body.status !== 'active') {
+        fail('CONFLICT', null, 'You cannot suspend or disable your own account.');
+      }
+      changes.status = body.status;
+    }
+    if (body.disableMfa === true && user.mfa_enabled) {
+      changes.mfa_enabled = false;
+      changes.totp_secret_enc = null;
+      changes.mfa_recovery_hashes = JSON.stringify([]);
+    }
+    if (body.unlock === true) {
+      changes.failed_login_count = 0;
+      changes.locked_until = null;
+    }
+    if (!Object.keys(changes).length) return safeUser(user);
+
+    const sets = Object.keys(changes).map((key, index) => `${key} = $${index + 1}`).concat('updated_at = now()');
+    await ctx.db.query(`UPDATE users SET ${sets.join(', ')} WHERE id = $${Object.keys(changes).length + 1}`,
+      Object.values(changes).concat(user.id));
+    if (emailChanged) {
+      await ctx.db.query('UPDATE email_verifications SET used_at = now() WHERE user_id = $1 AND used_at IS NULL', [user.id]);
+      await ctx.db.query('UPDATE password_resets SET used_at = now() WHERE user_id = $1 AND used_at IS NULL', [user.id]);
+      await sendEmailVerification(ctx, Object.assign({}, user, { email: changes.email }));
+    }
+    if (changes.status && changes.status !== 'active') {
+      await ctx.db.query('UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [user.id]);
+    }
+    invalidateAccess(user.id, null);
+    const updated = await platformUser(ctx, user.id);
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.user_updated', resourceType: 'user', resourceId: user.id,
+      metadata: { fields: Object.keys(changes), previousStatus: user.status }
+    });
+    return safeUser(updated);
+  }, { platformOnly: true, permission: 'platform.organisations.manage' });
+
+  router.post('/platform/users/:id/reset-password', async (ctx) => {
+    const user = await platformUser(ctx, ctx.params.id);
+    if (!user.email) fail('CONFLICT', null, 'This user has no email address to send a reset link to.');
+    await ctx.db.query('UPDATE password_resets SET used_at = now() WHERE user_id = $1 AND used_at IS NULL', [user.id]);
+    const token = randomToken(24);
+    await ctx.db.query(
+      'INSERT INTO password_resets (user_id, token_hash, expires_at) VALUES ($1,$2,now() + interval \'1 hour\')',
+      [user.id, sha256(token)]
+    );
+    await sendTemplate(ctx.db, 'passwordReset', {
+      to: user.email, metadata: { userId: user.id, source: 'platform_admin' },
+      data: { displayName: user.display_name, token }
+    });
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.user_password_reset_sent', resourceType: 'user', resourceId: user.id
+    });
+    return { success: true, sentTo: user.email.replace(/^(.).*@/, '$1***@') };
+  }, { platformOnly: true, permission: 'platform.organisations.manage' });
+
+  router.post('/platform/users/:id/memberships', async (ctx) => {
+    const body = validate(ctx.body || {}, {
+      organisationId: { type: 'string', uuid: true },
+      roleKey: { type: 'string', min: 2, max: 100 },
+      branchId: { type: 'string', uuid: true, optional: true }
+    });
+    const user = await platformUser(ctx, ctx.params.id);
+    const role = await ctx.db.one('SELECT id, scope_type FROM roles WHERE role_key = $1', [body.roleKey]);
+    if (!role) fail('VALIDATION', [{ field: 'roleKey', message: 'Unknown role.' }]);
+    const org = await ctx.db.one('SELECT id FROM organisations WHERE id = $1', [body.organisationId]);
+    if (!org) fail('VALIDATION', [{ field: 'organisationId', message: 'Unknown organisation.' }]);
+    if (role.scope_type === 'platform' && body.organisationId !== (ctx.organisationId)) {
+      fail('VALIDATION', [{ field: 'roleKey', message: 'Platform roles can only be granted in the platform organisation.' }]);
+    }
+    if (role.scope_type !== 'platform' && String(body.organisationId) === String(ctx.organisationId)) {
+      fail('VALIDATION', [{ field: 'roleKey', message: 'Centre roles cannot be granted in the platform organisation.' }]);
+    }
+    let membership = await ctx.db.one('SELECT id FROM memberships WHERE user_id = $1 AND organisation_id = $2', [user.id, body.organisationId]);
+    if (!membership) {
+      membership = await ctx.db.one(
+        "INSERT INTO memberships (user_id, organisation_id, status, joined_at) VALUES ($1,$2,'active',now()) RETURNING id",
+        [user.id, body.organisationId]
+      );
+    }
+    await ctx.db.query(
+      `INSERT INTO membership_roles (membership_id, role_id, branch_id, granted_by, status)
+       VALUES ($1,$2,$3,$4,'active')
+       ON CONFLICT DO NOTHING`,
+      [membership.id, role.id, body.branchId || null, ctx.user.id]
+    );
+    if (body.branchId) {
+      await ctx.db.query(
+        'INSERT INTO branch_memberships (membership_id, branch_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',
+        [membership.id, body.branchId]
+      );
+    }
+    invalidateAccess(user.id, null);
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.user_role_granted', resourceType: 'user', resourceId: user.id,
+      metadata: { organisationId: body.organisationId, roleKey: body.roleKey, branchId: body.branchId || null }
+    });
+    return { success: true, membershipId: membership.id };
+  }, { platformOnly: true, permission: 'platform.organisations.manage' });
+
+  router.delete('/platform/users/:id/memberships/:membershipId', async (ctx) => {
+    const user = await platformUser(ctx, ctx.params.id);
+    const membership = await ctx.db.one('SELECT * FROM memberships WHERE id = $1 AND user_id = $2', [ctx.params.membershipId, user.id]);
+    if (!membership) throw new AppError('NOT_FOUND');
+    await ctx.db.query("UPDATE membership_roles SET status = 'revoked' WHERE membership_id = $1 AND status = 'active'", [membership.id]);
+    await ctx.db.query("UPDATE memberships SET status = 'revoked' WHERE id = $1", [membership.id]);
+    invalidateAccess(user.id, null);
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.user_membership_revoked', resourceType: 'user', resourceId: user.id,
+      metadata: { membershipId: membership.id, organisationId: membership.organisation_id }
+    });
+    return { success: true };
+  }, { platformOnly: true, permission: 'platform.organisations.manage' });
+
+  router.delete('/platform/users/:id/memberships/:membershipId/roles/:roleId', async (ctx) => {
+    const user = await platformUser(ctx, ctx.params.id);
+    const grant = await ctx.db.one(
+      `SELECT mr.id, r.role_key FROM membership_roles mr
+       JOIN roles r ON r.id = mr.role_id
+       JOIN memberships m ON m.id = mr.membership_id
+       WHERE mr.id = $1 AND m.user_id = $2 AND m.id = $3 AND mr.status = 'active'`,
+      [ctx.params.roleId, user.id, ctx.params.membershipId]
+    );
+    if (!grant) throw new AppError('NOT_FOUND');
+    if (grant.role_key === 'organisation_owner') {
+      const owners = await ctx.db.one(
+        `SELECT COUNT(*)::int AS total FROM membership_roles mr
+         JOIN roles r ON r.id = mr.role_id WHERE mr.membership_id = $1 AND r.role_key = 'organisation_owner' AND mr.status = 'active'`,
+        [ctx.params.membershipId]
+      );
+      if (owners.total <= 1) fail('CONFLICT', null, 'A centre must keep at least one owner.');
+    }
+    await ctx.db.query("UPDATE membership_roles SET status = 'revoked' WHERE id = $1", [grant.id]);
+    invalidateAccess(user.id, null);
+    await recordAudit(ctx.db, ctx, {
+      action: 'platform.user_role_revoked', resourceType: 'user', resourceId: user.id,
+      metadata: { roleKey: grant.role_key, membershipId: ctx.params.membershipId }
+    });
+    return { success: true };
   }, { platformOnly: true, permission: 'platform.organisations.manage' });
 
   router.post('/platform/users/bulk', async (ctx) => {

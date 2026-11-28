@@ -265,11 +265,11 @@
           { label: 'Sessions', align: 'right', render: (u) => R.number(u.active_sessions) },
           { label: 'Last sign-in', render: (u) => u.last_login_at ? '<span class="cell-strong">' + R.date(u.last_login_at) + '</span><span class="cell-sub">' + R.relative(u.last_login_at) + '</span>' : '<span class="muted small">Never</span>' },
           { label: 'Actions', align: 'right', render: (u) => canManage ? '<div class="btn-group">' +
-            (u.status === 'active'
-              ? '<button class="btn btn-sm btn-danger" @click="openNamedModal(\'userStatus\', ' + R.attr(JSON.stringify(u.id)) + ')">Manage</button>'
-              : '<button class="btn btn-sm btn-primary" @click="act(\'POST\',\'/platform/users/' + R.attr(u.id) + '/status\',{status:\'active\'},{successMessage:\'User activated\'})">Activate</button>') +
-            '<button class="btn btn-sm btn-secondary" @click="act(\'POST\',\'/platform/users/' + R.attr(u.id) + '/revoke-sessions\',{},{successMessage:\'Sessions revoked\'})">Revoke sessions</button>' +
-            (u.status === 'active' ? '<button class="btn btn-sm btn-secondary" @click="impersonateUser(\'' + R.attr(u.id) + '\')">' + R.icon('eye') + ' View as</button>' : '') +
+            '<button class="btn btn-sm btn-primary" @click="openPlatformUser(\'' + R.attr(u.id) + '\')">' + R.icon('pencil') + ' Edit</button>' +
+            '<button class="btn btn-sm btn-secondary" @click="openPlatformUserRoles(\'' + R.attr(u.id) + '\')">' + R.icon('shield') + ' Roles</button>' +
+            '<button class="btn btn-sm btn-ghost" @click="resetPlatformUserPassword(\'' + R.attr(u.id) + '\')">' + R.icon('key-round') + ' Reset password</button>' +
+            '<button class="btn btn-sm btn-ghost" @click="act(\'POST\',\'/platform/users/' + R.attr(u.id) + '/revoke-sessions\',{},{successMessage:\'Sessions revoked\'})">Revoke sessions</button>' +
+            (u.status === 'active' ? '<button class="btn btn-sm btn-ghost" @click="impersonateUser(\'' + R.attr(u.id) + '\')">' + R.icon('eye') + ' View as</button>' : '') +
             '</div>' : '' }
         ], emptyTitle: 'No users found', emptyMessage: 'Adjust the filters or invite a tenant owner.' }) +
         '<div class="muted small" style="margin-top:10px">' + R.number(page.meta.total || rows.length) + ' users</div>';
@@ -296,22 +296,7 @@
         return;
       }
       if (name === 'userStatus' && id) {
-        const user = ((ctx.page && ctx.page.rows) || []).find((u) => u.id === id);
-        ctx.openModal({
-          title: 'Manage ' + (user ? user.display_name : 'user'),
-          description: 'Suspending or disabling an account revokes every active session immediately. The account keeps its history.',
-          endpoint: '/platform/users/' + encodeURIComponent(id) + '/status',
-          submitLabel: 'Update access',
-          successMessage: 'User access updated',
-          fields: [
-            { name: 'status', label: 'Access status', type: 'select', required: true,
-              options: [
-                { value: 'active', label: 'Active' },
-                { value: 'suspended', label: 'Suspended' },
-                { value: 'disabled', label: 'Disabled' }
-              ], value: user ? user.status : 'active' }
-          ]
-        });
+        ctx.openPlatformUser(id);
       }
     }
   };

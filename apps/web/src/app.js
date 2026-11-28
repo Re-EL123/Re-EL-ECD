@@ -4768,6 +4768,100 @@
         if (action.modal) setTimeout(() => this.openNamedModal(action.modal), 140);
       },
 
+      async openPlatformUser(id) {
+        try {
+          const response = await Reel.api('GET', '/platform/users/' + encodeURIComponent(id));
+          const detail = response.data || {};
+          const user = detail.user || {};
+          this.openModal({
+            title: 'Edit ' + (user.display_name || 'user'),
+            size: 'wide',
+            description: 'Edit account details, access status and security state. Changing the email signs the user out and sends a verification link to the new address.',
+            endpoint: '/platform/users/' + encodeURIComponent(id),
+            method: 'PATCH',
+            submitLabel: 'Save user',
+            successMessage: 'User updated',
+            fields: [
+              { name: 'displayName', label: 'Display name', required: true, value: user.display_name || '' },
+              { name: 'email', label: 'Email address', type: 'email', required: true, value: user.email || '' },
+              { name: 'phone', label: 'Phone number', value: user.phone || '' },
+              { name: 'avatarUrl', label: 'Avatar URL', value: user.avatar_url || '' },
+              { name: 'status', label: 'Access status', type: 'select', value: user.status || 'active',
+                options: [{ value: 'active', label: 'Active' }, { value: 'suspended', label: 'Suspended' },
+                  { value: 'disabled', label: 'Disabled' }, { value: 'invited', label: 'Invited' }] },
+              { name: 'disableMfa', label: 'Turn off two-factor authentication', type: 'checkbox', value: false,
+                help: user.mfa_enabled ? 'Clears the authenticator secret and recovery codes.' : 'MFA is not enabled.' },
+              { name: 'unlock', label: 'Unlock account', type: 'checkbox', value: false,
+                help: user.locked_until ? 'Locked until ' + String(user.locked_until) : 'Account is not locked.' }
+            ],
+            transform: (body) => ({
+              displayName: body.displayName, email: body.email, phone: body.phone,
+              avatarUrl: body.avatarUrl, status: body.status,
+              disableMfa: body.disableMfa === true, unlock: body.unlock === true
+            })
+          });
+        } catch (error) {
+          this.toast(error.message || 'Could not load this user.', 'error');
+        }
+      },
+
+      async resetPlatformUserPassword(id) {
+        try {
+          const result = await Reel.api('POST', '/platform/users/' + encodeURIComponent(id) + '/reset-password', {});
+          this.toast('Password reset link sent to ' + ((result && result.data && result.data.sentTo) || 'the user') + '.');
+        } catch (error) {
+          this.toast(error.message || 'Could not send the reset link.', 'error');
+        }
+      },
+
+      async openPlatformUserRoles(id) {
+        try {
+          const response = await Reel.api('GET', '/platform/users/' + encodeURIComponent(id));
+          const detail = response.data || {};
+          const memberships = detail.memberships || [];
+          const current = memberships.map((m) =>
+            '<div class="correction-row"><div><strong>' + Reel.esc(m.organisation_name || 'Organisation') + '</strong>' +
+            (m.roles || []).map((r) => '<span class="badge badge-muted">' + Reel.esc(r.key) +
+              ' <button type="button" class="link-strong small" @click="revokePlatformUserRole(\'' + Reel.attr(id) + '\',\'' + Reel.attr(m.id) + '\',\'' + Reel.attr(r.id) + '\')">×</button></span>').join('') +
+            '</div><button class="btn btn-sm btn-ghost" @click="revokePlatformUserMembership(\'' + Reel.attr(id) + '\',\'' + Reel.attr(m.id) + '\')">Remove centre</button></div>').join('') || '<p class="muted small">No memberships yet.</p>';
+          this.openModal({
+            title: 'Roles and centres',
+            size: 'wide',
+            descriptionHtml: '<div class="stack">' + current + '</div><p class="muted small">Add a centre and role:</p>',
+            endpoint: '/platform/users/' + encodeURIComponent(id) + '/memberships',
+            submitLabel: 'Add role',
+            successMessage: 'Role added',
+            fields: [
+              { name: 'organisationId', label: 'Organisation', type: 'select', required: true,
+                options: (detail.organisations || []).map((o) => ({ value: o.id, label: o.name })) },
+              { name: 'roleKey', label: 'Role', type: 'select', required: true,
+                options: (detail.roles || []).map((r) => ({ value: r.role_key, label: r.name + ' · ' + r.scope_type })) }
+            ]
+          });
+        } catch (error) {
+          this.toast(error.message || 'Could not load roles.', 'error');
+        }
+      },
+
+      async revokePlatformUserRole(userId, membershipId, roleId) {
+        try {
+          await Reel.api('DELETE', '/platform/users/' + encodeURIComponent(userId) + '/memberships/' +
+            encodeURIComponent(membershipId) + '/roles/' + encodeURIComponent(roleId));
+          this.modal = null;
+          this.toast('Role revoked.');
+          this.openPlatformUserRoles(userId);
+        } catch (error) { this.toast(error.message || 'Could not revoke role.', 'error'); }
+      },
+
+      async revokePlatformUserMembership(userId, membershipId) {
+        try {
+          await Reel.api('DELETE', '/platform/users/' + encodeURIComponent(userId) + '/memberships/' + encodeURIComponent(membershipId));
+          this.modal = null;
+          this.toast('Centre access removed.');
+          this.openPlatformUserRoles(userId);
+        } catch (error) { this.toast(error.message || 'Could not remove centre.', 'error'); }
+      },
+
       openNamedModal(name, id) {
         // Upgrades are available from the sidebar as well as the Billing page.
         if (name === 'upgradePlan') { this.openUpgradeModal(); return; }

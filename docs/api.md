@@ -13,7 +13,7 @@ Every protected request is scoped by the `X-Organisation-Id` header (or the
 `organisationId` query parameter). Membership and permissions are resolved
 server-side; a client cannot widen its scope by changing headers.
 
-Generated from the router: **460 routes** across 27 modules.
+Generated from the router: **514 routes** across 32 modules.
 
 ## Access
 
@@ -83,6 +83,7 @@ Generated from the router: **460 routes** across 27 modules.
 | GET | `/assessments/periods` | assessments.read.daycare |
 | POST | `/assessments/periods` | assessments.publish.daycare |
 | POST | `/assessments/quick-moments` | assessments.create.assigned OR assessments.create.assigned |
+| POST | `/assessments/quick-moments/bulk` | assessments.create.assigned OR assessments.publish.daycare |
 | POST | `/assessments/reports/generate` | assessments.read.daycare OR parent.read.own |
 
 ## Audit
@@ -121,8 +122,11 @@ Generated from the router: **460 routes** across 27 modules.
 
 | Method | Path | Access |
 | --- | --- | --- |
+| POST | `/automation/attendance-reminders` | organisation.settings.manage |
+| POST | `/automation/data-exports` | Platform only · platform.organisations.manage |
 | POST | `/automation/parent-onboarding` | organisation.settings.manage |
 | POST | `/automation/pickup-brief` | organisation.settings.manage |
+| POST | `/automation/platform-backup` | Platform only · platform.organisations.manage |
 | POST | `/automation/portfolio-digest` | organisation.settings.manage |
 | POST | `/automation/sweep` | organisation.settings.manage |
 | POST | `/automation/weekly-digest` | organisation.settings.manage |
@@ -142,7 +146,18 @@ Generated from the router: **460 routes** across 27 modules.
 | GET | `/billing/payouts` | organisation.settings.manage |
 | POST | `/billing/setup/pay` | organisation.settings.manage |
 | POST | `/billing/subscription/pay` | organisation.settings.manage |
+| POST | `/billing/subscription/upgrade` | organisation.settings.manage |
 | GET | `/billing/summary` | organisation.settings.manage |
+
+## Books
+
+| Method | Path | Access |
+| --- | --- | --- |
+| GET | `/books` | organisation.read.daycare OR platform.settings.manage |
+| POST | `/books` | organisation.settings.manage OR platform.settings.manage |
+| DELETE | `/books/:id` | organisation.settings.manage OR platform.settings.manage |
+| PATCH | `/books/:id` | organisation.settings.manage OR platform.settings.manage |
+| POST | `/books/import` | platform.settings.manage |
 
 ## Branches
 
@@ -192,12 +207,28 @@ Generated from the router: **460 routes** across 27 modules.
 | POST | `/conversations/:id/messages` | messages.send.own |
 | POST | `/conversations/:id/read` | messages.read.own |
 
+## Corrections
+
+| Method | Path | Access |
+| --- | --- | --- |
+| GET | `/corrections` | records.correct.daycare |
+| POST | `/corrections` | records.correct.daycare |
+| GET | `/corrections/:id` | records.correct.daycare |
+| POST | `/corrections/:id/approve` | records.approve.daycare |
+| POST | `/corrections/:id/reject` | records.approve.daycare |
+| GET | `/corrections/resources` | records.correct.daycare |
+| GET | `/corrections/resources/:type` | records.correct.daycare |
+| GET | `/corrections/resources/:type/:id` | records.correct.daycare |
+
 ## Cron
 
 | Method | Path | Access |
 | --- | --- | --- |
+| POST | `/cron/attendance-reminders` | Public |
+| POST | `/cron/data-exports` | Public |
 | POST | `/cron/parent-onboarding` | Public |
 | POST | `/cron/pickup-brief` | Public |
+| POST | `/cron/platform-backup` | Public |
 | POST | `/cron/portfolio-digest` | Public |
 | POST | `/cron/weekly-digest` | Public |
 
@@ -219,6 +250,7 @@ Generated from the router: **460 routes** across 27 modules.
 | POST | `/curriculum/calendar/events/:id/complete` | curriculum.create.daycare |
 | POST | `/curriculum/calendar/events/:id/duplicate` | curriculum.create.daycare |
 | GET | `/curriculum/calendar/events/:id/participation` | curriculum.read.daycare |
+| POST | `/curriculum/calendar/events/:id/share` | curriculum.create.daycare OR assessments.create.assigned |
 | POST | `/curriculum/calendar/events/:id/start` | curriculum.create.daycare |
 | GET | `/curriculum/domains` | curriculum.read.assigned OR curriculum.read.daycare OR assessments.read.assigned OR assessments.create.assigned |
 | POST | `/curriculum/domains` | curriculum.create.daycare |
@@ -251,6 +283,15 @@ Generated from the router: **460 routes** across 27 modules.
 | Method | Path | Access |
 | --- | --- | --- |
 | GET | `/dashboard` | reports.read.daycare |
+
+## Data Exports
+
+| Method | Path | Access |
+| --- | --- | --- |
+| GET | `/data-exports` | reports.export.daycare |
+| POST | `/data-exports` | reports.export.daycare |
+| GET | `/data-exports/:id` | reports.export.daycare |
+| GET | `/data-exports/:id/download` | reports.export.daycare |
 
 ## Documents
 
@@ -479,6 +520,14 @@ Generated from the router: **460 routes** across 27 modules.
 | POST | `/notifications/read-all` | Authenticated |
 | GET | `/notifications/unread-count` | Authenticated |
 
+## Nursery Rhyme Audio
+
+| Method | Path | Access |
+| --- | --- | --- |
+| GET | `/nursery-rhyme-audio` | curriculum.read.daycare OR platform.settings.manage |
+| PATCH | `/nursery-rhyme-audio` | organisation.settings.manage |
+| DELETE | `/nursery-rhyme-audio/:id` | organisation.settings.manage |
+
 ## Onboarding
 
 | Method | Path | Access |
@@ -523,6 +572,7 @@ Generated from the router: **460 routes** across 27 modules.
 | POST | `/parent/children/:id/collectors/:collectorId/pin` | parent.read.own |
 | GET | `/parent/children/:id/daily-reports` | parent.read.own |
 | GET | `/parent/children/:id/invoices` | parent.finance.read.own |
+| GET | `/parent/children/:id/observations` | parent.read.own |
 | GET | `/parent/children/:id/portfolio` | parent.read.own |
 | GET | `/parent/children/:id/progress` | parent.read.own |
 | GET | `/parent/collection-approvals` | parent.read.own |
@@ -556,6 +606,7 @@ Generated from the router: **460 routes** across 27 modules.
 | Method | Path | Access |
 | --- | --- | --- |
 | GET | `/platform/audit-events` | Platform only · platform.audit.read |
+| GET | `/platform/backups` | Platform only · platform.health.read |
 | POST | `/platform/broadcast` | Platform only · platform.organisations.manage |
 | PATCH | `/platform/documents/:slug` | Platform only · platform.settings.manage |
 | GET | `/platform/features` | Platform only · platform.organisations.read |
@@ -589,13 +640,26 @@ Generated from the router: **460 routes** across 27 modules.
 | GET | `/platform/settlements/payouts` | Platform only · platform.subscriptions.manage |
 | POST | `/platform/settlements/payouts/:id/void` | Platform only · platform.subscriptions.manage |
 | POST | `/platform/storage/check` | Platform only · platform.settings.manage |
+| POST | `/platform/subscription-invoices/:id/mark-paid` | Platform only · platform.subscriptions.manage |
+| POST | `/platform/subscription-invoices/:id/refund` | Platform only · platform.subscriptions.manage |
+| POST | `/platform/subscription-invoices/:id/void` | Platform only · platform.subscriptions.manage |
 | GET | `/platform/subscriptions` | Platform only · platform.subscriptions.read |
+| POST | `/platform/subscriptions/:id/cancel` | Platform only · platform.subscriptions.manage |
+| POST | `/platform/subscriptions/:id/period` | Platform only · platform.subscriptions.manage |
+| POST | `/platform/subscriptions/:id/waive` | Platform only · platform.subscriptions.manage |
 | POST | `/platform/subscriptions/sweep` | Platform only · platform.subscriptions.manage |
 | GET | `/platform/support-cases` | Platform only · platform.support.manage |
 | POST | `/platform/support-cases` | Platform only · platform.support.manage |
 | PATCH | `/platform/support-cases/:id` | Platform only · platform.support.manage |
+| GET | `/platform/telemetry` | Platform only · platform.health.read |
 | GET | `/platform/users` | Platform only · platform.organisations.read |
+| GET | `/platform/users/:id` | Platform only · platform.organisations.read |
+| PATCH | `/platform/users/:id` | Platform only · platform.organisations.manage |
 | POST | `/platform/users/:id/impersonate` | Platform only · platform.impersonate.manage |
+| POST | `/platform/users/:id/memberships` | Platform only · platform.organisations.manage |
+| DELETE | `/platform/users/:id/memberships/:membershipId` | Platform only · platform.organisations.manage |
+| DELETE | `/platform/users/:id/memberships/:membershipId/roles/:roleId` | Platform only · platform.organisations.manage |
+| POST | `/platform/users/:id/reset-password` | Platform only · platform.organisations.manage |
 | POST | `/platform/users/:id/revoke-sessions` | Platform only · platform.organisations.manage |
 | POST | `/platform/users/:id/status` | Platform only · platform.organisations.manage |
 | POST | `/platform/users/bulk` | Platform only · platform.organisations.manage |
@@ -618,6 +682,8 @@ Generated from the router: **460 routes** across 27 modules.
 
 | Method | Path | Access |
 | --- | --- | --- |
+| POST | `/public/auth/verify-email` | Public |
+| POST | `/public/auth/verify-email/resend` | Public |
 | GET | `/public/daycares/:slug` | Public |
 | GET | `/public/daycares/:slug/enquiry-form` | Public |
 | GET | `/public/daycares/by-domain/:host` | Public |
@@ -631,7 +697,9 @@ Generated from the router: **460 routes** across 27 modules.
 | POST | `/public/payfast/itn` | Public |
 | GET | `/public/payfast/return` | Public |
 | GET | `/public/platform` | Public |
+| GET | `/public/rhyme-audio` | Public |
 | POST | `/public/signup` | Public |
+| POST | `/public/telemetry` | Public |
 
 ## Push
 
@@ -695,6 +763,7 @@ Generated from the router: **460 routes** across 27 modules.
 | POST | `/staff/:id/training` | staff.manage.daycare |
 | GET | `/staff/activity-summary` | reports.read.daycare OR staff.read.daycare OR staff_attendance.record.own |
 | POST | `/staff/bulk` | staff.manage.daycare |
+| GET | `/staff/eligible` | staff.manage.daycare |
 | GET | `/staff/morning` | curriculum.create.daycare OR assessments.create.assigned OR attendance.record.assigned OR attendance.record.daycare OR staff_attendance.record.daycare OR staff_attendance.record.own |
 | GET | `/staff/overview` | staff.read.daycare |
 | GET | `/staff/today` | curriculum.create.daycare OR assessments.create.assigned OR attendance.record.assigned OR attendance.record.daycare OR staff_attendance.record.daycare OR staff_attendance.record.own |
@@ -773,6 +842,11 @@ Generated from the router: **460 routes** across 27 modules.
 | DELETE | `/whiteboards/:id` | curriculum.create.daycare |
 | GET | `/whiteboards/:id` | curriculum.read.daycare OR curriculum.create.daycare |
 | PATCH | `/whiteboards/:id` | curriculum.create.daycare |
+| GET | `/whiteboards/:id/presence` | curriculum.read.daycare OR curriculum.create.daycare |
+| POST | `/whiteboards/:id/presence` | curriculum.read.daycare OR curriculum.create.daycare |
+| GET | `/whiteboards/:id/snapshots` | curriculum.read.daycare OR curriculum.create.daycare |
+| POST | `/whiteboards/:id/snapshots` | curriculum.create.daycare |
+| POST | `/whiteboards/:id/snapshots/:sid/restore` | curriculum.create.daycare |
 | PUT | `/whiteboards/:id/state` | curriculum.create.daycare |
 
 ## Common status codes
