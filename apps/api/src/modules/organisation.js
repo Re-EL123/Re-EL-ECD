@@ -254,9 +254,9 @@ function register(router) {
   const ALLOWED_SETTINGS = new Set([
     'academicYear', 'operatingHours', 'attendancePolicy', 'notificationPreferences',
     'publicWebsite', 'dataRetention', 'weather', 'ncf', 'collection.lateCutoff', 'nurseryRhymeAudio', 'nurseryRhymes',
-    'attendanceReminders'
+    'attendanceReminders', 'exportSchedule'
   ]);
-  const OBJECT_SETTINGS = new Set(['operatingHours', 'attendancePolicy', 'notificationPreferences', 'publicWebsite', 'dataRetention', 'weather', 'ncf', 'nurseryRhymeAudio', 'attendanceReminders']);
+  const OBJECT_SETTINGS = new Set(['operatingHours', 'attendancePolicy', 'notificationPreferences', 'publicWebsite', 'dataRetention', 'weather', 'ncf', 'nurseryRhymeAudio', 'attendanceReminders', 'exportSchedule']);
   router.patch('/organisations/current/settings', async (ctx) => {
     const body = validate(ctx.body, {
       settings: { type: 'object' }

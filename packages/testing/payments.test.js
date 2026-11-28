@@ -103,6 +103,7 @@ test('every email template renders a subject, html and text', () => {
     passwordReset: { displayName: 'Sipho', token: 'tok_reset' },
     verifyEmail: { ownerName: 'Sipho', organisationName: 'Little Sprouts', token: 'tok_verify' },
     attendanceReminder: { staffName: 'Thandi', organisationName: 'Little Sprouts', kind: 'clock_in', expectedTime: '07:30' },
+    dataExportReady: { name: 'Sipho', url: 'https://example.test/export', bytes: 204800 },
     enquiryReceived: { guardianName: 'Sarah', childName: 'Amelia', email: 's@example.com', message: 'Hello' },
     enquiryAcknowledgement: { guardianName: 'Sarah', organisationName: 'Little Sprouts', slug: 'little-sprouts' },
     formSubmission: { formName: 'Consent', submittedBy: 'Sarah' },

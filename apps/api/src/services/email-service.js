@@ -764,6 +764,25 @@ const templates = {
     };
   },
 
+  dataExportReady(data) {
+    return {
+      subject: 'Your Re-EL ECD data export is ready',
+      html: layout({
+        brand: data.brand,
+        heading: 'Your data export is ready',
+        intro: 'Hello ' + (data.name || 'there') + ', the full export of your centre\'s information has been prepared.',
+        rows: [
+          { label: 'Download link expires', value: data.expiresAt ? new Date(data.expiresAt).toLocaleString('en-ZA') : 'in 24 hours' },
+          { label: 'Archive size', value: data.bytes ? Math.round(Number(data.bytes) / 1024) + ' KB' : 'See download' }
+        ],
+        ctaLabel: 'Download export',
+        ctaUrl: data.url,
+        footer: 'This archive contains sensitive information about children and families. Store it securely and delete it when you no longer need it.'
+      }),
+      text: plain(['Your data export is ready: ' + data.url, 'The link expires in 24 hours. Store the archive securely.'])
+    };
+  },
+
   attendanceReminder(data) {
     const labels = { clock_in: 'Clock in', break: 'Take a break', clock_out: 'Clock out' };
     const action = labels[data.kind] || 'Record your attendance';

@@ -30,7 +30,9 @@ const modules = [
   require('./books'),
   require('./interactions'),
   require('./corrections'),
-  require('./telemetry')
+  require('./telemetry'),
+  require('./data-exports'),
+  require('./backups')
 ];
 
 function register(router) {

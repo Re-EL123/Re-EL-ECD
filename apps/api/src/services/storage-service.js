@@ -255,6 +255,68 @@ async function deleteObject(key) {
 }
 
 /**
+ * Backup/export objects live in a separate bucket from user media. Credentials
+ * and endpoint stay the same; only the bucket name changes.
+ */
+function withBucket(bucket) {
+  const cfg = config();
+  return bucket && bucket !== cfg.bucket ? Object.assign({}, cfg, { bucket }) : cfg;
+}
+
+function backupConfig() {
+  return withBucket(process.env.R2_BACKUP_BUCKET || '');
+}
+
+function presignGetFrom(bucket, key, expires = 900) {
+  return presign('GET', key, { config: withBucket(bucket), expires });
+}
+
+/** Upload a server-generated object (backup or export) without a browser. */
+async function putObject(key, body, options = {}) {
+  const cfg = options.bucket ? withBucket(options.bucket) : config();
+  if (!cfg.accessKeyId || !cfg.secretAccessKey || !cfg.bucket || !cfg.host) return false;
+  const payload = Buffer.isBuffer(body) ? body : Buffer.from(String(body || ''));
+  const now = new Date();
+  const stamp = dateStamp(now);
+  const timestamp = amzDate(now);
+  const credentialScope = `${stamp}/${cfg.region}/s3/aws4_request`;
+  const canonicalUri = encodeKeyPath(cfg.bucket, key);
+  const payloadHash = crypto.createHash('sha256').update(payload).digest('hex');
+  const canonicalHeaders = `host:${cfg.host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${timestamp}\n`;
+  const signedHeaders = 'host;x-amz-content-sha256;x-amz-date';
+  const canonicalRequest = ['PUT', canonicalUri, '', canonicalHeaders, signedHeaders, payloadHash].join('\n');
+  const stringToSign = ['AWS4-HMAC-SHA256', timestamp, credentialScope, sha256(canonicalRequest)].join('\n');
+  const signature = crypto.createHmac('sha256', signingKey(cfg.secretAccessKey, stamp, cfg.region, 's3'))
+    .update(stringToSign, 'utf8').digest('hex');
+  try {
+    const response = await fetch(`${cfg.endpoint}${canonicalUri}`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `AWS4-HMAC-SHA256 Credential=${cfg.accessKeyId}/${credentialScope}, `
+          + `SignedHeaders=${signedHeaders}, Signature=${signature}`,
+        'x-amz-content-sha256': payloadHash,
+        'x-amz-date': timestamp,
+        'Content-Type': options.contentType || 'application/octet-stream'
+      },
+      body: payload,
+      signal: AbortSignal.timeout(Number(process.env.R2_TIMEOUT_MS || 30000))
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function verifyBucketObject(bucket, key) {
+  if (!bucket) return false;
+  try {
+    const signed = presign('HEAD', key, { config: withBucket(bucket), expires: 60 });
+    const response = await fetch(signed.url, { method: 'HEAD' });
+    return response.ok;
+  } catch { return false; }
+}
+
+/**
  * A credential problem that is certain without a network call. The classic
  * case is using the Cloudflare account ID as the access key: R2 then answers
  * 401 without CORS headers, so the browser reports a CORS failure and hides
@@ -495,5 +557,10 @@ module.exports = {
   deleteObject,
   buildKey,
   describeUpload,
-  safeSegment
+  safeSegment,
+  withBucket,
+  backupConfig,
+  presignGetFrom,
+  putObject,
+  verifyBucketObject
 };

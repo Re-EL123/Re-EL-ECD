@@ -102,3 +102,13 @@ Additional review points:
 4. Confirm the evidence-retention period and legal-hold process with counsel.
 5. Check the "ten business days" post-incident review target against the centre's policies.
 6. Re-check the official links before each use: Information Regulator fact sheet (Aug 2025), section 22 guidelines, POPIA forms page, eServices portal.
+
+## Backups and exports (added later)
+
+`docs/backup-restore.md` defines RPO 24h / RTO 4h, nightly logical backups,
+quarterly restore drills and the tenant export path. Legal review should confirm:
+
+1. The Privacy Policy, Terms and DPA disclosures about backup cycles and export sensitivity are adequate.
+2. The 24-hour signed-link expiry and 30-day backup retention are operationally accurate.
+3. The termination export is issued inside the stated transition window.
+4. `R2_BACKUP_BUCKET`, `NEON_PITR_CONFIRMED` and `R2_VERSIONING_CONFIRMED` are set in production and reflected in `/platform/backups`.

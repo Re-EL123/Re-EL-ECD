@@ -5272,6 +5272,21 @@
         }
       },
 
+      async createDataExport() {
+        if (!this.has('reports.export.daycare')) { this.toast('You do not have permission to export centre data.', 'warn'); return; }
+        try {
+          const response = await Reel.api('POST', '/data-exports', {});
+          if (response && response.data && response.data.status === 'ready') {
+            this.toast('Your export is ready. Use Download in the export history.');
+          } else {
+            this.toast('Your export has been queued. It will be ready shortly.');
+          }
+          await this.navigate(true);
+        } catch (error) {
+          this.toast(error.message || 'Could not create the export.', 'error');
+        }
+      },
+
       async resendVerification() {
         const email = this.loginVerifyEmail || this.loginEmail;
         if (!email) { this.toast('Enter your email address first.', 'warn'); return; }

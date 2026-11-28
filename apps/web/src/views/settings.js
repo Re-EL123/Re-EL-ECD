@@ -77,9 +77,10 @@ window.Reel.renderGateQr = function (targetId) {
         R.api('GET', '/branches'),
         R.api('GET', '/organisation/themes'),
         R.api('GET', '/billing/summary'),
-        R.api('GET', '/push/preferences').catch(() => null)
+        R.api('GET', '/push/preferences').catch(() => null),
+        ctx.has('reports.export.daycare') ? R.api('GET', '/data-exports').catch(() => ({ data: [] })) : Promise.resolve({ data: [] })
       ]);
-      const [organisation, settings, onboarding, branches, themes, billing, push] = settled;
+      const [organisation, settings, onboarding, branches, themes, billing, push, dataExports] = settled;
       return {
         organisation: organisation.status === 'fulfilled' ? organisation.value.data : null,
         settings: settings.status === 'fulfilled' ? settings.value.data : {},
@@ -87,7 +88,8 @@ window.Reel.renderGateQr = function (targetId) {
         branches: branches.status === 'fulfilled' ? branches.value.data : [],
         themes: themes.status === 'fulfilled' ? themes.value.data : { themes: [], current: null, appliedThemeId: null },
         billing: billing.status === 'fulfilled' ? billing.value.data : null,
-        pushPreferences: push.status === 'fulfilled' && push.value ? (push.value.data || []) : []
+        pushPreferences: push.status === 'fulfilled' && push.value ? (push.value.data || []) : [],
+        dataExports: dataExports.status === 'fulfilled' && dataExports.value ? (dataExports.value.data || []) : []
       };
     },
 
@@ -108,8 +110,8 @@ window.Reel.renderGateQr = function (targetId) {
       return R.pageHead('Settings', 'How the centre is configured — the details every other screen depends on.',
         (canUpdate ? '<button class="btn btn-secondary btn-sm" @click="openNamedModal(\'organisation\')">' + R.icon('building-2') + ' Edit organisation</button>' : '') +
         (canManageBranches ? '<button class="btn btn-primary btn-sm" @click="openNamedModal(\'branch\')">' + R.icon('plus') + ' Add branch</button>' : '')) +
-        R.tabs([{ key: 'organisation', label: 'Organisation' }, { key: 'branding', label: 'Branding' }, { key: 'branches', label: 'Branches (' + branches.length + ')' }, { key: 'operations', label: 'Operations' }, { key: 'gateqr', label: 'Gate QR' }, { key: 'onboarding', label: 'Setup checklist' }, { key: 'billing', label: 'Billing & payments' }, { key: 'security', label: 'My security' }], tab) +
-        (tab === 'branches' ? this.renderBranches(ctx, page) : tab === 'branding' ? this.renderBranding(ctx, page) : tab === 'operations' ? this.renderOperations(ctx, settings, hours, attendance, notifications, retention, canManageSettings, page, myPush) : tab === 'gateqr' ? this.renderGateQr(org) : tab === 'onboarding' ? this.renderOnboarding(onboarding) : tab === 'billing' ? this.renderBilling(ctx, page, canManageSettings) : tab === 'security' ? this.renderSecurity(ctx) : this.renderOrganisation(org, branches, settings));
+        R.tabs([{ key: 'organisation', label: 'Organisation' }, { key: 'branding', label: 'Branding' }, { key: 'branches', label: 'Branches (' + branches.length + ')' }, { key: 'operations', label: 'Operations' }, { key: 'data', label: 'Data & backups' }, { key: 'gateqr', label: 'Gate QR' }, { key: 'onboarding', label: 'Setup checklist' }, { key: 'billing', label: 'Billing & payments' }, { key: 'security', label: 'My security' }], tab) +
+        (tab === 'branches' ? this.renderBranches(ctx, page) : tab === 'branding' ? this.renderBranding(ctx, page) : tab === 'operations' ? this.renderOperations(ctx, settings, hours, attendance, notifications, retention, canManageSettings, page, myPush) : tab === 'data' ? this.renderDataExports(ctx, page) : tab === 'gateqr' ? this.renderGateQr(org) : tab === 'onboarding' ? this.renderOnboarding(onboarding) : tab === 'billing' ? this.renderBilling(ctx, page, canManageSettings) : tab === 'security' ? this.renderSecurity(ctx) : this.renderOrganisation(org, branches, settings));
     },
 
     renderSecurity(ctx) {
@@ -327,6 +329,45 @@ window.Reel.renderGateQr = function (targetId) {
         '<div class="section"></div><div class="stack">' + items.map((item) => '<div class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-subtle)">' +
           '<div class="row" style="gap:10px">' + R.icon(item.complete ? 'check-circle' : 'circle', item.complete ? 'text-green' : 'muted') + '<span>' + R.esc(item.label) + '</span></div>' +
           (item.complete ? '<span class="badge badge-green">Done</span>' : '<span class="badge badge-sun">To do</span>') + '</div>').join('') + '</div>');
+    },
+
+    renderDataExports(ctx, page) {
+      if (!ctx.has('reports.export.daycare')) {
+        return R.emptyState('Not available', 'Ask an owner or principal for access to data exports.', '', 'shield');
+      }
+      const rows = page.dataExports || [];
+      const schedule = (page.settings || {}).exportSchedule || {};
+      const list = rows.length ? R.table({ rows, compact: true, columns: [
+        { label: 'Requested', render: (row) => R.date(row.created_at) },
+        { label: 'Type', render: (row) => R.titleCase(row.reason) },
+        { label: 'Status', render: (row) => R.badge(row.status) },
+        { label: 'Records', render: (row) => R.number(row.entity_count || 0) },
+        { label: 'Size', render: (row) => row.file_bytes ? R.number(Math.round(row.file_bytes / 1024)) + ' KB' : '—' },
+        { label: 'Link expires', render: (row) => row.expires_at ? R.date(row.expires_at) : '—' },
+        { label: '', render: (row) => row.status === 'ready'
+          ? '<button class="btn btn-sm btn-secondary" @click="downloadExport(\'/data-exports/' + R.attr(row.id) + '/download\')">' + R.icon('download') + ' Download</button>'
+          : row.error ? '<span class="muted small" title="' + R.attr(row.error) + '">Failed</span>' : '' }
+      ] }) : R.emptyState('No exports yet', 'Create a full export to download a copy of your centre’s records.', '', 'database-backup');
+
+      return R.pageHead('Data & backups', 'Keep a portable copy of your centre’s information and control scheduled exports.',
+        '<button class="btn btn-primary btn-sm" @click="createDataExport()">' + R.icon('download') + ' Export my centre data</button>') +
+        '<div class="section"><div class="alert alert-info"><i data-lucide="shield-check"></i><span>' +
+          'The export is a ZIP of CSV/JSON files for every record type, plus a media manifest with 24-hour download links. ' +
+          'It contains children’s personal information, medical notes and financial records — store it securely and delete it when no longer needed.' +
+        '</span></div></div>' +
+        '<div class="grid grid-2 section">' +
+          R.card('Scheduled exports', '<div class="detail-list">' +
+            R.detailItem('Status', R.badge(schedule.enabled ? 'active' : 'off')) +
+            R.detailItem('Frequency', R.esc(schedule.frequency || 'Off')) +
+            '</div><p class="muted small" style="margin-top:10px">Set the frequency in Operating settings. A link is emailed to the owner when the export is ready.</p>') +
+          R.card('Platform backups', '<div class="detail-list">' +
+            R.detailItem('Recovery point objective', '24 hours') +
+            R.detailItem('Recovery time objective', '4 hours') +
+            R.detailItem('Nightly copy', 'Private backup bucket, retained 30 days') +
+            R.detailItem('Restore drill', 'Quarterly — see backup runbook') +
+            '</div><p class="muted small" style="margin-top:10px">Your own export is the fastest way to retrieve your information without waiting on support.</p>') +
+        '</div>' +
+        '<div class="section">' + R.card('Export history', list) + '</div>';
     },
 
     renderBilling(ctx, page, canManage) {
@@ -686,6 +727,8 @@ window.Reel.renderGateQr = function (targetId) {
             { name: 'reminderEmail', label: 'Email attendance reminders', type: 'checkbox', value: reminders.channelEmail === true, help: 'Off by default — in-app and push are usually enough.' },
             { name: 'reminderSms', label: 'SMS attendance reminders', type: 'checkbox', value: reminders.channelSms === true, help: 'Requires an SMS provider and the "SMS — attendance reminders" opt-in below.' },
             { name: 'smsAttendanceReminders', label: 'SMS — attendance reminders', type: 'checkbox', value: notifications.smsAttendanceReminders === true, help: 'Allows text reminders to staff who have a phone number on their profile.' },
+            { name: 'exportScheduleEnabled', label: 'Scheduled data exports', type: 'checkbox', value: ((settings.exportSchedule || {}).enabled) === true, help: 'Automatically prepares a full centre export for the owner.' },
+            { name: 'exportFrequency', label: 'Export frequency', type: 'select', value: ((settings.exportSchedule || {}).frequency) || 'weekly', options: [{ value: 'weekly', label: 'Weekly' }, { value: 'monthly', label: 'Monthly' }] },
             { name: 'showFees', label: 'Show fees publicly', type: 'checkbox', value: (settings.publicWebsite || {}).showFees === true },
             { name: 'learnerRecordsYears', label: 'Learner record retention (years)', type: 'number', value: retention.learnerRecordsYears || 7 },
             { name: 'financeYears', label: 'Financial record retention (years)', type: 'number', value: retention.financeYears || 7 },
@@ -697,6 +740,10 @@ window.Reel.renderGateQr = function (targetId) {
               operatingHours: { open: data.open, close: data.close },
               attendancePolicy: { lateAfter: data.lateAfter, autoAbsentAfter: data.autoAbsentAfter, allowExcusedAbsence: data.allowExcusedAbsence === true },
               notificationPreferences: { emailAnnouncements: data.emailAnnouncements === true, emailInvoices: data.emailInvoices === true, smsIncidents: data.smsIncidents === true, smsPickupBrief: data.smsPickupBrief === true, smsAttendanceReminders: data.smsAttendanceReminders === true },
+              exportSchedule: {
+                enabled: data.exportScheduleEnabled === true,
+                frequency: data.exportFrequency === 'monthly' ? 'monthly' : 'weekly'
+              },
               attendanceReminders: {
                 enabled: data.remindersEnabled === true,
                 clockInTime: data.clockInTime || '07:30',

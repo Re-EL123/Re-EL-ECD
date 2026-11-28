@@ -88,6 +88,14 @@
     {
       "path": "/api/v1/cron/attendance-reminders",
       "schedule": "50 16 * * 1-5"
+    },
+    {
+      "path": "/api/v1/cron/data-exports",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/v1/cron/platform-backup",
+      "schedule": "0 2 * * *"
     }
   ]
 }
