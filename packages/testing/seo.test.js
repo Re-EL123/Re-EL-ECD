@@ -198,7 +198,7 @@ test('rhyme audio uses a public cookie-free stream on mobile', () => {
   assert.match(player, /data-np="continue"/);
 
   assert.match(css, /\.np-continue\[hidden\] \{ display: none !important; \}/);
-  assert.match(css, /grid-template-areas:\s*"prev play next meta queue read close"/);
+  assert.match(css, /grid-template-areas:\s*"prev play next meta meta queue read close"/);
   assert.match(css, /env\(safe-area-inset-bottom, 0px\)/);
 });
 

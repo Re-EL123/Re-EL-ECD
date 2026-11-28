@@ -3254,12 +3254,11 @@ a:focus-visible, input:focus-visible, select:focus-visible {
      comfortable thumb target and the bar never overflows a phone viewport. */
   .rhyme-now-playing {
     left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px));
-    width: auto; transform: none; display: grid; gap: 6px 4px; padding: 10px;
-    grid-template-columns: auto auto auto minmax(0, 1fr) auto auto auto;
+    width: auto; transform: none; display: grid; gap: 6px 4px; padding: 9px 10px;
+    grid-template-columns: auto auto auto minmax(0, 1fr) auto auto auto auto;
     grid-template-areas:
-      "prev play next meta queue read close"
-      "seek seek seek seek seek seek seek"
-      "time time loop cont cont cont cont";
+      "prev play next meta meta queue read close"
+      "seek seek seek seek seek loop time time";
   }
   @keyframes npUp { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
   .rhyme-now-playing [data-np="prev"] { grid-area: prev; }
@@ -3272,8 +3271,12 @@ a:focus-visible, input:focus-visible, select:focus-visible {
   .rhyme-now-playing .np-seek { grid-area: seek; width: 100%; min-width: 0; }
   .rhyme-now-playing .np-time { grid-area: time; }
   .rhyme-now-playing [data-np="loop"] { grid-area: loop; }
-  .rhyme-now-playing [data-np="continue"] { grid-area: cont; width: 100%; min-height: 40px; }
   .rhyme-now-playing .np-volume { display: none; }
+  /* Continue floats above the compact bar instead of adding a third empty row. */
+  .rhyme-now-playing .np-continue {
+    position: absolute; left: 8px; right: 8px; top: -46px; width: auto; min-height: 40px;
+    box-shadow: 0 8px 22px -8px rgba(0, 0, 0, .45);
+  }
 
   .np-icon { width: 34px; height: 34px; }
   .np-play { width: 40px; height: 40px; }
@@ -3284,7 +3287,7 @@ a:focus-visible, input:focus-visible, select:focus-visible {
   .np-title { font-size: .8rem; }
   .np-sub { display: none; }
 
-  .rhyme-queue-panel { right: 8px; left: 8px; bottom: 132px; width: auto; max-height: 46vh; }
+  .rhyme-queue-panel { right: 8px; left: 8px; bottom: calc(112px + env(safe-area-inset-bottom, 0px)); width: auto; max-height: 46vh; }
   .reader-line { font-size: calc(1.35rem * var(--reader-scale)); }
   .reader-head h2 { font-size: 1.2rem; }
   .reader-head, .reader-tools { padding-left: 14px; padding-right: 14px; }
